@@ -2,8 +2,8 @@ Como inicio de desarrollo se planea solo el uso de visual studio code como compi
 por el momemento solo se usar a phyton como lenguaje principal
 
 implementaciones a corto plazo
--conexion con APIs deepseek
--creacion de char bot simple
+-conexion con APIs de groq (se cambio por la gratis) (listo)
+-creacion de char bot simple (listo)
 
 implementaciones a mediano plazo
 -uso de herramientas para ayuda del usuario
