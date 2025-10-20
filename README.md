@@ -1,6 +1,7 @@
 # 🌙 Lune CD: Tu Asistente Virtual de Escritorio
 
 Lune CD no es solo una adorable mascota de escritorio; es un asistente virtual inteligente diseñado para integrarse profundamente en tu flujo de trabajo. Inspirado en aplicaciones como Shimeji y Phase Pal, Lune CD combina la interacción visual de una mascota con la potencia de un agente de IA capaz de automatizar tareas, recordar información y ayudarte con tu día a día directamente desde tu escritorio.
+<img width="1024" height="1024" alt="lunecd" src="https://github.com/user-attachments/assets/0866ba0c-f943-4796-ba16-25fcfbdbf7b2" />
 
 ---
 
