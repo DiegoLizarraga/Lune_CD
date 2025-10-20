@@ -1,0 +1,10 @@
+pygame
+requests
+pyautogui
+pytesseract
+opencv-python
+pillow
+nltk
+psutil
+win10toast; sys_platform == "win32"
+pywin32; sys_platform == "win32"

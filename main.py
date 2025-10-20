@@ -1,3 +1,4 @@
+# main.py (modificado para integrar los nuevos módulos)
 import pygame
 import sys
 import os
@@ -11,10 +12,16 @@ import math
 from datetime import datetime
 import time
 
-# Configuración de API Key
-GROQ_API_KEY = "la key"  # Reemplaza con tu API key real
+# Importar los nuevos módulos
+from system_integration import SystemIntegration
+from command_processor import CommandProcessor
+from screen_analyzer import ScreenAnalyzer
+from notification_manager import NotificationManager
 
-# Clase del ChatBot
+# Configuración de API Key
+GROQ_API_KEY = "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"  # Reemplaza con tu API key real
+
+# Clase del ChatBot (sin cambios)
 class GroqChatBot:
     def __init__(self, api_key):
         self.api_key = api_key
@@ -129,7 +136,7 @@ class GroqChatBot:
         
         return response
 
-# Clase para el chat en terminal
+# Clase para el chat en terminal (modificada)
 class TerminalChat:
     def __init__(self, pet_window=None):
         self.chatbot = None
@@ -137,19 +144,53 @@ class TerminalChat:
         self.chat_thread = None
         self.pet_window = pet_window  # Referencia a la ventana de la mascota
         
+        # Inicializar nuevos módulos
+        self.system_integration = SystemIntegration()
+        self.command_processor = None  # Se inicializará después de que el chatbot esté listo
+        self.screen_analyzer = ScreenAnalyzer()
+        self.notification_manager = NotificationManager()
+        
     def initialize_chatbot(self):
         """Inicializa el chatbot con la API key configurada"""
-        if GROQ_API_KEY == "TU_API_KEY_AQUI":
+        if GROQ_API_KEY == "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":
             print("❌ API Key no configurada. Por favor, configura GROQ_API_KEY en el código.")
             return False
         
         try:
             self.chatbot = GroqChatBot(GROQ_API_KEY)
+            # Inicializar el procesador de comandos después de tener el chatbot
+            self.command_processor = CommandProcessor(self.system_integration, self.chatbot)
+            
+            # Iniciar servicios en segundo plano
+            self.system_integration.start_reminder_service(self.handle_reminder_notification)
+            self.system_integration.start_screen_monitoring(self.handle_screen_content)
+            self.notification_manager.start_notification_service()
+            
             print("✅ Chatbot inicializado correctamente.")
             return True
         except Exception as e:
             print(f"❌ Error al inicializar chatbot: {str(e)}")
             return False
+    
+    def handle_reminder_notification(self, notification):
+        """Maneja las notificaciones de recordatorios"""
+        print(f"\n🔔 {notification}")
+        self.notification_manager.show_notification("Lune - Recordatorio", notification)
+        
+        # Si la mascota está activa, mostrar animación
+        if self.pet_window:
+            self.pet_window.show_notification(notification)
+    
+    def handle_screen_content(self, text):
+        """Maneja el contenido de la pantalla capturado"""
+        # Analizar el contenido de la pantalla
+        analysis = self.screen_analyzer.analyze_text(text)
+        
+        # Si hay palabras clave importantes, procesarlas
+        if analysis["important_keywords"]:
+            # Aquí podrías implementar lógica para recordar temas importantes
+            # Por ejemplo, guardar en un archivo de contexto
+            pass
     
     def start_chat(self):
         """Inicia el chat en terminal en un hilo separado"""
@@ -200,6 +241,17 @@ class TerminalChat:
                 if self.pet_window:
                     self.pet_window.start_talking_animation()
                 
+                # Procesar comandos del sistema primero
+                if self.command_processor:
+                    command_response = self.command_processor.process_command(user_input)
+                    if command_response:
+                        print(f"🌙 Lune: {command_response}")
+                        
+                        # Detener animación de "hablando"
+                        if self.pet_window:
+                            self.pet_window.stop_talking_animation()
+                        continue
+                
                 # Procesar mensaje con el chatbot
                 print("🌙 Lune: Pensando...")
                 response = self.chatbot.process_message(user_input)
@@ -229,14 +281,22 @@ class TerminalChat:
         print("  • 'salir' - Cerrar el chat")
         print("  • 'limpiar' - Limpiar historial de conversación")
         print("  • 'ayuda' - Mostrar esta ayuda")
+        print("  • 'abre [aplicación]' - Abrir una aplicación")
+        print("  • 'toma nota [texto]' - Guardar una nota")
+        print("  • 'lista mis notas' - Ver todas las notas")
+        print("  • 'recuérdame [tarea] [tiempo]' - Añadir un recordatorio")
+        print("  • 'busca en pantalla [término]' - Buscar en historial de pantalla")
+        print("  • 'información del sistema' - Ver información del sistema")
         print("  • Cualquier otra cosa - Hablar con Lune")
         print("  • Ctrl+C - Forzar salida")
     
     def stop_chat(self):
         """Detiene el chat"""
         self.running = False
+        self.system_integration.stop_services()
+        self.notification_manager.stop_notification_service()
 
-# Clase principal de la mascota
+# Clase principal de la mascota (modificada para añadir notificaciones)
 class DesktopPet:
     def __init__(self):
         # Inicializar Pygame
@@ -279,6 +339,11 @@ class DesktopPet:
         self.talk_offset_x = 0
         self.talk_offset_y = 0
         
+        # Variables para notificaciones
+        self.notification_text = ""
+        self.notification_time = 0
+        self.showing_notification = False
+        
         # Color de transparencia
         self.COLOR_TRANSPARENTE = (255, 0, 255)
         
@@ -300,6 +365,13 @@ class DesktopPet:
             print("✅ API Key configurada. Iniciando chat en terminal...")
             # Iniciar chat en terminal automáticamente
             self.terminal_chat.start_chat()
+    
+    def show_notification(self, text):
+        """Muestra una notificación en la mascota"""
+        self.notification_text = text
+        self.notification_time = pygame.time.get_ticks() + 5000  # 5 segundos
+        self.showing_notification = True
+        self.estado_actual = self.lune_feliz
     
     def start_talking_animation(self):
         """Inicia la animación de habla"""
@@ -416,6 +488,13 @@ class DesktopPet:
         reloj = pygame.time.Clock()
         ejecutando = True
         
+        # Fuente para notificaciones
+        try:
+            pygame.font.init()
+            self.font = pygame.font.SysFont('Arial', 12)
+        except:
+            self.font = None
+        
         while ejecutando:
             for evento in pygame.event.get():
                 if evento.type == pygame.QUIT:
@@ -488,11 +567,54 @@ class DesktopPet:
                 self.estado_actual = self.lune_normal
                 self.tiempo_reaccion = 0
             
+            # Ocultar notificación después del tiempo
+            if self.showing_notification and pygame.time.get_ticks() > self.notification_time:
+                self.showing_notification = False
+                self.estado_actual = self.lune_normal
+            
             # Dibujar
             self.ventana.fill(self.COLOR_TRANSPARENTE)
             pos_x_centrada = (self.ANCHO_VENTANA - self.ancho_img) // 2 + self.talk_offset_x
             pos_y_centrada = (self.ALTO_VENTANA - self.alto_img) // 2 + self.talk_offset_y
             self.ventana.blit(self.estado_actual, (pos_x_centrada, pos_y_centrada))
+            
+            # Dibujar notificación si está activa
+            if self.showing_notification and self.font:
+                # Crear un fondo para la notificación
+                notif_surface = pygame.Surface((self.ANCHO_VENTANA - 20, 40), pygame.SRCALPHA)
+                notif_surface.fill((0, 0, 0, 180))  # Negro semitransparente
+                
+                # Dividir el texto en líneas si es necesario
+                words = self.notification_text.split()
+                lines = []
+                current_line = []
+                
+                for word in words:
+                    test_line = ' '.join(current_line + [word])
+                    text_width = self.font.size(test_line)[0]
+                    
+                    if text_width <= self.ANCHO_VENTANA - 30:
+                        current_line.append(word)
+                    else:
+                        if current_line:
+                            lines.append(' '.join(current_line))
+                        current_line = [word]
+                
+                if current_line:
+                    lines.append(' '.join(current_line))
+                
+                # Dibujar cada línea
+                y_offset = 5
+                for line in lines[:2]:  # Máximo 2 líneas
+                    text_surface = self.font.render(line, True, (255, 255, 255))
+                    text_rect = text_surface.get_rect(center=(self.ANCHO_VENTANA // 2, y_offset + 10))
+                    notif_surface.blit(text_surface, text_rect)
+                    y_offset += 15
+                
+                # Posicionar la notificación debajo de la mascota
+                notif_y = pos_y_centrada + self.alto_img + 5
+                self.ventana.blit(notif_surface, (10, notif_y))
+            
             pygame.display.flip()
             reloj.tick(60)
         
