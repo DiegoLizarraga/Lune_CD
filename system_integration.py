@@ -11,6 +11,7 @@ from PIL import Image
 import cv2
 import numpy as np
 from duckduckgo_search import DDGS
+from urllib.parse import urlparse
 
 class SystemIntegration:
     def __init__(self):
@@ -232,25 +233,70 @@ class SystemIntegration:
         return False
     
     def search_web(self, query):
-        """Realiza una búsqueda en DuckDuckGo y devuelve los resultados formateados."""
+        """Realiza una búsqueda en DuckDuckGo y devuelve los resultados formateados como conversación."""
         try:
             with DDGS() as ddgs:
-                # ddgs.text devuelve un generador, lo convertimos a lista
                 resultados = list(ddgs.text(query, region='wt-wt', safesearch='off', timelimit='y', max_results=5))
             
             if not resultados:
-                return f"No encontré resultados para '{query}'."
+                return f"No encontré información específica sobre '{query}'. ¿Podrías darme más detalles o intentar con otra consulta?"
             
-            response = f"Resultados de búsqueda para '{query}':\n\n"
-            for i, r in enumerate(resultados, 1):
-                response += f"{i}. {r['title']}\n"
-                response += f"   {r['body'][:150]}...\n"  # Mostrar un fragmento del contenido
-                response += f"   🔗 {r['href']}\n\n"
+            # Construir respuesta conversacional
+            response = f"Buscando información sobre '{query}'...\n\n"
             
-            return response.strip()
+            # Extraer información principal de los resultados
+            info_principal = []
+            for r in resultados:
+                # Extraer el contenido más relevante
+                contenido = r['body'][:200] + "..." if len(r['body']) > 200 else r['body']
+                info_principal.append({
+                    'titulo': r['title'],
+                    'contenido': contenido,
+                    'fuente': self._extraer_nombre_sitio(r['href'])
+                })
+            
+            # Construir respuesta conversacional
+            if len(resultados) == 1:
+                r = info_principal[0]
+                response += f"Según {r['fuente']}, {r['contenido']}\n\nPuedes encontrar más información en: {r['titulo']}"
+            else:
+                # Para múltiples resultados, crear una narrativa
+                response += f"Encontré información interesante sobre '{query}':\n\n"
+                
+                # Primer resultado - información principal
+                r = info_principal[0]
+                response += f"Según {r['fuente']}, {r['contenido']}\n\n"
+                
+                # Segundo resultado - información complementaria
+                if len(info_principal) > 1:
+                    r = info_principal[1]
+                    response += f"Por otro lado, {r['fuente']} menciona que {r['contenido']}\n\n"
+                
+                # Tercer resultado - más detalles si hay
+                if len(info_principal) > 2:
+                    r = info_principal[2]
+                    response += f"Además, {r['contenido']}\n\n"
+                
+                # Mencionar fuentes adicionales
+                if len(info_principal) > 3:
+                    response += f"Otras fuentes como {info_principal[3]['fuente']} y {info_principal[4]['fuente'] if len(info_principal) > 4 else 'otros sitios'} también tienen información relevante sobre este tema."
+            
+            return response
 
         except Exception as e:
-            return f"Error al realizar la búsqueda: {str(e)}"
+            return f"Tengo problemas para buscar información sobre '{query}' en este momento. Error: {str(e)}"
+    
+    def _extraer_nombre_sitio(self, url):
+        """Extrae el nombre del sitio de una URL"""
+        try:
+            parsed_url = urlparse(url)
+            domain = parsed_url.netloc
+            # Eliminar www. si existe
+            if domain.startswith('www.'):
+                domain = domain[4:]
+            return domain
+        except:
+            return "una fuente en línea"
     
     def search_screen_history(self, query):
         """Busca en el historial de pantalla"""

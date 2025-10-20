@@ -236,7 +236,7 @@ class LuneChat:
                 return command_response
         
         # 1. Detectar si es una búsqueda web
-        web_keywords = ['buscar', 'busca', 'search', 'google', 'web', 'internet', 'información sobre']
+        web_keywords = ['buscar', 'busca', 'search', 'google', 'web', 'internet', 'información sobre', 'qué es', 'dime sobre', 'explícame', 'cuéntame sobre']
         if any(keyword in message_lower for keyword in web_keywords):
             # Extraer la consulta de búsqueda
             query = user_message
@@ -244,9 +244,11 @@ class LuneChat:
                 query = query.replace(keyword, '').strip()
             
             if query:
+                # Mostrar mensaje de "buscando" antes de obtener resultados
+                self.terminal_window.add_message("Lune", f"Buscando información sobre '{query}'...")
                 return self.system_integration.search_web(query)
             else:
-                return "¿Qué te gustaría buscar?"
+                return "¿Qué te gustaría que busque? Puedes decirme por ejemplo 'busca información sobre los cerdos' o 'qué es la fotosíntesis'."
 
         # 2. Detectar si es un problema matemático
         if any(keyword in message_lower for keyword in ['calcular', 'resolver', 'matemática', 'suma', 'resta', 'multiplicar', 'dividir']) or re.search(r'[\d+\-*/()]', user_message):
