@@ -19,7 +19,7 @@ from screen_analyzer import ScreenAnalyzer
 from notification_manager import NotificationManager
 
 # Configuración de API Key
-GROQ_API_KEY = ""  # Reemplaza con tu API key real
+GROQ_API_KEY = "la key"  # Reemplaza con tu API key real
 
 # Clase del ChatBot (sin cambios)
 class GroqChatBot:
@@ -152,7 +152,7 @@ class TerminalChat:
         
     def initialize_chatbot(self):
         """Inicializa el chatbot con la API key configurada"""
-        if GROQ_API_KEY == "":
+        if GROQ_API_KEY == "TU_API_KEY_AQUI":
             print("❌ API Key no configurada. Por favor, configura GROQ_API_KEY en el código.")
             return False
         
