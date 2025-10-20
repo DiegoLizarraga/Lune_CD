@@ -1,7 +1,22 @@
+<<<<<<< HEAD
 Lune CD: Tu Asistente Virtual de Escritorio
 Python Version
 License
 Groq API En este caso
+=======
+Como inicio de desarrollo se planea solo el uso de visual studio code como compilador
+por el momemento solo se usar a phyton como lenguaje principal
+
+implementaciones a corto plazo
+-conexion con APIs de groq (se cambio por la gratis) (listo)
+-creacion de char bot simple (listo)
+
+implementaciones a mediano plazo
+-uso de herramientas para ayuda del usuario
+-creacion de banco de datos personales (recuerdos)
+-comando especifico para llamar en segundo plano
+-conexion con web y sercvicios en internet de las cosas
+>>>>>>> 9518ccdac7f77f8cafc695b250a2e8d8ce65a6cb
 
 
 Lune CD no es solo una adorable mascota de escritorio; es un asistente virtual inteligente diseñado para integrarse profundamente en tu flujo de trabajo. Inspirado en aplicaciones como Phase Pal, Lune CD combina la interacción visual de una mascota con la potencia de un agente de IA capaz de automatizar tareas, recordar información y ayudarte con tu día a día directamente desde tu escritorio.
