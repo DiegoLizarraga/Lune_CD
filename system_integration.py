@@ -10,6 +10,7 @@ import pytesseract
 from PIL import Image
 import cv2
 import numpy as np
+from duckduckgo_search import DDGS
 
 class SystemIntegration:
     def __init__(self):
@@ -229,6 +230,27 @@ class SystemIntegration:
             self.screen_monitor_thread.start()
             return True
         return False
+    
+    def search_web(self, query):
+        """Realiza una búsqueda en DuckDuckGo y devuelve los resultados formateados."""
+        try:
+            with DDGS() as ddgs:
+                # ddgs.text devuelve un generador, lo convertimos a lista
+                resultados = list(ddgs.text(query, region='wt-wt', safesearch='off', timelimit='y', max_results=5))
+            
+            if not resultados:
+                return f"No encontré resultados para '{query}'."
+            
+            response = f"Resultados de búsqueda para '{query}':\n\n"
+            for i, r in enumerate(resultados, 1):
+                response += f"{i}. {r['title']}\n"
+                response += f"   {r['body'][:150]}...\n"  # Mostrar un fragmento del contenido
+                response += f"   🔗 {r['href']}\n\n"
+            
+            return response.strip()
+
+        except Exception as e:
+            return f"Error al realizar la búsqueda: {str(e)}"
     
     def search_screen_history(self, query):
         """Busca en el historial de pantalla"""

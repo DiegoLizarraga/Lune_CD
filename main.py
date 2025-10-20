@@ -1,4 +1,3 @@
-# main.py (modificado para integrar los nuevos módulos)
 import pygame
 import sys
 import os
@@ -17,29 +16,17 @@ from system_integration import SystemIntegration
 from command_processor import CommandProcessor
 from screen_analyzer import ScreenAnalyzer
 from notification_manager import NotificationManager
+from local_model import LocalModel
 
-# Configuración de API Key
-GROQ_API_KEY = "la key"  # Reemplaza con tu API key real
-
-# Clase del ChatBot (sin cambios)
-class GroqChatBot:
-    def __init__(self, api_key):
-        self.api_key = api_key
-        self.base_url = "https://api.groq.com/openai/v1/chat/completions" 
-        self.conversation_history = []
-        self.headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json"
-        }
-    
-    def search_web(self, query):
-        try:
-            return f"Busqueda web para '{query}': Funcion de busqueda disponible para integrar con APIs externas."
-        except Exception as e:
-            return f"Error en búsqueda web: {str(e)}"
-    
+# Clase del ChatBot local
+class LuneChatBot:
+    def __init__(self, system_integration):
+        # Ya no necesitamos API Key, headers, etc.
+        self.system_integration = system_integration
+        self.local_model = LocalModel() # <-- Usar nuestro modelo local
+        
     def solve_math(self, expression):
-        """Resuelve expresiones matematicas básicas"""
+        """Resuelve expresiones matemáticas básicas"""
         try:
             clean_expr = re.sub(r'[^0-9+\-*/().\s]', '', expression)
             allowed_names = {
@@ -49,92 +36,33 @@ class GroqChatBot:
             allowed_names.update({"abs": abs, "round": round})
             
             result = eval(clean_expr, {"__builtins__": {}}, allowed_names)
-            return f"Resultado: {result}"
+            return f"El resultado es: {result}"
         except Exception as e:
-            return f"No puede chavo: {str(e)}"
-    
-    def detect_intent(self, message):
-        """Detecta la intención del mensaje"""
-        message_lower = message.lower()
-        
-        web_keywords = ['buscar', 'busca', 'search', 'google', 'web', 'internet', 'información sobre']
-        if any(keyword in message_lower for keyword in web_keywords):
-            return 'web_search'
-        
-        math_keywords = ['calcular', 'resolver', 'matemática', 'suma', 'resta', 'multiplicar', 'dividir']
-        if any(keyword in message_lower for keyword in math_keywords) or re.search(r'[\d+\-*/()]', message):
-            return 'math'
-        
-        return 'conversation'
-    
-    def call_groq_api(self, messages):
-        """Llama a la API de Groq"""
-        try:
-            payload = {
-                "model": "llama3-8b-8192",
-                "messages": messages,
-                "max_tokens": 1000,
-                "temperature": 0.7,
-                "stream": False
-            }
-            
-            response = requests.post(
-                self.base_url,
-                headers=self.headers,
-                json=payload,
-                timeout=30
-            )
-            
-            if response.status_code == 200:
-                return response.json()['choices'][0]['message']['content']
-            else:
-                return f"Error de API: {response.status_code} - {response.text}"
-                
-        except Exception as e:
-            return f"Error de conexión: {str(e)}"
+            return f"No pude resolver esa expresión: {str(e)}"
     
     def process_message(self, user_message):
-        """Procesa el mensaje del usuario"""
-        intent = self.detect_intent(user_message)
+        """Procesa el mensaje del usuario usando la lógica local y de búsqueda."""
+        message_lower = user_message.lower()
         
-        self.conversation_history.append({
-            "role": "user",
-            "content": user_message
-        })
+        # 1. Detectar si es una búsqueda web
+        web_keywords = ['buscar', 'busca', 'search', 'google', 'web', 'internet', 'información sobre']
+        if any(keyword in message_lower for keyword in web_keywords):
+            # Extraer la consulta de búsqueda
+            query = user_message
+            for keyword in web_keywords:
+                query = query.replace(keyword, '').strip()
+            
+            if query:
+                return self.system_integration.search_web(query)
+            else:
+                return "¿Qué te gustaría buscar?"
+
+        # 2. Detectar si es un problema matemático
+        if any(keyword in message_lower for keyword in ['calcular', 'resolver', 'matemática', 'suma', 'resta', 'multiplicar', 'dividir']) or re.search(r'[\d+\-*/()]', user_message):
+            return self.solve_math(user_message)
         
-        if intent == 'web_search':
-            search_terms = user_message.lower()
-            for keyword in ['buscar', 'busca', 'search', 'información sobre']:
-                search_terms = search_terms.replace(keyword, '').strip()
-            
-            web_result = self.search_web(search_terms)
-            enhanced_message = f"Usuario pregunta: {user_message}\nInformación encontrada: {web_result}\nPor favor, proporciona una respuesta útil basada en esta información."
-            
-            messages = self.conversation_history[:-1] + [{
-                "role": "user",
-                "content": enhanced_message
-            }]
-            
-        elif intent == 'math':
-            math_result = self.solve_math(user_message)
-            enhanced_message = f"Usuario solicita: {user_message}\n{math_result}\nPuedes explicar o ampliar esta respuesta matemática?"
-            
-            messages = self.conversation_history[:-1] + [{
-                "role": "user", 
-                "content": enhanced_message
-            }]
-            
-        else:
-            messages = self.conversation_history
-        
-        response = self.call_groq_api(messages)
-        
-        self.conversation_history.append({
-            "role": "assistant",
-            "content": response
-        })
-        
-        return response
+        # 3. Si no es nada de lo anterior, usar el modelo local para conversar
+        return self.local_model.generate_response(user_message)
 
 # Clase para el chat en terminal (modificada)
 class TerminalChat:
@@ -151,14 +79,10 @@ class TerminalChat:
         self.notification_manager = NotificationManager()
         
     def initialize_chatbot(self):
-        """Inicializa el chatbot con la API key configurada"""
-        if GROQ_API_KEY == "TU_API_KEY_AQUI":
-            print("❌ API Key no configurada. Por favor, configura GROQ_API_KEY en el código.")
-            return False
-        
+        """Inicializa el chatbot local."""
         try:
-            self.chatbot = GroqChatBot(GROQ_API_KEY)
-            # Inicializar el procesador de comandos después de tener el chatbot
+            # El chatbot ahora necesita la integración del sistema para buscar
+            self.chatbot = LuneChatBot(self.system_integration)
             self.command_processor = CommandProcessor(self.system_integration, self.chatbot)
             
             # Iniciar servicios en segundo plano
@@ -166,7 +90,7 @@ class TerminalChat:
             self.system_integration.start_screen_monitoring(self.handle_screen_content)
             self.notification_manager.start_notification_service()
             
-            print("✅ Chatbot inicializado correctamente.")
+            print("✅ Chatbot local inicializado correctamente.")
             return True
         except Exception as e:
             print(f"❌ Error al inicializar chatbot: {str(e)}")
@@ -229,7 +153,6 @@ class TerminalChat:
                     break
                 
                 if user_input.lower() in ['limpiar', 'clear', 'reset']:
-                    self.chatbot.conversation_history = []
                     print("🌙 Lune: Historial limpiado. Empecemos de nuevo.")
                     continue
                 
@@ -358,13 +281,9 @@ class DesktopPet:
         print("- Presiona Ctrl+Q para cerrar")
         print("- La ventana NO se puede cerrar con la X")
         
-        # Verificar configuración de API
-        if GROQ_API_KEY == "TU_API_KEY_AQUI":
-            print("⚠️  ADVERTENCIA: API Key no configurada. El chat no funcionará hasta que configures GROQ_API_KEY.")
-        else:
-            print("✅ API Key configurada. Iniciando chat en terminal...")
-            # Iniciar chat en terminal automáticamente
-            self.terminal_chat.start_chat()
+        print("✅ Iniciando chat en terminal...")
+        # Iniciar chat en terminal automáticamente
+        self.terminal_chat.start_chat()
     
     def show_notification(self, text):
         """Muestra una notificación en la mascota"""

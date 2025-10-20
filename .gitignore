@@ -130,7 +130,7 @@ dmypy.json
 
 # --- Archivos específicos del proyecto Lune CD ---
 
-# Archivo de configuración con la API Key y datos sensibles del usuario.
+# Archivo de configuración con datos sensibles del usuario.
 # Se proporciona un lune_config.example.json como plantilla.
 lune_config.json
 

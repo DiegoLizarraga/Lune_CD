@@ -1,4 +1,3 @@
-# config.py
 import os
 import json
 
@@ -6,7 +5,6 @@ class Config:
     def __init__(self):
         self.config_file = "lune_config.json"
         self.default_config = {
-            "api_key": "TU_API_KEY_AQUI",
             "screen_monitoring": {
                 "enabled": True,
                 "interval": 60,  # segundos
