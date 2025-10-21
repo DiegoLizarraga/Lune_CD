@@ -18,7 +18,8 @@ from system_integration import SystemIntegration
 from command_processor import CommandProcessor
 from screen_analyzer import ScreenAnalyzer
 from notification_manager import NotificationManager
-from local_model import LocalModel
+from enhanced_model import EnhancedLocalModel
+ # ahora vamos a reverervar lo del modelo local
 
 class TerminalWindow:
     def __init__(self):
@@ -176,7 +177,10 @@ class LuneChat:
     def __init__(self, terminal_window):
         self.terminal_window = terminal_window
         self.system_integration = SystemIntegration()
-        self.local_model = LocalModel()
+        self.local_model = EnhancedLocalModel(
+        model_name="nous-hermes2",  # el modelo de llama descargado
+        use_ollama=True
+        )
         self.command_processor = None
         self.screen_analyzer = ScreenAnalyzer()
         self.notification_manager = NotificationManager()

@@ -2,78 +2,112 @@
 
 Lune CD no es solo una adorable mascota de escritorio; es un asistente virtual inteligente diseñado para integrarse profundamente en tu flujo de trabajo. Inspirado en aplicaciones como Shimeji y Phase Pal, Lune CD combina la interacción visual de una mascota con la potencia de un agente de IA capaz de automatizar tareas, recordar información y ayudarte con tu día a día directamente desde tu escritorio.
 
+<img width="1024" height="1024" alt="lunecd" src="https://github.com/user-attachments/assets/0866ba0c-f943-4796-ba16-25fcfbdbf7b2" />
+
 ---
 
 ## ✨ Características Principales
 
-- **🎨 Mascota de Escritorio Animada**: Interactúa con Lune a través de clics y observa sus animaciones (feliz, normal, hablando)
-- **💬 Chatbot Integrado (Groq API)**: Mantén conversaciones naturales con un potente modelo de lenguaje (Llama 3) directamente desde tu terminal
-- **🖥️ Integración con el Sistema Operativo**: Abre aplicaciones como Visual Studio Code, tu navegador o la calculadora con simples comandos de voz o texto
-- **📝 Gestión de Notas y Recordatorios**: Toma notas rápidas y establece recordatorios inteligentes que Lune te notificará en el momento indicado
-- **👁️ Análisis de Pantalla Inteligente (OCR)**: Lune monitorea tu pantalla (con tu permiso) y puede recordar temas importantes que veas
-- **🔔 Sistema de Notificaciones**: Recibe notificaciones del sistema para tus recordatorios y alertas importantes
-- **🧩 Arquitectura Modular**: Código bien organizado en módulos independientes, facilitando la extensión y el mantenimiento
+- **Mascota de Escritorio Animada**: Interactúa con Lune a través de clics y observa sus animaciones (feliz, normal, hablando)
+- **IA Local con Ollama + LangChain**: Conversaciones naturales e inteligentes con modelos de lenguaje corriendo 100% en tu PC (sin enviar datos a la nube)
+- **Fallback Inteligente**: Si Ollama no está disponible, usa un modelo basado en reglas para seguir funcionando
+- **Terminal de Chat Integrada**: Interfaz de terminal limpia y moderna con atajos de teclado globales
+- **Integración con el Sistema Operativo**: Abre aplicaciones como Visual Studio Code, navegador o calculadora con comandos simples
+- **Gestión de Notas y Recordatorios**: Toma notas rápidas y establece recordatorios inteligentes con notificaciones del sistema
+- **Búsqueda Web Privada**: Búsquedas en DuckDuckGo que respetan tu privacidad (sin rastreadores)
+- **Análisis de Pantalla Inteligente (OCR)**: Lune monitorea tu pantalla (con tu permiso) y puede recordar temas importantes que veas
+- **Calculadora Integrada**: Resuelve expresiones matemáticas al instante
+- **Sistema de Notificaciones**: Notificaciones nativas del sistema para recordatorios y alertas importantes
+- **Arquitectura Modular**: Código bien organizado y fácil de extender
 
 ---
 
-## 🗺️ Roadmap del Proyecto
+## ¿Qué hay de nuevo?
+
+### ✨ Versión 2.0 - IA Local con Ollama
+
+La nueva versión incluye una integración completa con **Ollama** y **LangChain**, llevando las capacidades de Lune a un nivel completamente nuevo:
+
+#### Antes vs Ahora
+
+| Aspecto | Versión 1.0 (Groq API) | Versión 2.0 (Ollama) |
+|---------|------------------------|----------------------|
+| **Privacidad** | Datos enviados a la nube | 100% local, cero datos externos |
+| **Costo** | Límites de API gratuita | Completamente gratis, sin límites |
+| **Conexión** | Requiere internet constante | Funciona sin internet |
+| **Calidad** | Excelente | Excelente (modelos similares) |
+| **Memoria** | No recuerda conversaciones | Recuerda últimas 5 interacciones |
+| **Personalización** | Limitada | Totalmente personalizable |
+| **Modelos** | Llama 3 (8B) | Múltiples: Llama 3.x, Mistral, Phi, etc. |
+
+#### Ventajas Clave
+
+✅ **100% Privado**: Todas tus conversaciones permanecen en tu PC  
+✅ **Sin Límites**: Usa Lune cuanto quieras, sin restricciones de tokens  
+✅ **Sin Conexión**: Funciona offline (excepto para búsquedas web)  
+✅ **Memoria Conversacional**: Lune recuerda el contexto de la charla  
+✅ **Respuestas Naturales**: Conversaciones más fluidas e inteligentes  
+✅ **Múltiples Modelos**: Elige el modelo que mejor se adapte a tu hardware  
+
+---
+
+##  Roadmap del Proyecto
 
 ### ✅ Completado
-- Conexión con APIs de Groq
-- Creación de chatbot simple con interfaz de terminal
-- Sistema básico de mascota de escritorio
+
+- ✅ Sistema de chatbot inteligente
+- ✅ Integración con Ollama + LangChain
+- ✅ Mascota de escritorio animada
+- ✅ Sistema de notas y recordatorios
+- ✅ Búsqueda web privada (DuckDuckGo)
+- ✅ Análisis de pantalla con OCR
+- ✅ Terminal de chat con atajos globales
+- ✅ Notificaciones del sistema
+- ✅ Calculadora integrada
+- ✅ Fallback automático a modelo de reglas
 
 ### 🚧 En Desarrollo (Corto Plazo)
-- Mejora de herramientas de asistencia al usuario
-- Optimización del sistema de notas y recordatorios
-- Refinamiento de la interfaz de usuario
 
-### 🎯 Planeado (Mediano Plazo)
-- Sistema de banco de datos personales (memoria a largo plazo)
-- Comando específico para invocación en segundo plano
-- Conexión con servicios web e Internet de las Cosas (IoT)
-- Integración con más aplicaciones del sistema
-- Modo de voz para interacción manos libres
+- 🔄 RAG (Retrieval Augmented Generation) para memoria a largo plazo
+- 🔄 Sistema de plugins para funcionalidades personalizadas
+- 🔄 Interfaz gráfica mejorada con Tkinter/Qt
+- 🔄 Modo compacto y modo expandido para la mascota
+- 🔄 Temas visuales personalizables
 
----
+### 🎯 Planeado (Mediano/Largo Plazo)
 
-## 📁 Estructura del Proyecto
-
-```
-Lune_CD/
-├── main.py                 # Punto de entrada principal
-├── lune_config.json        # Archivo de configuración
-├── requirements.txt        # Dependencias del proyecto
-├── modules/
-│   ├── chatbot.py         # Lógica del chatbot con Groq
-│   ├── ui.py              # Interfaz de la mascota
-│   ├── tools.py           # Herramientas del sistema
-│   ├── notes.py           # Sistema de notas
-│   ├── reminders.py       # Sistema de recordatorios
-│   ├── screen_monitor.py  # Monitoreo de pantalla (OCR)
-│   └── notifications.py   # Sistema de notificaciones
-└── assets/
-    └── images/            # Sprites de Lune
-```
+- 📅 Integración con calendarios (Google Calendar, Outlook)
+- 🎤 Comando por voz (Speech-to-Text local)
+- 🌐 Conexión con servicios web e IoT
+- 📊 Dashboard de productividad
+- 🔐 Cifrado de notas sensibles
+- 🤝 Sincronización entre dispositivos (opcional)
+- 🎨 Editor visual de personalidad de Lune
+- 🧠 Sistema de aprendizaje de preferencias del usuario
 
 ---
 
-## 🚀 Instalación y Configuración
+## Instalación y Configuración
 
 ### Prerrequisitos
 
-- Python 3.8 o superior
-- Git
-- Tesseract OCR (para el análisis de pantalla)
+- **Python 3.8 o superior**
+- **Git** (opcional, para clonar el repo)
+- **Tesseract OCR** (para análisis de pantalla)
+- **Ollama** (para IA local) - [Descargar aquí](https://ollama.com/download)
 
-### 1. Clonar el Repositorio
+---
+
+### 📦 Método 1: Instalación Completa con Ollama (Recomendado)
+
+#### 1. Clonar el Repositorio
 
 ```bash
 git clone https://github.com/DiegoLizarraga/Lune_CD.git
 cd Lune_CD
 ```
 
-### 2. Crear un Entorno Virtual (Recomendado)
+#### 2. Crear un Entorno Virtual
 
 ```bash
 # Crear entorno virtual
@@ -86,134 +120,320 @@ venv\Scripts\activate
 source venv/bin/activate
 ```
 
-### 3. Instalar Dependencias
+#### 3. Instalar Ollama
 
+**Windows:**
+- Descarga el instalador: https://ollama.com/download/windows
+- Ejecuta el instalador
+- Ollama se iniciará automáticamente
+
+**macOS:**
 ```bash
-pip install -r requirements.txt
+brew install ollama
 ```
 
-### 4. Instalar Tesseract OCR
+**Linux:**
+```bash
+curl -fsSL https://ollama.com/install.sh | sh
+```
 
-Esta dependencia es crucial para la funcionalidad de análisis de pantalla.
+#### 4. Descargar un Modelo de IA
 
-**Windows**: 
-- Descarga el instalador desde la [página oficial de Tesseract](https://github.com/UB-Mannheim/tesseract/wiki)
-- Asegúrate de marcar la opción para añadir Tesseract al PATH durante la instalación
+Elige según tu hardware:
 
-**macOS**: 
+```bash
+# Para PC con 4-6GB RAM (ligero y rápido)
+ollama pull phi3:mini
+
+# Para PC con 8-12GB RAM (RECOMENDADO - balance ideal)
+ollama pull llama3.2:3b
+
+# Para PC con 16GB+ RAM (mejor calidad)
+ollama pull llama3.1:8b
+
+# Para mejor soporte en español
+ollama pull nous-hermes2
+```
+
+Verifica que se descargó:
+```bash
+ollama list
+```
+
+#### 5. Instalar Dependencias de Python
+
+```bash
+pip install -r requirements_enhanced.txt
+```
+
+#### 6. Instalar Tesseract OCR
+
+**Windows:**
+- Descarga: https://github.com/UB-Mannheim/tesseract/wiki
+- Marca la opción "Add to PATH" durante la instalación
+
+**macOS:**
 ```bash
 brew install tesseract
 ```
 
-**Linux (Debian/Ubuntu)**:
+**Linux:**
 ```bash
 sudo apt-get install tesseract-ocr tesseract-ocr-spa
 ```
 
-### 5. Configurar tu API Key de Groq
+#### 7. Ejecutar Script de Integración (Opcional)
 
-1. Obtén tu API Key gratuita en [Groq Console](https://console.groq.com)
-2. Abre el archivo `lune_config.json` (se creará la primera vez que ejecutes la app)
-3. Reemplaza `"TU_API_KEY_AQUI"` con tu clave real:
-
-```json
-{
-    "api_key": "gsk_tu_clave_real_aqui",
-    "model": "llama3-8b-8192",
-    ...
-}
+```bash
+python integrate_ollama.py
 ```
 
----
+Este script verificará todo automáticamente y actualizará los archivos necesarios.
 
-## 💻 Cómo Usar Lune CD
+#### 8. Verificar Instalación
 
-### Ejecutar la Aplicación
+```bash
+python verificar_instalacion.py
+```
 
-Una vez configurado, simplemente ejecuta:
+#### 9. ¡Ejecutar Lune!
 
 ```bash
 python main.py
 ```
 
-Verás a Lune en tu pantalla y se iniciará una sesión de chat en tu terminal.
+Deberías ver:
+```
+✅ Modelo Ollama 'llama3.2:3b' inicializado correctamente
+Atajos de teclado globales configurados:
+- Ctrl+T: Mostrar/ocultar terminal
+- Ctrl+Q: Cerrar aplicación
+```
+
+---
+
+### 📦 Método 2: Instalación Básica (Sin Ollama)
+
+Si no quieres usar Ollama o tienes una PC con pocos recursos, Lune funcionará con el modelo de respaldo basado en reglas:
+
+```bash
+# 1. Clonar repositorio
+git clone https://github.com/DiegoLizarraga/Lune_CD.git
+cd Lune_CD
+
+# 2. Crear entorno virtual
+python -m venv venv
+venv\Scripts\activate  # Windows
+# source venv/bin/activate  # Mac/Linux
+
+# 3. Instalar dependencias básicas
+pip install -r requirements.txt
+
+# 4. Ejecutar
+python main.py
+```
+
+> **Nota:** Sin Ollama, Lune usará respuestas predefinidas. Para la experiencia completa, se recomienda instalar Ollama.
+
+---
+
+## 💻 Cómo Usar Lune CD
+
+### Iniciar Lune
+
+```bash
+python main.py
+```
+
+### Atajos de Teclado Globales
+
+- **Ctrl + T**: Mostrar/ocultar terminal de chat
+- **Ctrl + Q**: Cerrar Lune completamente
+- **Ctrl + N**: Hacer que Lune sonría (cuando está visible)
 
 ### Comandos Disponibles
 
-Puedes interactuar con Lune escribiendo en la terminal. Aquí tienes algunos ejemplos:
+####  Búsqueda Web
+```
+busca recetas de pasta
+qué es la fotosíntesis
+información sobre Python
+```
 
-| Comando | Descripción |
-|---------|-------------|
-| `abre el compilador` | Abre Visual Studio Code |
-| `abre el navegador` | Abre tu navegador web por defecto |
-| `toma nota comprar leche` | Guarda una nota rápida |
-| `lista mis notas` | Muestra todas tus notas guardadas |
-| `recuérdame la reunión a las 15:00` | Programa un recordatorio |
-| `recuérdame llamar a mamá en 30 minutos` | Programa un recordatorio relativo |
-| `busca en pantalla tarea` | Busca un tema en el historial de pantalla |
-| `información del sistema` | Muestra datos sobre tu PC |
-| `salir` | Cierra la sesión de chat |
+#### Control de Aplicaciones
+```
+abre vscode
+abre el navegador
+abre calculadora
+inicia explorador de archivos
+```
 
-### Atajos de Teclado
+####  Gestión de Notas
+```
+toma nota reunión importante mañana a las 10am
+lista mis notas
+busca nota reunión
+```
 
-- **Ctrl + T**: Abre o enfoca la terminal de chat
-- **Ctrl + N**: Haz que Lune sonría por un momento
-- **Ctrl + Q**: Cierra la aplicación por completo
+####  Recordatorios
+```
+recuérdame llamar a Juan a las 15:00
+recuérdame la reunión en 30 minutos
+avisame tomar medicina mañana a las 08:00
+```
+
+####  Matemáticas
+```
+calcula 25 * 4 + 10
+cuánto es (100 + 50) / 3
+resuelve 15 * (8 + 2)
+```
+
+####  Sistema
+```
+información del sistema
+estado del sistema
+```
+
+####  Control de Chat
+```
+ayuda          # Muestra comandos disponibles
+limpiar        # Borra historial de chat
+salir          # Cierra la sesión de chat
+```
+
+###  Conversación Natural (Con Ollama)
+
+Con Ollama instalado, puedes hablar naturalmente:
+
+```
+Tú: Hola Lune, ¿cómo estás?
+Lune: ¡Hola! Estoy funcionando perfectamente. ¿En qué puedo ayudarte hoy?
+
+Tú: Necesito organizarme mejor
+Lune: Puedo ayudarte con eso. Tengo herramientas para tomar notas y crear 
+recordatorios. ¿Qué tienes pendiente hoy?
+
+Tú: Tengo que terminar un informe y llamar al dentista
+Lune: Perfecto. Vamos a organizarlo:
+1. Para el informe: toma nota terminar informe urgente
+2. Para el dentista: recuérdame llamar al dentista a las [hora]
+¿A qué hora quieres que te recuerde lo del dentista?
+```
 
 ---
 
 ## ⚙️ Configuración
 
-Puedes personalizar el comportamiento de Lune CD editando el archivo `lune_config.json`:
+Edita `lune_config.json` para personalizar Lune:
 
 ```json
 {
     "screen_monitoring": {
         "enabled": true,
-        "interval": 300
+        "interval": 60,
+        "save_screenshots": false
     },
     "notifications": {
+        "enabled": true,
         "duration": 5,
-        "sound_enabled": true
+        "sound": false
     },
     "reminders": {
-        "check_interval": 60
+        "enabled": true,
+        "check_interval": 30
     },
     "ui": {
-        "size": 128,
-        "initial_position": [100, 100]
+        "position": "bottom-left",
+        "size": 170,
+        "always_on_top": true
     }
 }
 ```
 
-### Opciones de Configuración
+### Opciones Principales
 
-- **screen_monitoring**: Activa/desactiva el monitoreo de pantalla y ajusta el intervalo
-- **notifications**: Configura la duración y si quieres sonido en las notificaciones
-- **reminders**: Ajusta la frecuencia con la que se comprueban los recordatorios
-- **ui**: Cambia el tamaño o la posición inicial de la mascota
-
----
-
-## 🤝 Cómo Contribuir
-
-¡Las contribuciones son lo que hace que la comunidad de código abierto sea un lugar increíble para aprender, inspirar y crear! Cualquier contribución que hagas será **muy apreciada**.
-
-1. Haz un Fork del proyecto
-2. Crea tu Rama de Funcionalidad (`git checkout -b feature/FuncionIncreible`)
-3. Haz Commit de tus Cambios (`git commit -m 'Añadiendo una Función Increíble'`)
-4. Haz Push a la Rama (`git push origin feature/FuncionIncreible`)
-5. Abre un Pull Request
+| Opción | Descripción | Valores |
+|--------|-------------|---------|
+| `screen_monitoring.enabled` | Activa monitoreo de pantalla | `true` / `false` |
+| `screen_monitoring.interval` | Frecuencia de captura (segundos) | `30` - `600` |
+| `notifications.enabled` | Activa notificaciones | `true` / `false` |
+| `notifications.duration` | Duración de notificaciones (seg) | `3` - `10` |
+| `reminders.check_interval` | Frecuencia de check recordatorios | `15` - `60` |
+| `ui.size` | Tamaño de la mascota (píxeles) | `100` - `250` |
+| `ui.position` | Posición inicial | `"bottom-left"`, `"bottom-right"`, `"top-left"`, `"top-right"` |
 
 ---
 
-## 🙏 Agradecimientos
+### "Ollama no está corriendo"
 
-- A **Groq** por proporcionar una API increíblemente rápida y accesible para modelos de lenguaje
-- A **Hatsune Miku** por ser la inspiración detrás de este proyecto 💙🎤
-- A la comunidad de código abierto por las increíbles herramientas que hacen posible este proyecto
+```bash
+# Verificar si Ollama está instalado
+ollama --version
 
-  
-### 🌙 ¿Te gusta Lune CD? ¡Dale una estrella! ⭐
+# Iniciar Ollama manualmente
+ollama serve
+```
+
+### "Model not found"
+
+```bash
+# Ver modelos instalados
+ollama list
+
+# Descargar un modelo
+ollama pull llama3.2:3b
+```
+
+### "Import Error: enhanced_model"
+
+Verifica que `enhanced_model.py` esté en la carpeta del proyecto y que actualizaste `main.py` correctamente.
+
+### "Respuestas muy lentas"
+
+1. Usa un modelo más pequeño: `phi3:mini`
+2. Cierra otras aplicaciones
+3. Verifica RAM disponible con `información del sistema`
+
+### "Atajos de teclado no funcionan"
+
+Ejecuta como administrador (Windows) o con permisos elevados (Linux/Mac).
+
+### Script de Verificación
+
+```bash
+python verificar_instalacion.py
+```
+
+Este script te dirá exactamente qué está mal y cómo solucionarlo.
+
+---
+
+## 📚 Documentación Adicional
+
+- **[SETUP_OLLAMA.md](SETUP_OLLAMA.md)** - Guía detallada de instalación de Ollama
+- **[GUIA_RAPIDA.md](GUIA_RAPIDA.md)** - Guía de inicio rápido
+- **[Documentación de Ollama](https://github.com/ollama/ollama)** - Documentación oficial
+- **[Documentación de LangChain](https://python.langchain.com/)** - Framework de IA
+
+---
+## Agradecimientos :D
+
+- **Ollama Team** por crear una herramienta increíble para ejecutar LLMs localmente
+- **LangChain** por el framework que hace la integración de IA más sencilla
+- **Hatsune Miku** por ser la inspiración detrás de este proyecto 💙🎤 (a ver si esto se queda para las siguientes versiones)
+- **La comunidad de código abierto** por las increíbles herramientas que hacen posible este proyecto
+- **DuckDuckGo** por proporcionar búsquedas web que respetan la privacidad
+
+---
+
+## ⭐ Si te gusta Lune CD
+
+
+<div align="center">
+
+### 🌙 Desarrollado con ❤️ para hacerte más productivo
+
+**Versión 2.0** - Ahora con IA local y privada
 
 </div>
