@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lune CD v3.0 - Mascota Virtual</title>
+    <style>
+        /* Estilos básicos para que se vea bonito en Electron */
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+            background: transparent;
+            overflow: hidden;
+            -webkit-app-region: drag; /* Permite mover la ventana arrastrando */
+        }
+        
+        /* Contenedor principal donde se carga la app de React */
+        #root {
+            width: 100%;
+            height: 100vh;
+            background: rgba(15, 23, 42, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            -webkit-app-region: no-drag; /* La interfaz sí debe ser interactiva */
+            overflow: hidden;
+        }
+        
+        /* Barra de título personalizada */
+        .titlebar {
+            height: 35px;
+            background: rgba(15, 23, 42, 0.8);
+            border-radius: 20px 20px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 15px;
+            -webkit-app-region: drag; /* La barra de título se puede arrastrar */
+        }
+        
+        /* Botones de la barra de título */
+        .titlebar button {
+            -webkit-app-region: no-drag; /* Los botones sí deben ser clickeables */
+            background: none;
+            border: none;
+            color: white;
+            cursor: pointer;
+            font-size: 12px;
+            padding: 5px 10px;
+            border-radius: 5px;
+            transition: background 0.2s;
+            font-family: inherit;
+        }
+        
+        /* Efecto hover en botones */
+        .titlebar button:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+        
+        /* Botón de cerrar con color rojo al hover */
+        .close-btn:hover {
+            background: #ef4444 !important;
+        }
+        
+        /* Logo o título de la app */
+        .titlebar .app-title {
+            color: white;
+            font-size: 12px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Barra de título personalizada -->
+    <div class="titlebar">
+        <div class="app-title">
+            <span>🌙</span>
+            <span>Lune CD v3.0</span>
+        </div>
+        <div>
+            <button onclick="window.electronAPI.minimizeWindow()">−</button>
+            <button onclick="window.electronAPI.closeApp()" class="close-btn">×</button>
+        </div>
+    </div>
+    
+    <!-- Aquí se carga toda la aplicación de React/Next.js -->
+    <div id="root"></div>
+    
+    <!-- Script que carga la aplicación compilada -->
+    <script src="./_next/static/chunks/main-app.js"></script>
+</body>
+</html>

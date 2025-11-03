@@ -1,46 +1,106 @@
-# Byte-compiled / optimized / DLL files
+# Archivos que Git debe ignorar en Lune CD v3.0
+
+# Dependencias de Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Archivos de compilación de Next.js
+.next/
+out/
+build/
+dist/
+
+# Variables de entorno (¡NO SUBIR!)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Archivos de logs
+*.log
+logs/
+
+# Archivos temporales
+*.tmp
+*.temp
+.cache/
+
+# Archivos de sistema operativos
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Archivos de editores de código
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Archivos de Electron
+app/
+release/
+
+# Archivos de TypeScript
+*.tsbuildinfo
+
+# Archivos de testing
+coverage/
+.nyc_output/
+
+# Archivos de package managers
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Archivos de configuración local
+.eslintcache
+.stylelintcache
+
+# Archivos de caché de npm
+.npm
+
+# Archivos de runtime
+.pnpm-debug.log*
+
+# Archivos de Vercel
+.vercel
+
+# Archivos de Turbo
+.turbo
+
+# Archivos específicos de Lune CD
+# (Agregar aquí si hay archivos específicos que deban ignorarse)
+
+# Archivos de backup
+*.bak
+*.backup
+*.old
+
+# Archivos de databases (si se usan)
+*.db
+*.sqlite
+*.sqlite3
+
+# Archivos de Python viejos (por si acudo quedan)
 __pycache__/
 *.py[cod]
 *$py.class
-
-# C extensions
 *.so
-
-# Distribution / packaging
 .Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-pip-wheel-metadata/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
-
-# PyInstaller
-#  Usually these files are written by a python script from a template
-#  before PyInstaller builds the exe, so as to inject date/other infos into it.
-*.manifest
-*.spec
-
-# Installer logs
+env/
+venv/
+.venv/
 pip-log.txt
 pip-delete-this-directory.txt
-
-# Unit test / coverage reports
-htmlcov/
 .tox/
-.nox/
 .coverage
 .coverage.*
 .cache
@@ -51,119 +111,27 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 
-# Translations
-*.mo
-*.pot
+# Archivos de configuración de Ollama (si existen localmente)
+.ollama/
+ollama_models/
 
-# Django stuff:
-*.log
-local_settings.py
-db.sqlite3
-db.sqlite3-journal
+# Archivos de screenshots para desarrollo
+screenshots/
+*.png
+*.jpg
+*.jpeg
+*.gif
+# (excepto los que son parte del proyecto)
 
-# Flask stuff:
-instance/
-.webassets-cache
-
-# Scrapy stuff:
-.scrapy
-
-# Sphinx documentation
+# Archivos de documentación generada
 docs/_build/
+site/
 
-# PyBuilder
-target/
+# Archivos de análisis de código
+.sonar/
+dependency-cruiser.js
 
-# Jupyter Notebook
-.ipynb_checkpoints
-
-# IPython
-profile_default/
-ipython_config.py
-
-# pyenv
-.python-version
-
-# pipenv
-#   According to pypa/pipenv#598, it is recommended to include Pipfile.lock in version control.
-#   However, in case of collaboration, if having platform-specific dependencies or dependencies
-#   having no cross-platform support, pipenv may install dependencies that don't work, or not
-#   install all needed dependencies.
-#Pipfile.lock
-
-# PEP 582; used by e.g. github.com/David-OConnor/pyflow
-__pypackages__/
-
-# Celery stuff
-celerybeat-schedule
-celerybeat.pid
-
-# SageMath parsed files
-*.sage.py
-
-# Environments
-.env
-.venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
-
-# Spyder project settings
-.spyderproject
-.spyproject
-
-# Rope project settings
-.ropeproject
-
-# mkdocs documentation
-/site
-
-# mypy
-.mypy_cache/
-.dmypy.json
-dmypy.json
-
-# Pyre type checker
-.pyre/
-
-# --- Archivos específicos del proyecto Lune CD ---
-
-# Archivo de configuración con datos sensibles del usuario.
-# Se proporciona un lune_config.example.json como plantilla.
-lune_config.json
-
-# Archivos de notas y recordatorios creados por el usuario
-lune_notes.json
-lune_reminders.json
-
-# --- Archivos específicos del Sistema Operativo y Editores de Código ---
-
-# macOS
-.DS_Store
-.AppleDouble
-.LSOverride
-
-# Iconos de documentos en macOS
-Icon
-
-# Windows
-Thumbs.db
-Thumbs.db:encryptable
-ehthumbs.db
-ehthumbs_vista.db
-
-# Archivos de carpeta de Windows
-Desktop.ini
- $RECYCLE.BIN/
-
-# Configuración de editores de código (VSCode, PyCharm, etc.)
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# Logs de la aplicación
-*.log
+# Archivos de personalización local
+.local/
+local.json
+user-settings.json

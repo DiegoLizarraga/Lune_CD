@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lune CD v3.0 - Mascota</title>
+    <style>
+        /* Reset básico para que se vea perfecto */
+        body {
+            margin: 0;
+            padding: 0;
+            background: transparent;
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+            cursor: pointer;
+        }
+        
+        /* Contenedor principal de la mascota */
+        .pet-container {
+            width: 170px;
+            height: 170px;
+            position: relative;
+            transition: transform 0.3s ease;
+        }
+        
+        /* Efecto de hover - la mascota crece un poco */
+        .pet-container:hover {
+            transform: scale(1.1);
+        }
+        
+        /* El sprite principal de Lune - una esfera mágica */
+        .pet-sprite {
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 70px;
+            animation: bounce 2s infinite;
+            box-shadow: 0 15px 40px rgba(102, 126, 234, 0.6);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        /* Efecto de brillo mágico */
+        .pet-sprite::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: linear-gradient(45deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+            animation: shine 3s infinite;
+        }
+        
+        /* Animación de rebote - la mascota parece viva */
+        @keyframes bounce {
+            0%, 20%, 50%, 80%, 100% {
+                transform: translateY(0);
+            }
+            40% {
+                transform: translateY(-15px);
+            }
+            60% {
+                transform: translateY(-8px);
+            }
+        }
+        
+        /* Animación de brillo */
+        @keyframes shine {
+            0% {
+                transform: rotate(0deg);
+            }
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+        
+        /* Ojitos de Lune - le dan personalidad */
+        .pet-eyes {
+            position: absolute;
+            top: 35%;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 18px;
+            z-index: 2;
+        }
+        
+        .eye {
+            width: 14px;
+            height: 14px;
+            background: white;
+            border-radius: 50%;
+            position: relative;
+            animation: blink 5s infinite;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+        
+        /* Pupilas de los ojos */
+        .eye::before {
+            content: '';
+            position: absolute;
+            width: 7px;
+            height: 7px;
+            background: #333;
+            border-radius: 50%;
+            top: 3px;
+            left: 3px;
+            animation: look 4s infinite ease-in-out;
+        }
+        
+        /* Animación de parpadeo - hace que parezca real */
+        @keyframes blink {
+            0%, 90%, 100% {
+                transform: scaleY(1);
+            }
+            95% {
+                transform: scaleY(0.1);
+            }
+        }
+        
+        /* Las pupilas se mueven */
+        @keyframes look {
+            0%, 100% {
+                transform: translate(0, 0);
+            }
+            25% {
+                transform: translate(2px, 1px);
+            }
+            50% {
+                transform: translate(-1px, 2px);
+            }
+            75% {
+                transform: translate(1px, -1px);
+            }
+        }
+        
+        /* Sonrisa de Lune */
+        .pet-mouth {
+            position: absolute;
+            bottom: 30%;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 25px;
+            height: 12px;
+            border: 3px solid white;
+            border-top: none;
+            border-radius: 0 0 25px 25px;
+            z-index: 2;
+        }
+        
+        /* Mensajes flotantes de estado */
+        .pet-status {
+            position: absolute;
+            bottom: -30px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            padding: 6px 12px;
+            border-radius: 15px;
+            font-size: 11px;
+            white-space: nowrap;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            z-index: 10;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        /* Mostrar mensaje al hover */
+        .pet-container:hover .pet-status {
+            opacity: 1;
+        }
+        
+        /* Corazones flotantes - efecto de amor */
+        .floating-hearts {
+            position: absolute;
+            top: -15px;
+            right: -15px;
+            animation: float-hearts 4s ease-in-out infinite;
+        }
+        
+        .heart {
+            color: #ff69b4;
+            font-size: 18px;
+            animation: pulse-heart 2s infinite;
+            display: inline-block;
+        }
+        
+        @keyframes float-hearts {
+            0%, 100% {
+                transform: translateY(0px) rotate(0deg);
+            }
+            50% {
+                transform: translateY(-10px) rotate(10deg);
+            }
+        }
+        
+        @keyframes pulse-heart {
+            0%, 100% {
+                transform: scale(1);
+            }
+            50% {
+                transform: scale(1.3);
+            }
+        }
+        
+        /* Efecto de sueño cuando Lune está tranquilo */
+        .sleeping {
+            position: absolute;
+            top: -20px;
+            right: -25px;
+            font-size: 14px;
+            animation: sleep-float 3s infinite;
+        }
+        
+        @keyframes sleep-float {
+            0%, 100% {
+                opacity: 0;
+                transform: translateY(0px);
+            }
+            50% {
+                opacity: 1;
+                transform: translateY(-8px);
+            }
+        }
+        
+        /* Efectos mágicos al hacer click */
+        .magic-particle {
+            position: absolute;
+            pointer-events: none;
+            animation: particle-fly 1.5s ease-out forwards;
+            z-index: 100;
+        }
+        
+        @keyframes particle-fly {
+            0% {
+                opacity: 1;
+                transform: translate(0, 0) scale(1);
+            }
+            100% {
+                opacity: 0;
+                transform: translate(var(--x), var(--y)) scale(0.3);
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Contenedor principal de la mascota -->
+    <div class="pet-container" onclick="toggleMainWindow()">
+        <!-- Sprite principal con la esfera mágica -->
+        <div class="pet-sprite">
+            <!-- Ojitos tiernos -->
+            <div class="pet-eyes">
+                <div class="eye"></div>
+                <div class="eye"></div>
+            </div>
+            
+            <!-- Sonrisa amigable -->
+            <div class="pet-mouth"></div>
+            
+            <!-- Corazones flotantes -->
+            <div class="floating-hearts">
+                <span class="heart">💕</span>
+            </div>
+            
+            <!-- Efecto de sueño -->
+            <div class="sleeping">💤</div>
+        </div>
+        
+        <!-- Mensaje de estado -->
+        <div class="pet-status" id="statusMessage">¡Hola! Soy Lune 🌙</div>
+    </div>
+
+    <script>
+        // Mensajes que Lune muestra para dar vida
+        const statusMessages = [
+            "¡Hola! Soy Lune 🌙",
+            "¿Necesitas ayuda? 🤔",
+            "¡Estoy aquí para ti! 💕",
+            "Hablemos un rato 💬",
+            "¡Puedo abrir apps! ⚡",
+            "¡Toma mi mano! 🤝",
+            "¿Qué tal tu día? 😊",
+            "¡Me encanta ayudarte! ✨"
+        ];
+        
+        let currentStatus = 0;
+        let lastClick = 0;
+        
+        // Cambiar mensaje cada 4 segundos para dar vida
+        setInterval(() => {
+            currentStatus = (currentStatus + 1) % statusMessages.length;
+            document.getElementById('statusMessage').textContent = statusMessages[currentStatus];
+        }, 4000);
+        
+        // Abrir ventana principal al hacer click
+        function toggleMainWindow() {
+            if (window.electronAPI) {
+                window.electronAPI.showMainWindow();
+            }
+        }
+        
+        // Detectar doble click para efectos especiales
+        document.querySelector('.pet-container').addEventListener('click', (e) => {
+            const now = Date.now();
+            if (now - lastClick < 300) {
+                // ¡Doble click! - Crear partículas mágicas
+                createMagicParticles(e);
+            }
+            lastClick = now;
+        });
+        
+        // Crear partículas mágicas al hacer doble click
+        function createMagicParticles(event) {
+            const particles = ['✨', '⭐', '💫', '🌟', '✦'];
+            const colors = ['#ff69b4', '#667eea', '#764ba2', '#ffd700', '#ff6b6b'];
+            
+            for (let i = 0; i < 12; i++) {
+                setTimeout(() => {
+                    const particle = document.createElement('div');
+                    particle.innerHTML = particles[Math.floor(Math.random() * particles.length)];
+                    particle.style.color = colors[Math.floor(Math.random() * colors.length)];
+                    particle.style.fontSize = Math.random() * 15 + 10 + 'px';
+                    particle.style.position = 'absolute';
+                    particle.style.left = '50%';
+                    particle.style.top = '50%';
+                    particle.style.transform = 'translate(-50%, -50%)';
+                    particle.style.pointerEvents = 'none';
+                    particle.style.zIndex = '1000';
+                    particle.className = 'magic-particle';
+                    
+                    // Dirección aleatoria para cada partícula
+                    const angle = (Math.PI * 2 * i) / 12;
+                    const distance = Math.random() * 100 + 50;
+                    particle.style.setProperty('--x', Math.cos(angle) * distance + 'px');
+                    particle.style.setProperty('--y', Math.sin(angle) * distance + 'px');
+                    
+                    document.querySelector('.pet-container').appendChild(particle);
+                    
+                    // Eliminar partícula después de la animación
+                    setTimeout(() => particle.remove(), 1500);
+                }, i * 50);
+            }
+        }
+        
+        // Efectos hover adicionales
+        document.querySelector('.pet-container').addEventListener('mouseenter', () => {
+            document.querySelector('.pet-sprite').style.animation = 'bounce 1s infinite';
+        });
+        
+        document.querySelector('.pet-container').addEventListener('mouseleave', () => {
+            document.querySelector('.pet-sprite').style.animation = 'bounce 2s infinite';
+        });
+        
+        // Iniciar con un mensaje de bienvenida
+        console.log('🌙 Lune CD v3.0 está despierta y lista para ayudarte!');
+    </script>
+</body>
+</html>
