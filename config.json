@@ -1,0 +1,11 @@
+{
+  "ai_provider": "groq",
+  "groq_api_key": "tu_api_key_aqui",
+  "ollama_url": "http://localhost:11434",
+  "ollama_model": "llama2",
+  "pet_position_x": 1700,
+  "pet_position_y": 900,
+  "auto_start": false,
+  "sounds_enabled": true,
+  "animations_enabled": true
+}
