@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
-Lune CD v4.0 - Mascota Virtual de Escritorio
-Tu compañera IA siempre disponible
+Lune CD v4.0 - Mascota Virtual de Escritorio con Agentes IA
 """
 
 import sys
@@ -14,11 +13,13 @@ def main():
     # Configurar atributos para Windows
     if sys.platform == 'win32':
         import ctypes
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID('lunecode.mascota.v4')
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+            'lunecode.mascota.v4'
+        )
     
     # Crear aplicación
     app = QApplication(sys.argv)
-    app.setQuitOnLastWindowClosed(False)  # No cerrar al cerrar ventanas
+    app.setQuitOnLastWindowClosed(False)
     
     # Cargar configuración
     config = Config()
@@ -27,8 +28,19 @@ def main():
     lune = LunePetWindow(config)
     lune.show()
     
-    print("🌙 Lune CD v4.0 iniciada")
-    print("✨ ¡Tu mascota virtual está lista!")
+    print("""
+    ╔══════════════════════════════════════════════════╗
+    ║   🌙 Lune CD v4.0 - Sistema de Agentes IA     ║
+    ╚══════════════════════════════════════════════════╝
+    
+    ✨ Tu mascota virtual está lista!
+    🤖 Agentes especializados activados:
+       • WriterAgent ✍️
+       • ResearcherAgent 🔍
+       • AutomationAgent 🤖
+    
+    💬 Click en Lune para comenzar a chatear
+    """)
     
     sys.exit(app.exec())
 

@@ -188,6 +188,22 @@ class LunePetWindow(QWidget):
         from src.ui.settings_window import SettingsWindow
         settings = SettingsWindow(self.config, self)
         settings.exec()
+        # Añadir import al inicio
+from src.agents.agent_orchestrator import AgentOrchestrator
+
+# En __init__, después de self.ai_manager:
+self.orchestrator = AgentOrchestrator(self.ai_manager)
+
+# Actualizar método open_chat:
+def open_chat(self):
+    """Abrir ventana de chat con agentes"""
+    if self.chat_window is None or not self.chat_window.isVisible():
+        # Importar la nueva ventana de chat
+        from src.ui.enhanced_chat_window import EnhancedChatWindow
+        self.chat_window = EnhancedChatWindow(self.ai_manager, self)
+        self.chat_window.show()
+    else:
+        self.chat_window.activateWindow()
         
     def show_about(self):
         """Mostrar información"""
