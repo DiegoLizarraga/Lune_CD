@@ -1,11 +1,49 @@
 {
-  "ai_provider": "groq",
-  "groq_api_key": "tu_api_key_aqui",
-  "ollama_url": "http://localhost:11434",
-  "ollama_model": "llama2",
-  "pet_position_x": 1700,
-  "pet_position_y": 900,
-  "auto_start": false,
-  "sounds_enabled": true,
-  "animations_enabled": true
+  "ai": {
+    "provider": "groq",
+    "groq": {
+      "api_key": " la api tuya",
+      "model": "llama-3.3-70b-versatile"
+    }
+  },
+  "ui": {
+    "theme": "light",
+    "language": "es",
+    "window_width": 900,
+    "window_height": 700,
+    "always_on_top": false,
+    "start_minimized": false,
+    "show_tray_icon": true,
+    "font_size": 13
+  },
+  "agents": {
+    "writer": {
+      "enabled": true,
+      "auto_save": true,
+      "save_path": "./documents"
+    },
+    "researcher": {
+      "enabled": true,
+      "search_depth": "medium",
+      "max_sources": 5
+    },
+    "automation": {
+      "enabled": true,
+      "safety_mode": true
+    }
+  },
+  "behavior": {
+    "auto_respond": false,
+    "show_typing_indicator": true,
+    "response_timeout": 30,
+    "history_limit": 100,
+    "auto_clear_chat": false,
+    "chat_clear_after_hours": 24
+  },
+  "paths": {
+    "documents": "./documents",
+    "downloads": "./downloads",
+    "cache": "./cache",
+    "logs": "./logs"
+  }
 }

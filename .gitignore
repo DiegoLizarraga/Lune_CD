@@ -1,137 +1,61 @@
-# Archivos que Git debe ignorar en Lune CD v3.0
-
-# Dependencias de Node.js
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# Archivos de compilación de Next.js
-.next/
-out/
-build/
-dist/
-
-# Variables de entorno (¡NO SUBIR!)
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-
-# Archivos de logs
-*.log
-logs/
-
-# Archivos temporales
-*.tmp
-*.temp
-.cache/
-
-# Archivos de sistema operativos
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
-
-# Archivos de editores de código
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# Archivos de Electron
-app/
-release/
-
-# Archivos de TypeScript
-*.tsbuildinfo
-
-# Archivos de testing
-coverage/
-.nyc_output/
-
-# Archivos de package managers
-package-lock.json
-yarn.lock
-pnpm-lock.yaml
-
-# Archivos de configuración local
-.eslintcache
-.stylelintcache
-
-# Archivos de caché de npm
-.npm
-
-# Archivos de runtime
-.pnpm-debug.log*
-
-# Archivos de Vercel
-.vercel
-
-# Archivos de Turbo
-.turbo
-
-# Archivos específicos de Lune CD
-# (Agregar aquí si hay archivos específicos que deban ignorarse)
-
-# Archivos de backup
-*.bak
-*.backup
-*.old
-
-# Archivos de databases (si se usan)
-*.db
-*.sqlite
-*.sqlite3
-
-# Archivos de Python viejos (por si acudo quedan)
+# Archivos de Python
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
-env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Entorno virtual
 venv/
-.venv/
-pip-log.txt
-pip-delete-this-directory.txt
-.tox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-*.py,cover
-.hypothesis/
-.pytest_cache/
+ENV/
+env/
+.venv
 
-# Archivos de configuración de Ollama (si existen localmente)
-.ollama/
-ollama_models/
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
 
-# Archivos de screenshots para desarrollo
-screenshots/
-*.png
-*.jpg
-*.jpeg
-*.gif
-# (excepto los que son parte del proyecto)
+# Configuración local
+config.json
+.env
+.env.local
 
-# Archivos de documentación generada
-docs/_build/
-site/
+# Logs
+logs/
+*.log
 
-# Archivos de análisis de código
-.sonar/
-dependency-cruiser.js
+# Cache
+cache/
+__pycache__
+*.pyc
+.cache/
 
-# Archivos de personalización local
-.local/
-local.json
-user-settings.json
+# Archivos temporales
+*.tmp
+*.bak
+*.backup
+temp/
+tmp/
+
+# Documentos generados
+documents/
+downloads/

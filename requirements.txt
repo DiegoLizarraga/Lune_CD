@@ -1,70 +1,38 @@
-# Lune CD v4.0 - Requirements
+# Lune CD v4.5 - Requirements
 # Sistema de Asistente Virtual con Agentes IA
+# ==================================================
 
-# ============================================
 # CORE - Interfaz y Sistema
-# ============================================
+# ==================================================
 PyQt6>=6.6.0              # UI moderna y potente
 pystray>=0.19.0           # Icono en bandeja del sistema
 Pillow>=10.0.0            # Manejo de imágenes
 
-# ============================================
 # IA Y AGENTES
-# ============================================
-requests>=2.31.0          # Para API de Groq
-httpx>=0.25.0             # Cliente HTTP asíncrono para Ollama
-openai>=1.0.0            # SDK de OpenAI (compatible con Groq)
+# ==================================================
+requests>=2.31.0          # Para API de Groq y verificaciones
+openai>=1.0.0             # SDK de OpenAI (compatible con Groq)
 
-# ============================================
 # AUTOMATIZACIÓN Y CONTROL
-# ============================================
-pyautogui>=0.9.54        # Control de teclado/mouse para escribir en apps
+# ==================================================
+pyautogui>=0.9.54         # Control de teclado/mouse
 pynput>=1.7.6             # Captura de teclas globales
 psutil>=5.9.0             # Información de procesos del sistema
 
-# ============================================
 # MANEJO DE ARCHIVOS Y DATOS
-# ============================================
+# ==================================================
 python-dotenv>=1.0.0      # Variables de entorno
-beautifulsoup4>=4.12.0    # Web scraping (para ResearcherAgent)
+beautifulsoup4>=4.12.0    # Web scraping
 lxml>=4.9.0               # Parser XML/HTML
 
-# ============================================
 # UTILIDADES
-# ============================================
-playsound>=1.3.0          # Reproducir sonidos
-aiofiles>=23.0.0          # Operaciones de archivos asíncronas
+# ==================================================
+aiofiles>=23.0.0          # Operaciones de archivos asincronas
 schedule>=1.2.0           # Programación de tareas
 watchdog>=3.0.0           # Monitor de cambios en archivos
 
-# ============================================
-# DEPENDENCIAS OPCIONALES (según necesidades)
-# ============================================
-
-# Para análisis de documentos
-# pypdf2>=3.0.0           # Leer PDFs
-# python-docx>=1.0.0      # Leer/escribir Word
-# openpyxl>=3.1.0         # Leer/escribir Excel
-
-# Para procesamiento de lenguaje natural avanzado
-# spacy>=3.7.0            # NLP
-# nltk>=3.8.0             # Natural Language Toolkit
-
-# Para web scraping avanzado
-# selenium>=4.15.0        # Automatización de navegador
-# playwright>=1.40.0      # Alternativa moderna a Selenium
-
-# Para trabajar con APIs
-# aiohttp>=3.9.0          # Cliente HTTP asíncrono
-# fastapi>=0.105.0        # Si quieres exponer API
-
-# Para análisis de datos
-# pandas>=2.1.0           # Manipulación de datos
-# numpy>=1.26.0           # Cálculos numéricos
-
-# ============================================
-# DESARROLLO Y TESTING (opcional)
-# ============================================
+# DESARROLLO (opcional)
+# ==================================================
 # pytest>=7.4.0           # Testing
 # black>=23.12.0          # Formateo de código
 # flake8>=6.1.0           # Linting
