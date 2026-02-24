@@ -1,42 +1,35 @@
 import asyncio
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Callable
 from abc import ABC, abstractmethod
 import requests
+import json
 
 
 class AIProvider(ABC):
     """Clase base para proveedores de IA"""
     
     @abstractmethod
-    async def chat(self, message: str, system_prompt: str = "") -> str:
-        """Enviar mensaje a la IA"""
+    async def chat(self, message: str, system_prompt: str = "", on_token: Callable = None) -> str:
         pass
     
     @abstractmethod
     def is_available(self) -> bool:
-        """Verificar si el proveedor está disponible"""
         pass
     
     @abstractmethod
     def clear_history(self) -> None:
-        """Limpiar historial de conversación"""
         pass
 
 
-class GroqProvider(AIProvider):
-    """Proveedor Groq"""
+class OllamaProvider(AIProvider):
+    """Proveedor Ollama con streaming"""
     
-    def __init__(self, api_key: str, model: str = "mixtral-8x7b-32768"):
-        self.api_key = api_key
+    def __init__(self, url: str = "http://localhost:11434", model: str = "nova"):
+        self.url = url
         self.model = model
         self.conversation_history = []
-        self.base_url = "https://api.groq.com/openai/v1/chat/completions"
     
-    async def chat(self, message: str, system_prompt: str = "") -> str:
-        """Enviar mensaje a Groq"""
-        if not self.api_key or self.api_key == "COLOCA_TU_API_KEY_AQUI":
-            return "❌ API Key de Groq no configurada. Edita config.json"
-        
+    async def chat(self, message: str, system_prompt: str = "", on_token: Callable = None) -> str:
         if not message or not message.strip():
             return "❌ El mensaje está vacío"
         
@@ -45,65 +38,57 @@ class GroqProvider(AIProvider):
             "content": message
         })
         
+        messages = self.conversation_history.copy()
+        if system_prompt:
+            messages.insert(0, {"role": "system", "content": system_prompt})
+        
         try:
-            headers = {
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json"
-            }
-            
-            messages = self.conversation_history.copy()
-            if system_prompt:
-                messages.insert(0, {"role": "system", "content": system_prompt})
-            
-            data = {
-                "model": self.model,
-                "messages": messages,
-                "temperature": 0.7,
-                "max_tokens": 2048
-            }
-            
             response = requests.post(
-                self.base_url,
-                headers=headers,
-                json=data,
-                timeout=30
+                f"{self.url}/api/chat",
+                json={
+                    "model": self.model,
+                    "messages": messages,
+                    "stream": True
+                },
+                timeout=60,
+                stream=True
             )
-            
             response.raise_for_status()
-            result = response.json()
             
-            if "choices" not in result or len(result["choices"]) == 0:
-                return "❌ Respuesta inválida de Groq"
+            full_response = ""
+            for line in response.iter_lines():
+                if line:
+                    chunk = json.loads(line.decode("utf-8"))
+                    token = chunk.get("message", {}).get("content", "")
+                    full_response += token
+                    if on_token:
+                        on_token(token)
+                    if chunk.get("done"):
+                        break
             
-            assistant_message = result["choices"][0]["message"]["content"]
             self.conversation_history.append({
                 "role": "assistant",
-                "content": assistant_message
+                "content": full_response
             })
-            
-            return assistant_message
-            
+            return full_response
+        
         except requests.exceptions.Timeout:
-            return "❌ Timeout: La solicitud tardó demasiado"
+            return "❌ Timeout: Ollama tardó demasiado"
         except requests.exceptions.ConnectionError:
-            return "❌ Error de conexión: No se pudo conectar a Groq"
+            return "❌ No se pudo conectar a Ollama. Ejecuta: ollama serve"
         except requests.exceptions.HTTPError as e:
-            if e.response.status_code == 400:
-                return "❌ Error 400: API Key inválida. Regenera en https://console.groq.com"
-            elif e.response.status_code == 401:
-                return "❌ Error 401: API Key expirada o inválida"
-            elif e.response.status_code == 429:
-                return "❌ Error 429: Rate limit excedido. Intenta más tarde"
             return f"❌ Error HTTP {e.response.status_code}"
         except Exception as e:
             return f"❌ Error: {str(e)}"
     
     def is_available(self) -> bool:
-        """Verificar disponibilidad"""
-        return bool(self.api_key) and len(self.api_key) > 10 and self.api_key != "COLOCA_TU_API_KEY_AQUI"
+        try:
+            r = requests.get(f"{self.url}/api/tags", timeout=3)
+            return r.status_code == 200
+        except:
+            return False
     
     def clear_history(self) -> None:
-        """Limpiar historial"""
         self.conversation_history = []
 
 
@@ -114,19 +99,17 @@ class AIManager:
         self.config = config
         self.providers = {}
         self._init_providers()
-        self.current_provider = self.config.get("ai", "provider", default="groq")
+        self.current_provider = "ollama"
     
     def _init_providers(self):
-        """Inicializar proveedores"""
         try:
-            groq_key = self.config.get("ai", "groq", "api_key", default="")
-            groq_model = self.config.get("ai", "groq", "model", default="mixtral-8x7b-32768")
-            self.providers["groq"] = GroqProvider(groq_key, groq_model)
+            ollama_url = self.config.get("ai", "ollama", "url", default="http://localhost:11434")
+            ollama_model = self.config.get("ai", "ollama", "model", default="nova")
+            self.providers["ollama"] = OllamaProvider(ollama_url, ollama_model)
         except Exception as e:
-            print(f"Error inicializando proveedores: {e}")
+            print(f"Error inicializando Ollama: {e}")
     
-    async def chat(self, message: str, system_prompt: str = "", provider: Optional[str] = None) -> str:
-        """Enviar mensaje a la IA"""
+    async def chat(self, message: str, system_prompt: str = "", provider: Optional[str] = None, on_token: Callable = None) -> str:
         provider_name = provider or self.current_provider
         
         if provider_name not in self.providers:
@@ -135,28 +118,17 @@ class AIManager:
         provider_obj = self.providers[provider_name]
         
         if not provider_obj.is_available():
-            return "❌ API Key de Groq no configurada. Edita config.json con tu clave"
+            return "❌ Ollama no está disponible. Ejecuta: ollama serve"
         
-        return await provider_obj.chat(message, system_prompt)
-    
-    def switch_provider(self, provider: str) -> bool:
-        """Cambiar proveedor"""
-        if provider in self.providers and self.providers[provider].is_available():
-            self.current_provider = provider
-            self.config.set("ai", "provider", value=provider)
-            return True
-        return False
+        return await provider_obj.chat(message, system_prompt, on_token=on_token)
     
     def get_available_providers(self) -> list:
-        """Obtener proveedores disponibles"""
         return [name for name, p in self.providers.items() if p.is_available()]
     
     def get_provider_status(self) -> Dict[str, bool]:
-        """Obtener estado de todos los proveedores"""
         return {name: p.is_available() for name, p in self.providers.items()}
     
     def clear_history(self, provider: Optional[str] = None):
-        """Limpiar historial"""
         if provider:
             if provider in self.providers:
                 self.providers[provider].clear_history()

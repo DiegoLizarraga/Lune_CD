@@ -1,19 +1,19 @@
 ╔═══════════════════════════════════════════════════════════════════════════╗
-║                   🌙 LUNE CD v4.5 - PROYECTO CORREGIDO                    ║
-║                        Asistente Virtual Inteligente                      ║
+║                   🌙 LUNE CD v5.0 - ASISTENTE VIRTUAL                     ║
+║                        Powered by Ollama + gTTS                           ║
 ╚═══════════════════════════════════════════════════════════════════════════╝
 
 📋 ARCHIVOS INCLUIDOS:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 📁 CÓDIGO FUENTE:
-  ├── main.py               ← Interfaz principal (PyQt6)
+  ├── main.py               ← Interfaz principal (PyQt6) + Voz (gTTS)
   ├── config.py             ← Gestor de configuración
-  ├── ai_manager.py         ← Proveedores de IA (Groq, Ollama, OpenAI)
+  ├── ai_manager.py         ← Proveedor de IA (Ollama con streaming)
   └── utils.py              ← Utilidades (logging, archivos, etc.)
 
 ⚙️ CONFIGURACIÓN:
-  ├── config.json           ← ⚠️ EDITA ESTO CON TU API KEY
+  ├── config.json           ← Configuración del modelo Ollama
   ├── requirements.txt      ← Dependencias (pip install -r)
   └── .gitignore            ← Archivos a ignorar
 
@@ -24,75 +24,80 @@
 
 PASO 1: INSTALAR DEPENDENCIAS
   $ pip install -r requirements.txt
+  $ sudo apt install alsa-utils -y
 
-PASO 2: CONFIGURAR IA (ELIGE UNA):
-
-  OPCIÓN A - GROQ (Recomendado):
-    1. Ve a: https://console.groq.com
-    2. Obtén API Key gratuita
-    3. Edita config.json:
-       "groq": {
-         "api_key": "TU_API_KEY_AQUI",
-         ...
-       }
-
-  OPCIÓN B - OLLAMA (Local):
-    1. Descarga: https://ollama.ai
-    2. Ejecuta: ollama serve
-    3. Descarga modelo: ollama pull mistral
-    4. Edita config.json:
-       "ai": {
-         "provider": "ollama"
-       }
+PASO 2: CONFIGURAR OLLAMA
+  1. Instala Ollama: https://ollama.ai
+  2. Crea tu modelo personalizado:
+       $ nano mi_agente.modelfile
+     Contenido:
+       FROM dolphin-mistral
+       SYSTEM """
+       Eres Nova, una asistente inteligente y amigable.
+       Hablas en español y tienes conocimientos en tecnología.
+       """
+  3. Crea el modelo:
+       $ ollama create nova -f mi_agente.modelfile
+  4. Verifica que esté corriendo:
+       $ ollama serve
 
 PASO 3: EJECUTAR
   $ python main.py
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-✨ CORRECCIONES PRINCIPALES:
+✨ NOVEDADES v5.0:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-✅ Caracteres UTF-8 corregidos (arregladas corrupciones)
-✅ Validación exhaustiva en todas las entradas
-✅ Manejo robusto de errores y excepciones
-✅ Sistema de logging centralizado
-✅ Mejora significativa de UX/UI
-✅ Documentación completa
-✅ Código más limpio y mantenible
+✅ Motor de IA 100% local con Ollama (sin APIs externas)
+✅ Streaming de respuestas en tiempo real (token a token)
+✅ Voz femenina en español con gTTS (Google Text-to-Speech)
+✅ Botón 🔊/🔇 para activar/desactivar voz desde la UI
+✅ Cursor animado ▋ mientras la IA escribe
+✅ Eliminado Groq/OpenAI - arquitectura simplificada
+✅ Sin necesidad de API Keys
+✅ Funciona completamente offline (excepto gTTS)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-📊 ESTADÍSTICAS:
+📦 DEPENDENCIAS PRINCIPALES:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  Total de líneas de código:     945 → 1,180 (+235 líneas)
-  Documentación:                 50 → 1,000+ líneas
-  Funciones/Métodos:             28 → 38 (+10 nuevas)
-  Manejo de errores:             +400%
-  Validaciones:                  +400%
-  Calidad general:               8.6/10 ✨
+  PyQt6        → Interfaz gráfica
+  requests     → Comunicación con Ollama
+  gtts         → Voz femenina en español
+  pygame       → Reproducción de audio
+  alsa-utils   → Backend de audio (Linux)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ❓ PROBLEMAS COMUNES:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-❌ "Error de API Key de Groq"
-  → Obtén una nueva en: https://console.groq.com
-
 ❌ "No se conecta a Ollama"
   → Ejecuta en otra terminal: ollama serve
+
+❌ "aplay: not found" (sin audio)
+  → Ejecuta: sudo apt install alsa-utils -y
 
 ❌ "No se instala PyQt6 (Linux)"
   → Ejecuta: sudo apt-get install python3-pyqt6
 
-❌ "No hay proveedores disponibles"
-  → Lee INSTRUCCIONES.md sección "Solución de Problemas"
+❌ "La voz no suena"
+  → Verifica conexión a internet (gTTS requiere internet)
+  → Prueba: python3 -c "from gtts import gTTS; import pygame, io; tts = gTTS('hola', lang='es'); fp = io.BytesIO(); tts.write_to_fp(fp); fp.seek(0); pygame.mixer.init(); pygame.mixer.music.load(fp); pygame.mixer.music.play(); import time; time.sleep(3)"
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+📊 ESTADÍSTICAS:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Versión anterior:    v4.5
+  Versión actual:      v5.0
+  Proveedores de IA:   1 (Ollama local)
+  Voces disponibles:   Español (es) vía gTTS
+  Dependencias externas de API: 0 ✅
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ✨ ¡TODO LISTO! ¡A USAR! 🌙
-
-.
