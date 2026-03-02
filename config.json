@@ -1,9 +1,16 @@
 {
   "ai": {
+<<<<<<< HEAD
     "provider": "groq",
     "groq": {
       "api_key": "api tuya",
       "model": "llama-3.3-70b-versatile"
+=======
+    "provider": "ollama",
+    "ollama": {
+      "url": "http://localhost:11434",
+      "model": "nova"
+>>>>>>> 5e1da22bb3771557d08b29935fcfc7395a10156e
     }
   },
   "ui": {
