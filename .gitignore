@@ -34,10 +34,11 @@ env/
 *~
 .DS_Store
 
-# Configuración local
-config.json
+# ─── API KEYS (¡NUNCA SUBIR!) ───────────────────────
+api_keys.json
 .env
 .env.local
+config.json
 
 # Logs
 logs/

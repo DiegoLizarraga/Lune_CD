@@ -1,39 +1,31 @@
-# Lune CD v4.5 - Requirements
-# Sistema de Asistente Virtual con Agentes IA
+# Lune CD v6.0 - Requirements
+# Multi-IA: Character.AI · DeepSeek · Claude · Ollama Local
 # ==================================================
 
-# CORE - Interfaz y Sistema
+# CORE - Interfaz
 # ==================================================
-PyQt6>=6.6.0              # UI moderna y potente
-pystray>=0.19.0           # Icono en bandeja del sistema
-Pillow>=10.0.0            # Manejo de imágenes
+PyQt6>=6.6.0              # UI moderna
 
-# IA Y AGENTES
+# HTTP / Networking
 # ==================================================
-requests>=2.31.0          # Para API de Groq y verificaciones
-openai>=1.0.0             # SDK de OpenAI (compatible con Groq)
+requests>=2.31.0          # Llamadas a APIs (DeepSeek, Claude, Ollama)
 
-# AUTOMATIZACIÓN Y CONTROL
+# VOZ (opcional)
 # ==================================================
-pyautogui>=0.9.54         # Control de teclado/mouse
-pynput>=1.7.6             # Captura de teclas globales
-psutil>=5.9.0             # Información de procesos del sistema
+gtts>=2.5.0               # Text-to-speech en español
+pygame>=2.5.0             # Reproducción de audio
 
-# MANEJO DE ARCHIVOS Y DATOS
+# Character.AI (opcional, no tiene API oficial)
 # ==================================================
-python-dotenv>=1.0.0      # Variables de entorno
-beautifulsoup4>=4.12.0    # Web scraping
-lxml>=4.9.0               # Parser XML/HTML
+# PyCAI>=1.0.0            # Descomenta si quieres usar Character.AI
+
+# AUTOMATIZACIÓN Y CONTROL (legacy)
+# ==================================================
+pyautogui>=0.9.54
+pynput>=1.7.6
+psutil>=5.9.0
 
 # UTILIDADES
 # ==================================================
-aiofiles>=23.0.0          # Operaciones de archivos asincronas
-schedule>=1.2.0           # Programación de tareas
-watchdog>=3.0.0           # Monitor de cambios en archivos
-
-# DESARROLLO (opcional)
-# ==================================================
-# pytest>=7.4.0           # Testing
-# black>=23.12.0          # Formateo de código
-# flake8>=6.1.0           # Linting
-# mypy>=1.7.0             # Type checking
+python-dotenv>=1.0.0
+aiofiles>=23.0.0
