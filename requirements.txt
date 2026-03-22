@@ -1,31 +1,29 @@
-# Lune CD v6.0 - Requirements
-# Multi-IA: Character.AI · DeepSeek · Claude · Ollama Local
-# ==================================================
+# Lune CD v6.0 + Telegram Bridge
+# ================================================
 
 # CORE - Interfaz
-# ==================================================
-PyQt6>=6.6.0              # UI moderna
+PyQt6>=6.6.0
 
 # HTTP / Networking
-# ==================================================
-requests>=2.31.0          # Llamadas a APIs (DeepSeek, Claude, Ollama)
+requests>=2.31.0
 
-# VOZ (opcional)
-# ==================================================
-gtts>=2.5.0               # Text-to-speech en español
-pygame>=2.5.0             # Reproducción de audio
+# VOZ (app)
+gtts>=2.5.0
+pygame>=2.5.0
 
-# Character.AI (opcional, no tiene API oficial)
-# ==================================================
-# PyCAI>=1.0.0            # Descomenta si quieres usar Character.AI
+# VOZ (Telegram - edge-tts se instala aparte)
+# pip install edge-tts
 
-# AUTOMATIZACIÓN Y CONTROL (legacy)
-# ==================================================
-pyautogui>=0.9.54
-pynput>=1.7.6
+# Telegram Bridge
+python-telegram-bot>=20.0
+
+# Sistema
 psutil>=5.9.0
 
+# AUTOMATIZACIÓN
+pyautogui>=0.9.54
+pynput>=1.7.6
+
 # UTILIDADES
-# ==================================================
 python-dotenv>=1.0.0
 aiofiles>=23.0.0

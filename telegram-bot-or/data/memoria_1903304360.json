@@ -1,0 +1,11 @@
+{
+  "nombre": "usuario",
+  "rol": "cliente",
+  "tarea_prioritaria": "entregar proyecto en GitHub",
+  "fecha": "hoy",
+  "edad": "No especificada",
+  "gustos": "No especificados",
+  "trabajo": "No especificado",
+  "ciudad": "No especificada",
+  "clave": "valor"
+}

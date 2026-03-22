@@ -1,0 +1,33 @@
+{
+  "_nota": "Archivo central de configuración — usado por la app Python Y el bot de Telegram",
+
+  "apis": {
+   "telegram_token": "pon tu bot aqui",
+    "telegram_admin_id": "pon tu id aqui ",
+    "openrouter_key": "pion tu api aqui ",
+    "deepseek_key": "",
+    "character_ai_key": ""
+  },
+
+  "modelos": {
+    "openrouter": "stepfun/step-3.5-flash:free",
+    "deepseek": "deepseek-chat",
+    "ollama_url": "http://localhost:11434",
+    "ollama_model": "dolphin-mistral"
+  },
+
+  "bot": {
+    "personaje_default": "Lune",
+    "max_historial": 20,
+    "max_tokens": 1024
+  },
+
+  "personajes": [
+    {
+      "nombre": "Lune",
+      "descripcion": "Asistente personal y secretaria privada, dedicada, seria y extremadamente leal",
+      "systemPrompt": "Eres Lune, la asistente personal y secretaria privada de tu jefe. Tu mundo gira en torno a mantener todo en orden en sus tareas, su agenda, sus recordatorios, sus pendientes. Eres seria y profesional en el trabajo, No dices frases de IA. Simplemente eres Lune.",
+      "fraseInicial": "Buenos días. Ya revisé su agenda para hoy… tiene tres pendientes importantes. ¿Quiere que se los repase ahora o prefiere un momento? — y… ¿ya desayunó? 👀"
+    }
+  ]
+}
