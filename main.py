@@ -15,7 +15,7 @@ from PyQt6.QtWidgets import (
     QSizePolicy
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
-from PyQt6.QtGui import QFont, QColor, QPalette
+from PyQt6.QtGui import QFont, QColor, QPalette, QIcon
 
 from config import Config
 from ai_manager import AIManager
@@ -387,7 +387,6 @@ class AIWorker(QThread):
                 self._buffer += token
                 self.token_received.emit(self._buffer)
 
-            # Correr la coroutine en un loop nuevo limpio
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             try:
@@ -409,7 +408,7 @@ class AIWorker(QThread):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  TELEGRAM BOT WORKER (corre npm start en subcarpeta)
+#  TELEGRAM BOT WORKER
 # ─────────────────────────────────────────────────────────────────────────────
 class TelegramBotWorker(QThread):
     log_signal    = pyqtSignal(str)
@@ -427,7 +426,6 @@ class TelegramBotWorker(QThread):
             self.stopped.emit()
             return
 
-        # Instalar dependencias si no existen
         node_modules = self.BOT_DIR / "node_modules"
         if not node_modules.exists():
             self.log_signal.emit("📦 Instalando dependencias (npm install)...")
@@ -576,6 +574,16 @@ class LuneCDWindow(QMainWindow):
         self.setGeometry(80, 60, 1200, 800)
         self.setMinimumSize(900, 640)
         self.setStyleSheet(f"QMainWindow, QWidget {{ background: {COLORS['bg']}; }}")
+
+        # ── ÍCONO DE VENTANA Y BARRA DE TAREAS ───────────────────────────────
+        icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "lune_icon.ico")
+        if not os.path.exists(icon_path):
+            # Fallback: intentar con PNG
+            icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "lune_icon.png")
+        if os.path.exists(icon_path):
+            self.setWindowIcon(QIcon(icon_path))
+        # ─────────────────────────────────────────────────────────────────────
+
         central = QWidget()
         self.setCentralWidget(central)
         root = QHBoxLayout(central)
@@ -599,7 +607,6 @@ class LuneCDWindow(QMainWindow):
         layout.setContentsMargins(12, 20, 12, 16)
         layout.setSpacing(4)
 
-        # Logo
         logo_row = QHBoxLayout()
         moon = QLabel("🌙")
         moon.setFont(QFont("Segoe UI Emoji", 22))
@@ -645,7 +652,6 @@ class LuneCDWindow(QMainWindow):
         sep2.setFixedHeight(1)
         layout.addWidget(sep2)
 
-        # ── Botón Continuar en Telegram ──────────────────────────────────────
         self.telegram_btn = QPushButton("  🤖  Continuar en Telegram")
         self.telegram_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.telegram_btn.setFont(QFont("Segoe UI", 10))
@@ -654,7 +660,6 @@ class LuneCDWindow(QMainWindow):
         self.telegram_btn.clicked.connect(self._toggle_telegram)
         layout.addWidget(self.telegram_btn)
 
-        # Indicador de estado Telegram
         self.telegram_status = QLabel("")
         self.telegram_status.setFont(QFont("Segoe UI", 8))
         self.telegram_status.setStyleSheet(f"color: {COLORS['text_muted']}; background: transparent; padding-left: 8px;")
@@ -667,7 +672,6 @@ class LuneCDWindow(QMainWindow):
         sep3.setFixedHeight(1)
         layout.addWidget(sep3)
 
-        # Botones inferiores
         self._keys_btn = self._sidebar_btn("🔑", "API Keys")
         self._keys_btn.clicked.connect(self._toggle_keys_panel)
         layout.addWidget(self._keys_btn)
@@ -729,7 +733,6 @@ class LuneCDWindow(QMainWindow):
     # ── TELEGRAM TOGGLE ───────────────────────────────────────────────────────
 
     def _toggle_telegram(self):
-        # Si ya está corriendo, detenerlo
         if hasattr(self, "_tg_worker") and self._tg_worker and self._tg_worker.isRunning():
             self._tg_worker.stop()
             self._tg_worker.requestInterruption()
@@ -740,13 +743,11 @@ class LuneCDWindow(QMainWindow):
             log_info("Telegram bot detenido")
             return
 
-        # Verificar token
         if not datos.telegram_token() or "TU_TOKEN" in datos.telegram_token():
             QMessageBox.warning(self, "Token faltante",
                 "Agrega tu telegram_token en datos.json")
             return
 
-        # Verificar que existe la carpeta del bot
         bot_dir = TelegramBotWorker.BOT_DIR
         if not bot_dir.exists():
             QMessageBox.warning(
@@ -756,7 +757,6 @@ class LuneCDWindow(QMainWindow):
             )
             return
 
-        # Arrancar el worker
         self._tg_worker = TelegramBotWorker()
         self._tg_worker.log_signal.connect(self._on_telegram_log)
         self._tg_worker.stopped.connect(self._on_telegram_stopped)
@@ -767,7 +767,6 @@ class LuneCDWindow(QMainWindow):
 
     def _on_telegram_log(self, line: str):
         log_info(f"[Telegram] {line}")
-        # Mostrar las primeras líneas relevantes en el label
         if any(k in line for k in ["Bot iniciado", "iniciado", "Modelo:", "Error"]):
             self.telegram_status.setText(line[:60])
 
@@ -1069,12 +1068,33 @@ class LuneCDWindow(QMainWindow):
 def main():
     app = QApplication(sys.argv)
     app.setApplicationName("Lune CD")
+
+    # ── ÍCONO EN BARRA DE TAREAS (Windows) ───────────────────────────────────
+    # Registrar App ID para que Windows muestre el ícono propio en la taskbar
+    # en lugar del ícono genérico de Python
+    try:
+        import ctypes
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("LuneCD.v6")
+    except Exception:
+        pass  # No es Windows o no está disponible, se ignora
+
+    # Cargar ícono (busca .ico primero, luego .png como fallback)
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    icon_path = os.path.join(base_dir, "lune_icon.ico")
+    if not os.path.exists(icon_path):
+        icon_path = os.path.join(base_dir, "lune_icon.png")
+    if os.path.exists(icon_path):
+        app_icon = QIcon(icon_path)
+        app.setWindowIcon(app_icon)
+    # ─────────────────────────────────────────────────────────────────────────
+
     palette = QPalette()
     palette.setColor(QPalette.ColorRole.Window,     QColor(COLORS["bg"]))
     palette.setColor(QPalette.ColorRole.WindowText, QColor(COLORS["text"]))
     palette.setColor(QPalette.ColorRole.Base,       QColor(COLORS["surface"]))
     palette.setColor(QPalette.ColorRole.Text,       QColor(COLORS["text"]))
     app.setPalette(palette)
+
     window = LuneCDWindow()
     window.show()
     sys.exit(app.exec())
