@@ -14,8 +14,8 @@ from PyQt6.QtWidgets import (
     QApplication, QMessageBox, QStackedWidget, QDialog,
     QSizePolicy
 )
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
-from PyQt6.QtGui import QFont, QColor, QPalette, QIcon
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer, QPropertyAnimation, QEasingCurve, QSize
+from PyQt6.QtGui import QFont, QColor, QPalette, QIcon, QPixmap
 
 from config import Config
 from ai_manager import AIManager
@@ -96,57 +96,275 @@ PROVIDER_META = {
     },
 }
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  LUNE FACE — Detector de expresiones
+# ─────────────────────────────────────────────────────────────────────────────
+
+FACE_DIR = Path(__file__).parent / "lune_face"
+
+FACE_FILES = {
+    "normal":    "lune_normal.png",
+    "happy":     "lune_happy.png",
+    "thinking":  "lune_thinking.png",
+    "typing":    "lune_typing.png",
+    "reading":   "lune_reading.png",
+    "sad":       "lune_sad.png",
+    "confused":  "lune_confused.png",
+    "error":     "lune_error.png",
+}
+
+# Palabras clave para detectar el estado emocional de la respuesta
+EMOTION_KEYWORDS = {
+    "happy": [
+        "perfecto", "excelente", "claro", "con gusto", "por supuesto", "genial",
+        "listo", "hecho", "entendido", "buena idea", "me alegra", "fantástico",
+        "encantada", "encantado", "feliz", "contento", "maravilloso", "estupendo",
+        "de acuerdo", "confirmado", "completado", "great", "sure", "perfect",
+    ],
+    "sad": [
+        "lo siento", "disculpa", "disculpe", "perdón", "lamentablemente",
+        "desafortunadamente", "imposible", "no puedo", "triste", "error grave",
+        "problema serio", "fallé", "fallamos",
+    ],
+    "reading": [
+        "según", "investigando", "información", "encontré que", "de acuerdo a",
+        "datos", "fuentes", "documentación", "referencia", "basándome en",
+        "he encontrado", "buscando", "análisis", "revisando",
+    ],
+    "typing": [
+        "aquí está", "a continuación", "te presento", "redactando", "escribiendo",
+        "el documento", "el texto", "el código", "el informe", "el resumen",
+        "la lista", "el plan", "generando",
+    ],
+    "confused": [
+        "no entiendo", "no estoy segura", "no estoy seguro", "podrías aclarar",
+        "podrías especificar", "¿a qué te refieres", "es ambiguo", "no queda claro",
+        "no comprendo", "¿puedes repetir", "¿qué quieres decir",
+    ],
+    "error": [
+        "❌", "error:", "no se pudo", "falló", "timeout", "conexión rechazada",
+        "api key", "sin respuesta", "excepción", "exception", "fallo crítico",
+    ],
+}
+
+
+def detect_emotion(text: str) -> str:
+    """Detecta la emoción apropiada basada en el contenido del texto."""
+    text_lower = text.lower()
+
+    # Error tiene prioridad máxima
+    if any(kw in text_lower for kw in EMOTION_KEYWORDS["error"]):
+        return "error"
+
+    # Revisar cada categoría en orden de prioridad
+    for emotion in ["sad", "confused", "happy", "reading", "typing"]:
+        if any(kw in text_lower for kw in EMOTION_KEYWORDS[emotion]):
+            return emotion
+
+    return "normal"
+
+
+def get_face_path(state: str) -> str | None:
+    """Devuelve la ruta absoluta de la imagen de expresión, o None si no existe."""
+    filename = FACE_FILES.get(state, FACE_FILES["normal"])
+    path = FACE_DIR / filename
+    return str(path) if path.exists() else None
+
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  VOZ
+#  WIDGET DE LUNE FACE
 # ─────────────────────────────────────────────────────────────────────────────
+
+class LuneFaceWidget(QFrame):
+    """Widget que muestra la imagen de Lune con transiciones suaves entre expresiones."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(196, 260)
+        self.setStyleSheet("QFrame { background: transparent; border: none; }")
+
+        self._current_state = "normal"
+        self._pending_state = None
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        # Label que muestra la imagen
+        self.image_label = QLabel()
+        self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.image_label.setScaledContents(False)
+        self.image_label.setStyleSheet("background: transparent; border: none;")
+        layout.addWidget(self.image_label)
+
+        # Fallback: emoji grande si no hay imagen
+        self._fallback_label = QLabel("🌙")
+        self._fallback_label.setFont(QFont("Segoe UI Emoji", 64))
+        self._fallback_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._fallback_label.setStyleSheet("background: transparent; border: none;")
+        self._fallback_label.hide()
+        layout.addWidget(self._fallback_label)
+
+        # Cargar imagen inicial
+        self._load_face("normal")
+
+        # Timer para volver a normal automáticamente después de ciertos estados temporales
+        self._revert_timer = QTimer(self)
+        self._revert_timer.setSingleShot(True)
+        self._revert_timer.timeout.connect(lambda: self.set_state("normal"))
+
+    def _load_face(self, state: str):
+        """Carga la imagen del estado dado."""
+        path = get_face_path(state)
+        if path:
+            pixmap = QPixmap(path)
+            if not pixmap.isNull():
+                # Escalar manteniendo aspecto, máximo 190x250
+                scaled = pixmap.scaled(
+                    190, 250,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation
+                )
+                self.image_label.setPixmap(scaled)
+                self.image_label.show()
+                self._fallback_label.hide()
+                return
+
+        # Si no hay imagen, mostrar emoji fallback según estado
+        fallback_emojis = {
+            "normal":   "🌙",
+            "happy":    "😊",
+            "thinking": "🤔",
+            "typing":   "⌨️",
+            "reading":  "📖",
+            "sad":      "😔",
+            "confused": "😕",
+            "error":    "❌",
+        }
+        self._fallback_label.setText(fallback_emojis.get(state, "🌙"))
+        self._fallback_label.show()
+        self.image_label.hide()
+
+    def set_state(self, state: str, auto_revert_ms: int = 0):
+        """
+        Cambia la expresión de Lune.
+        auto_revert_ms > 0 → vuelve a 'normal' después de ese tiempo.
+        """
+        if state == self._current_state:
+            return
+        self._current_state = state
+        self._load_face(state)
+
+        if auto_revert_ms > 0:
+            self._revert_timer.start(auto_revert_ms)
+        else:
+            self._revert_timer.stop()
+
+    def get_state(self) -> str:
+        return self._current_state
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  VOZ — TTS con prioridad: edge-tts → gTTS → sin voz
+# ─────────────────────────────────────────────────────────────────────────────
+
 class VoiceEngine:
     def __init__(self):
         self._enabled = False
         self._lock = threading.Lock()
-        self._available = False
+        self._engine = None          # "edge", "gtts", None
         self._init_engine()
 
     def _init_engine(self):
+        # Intentar edge-tts primero (mejor calidad)
+        try:
+            import edge_tts  # noqa: F401
+            import pygame
+            pygame.mixer.init()
+            self._engine = "edge"
+            log_info("Motor de voz: edge-tts ✓")
+            return
+        except ImportError:
+            pass
+
+        # Fallback a gTTS
         try:
             from gtts import gTTS
             import pygame
             pygame.mixer.init()
-            self._available = True
-        except Exception as e:
-            log_error(f"gTTS/pygame no disponible: {e}")
+            self._engine = "gtts"
+            log_info("Motor de voz: gTTS ✓")
+            return
+        except ImportError:
+            pass
+
+        log_error("Sin motor de voz. Instala: pip install edge-tts pygame  o  pip install gtts pygame")
+        self._engine = None
 
     def speak(self, text: str):
-        if not self._enabled or not self._available:
+        if not self._enabled or not self._engine:
             return
-        clean = re.sub(r'[^\w\s,.!?áéíóúüñ]', '', text, flags=re.UNICODE).strip()
-        if clean:
-            threading.Thread(target=self._speak_blocking, args=(clean,), daemon=True).start()
+        clean = re.sub(r'[^\w\s,.!?áéíóúüñ¿¡]', '', text, flags=re.UNICODE).strip()
+        if not clean:
+            return
+        # Limitar a primeras 400 caracteres para no bloquear demasiado
+        clean = clean[:400]
+        threading.Thread(target=self._speak_blocking, args=(clean,), daemon=True).start()
 
     def _speak_blocking(self, text: str):
         with self._lock:
-            try:
-                from gtts import gTTS
-                import pygame
-                tts = gTTS(text, lang="es")
-                fp = io.BytesIO()
-                tts.write_to_fp(fp)
-                fp.seek(0)
-                pygame.mixer.music.load(fp)
-                pygame.mixer.music.play()
-                while pygame.mixer.music.get_busy():
-                    threading.Event().wait(0.1)
-            except Exception as e:
-                log_error(f"Error de voz: {e}")
+            if self._engine == "edge":
+                self._speak_edge(text)
+            elif self._engine == "gtts":
+                self._speak_gtts(text)
+
+    def _speak_edge(self, text: str):
+        try:
+            import asyncio
+            import edge_tts
+            import pygame
+            import tempfile
+
+            async def _synthesize():
+                communicate = edge_tts.Communicate(text, voice="es-MX-DaliaNeural")
+                tmp = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
+                tmp.close()
+                await communicate.save(tmp.name)
+                return tmp.name
+
+            path = asyncio.run(_synthesize())
+            pygame.mixer.music.load(path)
+            pygame.mixer.music.play()
+            while pygame.mixer.music.get_busy():
+                threading.Event().wait(0.1)
+            os.unlink(path)
+        except Exception as e:
+            log_error(f"edge-tts error: {e}")
+
+    def _speak_gtts(self, text: str):
+        try:
+            from gtts import gTTS
+            import pygame
+            tts = gTTS(text, lang="es")
+            fp = io.BytesIO()
+            tts.write_to_fp(fp)
+            fp.seek(0)
+            pygame.mixer.music.load(fp)
+            pygame.mixer.music.play()
+            while pygame.mixer.music.get_busy():
+                threading.Event().wait(0.1)
+        except Exception as e:
+            log_error(f"gTTS error: {e}")
 
     def toggle(self) -> bool:
         self._enabled = not self._enabled
         return self._enabled
 
     @property
-    def available(self): return self._available
+    def available(self): return self._engine is not None
     @property
     def enabled(self): return self._enabled
+    @property
+    def engine_name(self): return self._engine or "sin voz"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -565,7 +783,9 @@ class LuneCDWindow(QMainWindow):
         self._tg_worker = None
 
         self._init_ui()
-        log_info("Lune CD iniciado")
+        log_info("Lune CD v7 iniciado")
+        log_info(f"Motor de voz: {self.voice.engine_name}")
+        log_info(f"Carpeta de expresiones: {FACE_DIR}")
 
     # ── UI ────────────────────────────────────────────────────────────────────
 
@@ -575,14 +795,11 @@ class LuneCDWindow(QMainWindow):
         self.setMinimumSize(900, 640)
         self.setStyleSheet(f"QMainWindow, QWidget {{ background: {COLORS['bg']}; }}")
 
-        # ── ÍCONO DE VENTANA Y BARRA DE TAREAS ───────────────────────────────
         icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "lune_icon.ico")
         if not os.path.exists(icon_path):
-            # Fallback: intentar con PNG
             icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "lune_icon.png")
         if os.path.exists(icon_path):
             self.setWindowIcon(QIcon(icon_path))
-        # ─────────────────────────────────────────────────────────────────────
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -607,6 +824,7 @@ class LuneCDWindow(QMainWindow):
         layout.setContentsMargins(12, 20, 12, 16)
         layout.setSpacing(4)
 
+        # Logo
         logo_row = QHBoxLayout()
         moon = QLabel("🌙")
         moon.setFont(QFont("Segoe UI Emoji", 22))
@@ -646,6 +864,16 @@ class LuneCDWindow(QMainWindow):
 
         layout.addStretch()
 
+        # ── LUNE FACE WIDGET ─────────────────────────────────────────────────
+        self.lune_face = LuneFaceWidget()
+        face_container = QHBoxLayout()
+        face_container.setContentsMargins(0, 0, 0, 0)
+        face_container.addStretch()
+        face_container.addWidget(self.lune_face)
+        face_container.addStretch()
+        layout.addLayout(face_container)
+        # ─────────────────────────────────────────────────────────────────────
+
         sep2 = QFrame()
         sep2.setFrameShape(QFrame.Shape.HLine)
         sep2.setStyleSheet(f"background: {COLORS['border']}; margin: 4px 0;")
@@ -681,7 +909,8 @@ class LuneCDWindow(QMainWindow):
         layout.addWidget(clear_btn)
 
         if self.voice.available:
-            self._voice_btn = self._sidebar_btn("🔊", "Voz: OFF")
+            icon_voz = "🔊" if self.voice.engine_name == "edge" else "📢"
+            self._voice_btn = self._sidebar_btn(icon_voz, "Voz: OFF")
             self._voice_btn.clicked.connect(self._toggle_voice)
             layout.addWidget(self._voice_btn)
 
@@ -970,6 +1199,10 @@ class LuneCDWindow(QMainWindow):
         self.input_field.setEnabled(False)
         self.send_btn.setEnabled(False)
         self._set_status("Procesando…", COLORS["warning"])
+
+        # Expresión: pensando mientras procesa
+        self.lune_face.set_state("thinking")
+
         self._typing_indicator = TypingIndicator(self.current_provider)
         self.messages_layout.insertWidget(self.messages_layout.count() - 1, self._typing_indicator)
         self._scroll_bottom()
@@ -987,6 +1220,10 @@ class LuneCDWindow(QMainWindow):
             self._current_bubble = MessageBubble(
                 partial + " ▋", is_user=False, provider_id=self.current_provider)
             self.messages_layout.insertWidget(self.messages_layout.count() - 1, self._current_bubble)
+
+            # Expresión: escribiendo mientras llegan tokens
+            self.lune_face.set_state("typing")
+
         elif self._current_bubble:
             self._current_bubble.update_text(partial + " ▋")
         self._scroll_bottom()
@@ -1003,6 +1240,12 @@ class LuneCDWindow(QMainWindow):
         self.input_field.setEnabled(True)
         self.send_btn.setEnabled(True)
         self.input_field.setFocus()
+
+        # Detectar emoción y cambiar expresión (vuelve a normal después de 6s)
+        emotion = detect_emotion(response)
+        self.lune_face.set_state(emotion, auto_revert_ms=6000)
+
+        # Voz: leer la respuesta en voz alta
         self.voice.speak(response)
         self._scroll_bottom()
 
@@ -1021,6 +1264,10 @@ class LuneCDWindow(QMainWindow):
         self.input_field.setEnabled(True)
         self.send_btn.setEnabled(True)
         self.input_field.setFocus()
+
+        # Expresión de error (vuelve a normal después de 8s)
+        self.lune_face.set_state("error", auto_revert_ms=8000)
+
         self._scroll_bottom()
 
     # ── HELPERS ───────────────────────────────────────────────────────────────
@@ -1035,7 +1282,8 @@ class LuneCDWindow(QMainWindow):
 
     def _toggle_voice(self):
         enabled = self.voice.toggle()
-        self._voice_btn.setText(f"  🔊  Voz: {'ON' if enabled else 'OFF'}")
+        icon_voz = "🔊" if self.voice.engine_name == "edge" else "📢"
+        self._voice_btn.setText(f"  {icon_voz}  Voz: {'ON' if enabled else 'OFF'}")
 
     def _toggle_keys_panel(self):
         self.stack.setCurrentIndex(1 if self.stack.currentIndex() == 0 else 0)
@@ -1055,6 +1303,7 @@ class LuneCDWindow(QMainWindow):
                 if item.widget(): item.widget().deleteLater()
             self.ai_manager.clear_history()
             self._add_welcome()
+            self.lune_face.set_state("normal")
 
     def closeEvent(self, event):
         if hasattr(self, "_tg_worker") and self._tg_worker and self._tg_worker.isRunning():
@@ -1069,16 +1318,12 @@ def main():
     app = QApplication(sys.argv)
     app.setApplicationName("Lune CD")
 
-    # ── ÍCONO EN BARRA DE TAREAS (Windows) ───────────────────────────────────
-    # Registrar App ID para que Windows muestre el ícono propio en la taskbar
-    # en lugar del ícono genérico de Python
     try:
         import ctypes
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("LuneCD.v6")
     except Exception:
-        pass  # No es Windows o no está disponible, se ignora
+        pass
 
-    # Cargar ícono (busca .ico primero, luego .png como fallback)
     base_dir = os.path.dirname(os.path.abspath(__file__))
     icon_path = os.path.join(base_dir, "lune_icon.ico")
     if not os.path.exists(icon_path):
@@ -1086,7 +1331,6 @@ def main():
     if os.path.exists(icon_path):
         app_icon = QIcon(icon_path)
         app.setWindowIcon(app_icon)
-    # ─────────────────────────────────────────────────────────────────────────
 
     palette = QPalette()
     palette.setColor(QPalette.ColorRole.Window,     QColor(COLORS["bg"]))
