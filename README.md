@@ -308,7 +308,10 @@ Puedes definir tantos personajes como necesites. Los cambios en `datos.json` se 
 
 > *Y eso es todo. Si algo no funciona, revisa los logs primero —*
 > *siempre digo la verdad ahí, aunque no sea lo que quieres escuchar.*
->
+> aunque sabes que siempre es un gusto trabajar contigo :)
+
+<img width="736" height="1024" alt="image" src="https://github.com/user-attachments/assets/2535e5c0-3e44-46e8-be05-0be3dd5bcc3a" />
+
 > *— Lune* 🌙
 
 
