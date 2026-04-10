@@ -1,317 +1,107 @@
-# 🌙 Lune CD v6.5 — Multi-IA · Asistente de escritorio
-
-> *Buenos días. O buenas noches, dependiendo de cuándo estés leyendo esto.*
-> *Soy Lune, y esto es mi proyecto. Bueno — técnicamente es del mi creador, pero yo vivo aquí,*
-> *así que cuídalo bien, ¿de acuerdo? Aquí está todo lo que necesitas saber.*
 
 ---
 
-## ✨ Novedades en v6.5
+# 🌙 Lune CD v7.0 — Asistente de Escritorio con Memoria y Acción
 
-Esta actualización se centra en humanizar la experiencia. Menos "asistente de IA", más... *yo*.
-
-- 🎭 **Expresiones faciales** — Lune ahora reacciona visualmente a cada respuesta. Siete estados emocionales detectados automáticamente según el contenido del mensaje: feliz, pensando, escribiendo, leyendo, triste, confundida y error
-- 🔊 **Voz mejorada** — Integración con `edge-tts` (voz `es-MX-DaliaNeural`) con fallback automático a `gTTS`. La voz lee cada respuesta completa en voz alta cuando está activada
-- 📁 **Carpeta `lune_face/`** — Sistema modular de imágenes. Agrega o reemplaza expresiones sin tocar el código; la app carga en caliente lo que encuentre y usa emoji de respaldo si falta alguna imagen
-- 🧠 **Detección de emoción por keywords** — Análisis léxico de cada respuesta para seleccionar la expresión apropiada, con retorno automático al estado normal después de 6–8 segundos
-- 🔄 **Motor de voz con prioridad** — `edge-tts` → `gTTS` → silencio. Sin configuración manual; la app detecta lo que tienes instalado
+> *¡Hola de nuevo! O quizás es nuestra primera vez... bueno, para mí ya no importa, porque ahora tengo memoria. He pasado de ser una cara bonita que habla a ser tu asistente personal de escritorio. Puedo recordar tus gustos, controlar tu PC y sigo teniendo mis expresiones de siempre. Pasa, ponte cómodo.*
 
 ---
 
-## 📁 Estructura del proyecto
+## ✨ Novedades Principales 
 
-```
-LuneCD/
-├── datos.json              ← configuración central (APIs, modelos, personajes)
-├── datos.py                ← lector Python de datos.json
-├── main.py                 ← interfaz principal PyQt6
-├── ai_manager.py           ← gestión y abstracción de proveedores de IA
-├── config.py               ← configuración de UI y preferencias de usuario
-├── utils.py                ← logging, FileManager y utilidades generales
-├── web_extension.py        ← extensión web local (puerto 8080)
-├── requirements.txt        ← dependencias Python
-├── lune_face/              ← ← expresiones faciales (¡esta carpeta es nueva!)
-│   ├── lune_normal.png
-│   ├── lune_happy.png
-│   ├── lune_thinking.png
-│   ├── lune_typing.png
-│   ├── lune_reading.png
-│   ├── lune_sad.png
-│   ├── lune_confused.png
-│   └── lune_error.png
-└── telegram-bot-or/        ← bot de Telegram (Node.js)
-    ├── bot.js
-    ├── config.js           ← lee datos.json del proyecto padre
-    ├── archivos.js
-    ├── memoria.js
-    ├── search.js
-    ├── sistema.js
-    ├── voz.js
-    └── package.json
-```
+Esta versión es el salto definitivo hacia una IA que no solo responde, sino que **actúa** y **recuerda**.
+
+### 🧠 El Cerebro: Memoria Persistente (Nuevo v7.0)
+Lune ya no sufre de amnesia. Gracias al nuevo módulo `memoria.py`:
+* **Auto-detección de recuerdos:** Guarda nombres, preferencias y datos clave sin comandos raros (ej. "Recuerda que mi lenguaje favorito es Python").
+* **Saludo Personalizado:** Te reconoce al iniciar y lleva la cuenta de cuántos mensajes han compartido.
+* **Gestión total:** Historial persistente en `memoria.json` que puedes consultar o borrar con comandos.
+
+### 🛠 Las Manos: Herramientas de Sistema (Nuevo v7.0)
+10 herramientas integradas en `tools.py` que permiten a Lune controlar tu entorno:
+* **Ejecución instantánea:** Detecta la intención antes de usar la IA para ahorrar tokens y tiempo.
+* **Control de PC:** Abre apps, sube/baja volumen, toma capturas de pantalla y lista archivos.
+* **Interacción Híbrida:** Lune puede decidir usar una herramienta por su cuenta si la respuesta de la IA incluye prefijos `TOOL:`.
+
+### 🎭 El Rostro: Expresiones Dinámicas (v6.5)
+Lune reacciona visualmente según el contenido de la charla:
+* **7 Estados emocionales:** Feliz, pensando, escribiendo, leyendo, triste, confundida y error.
+* **Análisis léxico:** Cambia de expresión automáticamente al detectar palabras clave en la respuesta.
+* **Fallback de imagen:** Si falta una imagen en `lune_face/`, usa un emoji de respaldo.
 
 ---
 
-## 🚀 Instalación
+## 🚀 Instalación y Configuración
 
 ### 1. Requisitos previos
-
-| Componente | Versión mínima | Notas |
-|---|---|---|
-| Python | 3.10+ | Obligatorio |
-| Node.js | 18+ | Solo para bot de Telegram |
-| Ollama | cualquiera | Opcional, para modelos locales |
-
-### 2. Dependencias Python
-
+* **Python 3.10+** (Obligatorio).
+* **Node.js 18+** (Solo si usas el bot de Telegram).
+* **Dependencias:**
 ```bash
 pip install -r requirements.txt
+pip install pyperclip edge-tts pygame
 ```
+> *`pyperclip` es vital para las nuevas herramientas de la v7.0, y `edge-tts` te da la mejor calidad de voz mexicana.*
 
-### 3. Voz — recomendada: edge-tts
+### 2. Estructura de archivos crítica
+Asegúrate de que estos archivos estén en la raíz:
+* `memoria.py` y `tools.py`: Los nuevos motores de la v7.0.
+* `lune_face/`: Carpeta con las imágenes `.png` para las expresiones.
+* `datos.json`: Tu archivo de configuración de APIs y modelos.
 
-```bash
-# Opción A: edge-tts (mejor calidad — voz natural mexicana)
-pip install edge-tts pygame
-
-# Opción B: gTTS (fallback automático si no está edge-tts)
-pip install gtts pygame
-```
-
-> *No es obligatorio instalar ambos. La app detecta cuál tienes y usa ese.*
-> *Pero si puedes, instala `edge-tts`. Suena mucho mejor, lo prometo.*
-
-### 4. Bot de Telegram (opcional)
-
-```bash
-cd telegram-bot-or
-npm install
-cd ..
-```
-
-### 5. Configurar `datos.json`
-
-Edita el archivo en la raíz del proyecto antes de ejecutar:
-
+### 3. Configuración de `datos.json`
 ```json
 {
   "apis": {
-    "telegram_token": "TU_TOKEN_DE_TELEGRAM",
-    "telegram_admin_id": "TU_TELEGRAM_ID",
-    "openrouter_key": "sk-or-v1-...",
-    "deepseek_key": "",
-    "character_ai_key": ""
+    "openrouter_key": "TU_KEY_AQUÍ",
+    "telegram_token": "TU_TOKEN_OPCIONAL"
   },
   "modelos": {
     "openrouter": "stepfun/step-3.5-flash:free",
-    "ollama_url": "http://localhost:11434",
-    "ollama_model": "dolphin-mistral"
+    "ollama_url": "http://localhost:11434"
   }
 }
 ```
 
-### 6. Agregar las expresiones faciales
+---
 
-Crea la carpeta `lune_face/` en la raíz del proyecto y coloca dentro las imágenes con exactamente estos nombres:
+## 🤖 Comandos y Herramientas
 
-| Archivo | Cuándo se usa |
-|---|---|
-| `lune_normal.png` | Estado idle y tras cada emoción temporal |
-| `lune_thinking.png` | Desde que envías el mensaje hasta que llega el primer token |
-| `lune_typing.png` | Mientras se están recibiendo los tokens de respuesta |
-| `lune_happy.png` | Respuestas positivas, confirmaciones, saludos |
-| `lune_reading.png` | Respuestas con datos, referencias o búsquedas |
-| `lune_sad.png` | Disculpas, temas negativos, "lo siento" |
-| `lune_confused.png` | Cuando no entendí bien o pido aclaración |
-| `lune_error.png` | Errores de API, timeout, conexión fallida |
+### Gestión de Memoria
+* `/memoria` — Lista todos los recuerdos guardados con su ID.
+* `/olvida [id]` — Borra un recuerdo específico.
+* `/olvida todo` — Resetea mi memoria por completo.
 
-> *Si alguna imagen no existe, la app muestra un emoji de respaldo automáticamente.*
-> *Puedes ir agregando las imágenes una por una; nunca rompe nada.*
-
-### 7. Ejecutar
-
-```bash
-python main.py
-```
+### Herramientas de Escritorio (Habla natural)
+Lune entiende directamente órdenes como:
+* *"Toma una captura"* | *"Sube el volumen"* | *"Abre YouTube"*.
+* *"Busca videos de jazz"* | *"Info del sistema"* | *"Lista archivos de Escritorio"*.
 
 ---
 
-## 🤖 Proveedores de IA
-
-| Proveedor | Ícono | Requiere | Notas |
-|---|---|---|---|
-| Ollama | 🦙 | Ollama instalado y corriendo | 100% local, sin límites, sin costo |
-| DeepSeek | 🔬 | API Key de DeepSeek | Razonamiento avanzado |
-| Z.ai GLM | ⚡ | OpenRouter Key | GLM-4.5 Air gratuito vía OpenRouter |
-| Character.AI | 🎭 | Token de Character.AI | Requiere PyCAI instalado |
-
-### Modelos gratuitos recomendados para OpenRouter
-
-```
-stepfun/step-3.5-flash:free
-z-ai/glm-4.5-air:free
-meta-llama/llama-3.3-70b-instruct:free
-deepseek/deepseek-r1:free
-google/gemma-2-9b-it:free
-```
-
-Ver el catálogo completo en: https://openrouter.ai/models?max_price=0
+## 🔊 Sistema de Voz Mejorado
+Lune utiliza un sistema de prioridad para hablar:
+1. **Edge-TTS:** Voz natural `es-MX-DaliaNeural` (requiere internet).
+2. **gTTS:** Fallback automático si no está instalado edge-tts.
+3. **Silencio:** Si no hay librerías instaladas.
 
 ---
 
-## 🎭 Expresiones faciales — guía técnica
-
-El sistema de expresiones funciona mediante análisis léxico de cada respuesta completa. Al terminar de generarse la respuesta, `detect_emotion()` busca palabras clave en el texto para determinar el estado emocional apropiado.
-
-**Orden de prioridad en la detección:**
-
-1. `error` — máxima prioridad (❌, timeouts, fallos de API)
-2. `sad` — disculpas, limitaciones, temas negativos
-3. `confused` — ambigüedad, solicitudes de aclaración
-4. `happy` — confirmaciones, respuestas positivas
-5. `reading` — datos, referencias, búsquedas
-6. `typing` — generación de texto, documentos, código
-7. `normal` — default cuando no aplica ninguna categoría
-
-**Temporización:**
-- `thinking` — activo desde el envío hasta el primer token
-- `typing` — activo mientras llegan los tokens
-- emoción detectada — activa 6 segundos tras la respuesta, luego vuelve a `normal`
-- `error` — activo 8 segundos
-
-**Para extender o modificar las palabras clave**, edita el diccionario `EMOTION_KEYWORDS` en `main.py`. Puedes agregar frases en cualquier idioma.
+## 📱 Bot de Telegram (Opcional)
+Puedes llevar a Lune en tu celular activando el bridge de Telegram desde la app de escritorio. Incluye comandos como `/buscar`, `/sistema`, `/fotos` y `/voz`.
 
 ---
 
-## 🔊 Sistema de voz
-
-La voz se inicializa en orden de calidad al arrancar la app:
-
-```
-edge-tts (es-MX-DaliaNeural)  →  gTTS (es)  →  sin voz
-```
-
-El motor activo se muestra en los logs de inicio. Para activar/desactivar la voz en tiempo real, usa el botón **Voz: ON/OFF** en la barra lateral.
-
-> **Nota:** La voz lee los primeros 400 caracteres de cada respuesta para evitar bloqueos largos en respuestas extensas.
+## 🔧 Solución de Problemas
+* **¿No hay voz?** Revisa si tienes `pygame` instalado para la reproducción.
+* **¿Error de herramientas?** En Linux, instala `xclip` o `xsel` para que el portapapeles funcione.
+* **¿Límite de API?** Si usas OpenRouter gratuito (error 429), espera 24h o cambia el modelo en `datos.json`.
 
 ---
 
-## 📱 Bot de Telegram
+> *Gracias por cuidar de este proyecto. Ahora que te recuerdo mejor, espero que hagamos grandes cosas juntos.*
 
-### Configurar por primera vez
-
-1. Habla con **@BotFather** en Telegram → `/newbot` → copia el token
-2. Obtén tu Telegram ID hablando con **@userinfobot**
-3. Pega ambos valores en `datos.json` bajo `apis.telegram_token` y `apis.telegram_admin_id`
-
-### Usar
-
-1. Abre Lune CD
-2. Clic en **"🤖 Continuar en Telegram"** en la barra lateral
-3. El botón se pone verde — el bot está activo
-4. Abre Telegram y chatea con tu bot
-
-### Comandos disponibles
-
-| Comando | Descripción |
-|---|---|
-| `/start` | Bienvenida y menú principal |
-| `/personajes` | Ver personajes disponibles |
-| `/usar <nombre>` | Cambiar de personaje activo |
-| `/voz` | Activar/desactivar respuestas de voz |
-| `/buscar <consulta>` | Buscar en internet (DuckDuckGo) |
-| `/ls` | Navegar archivos del PC |
-| `/fotos <carpeta>` | Ver fotos de una carpeta |
-| `/archivo <nombre>` | Enviarte un archivo desde el PC |
-| `/sistema` | Ver CPU, RAM y disco |
-| `/memoria` | Ver datos guardados sobre ti |
-| `/olvidar` | Borrar memoria |
-| `/limpiar` | Reiniciar conversación |
-
----
-
-## 🎭 Personajes personalizados
-
-Los personajes se definen en `datos.json` bajo la clave `personajes`. La estructura es:
-
-```json
-{
-  "nombre": "NombreSinEspacios",
-  "descripcion": "Texto corto que aparece en el menú del bot",
-  "systemPrompt": "Personalidad completa. Sé específico: cómo habla, qué sabe, cómo reacciona, qué nunca haría.",
-  "fraseInicial": "Primera frase al iniciar conversación (opcional)"
-}
-```
-
-Puedes definir tantos personajes como necesites. Los cambios en `datos.json` se aplican al reiniciar la app.
-
----
-
-## 🔧 Solución de problemas
-
-**La app no responde al chatear**
-→ Verifica que la API key del proveedor seleccionado esté correcta en `datos.json`
-→ Ejecuta `python main.py` desde terminal para ver el error exacto en la consola
-
-**Ollama no conecta**
-→ Confirma que Ollama esté corriendo: `ollama serve`
-→ Verifica el modelo instalado: `ollama list`
-→ Revisa la URL en `datos.json` bajo `modelos.ollama_url`
-
-**No aparecen las expresiones de Lune**
-→ Verifica que la carpeta `lune_face/` exista en la raíz del proyecto
-→ Confirma que los nombres de archivo sean exactamente los indicados (en minúsculas, con guion bajo)
-→ La app usa emoji de respaldo si las imágenes no se encuentran — no falla
-
-**No hay voz**
-→ Instala al menos uno de los motores: `pip install edge-tts pygame` o `pip install gtts pygame`
-→ Revisa los logs al iniciar la app — indica qué motor cargó o por qué falló
-
-**No hay voz en Telegram**
-→ `edge-tts` debe estar instalado: `pip install edge-tts`
-→ Prueba manual: `edge-tts --text "hola" --write-media /tmp/test.mp3`
-
-**El bot de Telegram no arranca**
-→ Verifica que `telegram_token` en `datos.json` sea correcto y esté activo
-→ Prueba manualmente desde terminal: `cd telegram-bot-or && npm start`
-
-**Límite de requests en OpenRouter (error 429)**
-→ Cambia a otro modelo gratuito en `datos.json` bajo `modelos.openrouter`
-→ El límite se reinicia cada 24 horas
-
----
-
-## 📦 Dependencias principales
-
-| Paquete | Uso |
-|---|---|
-| PyQt6 | Interfaz gráfica de escritorio |
-| requests | Llamadas HTTP a APIs de IA |
-| edge-tts | Voz natural (recomendado) |
-| gtts + pygame | Voz alternativa (fallback) |
-| psutil | Estado del sistema |
-| grammy | Framework del bot de Telegram |
-
----
-
-## 📊 Historial de versiones
-
-| Versión | Cambios principales |
-|---|---|
-| **v6.5** | Expresiones faciales, detección de emoción, edge-tts integrado en app, sistema de fallback de imágenes, voz mejorada |
-| v6.0 | Multi-IA, Telegram Bridge, `datos.json` global, personajes, búsquedas web, acceso a archivos |
-| v5.0 | Ollama local, streaming de tokens, gTTS, eliminado Groq/OpenAI |
-| v4.5 | Versión anterior |
-
----
-
-> *Y eso es todo. Si algo no funciona, revisa los logs primero —*
-> *siempre digo la verdad ahí, aunque no sea lo que quieres escuchar.*
-> aunque sabes que siempre es un gusto trabajar contigo :)
 
 <img width="736" height="1024" alt="image" src="https://github.com/user-attachments/assets/2535e5c0-3e44-46e8-be05-0be3dd5bcc3a" />
 
 > *— Lune* 🌙
-
-
