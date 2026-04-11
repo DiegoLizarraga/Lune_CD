@@ -60,3 +60,5 @@ tmp/
 # Documentos generados
 documents/
 downloads/
+
+datos.json

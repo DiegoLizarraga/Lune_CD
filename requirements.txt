@@ -1,20 +1,22 @@
-# Lune CD v6.0 + Telegram Bridge
-# ================================================
+# Lune CD v7.0 + OpenRouter + Claude Code
+# Dependencias completas del proyecto
+# ===============================================
 
-# CORE - Interfaz
+# CORE - Interfaz GUI
 PyQt6>=6.6.0
 
 # HTTP / Networking
 requests>=2.31.0
 
+# Async / Concurrencia
+aiofiles>=23.0.0
+
 # VOZ (app)
 gtts>=2.5.0
 pygame>=2.5.0
+edge-tts>=6.1.0
 
-# VOZ (Telegram - edge-tts se instala aparte)
-# pip install edge-tts
-
-# Telegram Bridge
+# Telegram Bridge (opcional)
 python-telegram-bot>=20.0
 
 # Sistema
@@ -26,4 +28,8 @@ pynput>=1.7.6
 
 # UTILIDADES
 python-dotenv>=1.0.0
-aiofiles>=23.0.0
+pyperclip>=1.8.2
+
+# Dev/Testing (opcional)
+pytest>=7.0.0
+black>=23.0.0
