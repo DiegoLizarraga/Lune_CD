@@ -4,13 +4,13 @@
   "apis": {
    "telegram_token": "pon tu bot aqui",
     "telegram_admin_id": "pon tu id aqui ",
-    "openrouter_key": "pion tu api aqui ",
+    "openrouter_key": "pon la tuya",
     "deepseek_key": "",
     "character_ai_key": ""
   },
 
   "modelos": {
-    "openrouter": "stepfun/step-3.5-flash:free",
+    "openrouter": "openrouter/free",
     "deepseek": "deepseek-chat",
     "ollama_url": "http://localhost:11434",
     "ollama_model": "dolphin-mistral"

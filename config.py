@@ -3,7 +3,6 @@ import os
 from pathlib import Path
 from typing import Any, Dict
 
-
 class Config:
     """Gestor de configuración para Lune CD"""
 
@@ -21,7 +20,7 @@ class Config:
         "behavior": {
             "auto_respond": False,
             "show_typing_indicator": True,
-            "response_timeout": 30,
+            "response_timeout": 60,
             "history_limit": 100,
             "auto_clear_chat": False,
             "chat_clear_after_hours": 24,
@@ -36,12 +35,13 @@ class Config:
 
     API_KEYS_FILE = "api_keys.json"
 
+    # Insertamos tu API de OpenRouter por defecto
     DEFAULT_KEYS = {
-        "_comment": "Guarda aquí tus API keys. Este archivo NO debe subirse a GitHub.",
-        "character_ai": {"api_key": ""},
-        "deepseek": {"api_key": "", "model": "deepseek-chat"},
-        "claude": {"api_key": "", "model": "claude-3-5-haiku-20241022"},
-        "ollama": {"url": "http://localhost:11434", "model": "nova"},
+        "_comment": "Guarda aquí tus API keys.",
+        "openrouter": {
+            "api_key": "", 
+            "model": "openrouter/auto"
+        }
     }
 
     def __init__(self, config_path: str = "config.json"):
@@ -49,8 +49,6 @@ class Config:
         self.config = self._load_or_create()
         self.keys = self._load_or_create_keys()
         self._ensure_directories()
-
-    # ── config.json ──────────────────────────────────────────────────────────
 
     def _load_or_create(self) -> Dict[str, Any]:
         if self.config_path.exists():
@@ -73,8 +71,6 @@ class Config:
     def save(self):
         self._save_config(self.config)
 
-    # ── api_keys.json ─────────────────────────────────────────────────────────
-
     def _load_or_create_keys(self) -> Dict[str, Any]:
         p = Path(self.API_KEYS_FILE)
         if p.exists():
@@ -83,7 +79,6 @@ class Config:
                     return json.load(f)
             except Exception as e:
                 print(f"⚠️  Error cargando api_keys: {e}")
-        # Crear archivo de ejemplo
         try:
             with open(p, "w", encoding="utf-8") as f:
                 json.dump(self.DEFAULT_KEYS, f, indent=4, ensure_ascii=False)
@@ -107,8 +102,6 @@ class Config:
         self.keys[provider][field] = value
         self.save_keys()
 
-    # ── helpers ──────────────────────────────────────────────────────────────
-
     def _merge_defaults(self, loaded: Dict, default: Dict) -> Dict:
         result = default.copy()
         for key, value in loaded.items():
@@ -121,30 +114,3 @@ class Config:
     def _ensure_directories(self):
         for path in self.config.get("paths", {}).values():
             Path(path).mkdir(parents=True, exist_ok=True)
-
-    def get(self, *keys: str, default: Any = None) -> Any:
-        value = self.config
-        for key in keys:
-            if isinstance(value, dict):
-                value = value.get(key)
-            else:
-                return default
-        return value if value is not None else default
-
-    def set(self, *keys: str, value: Any) -> None:
-        if not keys:
-            return
-        cfg = self.config
-        for key in keys[:-1]:
-            if key not in cfg:
-                cfg[key] = {}
-            cfg = cfg[key]
-        cfg[keys[-1]] = value
-        self.save()
-
-    def reset_to_defaults(self):
-        self.config = self.DEFAULT_CONFIG.copy()
-        self.save()
-
-    def __repr__(self):
-        return f"<Config: {self.config_path}>"
