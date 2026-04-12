@@ -1,53 +1,30 @@
 import json
-import os
 from pathlib import Path
 from typing import Any, Dict
 
 class Config:
-    """Gestor de configuración para Lune CD"""
+    """Gestor de configuración visual para Lune CD"""
 
     DEFAULT_CONFIG = {
         "ui": {
-            "theme": "dark",
-            "language": "es",
-            "window_width": 1100,
-            "window_height": 760,
-            "always_on_top": False,
-            "start_minimized": False,
-            "show_tray_icon": True,
-            "font_size": 13,
+            "theme": "dark", "language": "es", "window_width": 1100,
+            "window_height": 760, "always_on_top": False,
+            "start_minimized": False, "show_tray_icon": True, "font_size": 13,
         },
         "behavior": {
-            "auto_respond": False,
-            "show_typing_indicator": True,
-            "response_timeout": 60,
-            "history_limit": 100,
-            "auto_clear_chat": False,
-            "chat_clear_after_hours": 24,
+            "auto_respond": False, "show_typing_indicator": True,
+            "response_timeout": 60, "history_limit": 100,
+            "auto_clear_chat": False, "chat_clear_after_hours": 24,
         },
         "paths": {
-            "documents": "./documents",
-            "downloads": "./downloads",
-            "cache": "./cache",
-            "logs": "./logs",
+            "documents": "./documents", "downloads": "./downloads",
+            "cache": "./cache", "logs": "./logs",
         },
-    }
-
-    API_KEYS_FILE = "api_keys.json"
-
-    # Insertamos tu API de OpenRouter por defecto
-    DEFAULT_KEYS = {
-        "_comment": "Guarda aquí tus API keys.",
-        "openrouter": {
-            "api_key": "", 
-            "model": "openrouter/auto"
-        }
     }
 
     def __init__(self, config_path: str = "config.json"):
         self.config_path = Path(config_path)
         self.config = self._load_or_create()
-        self.keys = self._load_or_create_keys()
         self._ensure_directories()
 
     def _load_or_create(self) -> Dict[str, Any]:
@@ -56,8 +33,7 @@ class Config:
                 with open(self.config_path, "r", encoding="utf-8") as f:
                     loaded = json.load(f)
                 return self._merge_defaults(loaded, self.DEFAULT_CONFIG)
-            except Exception as e:
-                print(f"⚠️  Error cargando config: {e}. Usando defaults…")
+            except Exception: pass
         self._save_config(self.DEFAULT_CONFIG.copy())
         return self.DEFAULT_CONFIG.copy()
 
@@ -65,50 +41,17 @@ class Config:
         try:
             with open(self.config_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=4, ensure_ascii=False)
-        except Exception as e:
-            print(f"Error guardando config: {e}")
+        except Exception as e: print(f"Error guardando config: {e}")
 
     def save(self):
         self._save_config(self.config)
-
-    def _load_or_create_keys(self) -> Dict[str, Any]:
-        p = Path(self.API_KEYS_FILE)
-        if p.exists():
-            try:
-                with open(p, "r", encoding="utf-8") as f:
-                    return json.load(f)
-            except Exception as e:
-                print(f"⚠️  Error cargando api_keys: {e}")
-        try:
-            with open(p, "w", encoding="utf-8") as f:
-                json.dump(self.DEFAULT_KEYS, f, indent=4, ensure_ascii=False)
-        except Exception as e:
-            print(f"Error creando api_keys.json: {e}")
-        return self.DEFAULT_KEYS.copy()
-
-    def save_keys(self):
-        try:
-            with open(Path(self.API_KEYS_FILE), "w", encoding="utf-8") as f:
-                json.dump(self.keys, f, indent=4, ensure_ascii=False)
-        except Exception as e:
-            print(f"Error guardando api_keys.json: {e}")
-
-    def get_key(self, provider: str, field: str = "api_key", default: str = "") -> str:
-        return self.keys.get(provider, {}).get(field, default)
-
-    def set_key(self, provider: str, field: str, value: str):
-        if provider not in self.keys:
-            self.keys[provider] = {}
-        self.keys[provider][field] = value
-        self.save_keys()
 
     def _merge_defaults(self, loaded: Dict, default: Dict) -> Dict:
         result = default.copy()
         for key, value in loaded.items():
             if key in result and isinstance(result[key], dict) and isinstance(value, dict):
                 result[key] = self._merge_defaults(value, result[key])
-            else:
-                result[key] = value
+            else: result[key] = value
         return result
 
     def _ensure_directories(self):
