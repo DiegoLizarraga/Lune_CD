@@ -6,7 +6,7 @@
     "openrouter_key": ""
   },
   "modelos": {
-    "openrouter_model": "openrouter/auto",
+    "openrouter_model": "openrouter/free",
     "ollama_url": "http://localhost:11434",
     "ollama_model": "dolphin-mistral"
   },

@@ -7,6 +7,8 @@ import subprocess
 import os
 import json
 import importlib
+import random
+from PyQt6.QtGui import QPainter
 from pathlib import Path
 from datetime import datetime
 
@@ -949,16 +951,146 @@ class LuneCDWindow(QMainWindow):
         event.accept()
 
 # ─────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+#  PANTALLA DE INICIO (SPLASH SCREEN PIXEL ART)
+# ─────────────────────────────────────────────────────────────────────────────
+class FondoEstrellasPixeladas(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.estrellas = []
+        self.colores = [QColor("#FFFF00"), QColor("#00FFFF")] # Amarillo y Azul Cian
+        
+        for _ in range(100):
+            self.crear_estrella()
+            
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.animar_estrellas)
+        self.timer.start(16) 
+
+    def crear_estrella(self):
+        x = random.randint(0, 2000)
+        y = random.randint(0, 1500)
+        tamano = random.randint(2, 4)
+        velocidad = random.uniform(0.5, 2.0)
+        color = random.choice(self.colores)
+        self.estrellas.append([x, y, tamano, velocidad, color])
+
+    def animar_estrellas(self):
+        for estrella in self.estrellas:
+            estrella[1] += estrella[3]
+            if estrella[1] > self.height():
+                estrella[1] = 0
+                estrella[0] = random.randint(0, self.width())
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.fillRect(self.rect(), QColor("#0e0f14")) 
+        for x, y, tamano, _, color in self.estrellas:
+            painter.fillRect(int(x), int(y), tamano, tamano, color)
+        painter.end()
+
+
+class PantallaInicio(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Lune CD - Iniciando Sistema...")
+        self.resize(800, 600)
+        
+        self.fondo = FondoEstrellasPixeladas(self)
+        self.setCentralWidget(self.fondo)
+        
+        layout_principal = QVBoxLayout(self.fondo)
+        layout_principal.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
+        # Marco del video pixel art
+        self.marco_video = QFrame()
+        self.marco_video.setFixedSize(640, 360)
+        self.marco_video.setStyleSheet("""
+            QFrame {
+                background-color: #161820;
+                border: 4px solid #00FFFF;
+                padding: 4px;
+            }
+        """)
+        layout_marco = QVBoxLayout(self.marco_video)
+        layout_marco.setContentsMargins(0, 0, 0, 0)
+        
+        if _MULTIMEDIA_OK:
+            self.video_widget = QVideoWidget()
+            self.reproductor = QMediaPlayer()
+            self.salida_audio = QAudioOutput()
+            
+            self.reproductor.setAudioOutput(self.salida_audio)
+            self.reproductor.setVideoOutput(self.video_widget)
+            
+            ruta_video = Path("inicio.mp4").absolute()
+            self.reproductor.setSource(QUrl.fromLocalFile(str(ruta_video)))
+            
+            # --- LA MAGIA: CONECTAR EL FINAL DEL VIDEO CON LA APP PRINCIPAL ---
+            self.reproductor.mediaStatusChanged.connect(self._revisar_estado_video)
+            
+            layout_marco.addWidget(self.video_widget)
+            layout_principal.addWidget(self.marco_video)
+            self.reproductor.play()
+        else:
+            error_lbl = QLabel("Multimedia no disponible. Faltan librerías.")
+            error_lbl.setStyleSheet("color: white;")
+            layout_marco.addWidget(error_lbl)
+            layout_principal.addWidget(self.marco_video)
+        
+        self.titulo = QLabel("L U N E  C D")
+        self.titulo.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.titulo.setStyleSheet("color: #FFFF00; font-size: 32px; font-weight: bold; letter-spacing: 4px;")
+        layout_principal.addWidget(self.titulo)
+        
+        # Botón para saltar el video
+        self.boton_entrar = QPushButton("SALTAR VIDEO / INICIAR SISTEMA")
+        self.boton_entrar.setFixedSize(300, 50)
+        self.boton_entrar.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.boton_entrar.setStyleSheet("""
+            QPushButton {
+                background-color: #0e0f14; color: #00FFFF; border: 3px solid #00FFFF;
+                font-size: 14px; font-weight: bold;
+            }
+            QPushButton:hover { background-color: #00FFFF; color: #0e0f14; }
+        """)
+        self.boton_entrar.clicked.connect(self.abrir_app_principal)
+        layout_principal.addWidget(self.boton_entrar, alignment=Qt.AlignmentFlag.AlignCenter)
+
+    def _revisar_estado_video(self, status):
+        """Verifica si el video ha terminado de reproducirse."""
+        if status == QMediaPlayer.MediaStatus.EndOfMedia:
+            self.abrir_app_principal()
+
+    def abrir_app_principal(self):
+        """Detiene el video, muestra el chat principal y cierra esta ventana."""
+        if _MULTIMEDIA_OK:
+            self.reproductor.stop()
+            
+        # Instanciamos y mostramos la ventana principal (tu código existente)
+        self.ventana_principal = LuneCDWindow()
+        self.ventana_principal.show()
+        
+        # Cerramos la pantalla de inicio
+        self.close()
 
 def main():
-    app = QApplication(sys.argv); app.setApplicationName("Lune CD")
-    try: import ctypes; ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("LuneCD.v7.5")
-    except Exception: pass
+    app = QApplication(sys.argv)
+    app.setApplicationName("Lune CD")
+    
+    try: 
+        import ctypes
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("LuneCD.v7.5")
+    except Exception: 
+        pass
 
     base_dir = os.path.dirname(os.path.abspath(__file__))
     for ext in ("ico","png"):
         icon_path = os.path.join(base_dir, f"lune_icon.{ext}")
-        if os.path.exists(icon_path): app.setWindowIcon(QIcon(icon_path)); break
+        if os.path.exists(icon_path): 
+            app.setWindowIcon(QIcon(icon_path))
+            break
 
     palette = QPalette()
     palette.setColor(QPalette.ColorRole.Window,     QColor(COLORS["bg"]))
@@ -967,7 +1099,11 @@ def main():
     palette.setColor(QPalette.ColorRole.Text,       QColor(COLORS["text"]))
     app.setPalette(palette)
 
-    window = LuneCDWindow(); window.show(); sys.exit(app.exec())
+    # AQUÍ ESTÁ EL CAMBIO: Iniciamos con la pantalla de bienvenida
+    ventana_inicio = PantallaInicio()
+    ventana_inicio.show()
+    
+    sys.exit(app.exec())
 
 if __name__ == "__main__":
     main()
