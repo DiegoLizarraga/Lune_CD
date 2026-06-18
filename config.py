@@ -28,6 +28,7 @@ class Config:
             "voz_auto": False,                   # leer en voz alta cada respuesta
             "efectos_hover": True,               # microanimaciones en la UI
             "streaming_tokens": True,            # mostrar respuesta letra por letra
+            "minimizar_a_bandeja": True,         # al cerrar, ocultar en la bandeja del sistema
         },
         # Avatar/expresiones: permite cambiar el "modelo" visual de Lune.
         "avatar": {

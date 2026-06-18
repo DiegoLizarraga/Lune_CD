@@ -13,9 +13,10 @@ from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLineEdit, QPushButton, QLabel, QScrollArea, QFrame,
     QApplication, QMessageBox, QStackedWidget,
+    QSystemTrayIcon, QMenu,
 )
 from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QFont, QColor, QPalette, QIcon
+from PyQt6.QtGui import QFont, QColor, QPalette, QIcon, QAction
 
 from config import Config
 from ai_manager import AIManager
@@ -57,6 +58,8 @@ class LuneCDWindow(QMainWindow):
         self._current_bubble  = None
         self._typing_indicator= None
         self._tg_worker       = None
+        self.tray             = None
+        self._quit_real       = False
         self.memoria          = MemoriaManager()
         self.tools            = ToolManager()
 
@@ -72,6 +75,7 @@ class LuneCDWindow(QMainWindow):
             self.voice.toggle()
 
         self._init_ui()
+        self._build_tray()
         log_info(f"Lune CD v{APP_VERSION} iniciado")
 
     # ── UI ────────────────────────────────────────────────────────────────────
@@ -502,7 +506,49 @@ class LuneCDWindow(QMainWindow):
             self.ai_manager.clear_history()
             self._add_welcome(); self.lune_face.set_state("normal")
 
+    # ── BANDEJA DEL SISTEMA (hidden items) ────────────────────────────────────
+    def _build_tray(self):
+        if not self.config.feature("minimizar_a_bandeja", True):
+            return
+        if not QSystemTrayIcon.isSystemTrayAvailable():
+            return
+        self.tray = QSystemTrayIcon(self)
+        self.tray.setIcon(self.windowIcon() if not self.windowIcon().isNull() else QIcon())
+        self.tray.setToolTip("Lune CD · IA Activa")
+
+        menu = QMenu()
+        act_open = QAction("Abrir Lune CD", self); act_open.triggered.connect(self._restore_from_tray)
+        act_cfg  = QAction("Configuración", self);  act_cfg.triggered.connect(lambda: (self._restore_from_tray(), self._toggle_keys_panel()))
+        act_quit = QAction("Salir", self);          act_quit.triggered.connect(self._quit_app)
+        menu.addAction(act_open); menu.addAction(act_cfg); menu.addSeparator(); menu.addAction(act_quit)
+        self.tray.setContextMenu(menu)
+        self.tray.activated.connect(self._on_tray_activated)
+        self.tray.show()
+
+    def _on_tray_activated(self, reason):
+        # Doble clic o clic izquierdo restaura la ventana
+        if reason in (QSystemTrayIcon.ActivationReason.DoubleClick,
+                      QSystemTrayIcon.ActivationReason.Trigger):
+            self._restore_from_tray()
+
+    def _restore_from_tray(self):
+        self.showNormal(); self.raise_(); self.activateWindow()
+
+    def _quit_app(self):
+        self._quit_real = True
+        self.close()
+
     def closeEvent(self, event):
+        # Minimizar a la bandeja en vez de salir (si está activo y hay bandeja)
+        if self.tray is not None and not self._quit_real:
+            event.ignore()
+            self.hide()
+            self.tray.showMessage(
+                "Lune CD", "Sigo aquí en la bandeja. Doble clic para abrirme.",
+                QSystemTrayIcon.MessageIcon.Information, 3000,
+            )
+            return
+
         if hasattr(self, "memoria"):
             stats = self.memoria.get_stats()
             resumen = f"Sesión del {datetime.now().strftime('%d/%m/%Y')}. Mensajes intercambiados hoy: {stats.get('total_mensajes', 0)}."
@@ -511,7 +557,10 @@ class LuneCDWindow(QMainWindow):
         if hasattr(self,"lune_face") and self.lune_face._player: self.lune_face._player.stop()
         if hasattr(self,"_tg_worker") and self._tg_worker and self._tg_worker.isRunning():
             self._tg_worker.stop(); self._tg_worker.wait(3000)
+        if self.tray is not None:
+            self.tray.hide()
         event.accept()
+        QApplication.quit()
 
 
 # ─────────────────────────────────────────────────────────────────────────────

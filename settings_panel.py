@@ -96,6 +96,7 @@ class SettingsPanel(QFrame):
             ("fondo_estrellas", "Fondo animado en la pantalla de inicio"),
             ("efectos_hover", "Microanimaciones y efectos visuales"),
             ("voz_auto", "Leer cada respuesta en voz alta al iniciar"),
+            ("minimizar_a_bandeja", "Al cerrar, mantener Lune en la bandeja del sistema"),
         ]
         for clave, etiqueta in feats:
             chk = QCheckBox(etiqueta); chk.setChecked(self.config.feature(clave, True))
