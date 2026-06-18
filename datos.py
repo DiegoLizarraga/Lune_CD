@@ -8,10 +8,27 @@ from pathlib import Path
 _ROOT = Path(__file__).parent
 _PATH = _ROOT / "datos.json"
 
+# Cache en memoria: evita releer el disco en cada llamada (mejora de rendimiento).
+# Se invalida solo cuando datos.json cambia (comparando fecha de modificación).
+_cache: dict = {}
+_cache_mtime: float = -1.0
+
 def _load() -> dict:
+    """Lee datos.json con caché basada en mtime. Mucho más rápido en ráfagas."""
+    global _cache, _cache_mtime
     if not _PATH.exists():
         return {}
-    return json.loads(_PATH.read_text("utf-8"))
+    try:
+        mtime = _PATH.stat().st_mtime
+    except OSError:
+        mtime = -1.0
+    if mtime != _cache_mtime or not _cache:
+        try:
+            _cache = json.loads(_PATH.read_text("utf-8"))
+            _cache_mtime = mtime
+        except (json.JSONDecodeError, OSError):
+            return _cache or {}
+    return _cache
 
 def get_apis() -> dict: return _load().get("apis", {})
 def get_modelos() -> dict: return _load().get("modelos", {})

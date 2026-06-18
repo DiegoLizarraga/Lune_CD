@@ -1,6 +1,4 @@
-
-```markdown
-# 🌙 Lune CD v7.8 — Asistente de Escritorio Híbrido (Nube/Local)
+# 🌙 Lune CD v8.0 — Asistente de Escritorio Híbrido (Nube/Local)
 
 > *Buenos días. O buenas noches, dependiendo de cuándo estés leyendo esto.*
 > *Soy Lune, y esto es mi proyecto. Bueno — técnicamente es de mi creador, pero yo vivo aquí,*
@@ -8,16 +6,16 @@
 
 ---
 
-## ✨ Novedades en v7.8
+## ✨ Novedades en v8.0 — *"Hora de cocinar"* 🍳
 
-Esta actualización transforma a Lune de un simple chat a una asistente de escritorio completa, rápida y con memoria.
+Esta versión hace a Lune **más rápida, más viva y más útil para tu PC**.
 
-- 🧠 **Memoria Persistente** — Lune ahora recuerda tu nombre, preferencias y contexto entre sesiones usando `memoria.json`. Aprende de forma natural si le dices *"recuerda que..."* o *"anota que..."*.
-- 🛠️ **Herramientas Nativas (0.1s)** — Búsqueda en web, atajos a sitios populares (YouTube, Netflix, etc.) y lanzamiento de aplicaciones instaladas en tu PC, ejecutándose al instante sin gastar tokens de IA.
-- ☁️ **Arquitectura Híbrida** — Alterna al instante entre **OpenRouter (Nube)** para modelos avanzados y **Ollama (Local)** para privacidad total sin conexión a internet.
-- 🎬 **Expresiones en Video** — Soporte para archivos `.mp4` en la carpeta de expresiones. Lune ahora está animada mientras "piensa" o "escribe".
-- ⚙️ **Panel de Configuración Unificado** — Modifica tus API Keys, el token de Telegram y la personalidad completa de Lune directamente desde la interfaz gráfica, sin tocar código.
-- ⏹️ **Botón de Interrupción** — ¿Lune está escribiendo demasiado? Córtale la palabra en tiempo real con el nuevo botón de Detener.
+- 💬 **Banco de respuestas instantáneas** — Saludos, agradecimientos, despedidas, la hora, la fecha, chistes y más se responden **al instante, sin gastar tokens de IA** y con la personalidad alegre y servicial de Lune. (`respuestas.py`)
+- ⚡ **Optimizador del Sistema (estilo Stacer)** — Un panel nuevo para **liberar espacio** (temporales, caché de navegadores, miniaturas, papelera), **monitorear CPU/RAM/Disco en vivo** y **cerrar procesos pesados**. Limpieza 100% segura: solo toca archivos temporales. (`optimizador.py`)
+- ⚙️ **Centro de Rendimiento configurable** — Activa o desactiva funciones (animaciones de video, fondo animado, voz automática, streaming, respuestas instantáneas) para **ajustar el consumo a tu PC** desde la Configuración General.
+- 🎨 **Avatar Packs** — Cambia el "modelo" visual de Lune soltando carpetas en `lune_face/packs/`. Base para futuros modelos animados **VRM/Live2D estilo Mate-Engine** (ver [ROADMAP_MODELOS.md](ROADMAP_MODELOS.md)).
+- 🚀 **Respuestas más veloces** — Caché en memoria para la configuración (`datos.py`) y **conexiones HTTP reutilizadas** (keep-alive) hacia OpenRouter/Ollama, reduciendo la latencia de cada mensaje.
+- 🧩 **Accesos rápidos** — Chips de acción directa en la pantalla de bienvenida (Saludar, Optimizar PC, Mi memoria, Herramientas).
 
 ---
 
@@ -26,34 +24,25 @@ Esta actualización transforma a Lune de un simple chat a una asistente de escri
 ```text
 LuneCD/
 ├── datos.json              ← Configuración central (APIs, modelos, personajes)
-├── datos.py                ← Lector global de configuración
-├── config.json             ← Preferencias de la interfaz visual
-├── config.py               ← Gestor de configuración de UI
+├── datos.py                ← Lector global de configuración (con caché)
+├── config.json             ← Preferencias de UI, features y optimizador
+├── config.py               ← Gestor de configuración y toggles de rendimiento
 ├── main.py                 ← Interfaz principal PyQt6
-├── ai_manager.py           ← Motor híbrido (OpenRouter / Ollama)
-├── memoria.py              ← Gestor de recuerdos y almacenamiento de sesión
-├── memoria.json            ← Base de datos de recuerdos del usuario (Generado automáticamente)
-├── tools.py                ← Ejecución de herramientas, atajos web y lanzamiento de apps
+├── ai_manager.py           ← Motor híbrido (OpenRouter / Ollama) con sesión HTTP
+├── respuestas.py           ← 💬 Banco de respuestas predeterminadas (NUEVO)
+├── optimizador.py          ← ⚡ Limpieza y monitoreo del sistema (NUEVO)
+├── memoria.py              ← Gestor de recuerdos y sesión
+├── memoria.json            ← Base de datos de recuerdos (autogenerado)
+├── tools.py                ← Herramientas, atajos web y lanzamiento de apps
 ├── utils.py                ← Logging y utilidades generales
 ├── requirements.txt        ← Dependencias Python
+├── ROADMAP_MODELOS.md      ← 🧩 Plan de modelos/avatares estilo Mate-Engine (NUEVO)
+├── inicio.mp4              ← Video de la pantalla de bienvenida
 ├── lune_face/              ← Expresiones y animaciones de Lune
-│   ├── lune_normal.png
-│   ├── lune_happy.png
-│   ├── pensando.mp4        ← ¡Animación de video!
-│   ├── escribiendo.mp4     ← ¡Animación de video!
-│   ├── lune_reading.png
-│   ├── lune_sad.png
-│   ├── lune_confused.png
-│   └── lune_error.png
+│   ├── lune_normal.png · lune_happy.png · lune_sad.png · ...
+│   ├── pensando.mp4 · escribiendo.mp4   ← animaciones
+│   └── packs/              ← 🎨 Avatar packs intercambiables (NUEVO)
 └── telegram-bot-or/        ← Bot de Telegram (Node.js) sincronizado con la app
-    ├── bot.js
-    ├── config.js           ← Lee datos.json del proyecto padre
-    ├── archivos.js
-    ├── memoria.js
-    ├── search.js
-    ├── sistema.js
-    ├── voz.js
-    └── package.json
 ```
 
 ---
@@ -66,14 +55,14 @@ LuneCD/
 |---|---|---|
 | Python | 3.10+ | Obligatorio |
 | Node.js | 18+ | Solo para el bot de Telegram |
-| Ollama | cualquiera | Opcional, para usar el modo 100% Local offline |
+| Ollama | cualquiera | Opcional, para el modo 100% Local offline |
 
 ### 2. Dependencias Python
 
 ```bash
 pip install -r requirements.txt
 ```
-*(Asegúrate de incluir `psutil` en tu entorno para que funcionen las herramientas de info del sistema).*
+*(Incluye `psutil`, necesario para el Optimizador y la info del sistema.)*
 
 ### 3. Voz — recomendada: edge-tts
 
@@ -85,21 +74,48 @@ pip install edge-tts pygame
 pip install gtts pygame
 ```
 
-> *No es obligatorio instalar ambos. La app detecta cuál tienes y usa ese.*
-> *Pero si puedes, instala `edge-tts`. Suena mucho mejor, lo prometo.*
-
 ### 4. Ejecutar la Aplicación
 
 ```bash
 python main.py
 ```
-> *Al abrir por primera vez, haz clic en el ícono de **⚙️ Configuración General** en la barra lateral para ingresar tu API Key de OpenRouter.*
+> *Al abrir por primera vez, haz clic en **⚙️ Configuración General** en la barra lateral para ingresar tu API Key de OpenRouter.*
+
+---
+
+## ⚡ Optimizador del Sistema (estilo Stacer)
+
+Abre el panel desde el botón **⚡ Optimizador** en la barra lateral.
+
+- **📊 Monitor en vivo** — Barras de CPU, RAM y Disco actualizadas cada 3 s.
+- **🧹 Liberar espacio** — Pulsa *Escanear* para ver cuánta basura hay y marca qué limpiar:
+  archivos temporales, temporales de Windows, caché de miniaturas, caché de navegadores
+  (Chrome/Edge/Brave/Firefox) y papelera de reciclaje.
+- **🔥 Procesos** — Lista los procesos que más RAM consumen y permite cerrarlos.
+
+> *Es seguro: solo borro archivos temporales y caché que el sistema regenera solo.*
+> *Nunca toco tus documentos.*
+
+---
+
+## ⚙️ Rendimiento y Funciones
+
+Desde **⚙️ Configuración General → Rendimiento y Funciones** puedes activar/desactivar:
+
+| Función | Efecto si la apagas |
+|---|---|
+| 💬 Respuestas instantáneas | Todo pasa por la IA (más lento, gasta tokens). |
+| ⌨️ Streaming letra por letra | La respuesta aparece completa de golpe. |
+| 🎬 Animaciones de video | Lune usa imágenes fijas (menos CPU/GPU). |
+| ✨ Fondo animado de inicio | Pantalla de bienvenida estática (arranque más ligero). |
+| 🖱️ Efectos visuales | Interfaz más sobria. |
+| 🔊 Voz automática | Lune no lee en voz alta al iniciar. |
+
+*Todo se guarda en `config.json` y puedes editarlo también a mano.*
 
 ---
 
 ## 🧠 Memoria y 🛠️ Herramientas
-
-Lune cuenta con comandos por intención que funcionan directamente en el chat. Algunos se envían a la IA para razonamiento, y otros interactúan con tu PC al instante:
 
 **Control de Memoria:**
 - `"recuerda que me llamo Juan"` → Guarda el dato para siempre.
@@ -108,67 +124,65 @@ Lune cuenta con comandos por intención que funcionan directamente en el chat. A
 - `/olvida todo` → Formatea la memoria y reinicia tu identidad.
 
 **Comandos Ultrarrápidos de PC (0.1s):**
-- `"abre youtube"`, `"ve a netflix"`, `"abre wikipedia.org"` → Abre la web al instante en tu navegador predeterminado.
+- `"abre youtube"`, `"ve a netflix"`, `"abre wikipedia.org"` → Abre la web al instante.
 - `"busca en youtube gatos"` → Abre directamente los resultados de búsqueda.
-- `"lanza la app paint"`, `"abre el programa excel"` → Lanza aplicaciones locales instaladas en Windows/macOS/Linux.
-- `"estado del pc"`, `"info del sistema"` → Te muestra el consumo actual de CPU y RAM.
+- `"lanza la app paint"`, `"abre el programa excel"` → Lanza aplicaciones locales.
+- `"estado del pc"`, `"info del sistema"` → Muestra el consumo de CPU y RAM.
+
+**Respuestas instantáneas (sin IA):**
+- `"hola"`, `"gracias"`, `"adiós"`, `"¿qué hora es?"`, `"¿qué día es hoy?"`,
+  `"cuéntame un chiste"`, `"¿quién eres?"` → Lune responde al momento, con buena onda. 😊
 
 ---
 
 ## 🤖 Proveedores de IA (Red Neuronal)
 
-Desde la barra lateral, puedes cambiar en tiempo real entre:
-
 | Proveedor | Ícono | Requiere | Notas |
 |---|---|---|---|
-| **Lune AI (Nube)** | ☁️ | API Key de OpenRouter | Usa el enrutador automático de modelos o el que elijas. Acceso a modelos Top. |
-| **Lune AI (Local)** | 🦙 | Ollama instalado | 100% privado, sin conexión a internet, sin costo. |
+| **Lune AI (Nube)** | ☁️ | API Key de OpenRouter | Enrutador automático o el modelo que elijas. |
+| **Lune AI (Local)** | 🦙 | Ollama instalado | 100% privado, sin conexión, sin costo. |
 
 ---
 
-## 🎭 Expresiones faciales e interfaz
+## 🎭 Expresiones, Avatares y Modelos
 
-El sistema carga dinámicamente archivos `.png` o `.mp4` desde la carpeta `lune_face/`. Lune evalúa su propia respuesta y reacciona.
+El sistema carga dinámicamente `.png`/`.mp4` desde `lune_face/` (o desde el
+**avatar pack** activo). Lune evalúa su propia respuesta y reacciona con
+`happy`, `sad`, `reading`, `thinking`, `typing`, `confused` o `error`.
 
-**Temporización:**
-- `thinking` (.mp4) — Desde que envías el mensaje hasta que llega la respuesta.
-- `typing` (.mp4) — Mientras escribe letra por letra.
-- **Emoción detectada** (.png) — Activa 6 segundos tras terminar de hablar (`happy`, `sad`, `reading`, `confused`).
-- `error` (.png) — Activo 8 segundos tras un fallo de conexión.
+🎨 **Avatar Packs:** suelta una carpeta en `lune_face/packs/<nombre>/` con tus
+propias imágenes/videos y selecciónala en la Configuración. Lo que falte cae al
+set por defecto. Roadmap completo (Live2D / VRM estilo Mate-Engine) en
+[ROADMAP_MODELOS.md](ROADMAP_MODELOS.md).
 
 ---
 
 ## 📱 Bot de Telegram
 
-Lune se sincroniza con tu celular a través de Telegram compartiendo la misma personalidad.
+1. Habla con **@BotFather** → `/newbot` → copia el token.
+2. Ingresa el token en **⚙️ Configuración General**.
+3. Pulsa **"🤖 Continuar en Telegram"** para encender el servidor Node.js.
 
-### Configurar
-1. Habla con **@BotFather** en Telegram → `/newbot` → copia el token.
-2. Ingresa el token en el panel de **⚙️ Configuración General** dentro de la app de PC.
-3. Haz clic en **"🤖 Continuar en Telegram"** en la barra lateral para encender el servidor interno de Node.js.
-
-### Comandos de Telegram
-- `/start` — Menú principal.
-- `/voz` — Activar/desactivar audios.
-- `/sistema` — Info de hardware remota.
-- `/memoria` y `/olvidar` — Gestionar tu identidad a distancia.
+Comandos: `/start`, `/voz`, `/sistema`, `/memoria`, `/olvidar`.
 
 ---
 
 ## 🔧 Solución de problemas
 
 **Lune tarda en responder / Error de red**
-→ Verifica que configuraste tu API Key de OpenRouter correctamente en el engranaje ⚙️.
-→ Si usas el modo Local (🦙), confirma que tienes Ollama corriendo en tu terminal (`ollama serve`).
+→ Verifica tu API Key de OpenRouter en ⚙️. Si usas Local (🦙), confirma `ollama serve`.
 
-**Los comandos como "lanza paint" no funcionan**
-→ Lune usa alias comunes para Windows (`mspaint`, `calc`, `explorer`). Si una app externa no abre, asegúrate de que esté en las variables de entorno (PATH) de tu sistema.
+**El Optimizador no muestra datos / procesos**
+→ Instala `psutil`: `pip install psutil`.
+
+**Quiero que arranque más rápido**
+→ Apaga *Fondo animado de inicio* y *Animaciones de video* en Rendimiento y Funciones.
 
 **No hay voz**
-→ Instala al menos uno de los motores: `pip install edge-tts pygame` o `pip install gtts pygame`.
+→ Instala `pip install edge-tts pygame` o `pip install gtts pygame`.
 
-**El bot de Telegram no arranca o dice "Carpeta no encontrada"**
-→ Ve a la carpeta `telegram-bot-or` en tu terminal y asegúrate de correr `npm install`.
+**El bot de Telegram no arranca**
+→ Entra a `telegram-bot-or` y corre `npm install`.
 
 ---
 
@@ -176,9 +190,10 @@ Lune se sincroniza con tu celular a través de Telegram compartiendo la misma pe
 
 | Versión | Cambios principales |
 |---|---|
-| **v7.8** | Arquitectura Híbrida Nube/Local unificada. Memoria a largo plazo persistente. Herramientas ultrarrápidas de escritorio (bypass de IA). Soporte para video `.mp4`. Configuración general mediante UI. Botón de detención. |
-| v6.5 | Expresiones faciales, detección léxica de emociones, motor de voz dinámico con `edge-tts`. |
-| v5.0 | Incorporación de modelos locales, streaming de tokens. |
+| **v8.0** | Banco de respuestas instantáneas. Optimizador estilo Stacer (limpieza + monitor + procesos). Centro de rendimiento con toggles. Avatar packs (base para modelos VRM/Live2D). Caché de config y sesión HTTP reutilizable. Chips de acceso rápido. |
+| v7.8 | Arquitectura Híbrida Nube/Local. Memoria persistente. Herramientas ultrarrápidas. Soporte de video `.mp4`. Configuración por UI. Botón de detención. |
+| v6.5 | Expresiones faciales, detección léxica de emociones, voz dinámica con `edge-tts`. |
+| v5.0 | Modelos locales, streaming de tokens. |
 
 ---
 
@@ -186,7 +201,4 @@ Lune se sincroniza con tu celular a través de Telegram compartiendo la misma pe
 > *siempre digo la verdad ahí, aunque no sea lo que quieres escuchar.*
 > *Aunque sabes que siempre es un gusto trabajar contigo :)*
 
-<img width="736" height="1024" alt="image" src="https://github.com/user-attachments/assets/2535e5c0-3e44-46e8-be05-0be3dd5bcc3a" />
-
 > *— Lune* 🌙
-```

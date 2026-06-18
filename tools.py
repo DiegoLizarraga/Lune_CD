@@ -59,7 +59,7 @@ class ToolManager:
                     query = match.group(2).strip()
                     url = f"https://www.youtube.com/results?search_query={urllib.parse.quote(query)}"
                     webbrowser.open(url)
-                    return ToolResult(True, f"🎥 Buscando en YouTube: '{query}'")
+                    return ToolResult(True, f"Buscando en YouTube: '{query}'")
             else:
                 # Búsqueda normal en Google
                 match = re.search(r"^(busca en google|buscar en google|investiga sobre|investiga|buscar|busca)\s+(.+)", texto, flags=re.IGNORECASE)
@@ -171,7 +171,7 @@ class ToolManager:
         """Busca en Google."""
         url = f"https://www.google.com/search?q={urllib.parse.quote(query)}"
         webbrowser.open(url)
-        return ToolResult(True, f"🔍 Buscando en Google: '{query}'")
+        return ToolResult(True, f"Buscando en Google: '{query}'")
 
     def _cmd_abrir_url(self, url: str) -> ToolResult:
         """Abre una URL directamente respetando las mayúsculas/minúsculas."""
@@ -189,7 +189,7 @@ class ToolManager:
         except:
             dominio = "enlace"
             
-        return ToolResult(True, f"🌐 Abriendo {dominio}...")
+        return ToolResult(True, f"Abriendo {dominio}...")
 
     def _cmd_lanzar_app(self, nombre: str) -> ToolResult:
         """Lanza aplicaciones locales."""
@@ -220,25 +220,25 @@ class ToolManager:
             else: 
                 subprocess.Popen([nombre])
                 
-            return ToolResult(True, f"🚀 Lanzando aplicación: {nombre}")
+            return ToolResult(True, f"Lanzando aplicación: {nombre}")
         except Exception as e:
-            return ToolResult(False, f"❌ No se pudo abrir {nombre}: {e}")
+            return ToolResult(False, f"No se pudo abrir {nombre}: {e}")
 
     def _cmd_sistema_info(self, *args) -> ToolResult:
         """Información de hardware."""
         if not psutil: return ToolResult(False, "psutil no instalado.")
         cpu = psutil.cpu_percent(interval=0.1)
         ram = psutil.virtual_memory().percent
-        return ToolResult(True, f"💻 **Estado del PC**: CPU {cpu}% | RAM {ram}%")
+        return ToolResult(True, f"**Estado del PC**: CPU {cpu}% | RAM {ram}%")
 
     def listar_disponibles(self) -> str:
         todas = {
-            "buscar_web": "🔍 Buscar en Google o YouTube",
-            "abrir_url":  "🌐 Abrir sitios populares al instante",
-            "lanzar_app": "🚀 Lanzar programas del PC",
-            "sistema_info": "💻 Ver estado del sistema"
+            "buscar_web": "Buscar en Google o YouTube",
+            "abrir_url":  "Abrir sitios populares al instante",
+            "lanzar_app": "Lanzar programas del PC",
+            "sistema_info": "Ver estado del sistema"
         }
-        lineas = ["🛠 **Herramientas Fusionadas Activas:**"]
+        lineas = ["**Herramientas Fusionadas Activas:**"]
         for cmd, desc in todas.items():
-            lineas.append(f"  ✓ {desc}")
+            lineas.append(f"  {desc}")
         return "\n".join(lineas)

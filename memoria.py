@@ -57,11 +57,11 @@ from typing import Optional
 MEMORIA_PATH = Path(__file__).parent / "memoria.json"
 
 TIPOS_RECUERDO = {
-    "hecho":        "📌",
-    "preferencia":  "❤️",
-    "recordatorio": "⏰",
-    "tarea":        "✅",
-    "general":      "🧠",
+    "hecho":        "·",
+    "preferencia":  "·",
+    "recordatorio": "·",
+    "tarea":        "·",
+    "general":      "·",
 }
 
 # Palabras clave para detectar intención de guardar en la conversación
@@ -160,7 +160,7 @@ class MemoriaManager:
             recientes = sorted(recuerdos, key=lambda r: r["fecha"], reverse=True)[:15]
             lineas = []
             for r in recientes:
-                emoji = TIPOS_RECUERDO.get(r.get("tipo", "general"), "🧠")
+                emoji = TIPOS_RECUERDO.get(r.get("tipo", "general"), "")
                 fecha_corta = r["fecha"][:10]
                 lineas.append(f"  {emoji} [{fecha_corta}] {r['contenido']}")
             partes.append("Lo que sé sobre el usuario:\n" + "\n".join(lineas))
@@ -226,7 +226,7 @@ class MemoriaManager:
                 tipo = self._detectar_tipo(contenido)
                 rid = self.agregar_recuerdo(contenido, tipo)
                 self._guardar()
-                emoji = TIPOS_RECUERDO.get(tipo, "🧠")
+                emoji = TIPOS_RECUERDO.get(tipo, "")
                 return f"{emoji} Anotado: *{contenido}*"
 
         return None  # conversación normal
@@ -283,13 +283,13 @@ class MemoriaManager:
     def _cmd_listar(self) -> str:
         recuerdos = self._data.get("recuerdos", [])
         if not recuerdos:
-            return "📭 No tengo nada guardado todavía. Dime *'recuerda que...'* para empezar."
+            return "No tengo nada guardado todavía. Dime *'recuerda que...'* para empezar."
 
         usuario = self._data.get("usuario", {})
-        lineas = ["🧠 **Lo que sé sobre ti:**\n"]
+        lineas = ["**Lo que sé sobre ti:**\n"]
 
         if nombre := usuario.get("nombre"):
-            lineas.append(f"👤 Nombre: {nombre}")
+            lineas.append(f"Nombre: {nombre}")
 
         por_tipo: dict[str, list] = {}
         for r in sorted(recuerdos, key=lambda x: x["fecha"], reverse=True):
@@ -297,14 +297,14 @@ class MemoriaManager:
             por_tipo.setdefault(t, []).append(r)
 
         for tipo, items in por_tipo.items():
-            emoji = TIPOS_RECUERDO.get(tipo, "🧠")
+            emoji = TIPOS_RECUERDO.get(tipo, "")
             lineas.append(f"\n{emoji} **{tipo.capitalize()}:**")
             for r in items[:10]:
                 fecha = r["fecha"][:10]
                 lineas.append(f"  `{r['id']}` [{fecha}] {r['contenido']}")
 
         stats = self._data.get("estadisticas", {})
-        lineas.append(f"\n📊 Total de mensajes: {stats.get('total_mensajes', 0)}")
+        lineas.append(f"\nTotal de mensajes: {stats.get('total_mensajes', 0)}")
         lineas.append("*Usa /olvida [id] para borrar un recuerdo.*")
         return "\n".join(lineas)
 
@@ -319,11 +319,11 @@ class MemoriaManager:
                 None
             )
         if idx is None:
-            return f"❌ No encontré ningún recuerdo con *'{fragmento}'*. Usa /memoria para ver los IDs."
+            return f"No encontré ningún recuerdo con *'{fragmento}'*. Usa /memoria para ver los IDs."
 
         borrado = recuerdos.pop(idx)
         self._guardar()
-        return f"🗑 Olvidado: *{borrado['contenido']}*"
+        return f"Olvidado: *{borrado['contenido']}*"
 
     def _cmd_olvida_todo(self) -> str:
         n = len(self._data.get("recuerdos", []))
@@ -331,7 +331,7 @@ class MemoriaManager:
         self._data["usuario"]["nombre"] = None
         self._data["resumen_sesion_anterior"] = ""
         self._guardar()
-        return f"🗑 Memoria borrada. Eliminé {n} recuerdos. Empezamos de cero."
+        return f"Memoria borrada. Eliminé {n} recuerdos. Empezamos de cero."
 
     def _detectar_tipo(self, texto: str) -> str:
         texto_l = texto.lower()

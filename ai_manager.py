@@ -5,6 +5,11 @@ from abc import ABC, abstractmethod
 from typing import Callable, Dict, Optional
 import datos
 
+# Sesión HTTP compartida: reutiliza conexiones (keep-alive) en lugar de abrir
+# una nueva por cada mensaje. Reduce notablemente la latencia de respuesta.
+_session = requests.Session()
+_session.headers.update({"User-Agent": "LuneCD/8.0"})
+
 class AIProvider(ABC):
     def __init__(self):
         self.cancel_flag = False
@@ -25,14 +30,14 @@ class OllamaProvider(AIProvider):
         self.conversation_history = []
 
     async def chat(self, message: str, system_prompt: str = "", on_token: Callable = None) -> str:
-        if not message or not message.strip(): return "❌ El mensaje está vacío"
+        if not message or not message.strip(): return "El mensaje está vacío"
         self.conversation_history.append({"role": "user", "content": message})
         messages = self.conversation_history.copy()
         if system_prompt: messages.insert(0, {"role": "system", "content": system_prompt})
 
         def _call():
             try:
-                response = requests.post(f"{self.url}/api/chat", json={"model": self.model, "messages": messages, "stream": True}, timeout=120, stream=True)
+                response = _session.post(f"{self.url}/api/chat", json={"model": self.model, "messages": messages, "stream": True}, timeout=120, stream=True)
                 response.raise_for_status()
                 full_response = ""
                 for line in response.iter_lines():
@@ -44,16 +49,16 @@ class OllamaProvider(AIProvider):
                         if on_token: on_token(token)
                         if chunk.get("done"): break
                 return full_response
-            except Exception as e: return f"❌ Error Ollama: {str(e)}"
+            except Exception as e: return f"Error Ollama: {str(e)}"
 
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(None, _call)
-        if not result.startswith("❌") and not self.cancel_flag:
+        if not result.startswith("Error Ollama:") and not self.cancel_flag:
             self.conversation_history.append({"role": "assistant", "content": result})
         return result
 
     def is_available(self) -> bool:
-        try: return requests.get(f"{self.url}/api/tags", timeout=3).status_code == 200
+        try: return _session.get(f"{self.url}/api/tags", timeout=3).status_code == 200
         except: return False
 
     def clear_history(self): self.conversation_history = []
@@ -69,14 +74,14 @@ class OpenRouterProvider(AIProvider):
         self.conversation_history = []
 
     async def chat(self, message: str, system_prompt: str = "", on_token: Callable = None) -> str:
-        if not self.api_key: return "❌ API key de OpenRouter no configurada."
+        if not self.api_key: return "API key de OpenRouter no configurada."
         self.conversation_history.append({"role": "user", "content": message})
         messages = self.conversation_history.copy()
         if system_prompt: messages.insert(0, {"role": "system", "content": system_prompt})
 
         def _call():
             try:
-                response = requests.post(self.BASE_URL, headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json", "HTTP-Referer": "https://lunecd.local", "X-Title": "Lune CD"}, json={"model": self.model, "messages": messages, "stream": True}, timeout=60, stream=True)
+                response = _session.post(self.BASE_URL, headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json", "HTTP-Referer": "https://lunecd.local", "X-Title": "Lune CD"}, json={"model": self.model, "messages": messages, "stream": True}, timeout=60, stream=True)
                 response.raise_for_status()
                 full_response = ""
                 for line in response.iter_lines():
@@ -95,11 +100,11 @@ class OpenRouterProvider(AIProvider):
                                         if on_token: on_token(token)
                             except json.JSONDecodeError: pass
                 return full_response
-            except Exception as e: return f"❌ Error OpenRouter: {str(e)}"
+            except Exception as e: return f"Error OpenRouter: {str(e)}"
 
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(None, _call)
-        if not result.startswith("❌") and not self.cancel_flag:
+        if not result.startswith("Error OpenRouter:") and not self.cancel_flag:
             self.conversation_history.append({"role": "assistant", "content": result})
         return result
 
@@ -122,7 +127,7 @@ class AIManager:
         self._init_providers()
 
     async def chat(self, message: str, system_prompt: str = "", provider: Optional[str] = "openrouter", on_token: Callable = None) -> str:
-        if provider not in self.providers: return f"❌ Proveedor '{provider}' no disponible"
+        if provider not in self.providers: return f"Proveedor '{provider}' no disponible"
         return await self.providers[provider].chat(message, system_prompt, on_token=on_token)
 
     def clear_history(self, provider: Optional[str] = None):

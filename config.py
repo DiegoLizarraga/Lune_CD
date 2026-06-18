@@ -20,6 +20,26 @@ class Config:
             "documents": "./documents", "downloads": "./downloads",
             "cache": "./cache", "logs": "./logs",
         },
+        # Activa/desactiva funciones para ajustar rendimiento y consumo.
+        "features": {
+            "respuestas_predeterminadas": True,  # respuestas instantáneas sin IA
+            "animaciones_video": True,           # caras .mp4 (cuesta CPU/GPU)
+            "fondo_estrellas": True,             # splash animado al iniciar
+            "voz_auto": False,                   # leer en voz alta cada respuesta
+            "efectos_hover": True,               # microanimaciones en la UI
+            "streaming_tokens": True,            # mostrar respuesta letra por letra
+        },
+        # Avatar/expresiones: permite cambiar el "modelo" visual de Lune.
+        "avatar": {
+            "pack": "default",                   # carpeta lune_face/ por defecto
+        },
+        # Optimizador estilo Stacer: qué categorías limpiar por defecto.
+        "optimizador": {
+            "categorias_activas": [
+                "temp_usuario", "temp_windows", "miniaturas", "cache_navegadores",
+            ],
+            "confirmar_antes_de_limpiar": True,
+        },
     }
 
     def __init__(self, config_path: str = "config.json"):
@@ -32,7 +52,11 @@ class Config:
             try:
                 with open(self.config_path, "r", encoding="utf-8") as f:
                     loaded = json.load(f)
-                return self._merge_defaults(loaded, self.DEFAULT_CONFIG)
+                merged = self._merge_defaults(loaded, self.DEFAULT_CONFIG)
+                # Persistir si el esquema creció (nuevas secciones de v8.0)
+                if merged != loaded:
+                    self._save_config(merged)
+                return merged
             except Exception: pass
         self._save_config(self.DEFAULT_CONFIG.copy())
         return self.DEFAULT_CONFIG.copy()
@@ -45,6 +69,22 @@ class Config:
 
     def save(self):
         self._save_config(self.config)
+
+    # ── Acceso cómodo a features ───────────────────────────────────────────────
+    def feature(self, nombre: str, default: bool = True) -> bool:
+        """Devuelve si una función está activada (sección 'features')."""
+        return bool(self.config.get("features", {}).get(nombre, default))
+
+    def set_feature(self, nombre: str, valor: bool):
+        self.config.setdefault("features", {})[nombre] = bool(valor)
+        self.save()
+
+    def get(self, seccion: str, clave: str, default=None):
+        return self.config.get(seccion, {}).get(clave, default)
+
+    def set(self, seccion: str, clave: str, valor):
+        self.config.setdefault(seccion, {})[clave] = valor
+        self.save()
 
     def _merge_defaults(self, loaded: Dict, default: Dict) -> Dict:
         result = default.copy()
