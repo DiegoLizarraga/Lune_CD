@@ -97,6 +97,7 @@ PROVIDER_META = {
     "openrouter": {
         "label": "LUNE AI · NUBE",
         "icon": "◇",
+        "svg": "cloud",
         "color": COLORS["blue_soft"],
         "dark": COLORS["blue_dark"],
         "desc": "Enrutamiento inteligente",
@@ -105,6 +106,7 @@ PROVIDER_META = {
     "ollama": {
         "label": "LUNE AI · LOCAL",
         "icon": "◆",
+        "svg": "cpu",
         "color": COLORS["cyan"],
         "dark": COLORS["cyan_dark"],
         "desc": "Offline · sin red",

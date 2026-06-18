@@ -9,6 +9,15 @@ from PyQt6.QtWidgets import QFrame, QVBoxLayout, QLabel
 from PyQt6.QtCore import Qt, QTimer, QUrl
 from PyQt6.QtGui import QFont, QPixmap
 
+from theme import COLORS, FONT_MONO, FONT_JP
+
+# Etiqueta de estado que se muestra en el escenario de la mascota (月 EN LÍNEA)
+STATE_LABELS = {
+    "normal": "EN LÍNEA", "happy": "OK", "reading": "LEYENDO",
+    "thinking": "PENSANDO", "typing": "ESCRIBIENDO",
+    "sad": "EN PAUSA", "confused": "???", "error": "ERROR",
+}
+
 try:
     from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
     from PyQt6.QtMultimediaWidgets import QVideoWidget
@@ -108,10 +117,27 @@ class LuneFaceWidget(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setFixedSize(196, 260)
-        self.setStyleSheet("QFrame { background: transparent; border: none; }")
+        # Escenario "Shibuya Punk": fondo tinta + marco neón cyan
+        self.setStyleSheet(
+            f"LuneFaceWidget {{ background:{COLORS['bg']}; "
+            f"border:2px solid {COLORS['cyan_dark']}; border-radius:3px; }}"
+        )
         self._current_state = "normal"
 
         layout = QVBoxLayout(self); layout.setContentsMargins(0, 0, 0, 0); layout.setSpacing(0)
+
+        # Etiqueta de estado (月 EN LÍNEA) arriba a la izquierda del escenario
+        self.state_tag = QLabel("月 EN LÍNEA")
+        self.state_tag.setFont(QFont(FONT_MONO, 8, QFont.Weight.Bold))
+        self.state_tag.setStyleSheet(
+            f"color:{COLORS['accent']};background:{COLORS['bg']};"
+            f"border:1px solid {COLORS['cyan_dark']};padding:2px 6px;"
+        )
+        self.state_tag.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        tag_row = QVBoxLayout(); tag_row.setContentsMargins(6, 6, 6, 0)
+        tag_row.addWidget(self.state_tag, 0, Qt.AlignmentFlag.AlignLeft)
+        layout.addLayout(tag_row)
+
         self.image_label = QLabel(); self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter); self.image_label.setScaledContents(False)
         self.image_label.setStyleSheet("background: transparent; border: none;"); layout.addWidget(self.image_label)
 
@@ -155,5 +181,12 @@ class LuneFaceWidget(QFrame):
     def set_state(self, state: str, auto_revert_ms: int = 0):
         if state == self._current_state: return
         self._current_state = state; self._load_face(state)
+        # Tinte de la etiqueta según el estado (error=rojo, normal/feliz=cyan)
+        tag_color = COLORS["error"] if state == "error" else COLORS["accent"]
+        self.state_tag.setText(f"月 {STATE_LABELS.get(state, 'EN LÍNEA')}")
+        self.state_tag.setStyleSheet(
+            f"color:{tag_color};background:{COLORS['bg']};"
+            f"border:1px solid {tag_color};padding:2px 6px;"
+        )
         if auto_revert_ms > 0: self._revert_timer.start(auto_revert_ms)
         else: self._revert_timer.stop()

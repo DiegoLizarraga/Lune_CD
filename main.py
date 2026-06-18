@@ -13,10 +13,10 @@ from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLineEdit, QPushButton, QLabel, QScrollArea, QFrame,
     QApplication, QMessageBox, QStackedWidget,
-    QSystemTrayIcon, QMenu,
+    QSystemTrayIcon, QMenu, QGridLayout,
 )
-from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QFont, QColor, QPalette, QIcon, QAction
+from PyQt6.QtCore import Qt, QTimer, QSize, QEvent
+from PyQt6.QtGui import QFont, QColor, QPalette, QIcon, QAction, QPixmap, QFontDatabase
 
 from config import Config
 from ai_manager import AIManager
@@ -32,6 +32,8 @@ from theme import (
 )
 import lune_face
 from lune_face import LuneFaceWidget, detect_emotion
+from icons import icon, icon_pixmap
+from effects import apply_glow, clear_glow
 from voice import VoiceEngine
 from telegram_worker import TelegramBotWorker
 from chat_widgets import ProviderTab, MessageBubble, TypingIndicator
@@ -101,24 +103,26 @@ class LuneCDWindow(QMainWindow):
         sidebar.setStyleSheet(f"QFrame{{background:{COLORS['surface']};border-right:2px solid {COLORS['border']};}}")
         layout = QVBoxLayout(sidebar); layout.setContentsMargins(12,20,12,16); layout.setSpacing(4)
 
-        logo_row = QHBoxLayout()
-        moon = QLabel("月"); moon.setFont(QFont(FONT_JP,20,QFont.Weight.Bold)); moon.setStyleSheet(f"color:{COLORS['yellow']};background:transparent;")
-        title = QVBoxLayout(); title.setSpacing(0)
-        nombre_bot = datos.get_personaje(datos.get_bot().get("personaje_default","Lune")).get("nombre", "Lune AI")
-        self.sidebar_t1 = QLabel(nombre_bot.upper())
-        self.sidebar_t1.setFont(QFont(FONT_DISPLAY,14,QFont.Weight.Bold)); self.sidebar_t1.setStyleSheet(f"color:{COLORS['text']};background:transparent;letter-spacing:2px;")
-        t2 = QLabel(f"ルネ · HÍBRIDO v{APP_VERSION}"); t2.setFont(QFont(FONT_MONO,8)); t2.setStyleSheet(f"color:{COLORS['accent']};background:transparent;")
+        # ── MARCA: logo en caja + "LUNE CD" (CD en cyan) ──
+        logo_row = QHBoxLayout(); logo_row.setSpacing(11)
+        mark = QLabel(); mark.setFixedSize(42, 42)
+        icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "lune_icon.png")
+        if os.path.exists(icon_path):
+            pm = QPixmap(icon_path).scaled(40, 40, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+            mark.setPixmap(pm); mark.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        else:
+            mark.setText("月"); mark.setFont(QFont(FONT_JP, 20, QFont.Weight.Bold)); mark.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        mark.setStyleSheet(f"background:{COLORS['bg']};border:2px solid {COLORS['cyan_dark']};border-radius:2px;color:{COLORS['yellow']};")
+        title = QVBoxLayout(); title.setSpacing(2)
+        nombre_bot = datos.get_personaje(datos.get_bot().get("personaje_default","Lune")).get("nombre", "Lune")
+        self.sidebar_t1 = QLabel(f"<span style='color:{COLORS['text']};'>{nombre_bot.upper()} </span><span style='color:{COLORS['accent']};'>CD</span>")
+        self.sidebar_t1.setFont(QFont(FONT_DISPLAY,15,QFont.Weight.Bold)); self.sidebar_t1.setStyleSheet("background:transparent;letter-spacing:2px;")
+        t2 = QLabel(f"ルネ · HÍBRIDO v{APP_VERSION}"); t2.setFont(QFont(FONT_MONO,8)); t2.setStyleSheet(f"color:{COLORS['text_dim']};background:transparent;letter-spacing:1px;")
         title.addWidget(self.sidebar_t1); title.addWidget(t2)
-        logo_row.addWidget(moon); logo_row.addLayout(title,1)
+        logo_row.addWidget(mark); logo_row.addLayout(title,1)
         layout.addLayout(logo_row)
 
-        sep = QFrame(); sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setStyleSheet(f"background:{COLORS['border']};margin:8px 0;"); sep.setFixedHeight(1)
-        layout.addWidget(sep)
-
-        lbl = QLabel("// RED NEURONAL"); lbl.setFont(QFont(FONT_MONO,8,QFont.Weight.Bold))
-        lbl.setStyleSheet(f"color:{COLORS['accent']};background:transparent;padding:4px 4px 4px 6px;letter-spacing:2px;")
-        layout.addWidget(lbl)
+        layout.addWidget(self._overline("// RED NEURONAL"))
 
         self.provider_tabs = {}
         for pid, meta in PROVIDER_META.items():
@@ -130,53 +134,71 @@ class LuneCDWindow(QMainWindow):
 
         layout.addStretch()
 
+        # ── ESCENARIO DE LA MASCOTA ──
         self.lune_face = LuneFaceWidget()
         fc = QHBoxLayout(); fc.setContentsMargins(0,0,0,0)
         fc.addStretch(); fc.addWidget(self.lune_face); fc.addStretch()
         layout.addLayout(fc)
 
-        for _ in range(2):
-            sep = QFrame(); sep.setFrameShape(QFrame.Shape.HLine)
-            sep.setStyleSheet(f"background:{COLORS['border']};margin:4px 0;"); sep.setFixedHeight(1)
-            layout.addWidget(sep)
-            if _ == 0:
-                self.telegram_btn = QPushButton("  CONTINUAR EN TELEGRAM")
-                self.telegram_btn.setCursor(Qt.CursorShape.PointingHandCursor); self.telegram_btn.setFont(QFont("Segoe UI",10)); self.telegram_btn.setFixedHeight(42)
-                self._set_telegram_btn_style(False)
-                self.telegram_btn.clicked.connect(self._toggle_telegram)
-                layout.addWidget(self.telegram_btn)
-                self.telegram_status = QLabel("")
-                self.telegram_status.setFont(QFont("Segoe UI",8)); self.telegram_status.setStyleSheet(f"color:{COLORS['text_muted']};background:transparent;padding-left:8px;")
-                self.telegram_status.setWordWrap(True)
-                layout.addWidget(self.telegram_status)
+        layout.addSpacing(16)  # aire entre la mascota y el botón de Telegram
 
-        self._keys_btn = self._sidebar_btn("CONFIGURACIÓN GENERAL")
-        self._keys_btn.clicked.connect(self._toggle_keys_panel); layout.addWidget(self._keys_btn)
+        # ── TELEGRAM ──
+        self.telegram_btn = QPushButton("  CONTINUAR EN TELEGRAM")
+        self.telegram_btn.setCursor(Qt.CursorShape.PointingHandCursor); self.telegram_btn.setFont(QFont(FONT_DISPLAY,10,QFont.Weight.Bold)); self.telegram_btn.setFixedHeight(42)
+        self._set_telegram_btn_style(False)
+        self.telegram_btn.clicked.connect(self._toggle_telegram)
+        layout.addWidget(self.telegram_btn)
+        self.telegram_status = QLabel("")
+        self.telegram_status.setFont(QFont(FONT_MONO,8)); self.telegram_status.setStyleSheet(f"color:{COLORS['text_muted']};background:transparent;padding-left:8px;")
+        self.telegram_status.setWordWrap(True)
+        layout.addWidget(self.telegram_status)
 
-        clear_btn = self._sidebar_btn("LIMPIAR CHAT")
-        clear_btn.clicked.connect(self._clear_chat); layout.addWidget(clear_btn)
-
-        mem_btn = self._sidebar_btn("MI MEMORIA")
-        mem_btn.clicked.connect(self._show_memoria); layout.addWidget(mem_btn)
-
-        tools_btn = self._sidebar_btn("HERRAMIENTAS")
-        tools_btn.clicked.connect(self._show_tools); layout.addWidget(tools_btn)
-
-        opt_btn = self._sidebar_btn("OPTIMIZADOR")
-        opt_btn.clicked.connect(self._toggle_optimizer); layout.addWidget(opt_btn)
-
+        # ── ACCIONES: grid de tiles ──
+        layout.addWidget(self._overline("// ACCIONES"))
+        grid = QGridLayout(); grid.setSpacing(7)
+        self._keys_btn = self._tile_btn("AJUSTES", "gear"); self._keys_btn.clicked.connect(self._toggle_keys_panel)
+        opt_btn  = self._tile_btn("OPTIMIZAR", "bolt");  opt_btn.clicked.connect(self._toggle_optimizer)
+        mem_btn  = self._tile_btn("MEMORIA", "brain");    mem_btn.clicked.connect(self._show_memoria)
+        tools_btn= self._tile_btn("TOOLS", "tool");      tools_btn.clicked.connect(self._show_tools)
+        grid.addWidget(self._keys_btn, 0, 0); grid.addWidget(opt_btn, 0, 1)
+        grid.addWidget(mem_btn, 1, 0); grid.addWidget(tools_btn, 1, 1)
         if self.voice.available:
-            self._voice_btn = self._sidebar_btn("VOZ: OFF")
-            self._voice_btn.clicked.connect(self._toggle_voice); layout.addWidget(self._voice_btn)
+            self._voice_btn = self._tile_btn("VOZ: OFF", "volume_off"); self._voice_btn.clicked.connect(self._toggle_voice)
+            grid.addWidget(self._voice_btn, 2, 0, 1, 2)
+        layout.addLayout(grid)
+
+        # ── LIMPIAR CHAT (ancho completo, hover rojo) ──
+        clear_btn = QPushButton(" LIMPIAR CHAT"); clear_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        clear_btn.setIcon(icon("trash", COLORS["text_dim"], 15)); clear_btn.setIconSize(QSize(15, 15))
+        clear_btn.setFont(QFont(FONT_DISPLAY,10,QFont.Weight.Bold)); clear_btn.setFixedHeight(36)
+        clear_btn.setStyleSheet(f"QPushButton{{background:transparent;color:{COLORS['text_dim']};border:2px solid {COLORS['border']};border-radius:2px;letter-spacing:1px;}}QPushButton:hover{{background:{COLORS['error']}22;color:{COLORS['error']};border-color:{COLORS['error']};}}")
+        clear_btn.clicked.connect(self._clear_chat); layout.addWidget(clear_btn)
 
         return sidebar
 
+    def _overline(self, texto):
+        lbl = QLabel(texto); lbl.setFont(QFont(FONT_MONO,8,QFont.Weight.Bold))
+        lbl.setStyleSheet(f"color:{COLORS['text_dim']};background:transparent;padding:6px 4px 2px 6px;letter-spacing:2px;")
+        return lbl
+
+    def _tile_btn(self, label, svg=None):
+        b = QPushButton(" " + label); b.setCursor(Qt.CursorShape.PointingHandCursor)
+        b.setFont(QFont(FONT_MONO,8,QFont.Weight.Bold)); b.setFixedHeight(48)
+        if svg:
+            from PyQt6.QtCore import QSize
+            b.setIcon(icon(svg, COLORS["text_muted"], 18)); b.setIconSize(QSize(18, 18))
+        b.setStyleSheet(f"QPushButton{{background:{COLORS['surface2']};color:{COLORS['text_dim']};border:2px solid {COLORS['border']};border-radius:2px;letter-spacing:1px;text-align:center;}}QPushButton:hover{{background:{COLORS['surface3']};color:{COLORS['accent']};border-color:{COLORS['cyan_dark']};}}")
+        return b
+
     def _set_telegram_btn_style(self, active):
+        self.telegram_btn.setIconSize(QSize(15, 15))
         if active:
             self.telegram_btn.setText("  TELEGRAM · ACTIVO")
+            self.telegram_btn.setIcon(icon("telegram", "#FFFFFF", 15))
             self.telegram_btn.setStyleSheet(f"QPushButton{{background:qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 {COLORS['telegram_dark']},stop:1 {COLORS['telegram']});color:white;border:none;border-radius:3px;text-align:left;padding-left:12px;font-weight:bold;letter-spacing:1px;}}QPushButton:hover{{background:{COLORS['telegram']};}}")
         else:
             self.telegram_btn.setText("  CONTINUAR EN TELEGRAM")
+            self.telegram_btn.setIcon(icon("telegram", COLORS["telegram"], 15))
             self.telegram_btn.setStyleSheet(f"QPushButton{{background:{COLORS['surface2']};color:{COLORS['telegram']};border:2px solid {COLORS['telegram']}55;border-radius:3px;text-align:left;padding-left:12px;letter-spacing:1px;}}QPushButton:hover{{background:{COLORS['telegram_dark']}44;border-color:{COLORS['telegram']};}}")
 
     def _sidebar_btn(self, label):
@@ -234,7 +256,9 @@ class LuneCDWindow(QMainWindow):
         bar.setStyleSheet(f"QFrame{{background:{COLORS['surface']};border-bottom:2px solid {COLORS['border']};}}")
         layout = QHBoxLayout(bar); layout.setContentsMargins(20,0,20,0)
         meta = PROVIDER_META[self.current_provider]
-        self.topbar_icon = QLabel(meta["icon"]); self.topbar_icon.setFont(QFont("Segoe UI Emoji",18)); self.topbar_icon.setStyleSheet("background:transparent;")
+        self.topbar_icon = QLabel(meta["icon"]); self.topbar_icon.setFixedSize(30,30)
+        self.topbar_icon.setFont(QFont(FONT_DISPLAY,13,QFont.Weight.Bold)); self.topbar_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._style_topbar_icon(meta)
         self.topbar_title = QLabel(meta["label"]); self.topbar_title.setFont(QFont(FONT_DISPLAY,13,QFont.Weight.Bold)); self.topbar_title.setStyleSheet(f"color:{meta['color']};background:transparent;letter-spacing:1px;")
         self.topbar_desc = QLabel("·  "+meta["desc"]); self.topbar_desc.setFont(QFont(FONT_MONO,9)); self.topbar_desc.setStyleSheet(f"color:{COLORS['text_muted']};background:transparent;")
         layout.addWidget(self.topbar_icon); layout.addSpacing(8); layout.addWidget(self.topbar_title); layout.addWidget(self.topbar_desc); layout.addStretch()
@@ -242,6 +266,15 @@ class LuneCDWindow(QMainWindow):
         self.status_label = QLabel("LISTO"); self.status_label.setFont(QFont(FONT_MONO,9,QFont.Weight.Bold)); self.status_label.setStyleSheet(f"color:{COLORS['text_muted']};background:transparent;letter-spacing:1px;")
         layout.addWidget(self.status_dot); layout.addSpacing(4); layout.addWidget(self.status_label)
         return bar
+
+    def _style_topbar_icon(self, meta):
+        c, d = meta["color"], meta["dark"]
+        self.topbar_icon.setStyleSheet(
+            f"background:{d}33;border:2px solid {c};border-radius:2px;"
+        )
+        if meta.get("svg"):
+            self.topbar_icon.setPixmap(icon_pixmap(meta["svg"], c, 16))
+        apply_glow(self.topbar_icon, c, radius=14, alpha=130)
 
     def _build_chat_page(self):
         page = QFrame(); page.setStyleSheet("QFrame{background:transparent;}")
@@ -269,34 +302,50 @@ class LuneCDWindow(QMainWindow):
     def _build_input_bar(self):
         bar = QFrame(); bar.setFixedHeight(88)
         bar.setStyleSheet(f"QFrame{{background:{COLORS['surface']};border-top:2px solid {COLORS['border']};}}")
-        layout = QHBoxLayout(bar); layout.setContentsMargins(20,20,20,20); layout.setSpacing(12)
+        layout = QHBoxLayout(bar); layout.setContentsMargins(20,20,20,20); layout.setSpacing(10)
+
+        glyph = QLabel(">"); glyph.setFont(QFont(FONT_MONO,15,QFont.Weight.Bold))
+        glyph.setStyleSheet(f"color:{COLORS['accent']};background:transparent;")
 
         self.input_field = QLineEdit()
         self.input_field.setPlaceholderText("Dime qué necesitas…  (Enter para enviar)")
         self.input_field.setFont(QFont(FONT_BODY,11)); self.input_field.setFixedHeight(46)
         self.input_field.setStyleSheet(f"QLineEdit{{background:{COLORS['surface2']};border:2px solid {COLORS['border']};border-radius:3px;padding:0 16px;color:{COLORS['text']};}}QLineEdit:focus{{border:2px solid {COLORS['accent']};background:{COLORS['surface3']};}}")
         self.input_field.returnPressed.connect(self._send_message)
+        self.input_field.installEventFilter(self)
 
-        self.send_btn = QPushButton("↑"); self.send_btn.setFixedSize(46,46)
+        self.send_btn = QPushButton(); self.send_btn.setFixedSize(46,46)
         self.send_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.send_btn.setFont(QFont(FONT_DISPLAY,18,QFont.Weight.Bold))
+        self.send_btn.setIcon(icon("send", COLORS["bg"], 20)); self.send_btn.setIconSize(QSize(20, 20))
         self._update_send_btn_color()
         self.send_btn.clicked.connect(self._send_message)
 
-        self.stop_btn = QPushButton("■"); self.stop_btn.setFixedSize(46, 46)
+        self.stop_btn = QPushButton(); self.stop_btn.setFixedSize(46, 46)
         self.stop_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.stop_btn.setFont(QFont(FONT_DISPLAY, 15, QFont.Weight.Bold))
+        self.stop_btn.setIcon(icon("stop", COLORS["bg"], 16)); self.stop_btn.setIconSize(QSize(16, 16))
         self.stop_btn.setStyleSheet(f"QPushButton{{background:{COLORS['error']};color:{COLORS['bg']};border:none;border-radius:3px;}}QPushButton:hover{{background:#ff5c78;}}")
         self.stop_btn.clicked.connect(self._stop_generation)
         self.stop_btn.hide()
 
-        layout.addWidget(self.input_field,1); layout.addWidget(self.send_btn); layout.addWidget(self.stop_btn)
+        layout.addWidget(glyph); layout.addWidget(self.input_field,1); layout.addWidget(self.send_btn); layout.addWidget(self.stop_btn)
         return bar
 
     def _add_welcome(self):
         welcome = QFrame(); welcome.setStyleSheet("QFrame{background:transparent;}")
         wl = QVBoxLayout(welcome); wl.setAlignment(Qt.AlignmentFlag.AlignCenter); wl.setSpacing(8)
-        moon = QLabel("月"); moon.setFont(QFont(FONT_JP,40,QFont.Weight.Bold)); moon.setAlignment(Qt.AlignmentFlag.AlignCenter); moon.setStyleSheet(f"color:{COLORS['yellow']};background:transparent;")
+
+        # Marca de bienvenida: logo/月 en un escenario enmarcado (estilo del UI kit)
+        mark = QLabel(); mark.setFixedSize(140, 140); mark.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        wicon = os.path.join(os.path.dirname(os.path.abspath(__file__)), "lune_icon.png")
+        if os.path.exists(wicon):
+            mark.setPixmap(QPixmap(wicon).scaled(118, 118, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+        else:
+            mark.setText("月"); mark.setFont(QFont(FONT_JP, 56, QFont.Weight.Bold))
+        mark.setStyleSheet(f"background:{COLORS['bg']};border:2px solid {COLORS['cyan_dark']};border-radius:3px;color:{COLORS['yellow']};")
+        apply_glow(mark, COLORS["cyan"], radius=28, alpha=120)
+        mark_row = QHBoxLayout(); mark_row.addStretch(); mark_row.addWidget(mark); mark_row.addStretch()
+
+        jp = QLabel("ルネ"); jp.setFont(QFont(FONT_JP,14,QFont.Weight.Bold)); jp.setAlignment(Qt.AlignmentFlag.AlignCenter); jp.setStyleSheet(f"color:{COLORS['yellow']};background:transparent;letter-spacing:4px;")
 
         personaje = datos.get_personaje(datos.get_bot().get("personaje_default", "Lune"))
         self.welcome_t1 = QLabel(personaje.get("nombre", "Lune AI").upper())
@@ -309,7 +358,7 @@ class LuneCDWindow(QMainWindow):
         sub    = saludo + (f"\n\n{total} mensajes en total." if total else "")
 
         self.welcome_t2 = QLabel(sub); self.welcome_t2.setFont(QFont(FONT_MONO,10)); self.welcome_t2.setAlignment(Qt.AlignmentFlag.AlignCenter); self.welcome_t2.setStyleSheet(f"color:{COLORS['text_muted']};background:transparent;")
-        wl.addStretch(); wl.addWidget(moon); wl.addWidget(self.welcome_t1); wl.addWidget(self.welcome_t2)
+        wl.addStretch(); wl.addLayout(mark_row); wl.addWidget(jp); wl.addWidget(self.welcome_t1); wl.addWidget(self.welcome_t2)
 
         # Chips de acción rápida (mejora visual + accesos directos)
         chips_row = QHBoxLayout(); chips_row.setSpacing(8); chips_row.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -331,6 +380,15 @@ class LuneCDWindow(QMainWindow):
     def _chip_enviar(self, texto):
         self.input_field.setText(texto); self._send_message()
 
+    def eventFilter(self, obj, event):
+        # Glow cyan en el input cuando tiene el foco
+        if obj is getattr(self, "input_field", None):
+            if event.type() == QEvent.Type.FocusIn:
+                apply_glow(self.input_field, COLORS["accent"], radius=16, alpha=120)
+            elif event.type() == QEvent.Type.FocusOut:
+                clear_glow(self.input_field)
+        return super().eventFilter(obj, event)
+
     # ── PROVIDER SWITCH ───────────────────────────────────────────────────────
 
     def _switch_provider(self, provider_id):
@@ -338,9 +396,9 @@ class LuneCDWindow(QMainWindow):
         self.current_provider = provider_id
         for pid, tab in self.provider_tabs.items(): tab.set_active(pid==provider_id)
         meta = PROVIDER_META[provider_id]
-        self.topbar_icon.setText(meta["icon"])
+        self._style_topbar_icon(meta)
         self.topbar_title.setText(meta["label"])
-        self.topbar_title.setStyleSheet(f"color:{meta['color']};background:transparent;")
+        self.topbar_title.setStyleSheet(f"color:{meta['color']};background:transparent;letter-spacing:1px;")
         self.topbar_desc.setText("·  "+meta["desc"])
         self._update_send_btn_color(); self.stack.setCurrentIndex(0)
 
@@ -348,6 +406,7 @@ class LuneCDWindow(QMainWindow):
         c = PROVIDER_META[self.current_provider]["color"]
         d = PROVIDER_META[self.current_provider]["dark"]
         self.send_btn.setStyleSheet(f"QPushButton{{background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 {d},stop:1 {c});color:{COLORS['bg']};border:none;border-radius:3px;}}QPushButton:hover{{background:{c};}}QPushButton:disabled{{background:{COLORS['surface3']};color:{COLORS['text_dim']};}}")
+        apply_glow(self.send_btn, c, radius=22, alpha=150)
 
     # ── SEND / RECEIVE / STOP ─────────────────────────────────────────────────
 
@@ -475,7 +534,9 @@ class LuneCDWindow(QMainWindow):
 
     def _toggle_voice(self):
         enabled = self.voice.toggle()
-        self._voice_btn.setText(f"  VOZ: {'ON' if enabled else 'OFF'}")
+        self._voice_btn.setText(f" VOZ: {'ON' if enabled else 'OFF'}")
+        col = COLORS["accent"] if enabled else COLORS["text_muted"]
+        self._voice_btn.setIcon(icon("volume" if enabled else "volume_off", col, 18))
 
     def _toggle_keys_panel(self):
         self.stack.setCurrentIndex(1 if self.stack.currentIndex()!=1 else 0)
@@ -566,12 +627,23 @@ class LuneCDWindow(QMainWindow):
 # ─────────────────────────────────────────────────────────────────────────────
 #  PUNTO DE ENTRADA
 # ─────────────────────────────────────────────────────────────────────────────
+def _cargar_fuentes():
+    """Registra las fuentes Shibuya Punk empaquetadas en fonts/ para esta app."""
+    import glob
+    fonts_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts")
+    if not os.path.isdir(fonts_dir):
+        return
+    for ttf in glob.glob(os.path.join(fonts_dir, "*.ttf")):
+        QFontDatabase.addApplicationFont(ttf)
+
+
 def main():
     app = QApplication(sys.argv)
     app.setApplicationName("Lune CD")
 
-    # Tipografía Shibuya Punk: si las fuentes de diseño no están instaladas,
-    # Qt las sustituye por equivalentes del sistema (mismo look, sin webfonts).
+    # Tipografía Shibuya Punk: cargar las fuentes empaquetadas en fonts/.
+    _cargar_fuentes()
+    # Si alguna no estuviera, Qt la sustituye por una del sistema (fallback).
     for familia, fallback in FONT_FALLBACKS.items():
         QFont.insertSubstitution(familia, fallback)
     app.setFont(QFont(FONT_BODY, 10))

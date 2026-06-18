@@ -9,6 +9,8 @@ from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QFont
 
 from theme import COLORS, PROVIDER_META, FONT_DISPLAY, FONT_BODY, FONT_MONO
+from icons import icon_pixmap
+from effects import apply_glow, clear_glow
 
 
 class ProviderTab(QFrame):
@@ -18,7 +20,7 @@ class ProviderTab(QFrame):
         self.provider_id = provider_id; self.meta = meta; self._active = False
         self.setCursor(Qt.CursorShape.PointingHandCursor); self.setFixedHeight(64)
         layout = QHBoxLayout(self); layout.setContentsMargins(14, 8, 14, 8); layout.setSpacing(10)
-        self.icon_lbl = QLabel(self.meta["icon"]); self.icon_lbl.setFont(QFont("Segoe UI Emoji", 18)); self.icon_lbl.setFixedWidth(30); self.icon_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.icon_lbl = QLabel(); self.icon_lbl.setFixedWidth(30); self.icon_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         text_col = QVBoxLayout(); text_col.setSpacing(2)
         self.name_lbl = QLabel(self.meta["label"]); self.name_lbl.setFont(QFont(FONT_DISPLAY, 10, QFont.Weight.Bold))
         self.desc_lbl = QLabel(self.meta["desc"]); self.desc_lbl.setFont(QFont(FONT_MONO, 8))
@@ -28,12 +30,17 @@ class ProviderTab(QFrame):
 
     def _apply_style(self, active):
         c, d = self.meta["color"], self.meta["dark"]
+        svg = self.meta.get("svg")
         if active:
             self.setStyleSheet(f"ProviderTab {{background:qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 {d}88,stop:1 {d}22);border:2px solid {c};border-radius:2px;}}")
             self.name_lbl.setStyleSheet(f"color:{c};background:transparent;letter-spacing:1px;"); self.desc_lbl.setStyleSheet(f"color:{c}aa;background:transparent;")
+            if svg: self.icon_lbl.setPixmap(icon_pixmap(svg, c, 20))
+            apply_glow(self, c, radius=16, alpha=110)
         else:
+            clear_glow(self)
             self.setStyleSheet(f"ProviderTab {{background:transparent;border:2px solid transparent;border-left:2px solid {COLORS['border']};border-radius:2px;}}ProviderTab:hover{{background:{COLORS['surface2']};border-left:2px solid {c};}}")
             self.name_lbl.setStyleSheet(f"color:{COLORS['text']};background:transparent;letter-spacing:1px;"); self.desc_lbl.setStyleSheet(f"color:{COLORS['text_muted']};background:transparent;")
+            if svg: self.icon_lbl.setPixmap(icon_pixmap(svg, COLORS["text_muted"], 20))
         self.icon_lbl.setStyleSheet("background:transparent;")
 
     def set_active(self, active):
