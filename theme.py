@@ -85,9 +85,9 @@ COLORS = {
 
 
 def _get_system_prompt():
-    return datos.get_personaje(datos.get_bot().get("personaje_default", "Lune")).get(
-        "systemPrompt", "Eres Lune, una asistente virtual."
-    )
+    # Construye el prompt rico de roleplay del personaje activo.
+    import personajes
+    return personajes.build_system_prompt(personajes.get_activo())
 
 
 # ─────────────────────────────────────────────────────────────────────────────

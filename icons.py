@@ -31,6 +31,8 @@ ICONS = {
     "moon":       ("stroke", '<path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"/>'),
     "search":     ("stroke", '<path d="M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16z"/><path d="m21 21-4.3-4.3"/>'),
     "bolt":       ("fill",   '<path d="M13 2 4.5 13.5H11l-1 8.5 8.5-11.5H12z"/>'),
+    "user":       ("stroke", '<path d="M20 21a8 8 0 1 0-16 0"/><circle cx="12" cy="7" r="4"/>'),
+    "import":     ("stroke", '<path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/>'),
 }
 
 

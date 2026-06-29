@@ -129,6 +129,7 @@ class MemoriaManager:
                 "contexto": "",
             },
             "recuerdos": [],
+            "datos_clave": {},
             "resumen_sesion_anterior": "",
             "estadisticas": {
                 "total_mensajes": 0,
@@ -164,6 +165,12 @@ class MemoriaManager:
                 fecha_corta = r["fecha"][:10]
                 lineas.append(f"  {emoji} [{fecha_corta}] {r['contenido']}")
             partes.append("Lo que sé sobre el usuario:\n" + "\n".join(lineas))
+
+        # Hechos clave:valor (compartidos con el bot de Telegram)
+        datos_clave = self._data.get("datos_clave", {})
+        if datos_clave:
+            lineas = [f"  · {k}: {v}" for k, v in datos_clave.items()]
+            partes.append("Datos del usuario:\n" + "\n".join(lineas))
 
         resumen = self._data.get("resumen_sesion_anterior", "")
         if resumen:
@@ -282,14 +289,22 @@ class MemoriaManager:
 
     def _cmd_listar(self) -> str:
         recuerdos = self._data.get("recuerdos", [])
-        if not recuerdos:
+        usuario = self._data.get("usuario", {})
+        datos_clave = self._data.get("datos_clave", {})
+
+        if not recuerdos and not datos_clave and not usuario.get("nombre"):
             return "No tengo nada guardado todavía. Dime *'recuerda que...'* para empezar."
 
-        usuario = self._data.get("usuario", {})
         lineas = ["**Lo que sé sobre ti:**\n"]
 
         if nombre := usuario.get("nombre"):
             lineas.append(f"Nombre: {nombre}")
+
+        # Hechos clave:valor (compartidos con el bot de Telegram)
+        if datos_clave:
+            lineas.append("\n**Datos** (compartidos con Telegram):")
+            for k, v in datos_clave.items():
+                lineas.append(f"  · {k}: {v}")
 
         por_tipo: dict[str, list] = {}
         for r in sorted(recuerdos, key=lambda x: x["fecha"], reverse=True):
@@ -326,12 +341,13 @@ class MemoriaManager:
         return f"Olvidado: *{borrado['contenido']}*"
 
     def _cmd_olvida_todo(self) -> str:
-        n = len(self._data.get("recuerdos", []))
+        n = len(self._data.get("recuerdos", [])) + len(self._data.get("datos_clave", {}))
         self._data["recuerdos"] = []
+        self._data["datos_clave"] = {}
         self._data["usuario"]["nombre"] = None
         self._data["resumen_sesion_anterior"] = ""
         self._guardar()
-        return f"Memoria borrada. Eliminé {n} recuerdos. Empezamos de cero."
+        return f"Memoria borrada. Eliminé {n} datos. Empezamos de cero."
 
     def _detectar_tipo(self, texto: str) -> str:
         texto_l = texto.lower()

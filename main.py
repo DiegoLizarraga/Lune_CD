@@ -7,6 +7,7 @@ La UI está repartida en módulos:
 """
 import sys
 import os
+import importlib
 from datetime import datetime
 
 from PyQt6.QtWidgets import (
@@ -40,6 +41,8 @@ from chat_widgets import ProviderTab, MessageBubble, TypingIndicator
 from ai_worker import AIWorker
 from settings_panel import SettingsPanel
 from optimizer_panel import OptimizadorPanel
+from personajes_panel import PersonajesPanel
+import personajes
 from splash import PantallaInicio
 
 logger = Logger()
@@ -140,8 +143,6 @@ class LuneCDWindow(QMainWindow):
         fc.addStretch(); fc.addWidget(self.lune_face); fc.addStretch()
         layout.addLayout(fc)
 
-        layout.addSpacing(16)  # aire entre la mascota y el botón de Telegram
-
         # ── TELEGRAM ──
         self.telegram_btn = QPushButton("  CONTINUAR EN TELEGRAM")
         self.telegram_btn.setCursor(Qt.CursorShape.PointingHandCursor); self.telegram_btn.setFont(QFont(FONT_DISPLAY,10,QFont.Weight.Bold)); self.telegram_btn.setFixedHeight(42)
@@ -157,14 +158,18 @@ class LuneCDWindow(QMainWindow):
         layout.addWidget(self._overline("// ACCIONES"))
         grid = QGridLayout(); grid.setSpacing(7)
         self._keys_btn = self._tile_btn("AJUSTES", "gear"); self._keys_btn.clicked.connect(self._toggle_keys_panel)
+        pers_btn = self._tile_btn("PERSONAJES", "user"); pers_btn.clicked.connect(self._toggle_personajes)
         opt_btn  = self._tile_btn("OPTIMIZAR", "bolt");  opt_btn.clicked.connect(self._toggle_optimizer)
         mem_btn  = self._tile_btn("MEMORIA", "brain");    mem_btn.clicked.connect(self._show_memoria)
         tools_btn= self._tile_btn("TOOLS", "tool");      tools_btn.clicked.connect(self._show_tools)
-        grid.addWidget(self._keys_btn, 0, 0); grid.addWidget(opt_btn, 0, 1)
-        grid.addWidget(mem_btn, 1, 0); grid.addWidget(tools_btn, 1, 1)
+        grid.addWidget(self._keys_btn, 0, 0); grid.addWidget(pers_btn, 0, 1)
+        grid.addWidget(opt_btn, 1, 0); grid.addWidget(mem_btn, 1, 1)
+        grid.addWidget(tools_btn, 2, 0)
         if self.voice.available:
             self._voice_btn = self._tile_btn("VOZ: OFF", "volume_off"); self._voice_btn.clicked.connect(self._toggle_voice)
-            grid.addWidget(self._voice_btn, 2, 0, 1, 2)
+            grid.addWidget(self._voice_btn, 2, 1)
+        else:
+            grid.addWidget(self._tile_btn("TELEGRAM", "telegram"), 2, 1)  # relleno visual
         layout.addLayout(grid)
 
         # ── LIMPIAR CHAT (ancho completo, hover rojo) ──
@@ -245,9 +250,10 @@ class LuneCDWindow(QMainWindow):
         layout = QVBoxLayout(main); layout.setContentsMargins(0,0,0,0); layout.setSpacing(0)
         layout.addWidget(self._build_topbar())
         self.stack = QStackedWidget(); self.stack.setStyleSheet("QStackedWidget{background:transparent;}")
-        self.stack.addWidget(self._build_chat_page())       # 0
-        self.stack.addWidget(self._build_keys_page())       # 1
-        self.stack.addWidget(self._build_optimizer_page())  # 2
+        self.stack.addWidget(self._build_chat_page())        # 0
+        self.stack.addWidget(self._build_keys_page())        # 1
+        self.stack.addWidget(self._build_optimizer_page())   # 2
+        self.stack.addWidget(self._build_personajes_page())  # 3
         layout.addWidget(self.stack,1); layout.addWidget(self._build_input_bar())
         return main
 
@@ -297,6 +303,14 @@ class LuneCDWindow(QMainWindow):
         page = QFrame(); page.setStyleSheet("QFrame{background:transparent;}")
         layout = QVBoxLayout(page); layout.setContentsMargins(10,10,10,10)
         self.optimizer_panel = OptimizadorPanel(self.config); layout.addWidget(self.optimizer_panel)
+        return page
+
+    def _build_personajes_page(self):
+        page = QFrame(); page.setStyleSheet("QFrame{background:transparent;}")
+        layout = QVBoxLayout(page); layout.setContentsMargins(10,10,10,10)
+        self.personajes_panel = PersonajesPanel()
+        self.personajes_panel.elegido.connect(self._switch_character)
+        layout.addWidget(self.personajes_panel)
         return page
 
     def _build_input_bar(self):
@@ -543,6 +557,39 @@ class LuneCDWindow(QMainWindow):
 
     def _toggle_optimizer(self):
         self.stack.setCurrentIndex(2 if self.stack.currentIndex()!=2 else 0)
+
+    def _toggle_personajes(self):
+        if self.stack.currentIndex() != 3:
+            self.personajes_panel.refrescar()
+            self.stack.setCurrentIndex(3)
+        else:
+            self.stack.setCurrentIndex(0)
+
+    def _switch_character(self, nombre):
+        """Cambia el personaje activo: recarga prompt, limpia historial y saluda."""
+        personajes.set_activo(nombre)
+        importlib.reload(datos)
+        self.ai_manager.clear_history()
+
+        p = personajes.get_activo()
+        # Cambiar avatar pack si el personaje define uno
+        pack = p.get("avatar_pack", "default")
+        lune_face.set_active_pack(pack); self.config.set("avatar", "pack", pack)
+
+        # Refrescar marca, banco y bienvenida
+        self.sidebar_t1.setText(f"<span style='color:{COLORS['text']};'>{nombre.upper()} </span><span style='color:{COLORS['accent']};'>CD</span>")
+        self.banco = BancoRespuestas(nombre_asistente=nombre, nombre_usuario=self.memoria.get_nombre_usuario())
+
+        # Limpiar chat y mostrar saludo del personaje
+        while self.messages_layout.count() > 1:
+            item = self.messages_layout.takeAt(0)
+            if item.widget(): item.widget().deleteLater()
+        self._add_welcome()
+        saludo = p.get("fraseInicial") or f"Soy {nombre}. Dime qué necesitas."
+        bubble = MessageBubble(saludo, is_user=False, provider_id=self.current_provider)
+        self.messages_layout.insertWidget(self.messages_layout.count()-1, bubble)
+        self.lune_face.set_state("happy", auto_revert_ms=4000)
+        self.stack.setCurrentIndex(0); self._scroll_bottom()
 
     def _on_keys_saved(self):
         self.ai_manager.reload_provider()
