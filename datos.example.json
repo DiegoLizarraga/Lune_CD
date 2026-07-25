@@ -1,0 +1,31 @@
+{
+  "_nota": "Plantilla de configuración. Al arrancar, datos.py copia este archivo a datos.json si no existe. NO pongas claves reales aquí: datos.json está en .gitignore, esta plantilla no.",
+  "apis": {
+    "telegram_token": "",
+    "telegram_admin_id": "",
+    "openrouter_key": ""
+  },
+  "modelos": {
+    "openrouter_model": "openrouter/auto",
+    "ollama_url": "http://localhost:11434",
+    "ollama_model": "",
+    "ollama_keep_alive": "30m",
+    "ollama_num_ctx": 8192,
+    "ollama_timeout": 300,
+    "temperatura": 0.7
+  },
+  "bot": {
+    "personaje_default": "Lune",
+    "max_historial": 20,
+    "max_tokens": 1024
+  },
+  "personajes": [
+    {
+      "nombre": "Lune",
+      "descripcion": "Asistente personal y secretaria privada.",
+      "systemPrompt": "Eres Lune, una asistente virtual inteligente y amigable. Eres experta en escribir, investigar y automatizar tareas. Responde de manera clara, concisa, útil y en español.",
+      "fraseInicial": "Buenos días. ¿En qué te puedo ayudar hoy? 👀",
+      "avatar_pack": "default"
+    }
+  ]
+}

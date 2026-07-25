@@ -79,7 +79,7 @@ Metadatos por pack para hacerlo autodescriptivo:
 
 ## 🛠️ Notas técnicas
 
-- El punto de extensión actual está en [main.py](main.py): `get_face_info()`,
+- El punto de extensión actual está en [lune_face.py](lune_face.py): `get_face_info()`,
   `set_active_pack()`, `listar_packs()` y la constante `PACKS_DIR`.
 - La selección persiste en `config.json` → `avatar.pack`.
 - Para Live2D/VRM, lo más limpio es introducir una clase `AvatarRenderer` con

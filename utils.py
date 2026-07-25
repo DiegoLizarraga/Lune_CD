@@ -27,11 +27,13 @@ class Logger:
         # Limpiar handlers existentes
         self.logger.handlers = []
         
-        # Crear directorio de logs
-        Path("logs").mkdir(exist_ok=True)
-        
+        # Directorio de logs relativo al proyecto, no al directorio de trabajo:
+        # lanzando la app desde otra carpeta los logs acababan dispersos.
+        logs_dir = Path(__file__).parent / "logs"
+        logs_dir.mkdir(exist_ok=True)
+
         # Handler de archivo
-        log_file = f"logs/lune_{datetime.now().strftime('%Y%m%d')}.log"
+        log_file = logs_dir / f"lune_{datetime.now().strftime('%Y%m%d')}.log"
         file_handler = logging.FileHandler(log_file, encoding='utf-8')
         file_handler.setLevel(logging.DEBUG)
         
@@ -183,9 +185,10 @@ class SystemInfo:
     @staticmethod
     def get_app_info() -> dict:
         """Obtener información de la app"""
+        from version import APP_NAME, APP_VERSION
         return {
-            "name": "Lune CD",
-            "version": "4.5",
+            "name": APP_NAME,
+            "version": APP_VERSION,
             "os": SystemInfo.get_os(),
             "python": SystemInfo.get_python_version(),
             "timestamp": datetime.now().isoformat()

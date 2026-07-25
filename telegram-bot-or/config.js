@@ -30,7 +30,11 @@ export function loadConfig() {
     telegramToken:    datos.apis?.telegram_token     ?? "",
     openrouterKey:    datos.apis?.openrouter_key     ?? "",
     adminId:          datos.apis?.telegram_admin_id  ?? "",
-    modelo:           datos.modelos?.openrouter       ?? "stepfun/step-3.5-flash:free",
+    // La app escribe `openrouter_model`; `openrouter` es el nombre viejo de la
+    // clave y se mantiene solo para no romper datos.json de versiones previas.
+    modelo:           datos.modelos?.openrouter_model
+                      ?? datos.modelos?.openrouter
+                      ?? "openrouter/auto",
     personajeDefault: datos.bot?.personaje_default    ?? "",
     maxHistorial:     datos.bot?.max_historial        ?? 20,
     maxTokens:        datos.bot?.max_tokens           ?? 1024,

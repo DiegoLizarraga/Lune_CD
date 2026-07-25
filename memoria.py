@@ -3,54 +3,52 @@ memoria.py — Sistema de memoria personal persistente para Lune CD
 ================================================================
 Guarda y recupera información sobre el usuario entre sesiones.
 
+CÓMO SE DECIDE QUÉ GUARDAR
+--------------------------
+Hay dos caminos y es importante no confundirlos:
+
+  1. GUARDADO EXPLÍCITO (`PATRONES_EXPLICITOS`) — «recuerda que…», «anota que…».
+     Están anclados con ^…$ y CONSUMEN el turno: Lune confirma «Anotado: …»
+     y el mensaje no llega a la IA. Es lo que el usuario pidió, así que está bien.
+
+  2. EXTRACCIÓN SILENCIOSA (`PATRONES_PERFIL`) — nombre, edad, ciudad, trabajo.
+     Se anotan de fondo pero NO consumen el turno: el mensaje sigue su camino
+     hacia la IA con normalidad.
+
+Antes, patrones sueltos como `me gusta(.+)` se buscaban con `re.search` y
+consumían el turno. Eso hacía que «me gustaría saber cómo funciona python»
+se guardara como recuerdo («ría saber cómo funciona python») y el usuario
+nunca recibiera respuesta. De ahí que ahora todo esté anclado y que la
+inferencia sea silenciosa.
+
 Estructura de memoria.json:
 {
-  "usuario": {
-    "nombre": "...",
-    "preferencias": [...],
-    "contexto": "..."
-  },
+  "usuario": { "nombre": "...", "preferencias": [...], "contexto": "..." },
   "recuerdos": [
-    {
-      "id": "uuid",
-      "fecha": "ISO-8601",
-      "tipo": "hecho|preferencia|recordatorio|tarea",
-      "contenido": "...",
-      "tags": [...]
-    }
+    { "id": "uuid", "fecha": "ISO-8601", "tipo": "hecho|preferencia|recordatorio|tarea",
+      "contenido": "...", "tags": [...] }
   ],
+  "datos_clave": { "edad": "30", ... },       # compartido con el bot de Telegram
   "resumen_sesion_anterior": "...",
-  "estadisticas": {
-    "total_mensajes": 0,
-    "primera_sesion": "ISO-8601",
-    "ultima_sesion": "ISO-8601"
-  }
+  "estadisticas": { "total_mensajes": 0, "primera_sesion": "...", "ultima_sesion": "..." }
 }
 
 Uso desde main.py:
     from memoria import MemoriaManager
     memoria = MemoriaManager()
-
-    # Al inicio de sesión — obtener contexto para el system prompt
     contexto = memoria.obtener_contexto_para_prompt()
+    respuesta = memoria.procesar_mensaje_usuario(texto)   # str o None
+    memoria.cerrar_sesion(resumen)
 
-    # Tras cada respuesta — detectar y guardar automáticamente
-    memoria.procesar_respuesta(mensaje_usuario, respuesta_lune)
-
-    # Al cerrar la app
-    memoria.cerrar_sesion(resumen_conversacion)
-
-Comandos del usuario detectados automáticamente:
-    "recuerda que...", "anota que...", "no olvides que..."
-    "/memoria", "/recuerdos"
-    "/olvida [id]", "/olvida todo"
+Comandos del usuario (requieren la barra, para no comerse frases normales):
+    /memoria · /recuerdos · /olvida [id] · /olvida todo
 """
 
 import json
 import uuid
 import re
 from pathlib import Path
-from datetime import datetime, date
+from datetime import datetime
 from typing import Optional
 
 
@@ -64,23 +62,50 @@ TIPOS_RECUERDO = {
     "general":      "·",
 }
 
-# Palabras clave para detectar intención de guardar en la conversación
-KEYWORDS_GUARDAR = [
-    r"recuerda que (.+)",
-    r"anota que (.+)",
-    r"no olvides que (.+)",
-    r"guarda que (.+)",
-    r"tengo (.+) años",
-    r"me llamo (.+)",
-    r"mi nombre es (.+)",
-    r"trabajo (?:en|como) (.+)",
-    r"vivo en (.+)",
-    r"prefiero (.+)",
-    r"no me gusta(.+)",
-    r"me gusta(.+)",
+# ── 1. Guardado explícito: el usuario pide guardar → consume el turno ──────────
+# Anclados a la frase completa. Nada de `search` suelto.
+PATRONES_EXPLICITOS = [
+    re.compile(r"^(?:recuerda|recuérda(?:me)?|recuerdame)\s+que\s+(.+)$", re.IGNORECASE),
+    re.compile(r"^(?:anota|apunta|guarda)\s+que\s+(.+)$", re.IGNORECASE),
+    re.compile(r"^no\s+(?:te\s+)?olvides\s+(?:de\s+)?que\s+(.+)$", re.IGNORECASE),
 ]
 
-# Palabras clave que indican recordatorio/tarea
+# ── 2. Extracción silenciosa: se infiere de fondo, NO consume el turno ────────
+# El valor va acotado (sin `.+` glotón) para no tragarse la frase entera.
+_NOMBRE = r"([A-ZÁÉÍÓÚÑ][a-záéíóúñ]{1,19}|[a-záéíóúñ]{2,20})"
+PATRONES_PERFIL = [
+    ("nombre",  re.compile(rf"\bme\s+llamo\s+{_NOMBRE}\b", re.IGNORECASE)),
+    ("nombre",  re.compile(rf"\bmi\s+nombre\s+es\s+{_NOMBRE}\b", re.IGNORECASE)),
+    ("edad",    re.compile(r"\btengo\s+(\d{1,3})\s+años\b", re.IGNORECASE)),
+    # Ciudad y trabajo solo si la frase ENTERA es esa afirmación. «trabajo en un
+    # script y no me compila» no es una profesión, y prefiero anotar de menos
+    # que ensuciar la memoria con basura que luego va al system prompt.
+    ("ciudad",  re.compile(r"^vivo\s+en\s+([^.,;:!?]{2,40})[.!]?$", re.IGNORECASE)),
+    ("trabajo", re.compile(r"^trabajo\s+(?:en|como)\s+([^.,;:!?]{2,40})[.!]?$", re.IGNORECASE)),
+]
+
+# Conectores que delatan que lo capturado es una oración, no un dato.
+# «trabajo en un script y no me compila» encaja en el patrón de trabajo, pero
+# «un script y no me compila» no es una profesión.
+_CONECTORES_DE_ORACION = (
+    " y ", " o ", " no ", " que ", " pero ", " porque ", " aunque ",
+    " cuando ", " si ", " me ", " te ", " se ", " lo ",
+)
+_MAX_PALABRAS_PERFIL = 5
+
+
+def _valor_de_perfil_plausible(valor: str) -> bool:
+    """
+    ¿El texto capturado parece un dato (una ciudad, un oficio) y no media frase?
+    Se prefiere anotar de menos: lo que entra aquí acaba en el system prompt.
+    """
+    v = f" {valor.lower().strip()} "
+    if any(c in v for c in _CONECTORES_DE_ORACION):
+        return False
+    return 1 <= len(valor.split()) <= _MAX_PALABRAS_PERFIL
+
+
+# Palabras clave para clasificar un recuerdo ya capturado
 KEYWORDS_RECORDATORIO = [
     "mañana", "el lunes", "el martes", "el miércoles", "el jueves",
     "el viernes", "la próxima semana", "en una hora", "a las", "el día",
@@ -109,7 +134,12 @@ class MemoriaManager:
     def _cargar(self) -> dict:
         if self.path.exists():
             try:
-                return json.loads(self.path.read_text("utf-8"))
+                data = json.loads(self.path.read_text("utf-8"))
+                # Rellena secciones que falten en memorias de versiones viejas
+                base = self._estructura_vacia()
+                for clave, valor in base.items():
+                    data.setdefault(clave, valor)
+                return data
             except Exception:
                 pass
         return self._estructura_vacia()
@@ -192,57 +222,87 @@ class MemoriaManager:
 
     def procesar_mensaje_usuario(self, mensaje: str) -> Optional[str]:
         """
-        Analiza el mensaje del usuario en busca de:
-        - Comandos explícitos (/memoria, /recuerda, /olvida)
-        - Intención implícita de guardar algo
+        Analiza el mensaje del usuario.
 
-        Devuelve una respuesta de confirmación si procesó algo,
-        o None si el mensaje es una conversación normal.
+        Devuelve una respuesta SOLO si el usuario pidió explícitamente algo de
+        memoria (un comando /… o un «recuerda que…»). En ese caso el turno se
+        consume y no se llama a la IA.
+
+        Devuelve None para conversación normal — incluso si de paso se extrajo
+        algún dato de perfil, que se guarda en silencio.
         """
         self._mensajes_sesion += 1
         self._data["estadisticas"]["total_mensajes"] = (
             self._data["estadisticas"].get("total_mensajes", 0) + 1
         )
 
-        msg_lower = mensaje.lower().strip()
+        texto = (mensaje or "").strip()
+        msg_lower = texto.lower()
 
-        # ── Comandos explícitos ───────────────────────────────────────────────
-
-        # /memoria o /recuerdos — mostrar todo
-        if re.match(r"^/?(memoria|recuerdos)$", msg_lower):
+        # ── Comandos explícitos (requieren la barra) ──────────────────────────
+        if re.fullmatch(r"/(?:memoria|recuerdos)", msg_lower):
             return self._cmd_listar()
 
-        # /olvida todo
-        if re.match(r"^/?olvida\s+todo$", msg_lower):
+        if re.fullmatch(r"/olvida\s+todo", msg_lower):
             return self._cmd_olvida_todo()
 
-        # /olvida <id_o_fragmento>
-        m = re.match(r"^/?olvida\s+(.+)$", msg_lower)
-        if m:
+        if m := re.fullmatch(r"/olvida\s+(.+)", msg_lower):
             return self._cmd_olvida(m.group(1).strip())
 
-        # "recuerda que...", "anota que...", etc.
-        for patron in KEYWORDS_GUARDAR:
-            m = re.search(patron, msg_lower)
-            if m:
+        # ── «recuerda que…» → guarda y consume el turno ───────────────────────
+        for patron in PATRONES_EXPLICITOS:
+            if m := patron.match(texto):
                 contenido = m.group(1).strip().rstrip(".")
-                # Detectar nombre propio
-                if "llamo" in patron or "nombre" in patron:
-                    nombre = contenido.strip().split()[0].capitalize()
-                    self._data["usuario"]["nombre"] = nombre
+                if not contenido:
+                    continue
                 tipo = self._detectar_tipo(contenido)
-                rid = self.agregar_recuerdo(contenido, tipo)
+                self.agregar_recuerdo(contenido, tipo)
+                # Un «recuerda que me llamo X» también actualiza el perfil
+                self._extraer_perfil(contenido)
                 self._guardar()
                 emoji = TIPOS_RECUERDO.get(tipo, "")
                 return f"{emoji} Anotado: *{contenido}*"
 
-        return None  # conversación normal
+        # ── Extracción silenciosa: anota de fondo y deja pasar el mensaje ─────
+        if self._extraer_perfil(texto):
+            self._guardar()
+
+        return None  # conversación normal → va a la IA
+
+    def _extraer_perfil(self, texto: str) -> bool:
+        """
+        Busca datos de perfil (nombre, edad, ciudad, trabajo) y los guarda.
+        Devuelve True si algo cambió. NUNCA interrumpe la conversación.
+        """
+        cambio = False
+        for campo, patron in PATRONES_PERFIL:
+            m = patron.search(texto)
+            if not m:
+                continue
+            valor = m.group(1).strip().rstrip(".,;:")
+            if not valor:
+                continue
+
+            if campo == "nombre":
+                nombre = valor.capitalize()
+                if self._data["usuario"].get("nombre") != nombre:
+                    self._data["usuario"]["nombre"] = nombre
+                    cambio = True
+            else:
+                # La edad ya viene acotada por el patrón (\d{1,3}); ciudad y
+                # trabajo son texto libre y necesitan el filtro de plausibilidad.
+                if campo != "edad" and not _valor_de_perfil_plausible(valor):
+                    continue
+                datos = self._data.setdefault("datos_clave", {})
+                if datos.get(campo) != valor:
+                    datos[campo] = valor
+                    cambio = True
+        return cambio
 
     def procesar_respuesta_lune(self, respuesta: str):
         """
-        Extrae hechos implícitos de la respuesta de Lune
-        (p.ej. si Lune confirma algo, lo guarda como hecho).
-        Llamar después de recibir cada respuesta completa.
+        Persiste el estado tras recibir una respuesta completa.
+        Llamar después de cada respuesta de Lune.
         """
         self._guardar()
 

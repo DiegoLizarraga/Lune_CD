@@ -1,3 +1,4 @@
+import copy
 import json
 from pathlib import Path
 from typing import Any, Dict
@@ -29,6 +30,7 @@ class Config:
             "efectos_hover": True,               # microanimaciones en la UI
             "streaming_tokens": True,            # mostrar respuesta letra por letra
             "minimizar_a_bandeja": True,         # al cerrar, ocultar en la bandeja del sistema
+            "acciones_ia": True,                 # dejar que la IA abra webs y lance apps
         },
         # Avatar/expresiones: permite cambiar el "modelo" visual de Lune.
         "avatar": {
@@ -59,8 +61,11 @@ class Config:
                     self._save_config(merged)
                 return merged
             except Exception: pass
-        self._save_config(self.DEFAULT_CONFIG.copy())
-        return self.DEFAULT_CONFIG.copy()
+        # copy() era superficial: las secciones anidadas quedaban compartidas
+        # con DEFAULT_CONFIG y set_feature() mutaba los valores por defecto.
+        inicial = copy.deepcopy(self.DEFAULT_CONFIG)
+        self._save_config(inicial)
+        return inicial
 
     def _save_config(self, data: dict):
         try:
@@ -88,7 +93,7 @@ class Config:
         self.save()
 
     def _merge_defaults(self, loaded: Dict, default: Dict) -> Dict:
-        result = default.copy()
+        result = copy.deepcopy(default)
         for key, value in loaded.items():
             if key in result and isinstance(result[key], dict) and isinstance(value, dict):
                 result[key] = self._merge_defaults(value, result[key])

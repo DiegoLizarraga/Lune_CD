@@ -1,0 +1,51 @@
+name: Tests
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  pytest:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests psutil pytest
+
+      - name: Tests
+        run: python -m pytest
+
+      - name: Comprobar que todos los módulos compilan
+        run: python -m compileall -q .
+
+  secretos:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # datos.json lleva las API keys y NO debe volver al repo.
+      # La fuga anterior vino de una línea corrupta en .gitignore.
+      - name: datos.json no debe estar versionado
+        run: |
+          if git ls-files --error-unmatch datos.json 2>/dev/null; then
+            echo "::error::datos.json está versionado y contiene las API keys."
+            exit 1
+          fi
+          echo "OK: datos.json no está en el repo."
+
+      - name: Sin claves de OpenRouter en el código
+        run: |
+          if git grep -nE 'sk-or-v1-[A-Za-z0-9]{20,}' -- . ; then
+            echo "::error::Hay una API key de OpenRouter en el código."
+            exit 1
+          fi
+          echo "OK: sin claves a la vista."

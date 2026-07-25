@@ -29,21 +29,22 @@ import struct
 from pathlib import Path
 from typing import List, Dict, Optional
 
-_ROOT = Path(__file__).parent
-_PATH = _ROOT / "datos.json"
+import datos
 
 
 # ── Carga / guardado de datos.json ──────────────────────────────────────────────
+# Se delega en datos.py para que haya un único lector/escritor del archivo y la
+# caché en memoria nunca quede desincronizada del disco.
 
 def _load() -> dict:
-    try:
-        return json.loads(_PATH.read_text("utf-8"))
-    except Exception:
+    data = datos.cargar()
+    if not data:
         return {"apis": {}, "modelos": {}, "bot": {"personaje_default": "Lune"}, "personajes": []}
+    return data
 
 
 def _save(data: dict):
-    _PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    datos.guardar(data)
 
 
 # ── API pública ─────────────────────────────────────────────────────────────────

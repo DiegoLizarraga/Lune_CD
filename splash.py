@@ -94,15 +94,21 @@ class PantallaInicio(QMainWindow):
             self.reproductor.setAudioOutput(self.salida_audio)
             self.reproductor.setVideoOutput(self.video_widget)
 
-            ruta_video = Path("inicio.mp4").absolute()
-            self.reproductor.setSource(QUrl.fromLocalFile(str(ruta_video)))
+            # Relativa al script, no al directorio de trabajo: si se lanzaba
+            # desde otra carpeta el video no cargaba y la app se quedaba en la
+            # pantalla de inicio hasta pulsar «Saltar».
+            ruta_video = Path(__file__).parent / "inicio.mp4"
+            if ruta_video.exists():
+                self.reproductor.setSource(QUrl.fromLocalFile(str(ruta_video)))
+                self.reproductor.play()
+            else:
+                QTimer.singleShot(400, self.abrir_app_principal)
 
             # --- LA MAGIA: CONECTAR EL FINAL DEL VIDEO CON LA APP PRINCIPAL ---
             self.reproductor.mediaStatusChanged.connect(self._revisar_estado_video)
 
             layout_marco.addWidget(self.video_widget)
             layout_principal.addWidget(self.marco_video)
-            self.reproductor.play()
         else:
             error_lbl = QLabel("Multimedia no disponible. Faltan librerías.")
             error_lbl.setStyleSheet("color: white;")
@@ -129,12 +135,19 @@ class PantallaInicio(QMainWindow):
         layout_principal.addWidget(self.boton_entrar, alignment=Qt.AlignmentFlag.AlignCenter)
 
     def _revisar_estado_video(self, status):
-        """Verifica si el video ha terminado de reproducirse."""
-        if status == QMediaPlayer.MediaStatus.EndOfMedia:
+        """Entra a la app al terminar el video, o si el archivo no se puede leer."""
+        if status in (QMediaPlayer.MediaStatus.EndOfMedia,
+                      QMediaPlayer.MediaStatus.InvalidMedia):
             self.abrir_app_principal()
 
     def abrir_app_principal(self):
         """Detiene el video, muestra el chat principal y cierra esta ventana."""
+        # El botón «Saltar» y el fin del video pueden dispararse casi a la vez;
+        # sin esta guarda se abrían dos ventanas principales.
+        if getattr(self, "_abriendo", False):
+            return
+        self._abriendo = True
+
         if _MULTIMEDIA_OK:
             self.reproductor.stop()
 

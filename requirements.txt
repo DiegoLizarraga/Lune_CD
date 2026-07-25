@@ -1,29 +1,22 @@
-# Lune CD v6.0 + Telegram Bridge
+# Lune CD — dependencias de la app de escritorio
 # ================================================
+# El bot de Telegram es Node.js y tiene sus propias dependencias
+# (telegram-bot-or/package.json → npm install).
 
 # CORE - Interfaz
 PyQt6>=6.6.0
 
-# HTTP / Networking
+# HTTP / Networking (OpenRouter y Ollama)
 requests>=2.31.0
 
-# VOZ (app)
+# Sistema: Optimizador e info de hardware
+psutil>=5.9.0
+
+# VOZ — edge-tts es la principal (voz mexicana natural).
+# gTTS queda como respaldo automático si edge-tts falla.
+edge-tts>=6.1.0
 gtts>=2.5.0
 pygame>=2.5.0
 
-# VOZ (Telegram - edge-tts se instala aparte)
-# pip install edge-tts
-
-# Telegram Bridge
-python-telegram-bot>=20.0
-
-# Sistema
-psutil>=5.9.0
-
-# AUTOMATIZACIÓN
-pyautogui>=0.9.54
-pynput>=1.7.6
-
-# UTILIDADES
-python-dotenv>=1.0.0
-aiofiles>=23.0.0
+# TESTS (opcional, solo para desarrollo)
+# pip install pytest

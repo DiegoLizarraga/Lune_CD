@@ -12,17 +12,68 @@ Herramientas incluidas:
 
 import os
 import re
+import shutil
 import subprocess
+import sys
 import urllib.parse
 import webbrowser
 from typing import List, Dict, Tuple, Optional
-import sys
 
 # Intentar importar dependencias opcionales
 try:
     import psutil
 except ImportError:
     psutil = None
+
+
+# ── Saneamiento ────────────────────────────────────────────────────────────────
+# Estas herramientas se disparan con texto que puede venir del MODELO, no solo
+# del usuario. Un personaje de roleplay descarrilado podría emitir
+# `TOOL:lanzar_app:x" & del /q ...`, así que nada de shells ni concatenar
+# cadenas en comandos: se valida primero y se ejecuta con lista de argumentos.
+
+# Solo letras, números, espacios y unos pocos signos inofensivos.
+_APP_VALIDA = re.compile(r"^[\w .\-()]{1,60}$", re.UNICODE)
+_ESQUEMAS_PERMITIDOS = ("http", "https")
+
+
+def _nombre_app_seguro(nombre: str) -> Optional[str]:
+    """Devuelve el nombre saneado, o None si trae algo sospechoso."""
+    nombre = (nombre or "").strip().strip('"').strip("'")
+    if not nombre or not _APP_VALIDA.match(nombre):
+        return None
+    # Ni rutas ni escapes: solo el nombre del ejecutable.
+    if any(c in nombre for c in ("/", "\\", "..")):
+        return None
+    return nombre
+
+
+def _url_segura(url: str) -> Optional[str]:
+    """
+    Normaliza y valida una URL. Rechaza esquemas peligrosos como `file:`,
+    `javascript:` o `data:`, que webbrowser abriría sin rechistar.
+    """
+    url = (url or "").strip().strip('"').strip("'")
+    if not url:
+        return None
+
+    # Si YA trae un esquema, tiene que ser http(s). Comprobarlo antes de añadir
+    # el prefijo es lo que evita que «javascript:alert(1)» se convierta en
+    # «https://javascript:alert(1)» y pase el filtro por la puerta de atrás.
+    m = re.match(r"^([a-zA-Z][a-zA-Z0-9+.\-]*):", url)
+    if m:
+        if m.group(1).lower() not in _ESQUEMAS_PERMITIDOS:
+            return None
+    else:
+        url = "https://" + url
+
+    try:
+        partes = urllib.parse.urlparse(url)
+    except ValueError:
+        return None
+    if partes.scheme.lower() not in _ESQUEMAS_PERMITIDOS or not partes.netloc:
+        return None
+    return url
 
 
 class ToolResult:
@@ -174,55 +225,69 @@ class ToolManager:
         return ToolResult(True, f"Buscando en Google: '{query}'")
 
     def _cmd_abrir_url(self, url: str) -> ToolResult:
-        """Abre una URL directamente respetando las mayúsculas/minúsculas."""
-        # Se asegura de que la URL empiece con http para evitar errores de navegador
-        if not url.startswith(("http://", "https://")):
-            url_final = "https://" + url
-        else:
-            url_final = url
-            
+        """Abre una URL, siempre que sea http(s)."""
+        url_final = _url_segura(url)
+        if not url_final:
+            return ToolResult(False, f"No abro esa dirección: «{url}» no es una URL http(s) válida.")
+
         webbrowser.open(url_final)
-        
-        # Extraemos el nombre de la página solo para motivos de visualización en el chat
+
+        # Nombre de la página solo para mostrarlo bonito en el chat
         try:
-            dominio = url_final.replace("https://", "").replace("http://", "").replace("www.", "").split("/")[0].split(".")[0].capitalize()
-        except:
+            host = urllib.parse.urlparse(url_final).netloc
+            dominio = host.replace("www.", "").split(".")[0].capitalize() or "enlace"
+        except Exception:
             dominio = "enlace"
-            
+
         return ToolResult(True, f"Abriendo {dominio}...")
 
+    # Alias técnicos para programas de Windows
+    ALIAS_APPS = {
+        "paint": "mspaint",
+        "calculadora": "calc",
+        "bloc de notas": "notepad",
+        "notas": "notepad",
+        "word": "winword",
+        "excel": "excel",
+        "powerpoint": "powerpnt",
+        "archivos": "explorer",
+        "explorador": "explorer",
+        "cmd": "cmd",
+        "consola": "cmd",
+        "terminal": "cmd",
+        "navegador": "msedge",
+    }
+
     def _cmd_lanzar_app(self, nombre: str) -> ToolResult:
-        """Lanza aplicaciones locales."""
-        if not nombre: return ToolResult(False, "Nombre de app vacío.")
-        
-        # Diccionario de alias técnicos para programas de Windows
-        aliases = {
-            "paint": "mspaint",
-            "calculadora": "calc",
-            "bloc de notas": "notepad",
-            "word": "winword",
-            "excel": "excel",
-            "powerpoint": "powerpnt",
-            "archivos": "explorer",
-            "explorador": "explorer",
-            "cmd": "cmd",
-            "consola": "cmd",
-            "terminal": "cmd"
-        }
-        
-        app_exe = aliases.get(nombre.lower(), nombre)
-        
+        """
+        Lanza una aplicación local.
+
+        Nunca se pasa por un shell ni se concatena el nombre en una cadena de
+        comando: primero se sanea y luego se ejecuta con lista de argumentos.
+        """
+        limpio = _nombre_app_seguro(nombre)
+        if not limpio:
+            return ToolResult(False, f"No puedo lanzar «{nombre}»: el nombre no es válido.")
+
+        app_exe = self.ALIAS_APPS.get(limpio.lower(), limpio)
+
         try:
-            if os.name == 'nt': 
-                os.system(f'start "" "{app_exe}"')
-            elif sys.platform == 'darwin': 
-                subprocess.Popen(["open", "-a", nombre])
-            else: 
-                subprocess.Popen([nombre])
-                
-            return ToolResult(True, f"Lanzando aplicación: {nombre}")
+            ruta = shutil.which(app_exe)
+            if ruta:
+                subprocess.Popen([ruta])
+            elif os.name == "nt":
+                # Sin shell=True. `start` resuelve las App Paths del registro
+                # (Office y demás), y el nombre ya viene saneado.
+                subprocess.Popen(["cmd", "/c", "start", "", app_exe], shell=False)
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", "-a", app_exe])
+            else:
+                return ToolResult(False, f"No encontré «{app_exe}» en el PATH.")
+            return ToolResult(True, f"Lanzando aplicación: {limpio}")
+        except FileNotFoundError:
+            return ToolResult(False, f"No encontré «{app_exe}» en este equipo.")
         except Exception as e:
-            return ToolResult(False, f"No se pudo abrir {nombre}: {e}")
+            return ToolResult(False, f"No se pudo abrir {limpio}: {e}")
 
     def _cmd_sistema_info(self, *args) -> ToolResult:
         """Información de hardware."""

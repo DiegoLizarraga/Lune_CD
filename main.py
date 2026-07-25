@@ -7,7 +7,6 @@ La UI está repartida en módulos:
 """
 import sys
 import os
-import importlib
 from datetime import datetime
 
 from PyQt6.QtWidgets import (
@@ -118,7 +117,7 @@ class LuneCDWindow(QMainWindow):
         mark.setStyleSheet(f"background:{COLORS['bg']};border:2px solid {COLORS['cyan_dark']};border-radius:2px;color:{COLORS['yellow']};")
         title = QVBoxLayout(); title.setSpacing(2)
         nombre_bot = datos.get_personaje(datos.get_bot().get("personaje_default","Lune")).get("nombre", "Lune")
-        self.sidebar_t1 = QLabel(f"<span style='color:{COLORS['text']};'>{nombre_bot.upper()} </span><span style='color:{COLORS['accent']};'>CD</span>")
+        self.sidebar_t1 = QLabel(self._marca_sidebar(nombre_bot))
         self.sidebar_t1.setFont(QFont(FONT_DISPLAY,15,QFont.Weight.Bold)); self.sidebar_t1.setStyleSheet("background:transparent;letter-spacing:2px;")
         t2 = QLabel(f"ルネ · HÍBRIDO v{APP_VERSION}"); t2.setFont(QFont(FONT_MONO,8)); t2.setStyleSheet(f"color:{COLORS['text_dim']};background:transparent;letter-spacing:1px;")
         title.addWidget(self.sidebar_t1); title.addWidget(t2)
@@ -429,6 +428,10 @@ class LuneCDWindow(QMainWindow):
             if self.current_provider in self.ai_manager.providers:
                 self.ai_manager.providers[self.current_provider].cancel_flag = True
 
+            # El hilo tarda un momento en cortar y luego emite response_ready.
+            # Sin esta bandera, _on_response pisaba el estado con "LISTO" y
+            # parecía que la interrupción no había funcionado.
+            self._cancelado = True
             self._set_status("INTERRUMPIDO", COLORS["warning"])
             self.lune_face.set_state("normal")
 
@@ -480,8 +483,13 @@ class LuneCDWindow(QMainWindow):
         self.messages_layout.insertWidget(self.messages_layout.count()-1, self._typing_indicator)
         self._scroll_bottom()
 
+        self._cancelado = False
         contexto_memoria = self.memoria.obtener_contexto_para_prompt()
-        self.ai_worker = AIWorker(self.ai_manager, text, self.current_provider, extra_context=contexto_memoria)
+        self.ai_worker = AIWorker(
+            self.ai_manager, text, self.current_provider,
+            extra_context=contexto_memoria,
+            permitir_acciones=self.config.feature("acciones_ia", True),
+        )
         if self.config.feature("streaming_tokens", True):
             self.ai_worker.token_received.connect(self._on_token)
         self.ai_worker.response_ready.connect(self._on_response)
@@ -511,14 +519,19 @@ class LuneCDWindow(QMainWindow):
         self._current_bubble = None
 
         self.stop_btn.hide(); self.send_btn.show()
-        self._set_status("LISTO", COLORS["success"]); self.input_field.setEnabled(True); self.input_field.setFocus()
+        if not getattr(self, "_cancelado", False):
+            self._set_status("LISTO", COLORS["success"])
+        self.input_field.setEnabled(True); self.input_field.setFocus()
 
-        for accion in acciones_ia:
-            herramienta = accion.pop("herramienta", None)
-            if herramienta:
-                result = self.tools.ejecutar(herramienta, **accion)
-                tool_bubble = MessageBubble(f"{'✓' if result.ok else '✕'} {result.mensaje}", is_user=False, provider_id=self.current_provider)
-                self.messages_layout.insertWidget(self.messages_layout.count()-1, tool_bubble)
+        # Las acciones que pide la IA (abrir webs, lanzar apps) solo se ejecutan
+        # si el usuario las tiene permitidas en Configuración → Rendimiento.
+        if self.config.feature("acciones_ia", True) and not getattr(self, "_cancelado", False):
+            for accion in acciones_ia:
+                herramienta = accion.pop("herramienta", None)
+                if herramienta:
+                    result = self.tools.ejecutar(herramienta, **accion)
+                    tool_bubble = MessageBubble(f"{'✓' if result.ok else '✕'} {result.mensaje}", is_user=False, provider_id=self.current_provider)
+                    self.messages_layout.insertWidget(self.messages_layout.count()-1, tool_bubble)
 
         self.memoria.procesar_respuesta_lune(respuesta_limpia)
         emotion = detect_emotion(respuesta_limpia)
@@ -568,7 +581,7 @@ class LuneCDWindow(QMainWindow):
     def _switch_character(self, nombre):
         """Cambia el personaje activo: recarga prompt, limpia historial y saluda."""
         personajes.set_activo(nombre)
-        importlib.reload(datos)
+        datos.invalidar()
         self.ai_manager.clear_history()
 
         p = personajes.get_activo()
@@ -577,7 +590,7 @@ class LuneCDWindow(QMainWindow):
         lune_face.set_active_pack(pack); self.config.set("avatar", "pack", pack)
 
         # Refrescar marca, banco y bienvenida
-        self.sidebar_t1.setText(f"<span style='color:{COLORS['text']};'>{nombre.upper()} </span><span style='color:{COLORS['accent']};'>CD</span>")
+        self.sidebar_t1.setText(self._marca_sidebar(nombre))
         self.banco = BancoRespuestas(nombre_asistente=nombre, nombre_usuario=self.memoria.get_nombre_usuario())
 
         # Limpiar chat y mostrar saludo del personaje
@@ -591,16 +604,26 @@ class LuneCDWindow(QMainWindow):
         self.lune_face.set_state("happy", auto_revert_ms=4000)
         self.stack.setCurrentIndex(0); self._scroll_bottom()
 
+    def _marca_sidebar(self, nombre):
+        """Rótulo de la barra lateral: nombre en blanco + «CD» en cyan."""
+        return (f"<span style='color:{COLORS['text']};'>{nombre.upper()} </span>"
+                f"<span style='color:{COLORS['accent']};'>CD</span>")
+
     def _on_keys_saved(self):
+        # datos.guardar() ya invalidó la caché, así que esto lee lo recién escrito.
         self.ai_manager.reload_provider()
         self.stack.setCurrentIndex(0)
 
         personaje = datos.get_personaje(datos.get_bot().get("personaje_default", "Lune"))
-        self.sidebar_t1.setText(personaje.get("nombre", "Lune AI"))
+        nombre_bot = personaje.get("nombre", "Lune")
+        self.sidebar_t1.setText(self._marca_sidebar(nombre_bot))
+        self.banco = BancoRespuestas(nombre_asistente=nombre_bot,
+                                     nombre_usuario=self.memoria.get_nombre_usuario())
         if hasattr(self, 'welcome_t1'):
-            self.welcome_t1.setText(personaje.get("nombre", "Lune AI"))
+            self.welcome_t1.setText(nombre_bot.upper())
             nombre = self.memoria.get_nombre_usuario()
-            saludo = personaje.get("fraseInicial", f"De vuelta, {nombre}. Dime qué necesitas." if nombre else "Lune en línea. Dime qué necesitas.")
+            saludo = personaje.get("fraseInicial") or (
+                f"De vuelta, {nombre}. Dime qué necesitas." if nombre else "Lune en línea. Dime qué necesitas.")
             self.welcome_t2.setText(saludo)
 
         QMessageBox.information(self,"Guardado","Configuración guardada correctamente.")

@@ -9,8 +9,7 @@ de Qt (sin clip-path/box-shadow/webfonts): esquinas casi rectas con
 bordes neón gruesos, y fuentes con fallback a las del sistema.
 """
 import datos
-
-APP_VERSION = "8.0"
+from version import APP_VERSION  # noqa: F401  (reexportado: media app lo importa de aquí)
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  TIPOGRAFÍA

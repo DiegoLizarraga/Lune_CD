@@ -208,6 +208,11 @@ class OptimizadorPanel(QFrame):
                f"({res['archivos']} archivos).\n\n{detalle}")
         if res.get("errores"):
             msg += f"\n\n({res['errores']} archivos estaban en uso y los dejé intactos.)"
+        if res.get("bloqueadas"):
+            # La red de seguridad de optimizador.py rechazó estas rutas.
+            msg += (f"\n\n({len(res['bloqueadas'])} rutas no pasaron el control de "
+                    "seguridad y las omití. Revisa los logs si te sorprende.)")
+            log_error(f"Rutas bloqueadas al limpiar: {res['bloqueadas']}")
         QMessageBox.information(self, "Optimización completa", msg)
         self.lbl_scan.setText("¡Tu PC está más ligero! Vuelve a escanear cuando quieras.")
 
