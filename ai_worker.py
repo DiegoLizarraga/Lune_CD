@@ -34,13 +34,15 @@ class AIWorker(QThread):
     INTERVALO_UI = 0.06   # segundos
 
     def __init__(self, ai_manager, message: str, provider_id: str,
-                 extra_context: str = "", permitir_acciones: bool = True):
+                 extra_context: str = "", permitir_acciones: bool = True,
+                 imagenes=None):
         super().__init__()
         self.ai_manager        = ai_manager
         self.message           = message
         self.provider_id       = provider_id
         self.extra_context     = extra_context
         self.permitir_acciones = permitir_acciones
+        self.imagenes          = imagenes or []
         self._buffer           = ""
         self._ultimo_emit      = 0.0
 
@@ -68,7 +70,8 @@ class AIWorker(QThread):
             try:
                 response = loop.run_until_complete(
                     self.ai_manager.chat(self.message, system_prompt,
-                                         provider=self.provider_id, on_token=on_token)
+                                         provider=self.provider_id, on_token=on_token,
+                                         imagenes=self.imagenes)
                 )
             finally:
                 loop.close()

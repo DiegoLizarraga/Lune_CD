@@ -36,6 +36,11 @@ except ImportError:
 _APP_VALIDA = re.compile(r"^[\w .\-()]{1,60}$", re.UNICODE)
 _ESQUEMAS_PERMITIDOS = ("http", "https")
 
+# Lanzar apps con `cmd /c start` abría una consola negra que parpadeaba.
+_SIN_CONSOLA = {}
+if os.name == "nt":
+    _SIN_CONSOLA = {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)}
+
 
 def _nombre_app_seguro(nombre: str) -> Optional[str]:
     """Devuelve el nombre saneado, o None si trae algo sospechoso."""
@@ -274,11 +279,11 @@ class ToolManager:
         try:
             ruta = shutil.which(app_exe)
             if ruta:
-                subprocess.Popen([ruta])
+                subprocess.Popen([ruta], **_SIN_CONSOLA)
             elif os.name == "nt":
                 # Sin shell=True. `start` resuelve las App Paths del registro
                 # (Office y demás), y el nombre ya viene saneado.
-                subprocess.Popen(["cmd", "/c", "start", "", app_exe], shell=False)
+                subprocess.Popen(["cmd", "/c", "start", "", app_exe], shell=False, **_SIN_CONSOLA)
             elif sys.platform == "darwin":
                 subprocess.Popen(["open", "-a", app_exe])
             else:

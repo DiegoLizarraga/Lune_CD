@@ -3,20 +3,31 @@
 # El bot de Telegram es Node.js y tiene sus propias dependencias
 # (telegram-bot-or/package.json → npm install).
 
-# CORE - Interfaz
+# ── NÚCLEO (sin esto la app no arranca) ──────────────────────────
 PyQt6>=6.6.0
-
-# HTTP / Networking (OpenRouter y Ollama)
 requests>=2.31.0
 
-# Sistema: Optimizador e info de hardware
+# ── SISTEMA: Optimizador e info de hardware ──────────────────────
 psutil>=5.9.0
 
-# VOZ — edge-tts es la principal (voz mexicana natural).
-# gTTS queda como respaldo automático si edge-tts falla.
+# ── VOZ DE SALIDA: edge-tts es la principal (voz mexicana natural).
+#    gTTS queda como respaldo automático si edge-tts falla.
 edge-tts>=6.1.0
 gtts>=2.5.0
 pygame>=2.5.0
 
-# TESTS (opcional, solo para desarrollo)
-# pip install pytest
+# ── ADJUNTOS: leer documentos en el chat ─────────────────────────
+pypdf>=4.0.0
+python-docx>=1.1.0
+
+# ══════════════════════════════════════════════════════════════════
+# OPCIONALES — la app funciona sin ellos y avisa si los necesitas.
+# Instálalos a mano según lo que quieras usar.
+# ══════════════════════════════════════════════════════════════════
+#
+# VOZ DE ENTRADA (dictado con Whisper, 100% local).
+# Pesa bastante; recomendado en el equipo con GPU:
+#     pip install faster-whisper sounddevice
+#
+# TESTS (desarrollo):
+#     pip install pytest

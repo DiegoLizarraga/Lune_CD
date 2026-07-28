@@ -12,14 +12,18 @@ from datetime import datetime
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLineEdit, QPushButton, QLabel, QScrollArea, QFrame,
-    QApplication, QMessageBox, QStackedWidget,
+    QApplication, QMessageBox, QStackedWidget, QFileDialog,
     QSystemTrayIcon, QMenu, QGridLayout,
 )
-from PyQt6.QtCore import Qt, QTimer, QSize, QEvent
+from PyQt6.QtCore import Qt, QTimer, QSize, QEvent, QThread, pyqtSignal
 from PyQt6.QtGui import QFont, QColor, QPalette, QIcon, QAction, QPixmap, QFontDatabase
 
+import adjuntos as adj
+import voz_entrada
 from config import Config
 from ai_manager import AIManager
+from conversaciones import GestorConversaciones
+from historial_panel import HistorialPanel
 from utils import Logger, log_info, log_error
 import datos
 from memoria import MemoriaManager
@@ -48,6 +52,40 @@ logger = Logger()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+#  WORKERS AUXILIARES
+# ─────────────────────────────────────────────────────────────────────────────
+class TranscripcionWorker(QThread):
+    """Transcribe el audio grabado sin congelar la UI (Whisper tarda lo suyo)."""
+    listo = pyqtSignal(str)
+    fallo = pyqtSignal(str)
+
+    def __init__(self, ruta_wav, modelo: str, idioma: str):
+        super().__init__()
+        self.ruta_wav = ruta_wav; self.modelo = modelo; self.idioma = idioma
+
+    def run(self):
+        try:
+            self.listo.emit(voz_entrada.transcribir(self.ruta_wav, self.modelo, self.idioma))
+        except Exception as e:
+            self.fallo.emit(str(e))
+
+
+class SondeoProveedoresWorker(QThread):
+    """Pregunta a cada proveedor si está vivo, para el punto de estado."""
+    listo = pyqtSignal(object)     # {provider_id: bool}
+
+    def __init__(self, providers):
+        super().__init__()
+        self.providers = providers
+
+    def run(self):
+        try:
+            self.listo.emit({pid: p.is_available() for pid, p in self.providers.items()})
+        except Exception:
+            self.listo.emit({})
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 #  MAIN WINDOW
 # ─────────────────────────────────────────────────────────────────────────────
 class LuneCDWindow(QMainWindow):
@@ -66,6 +104,15 @@ class LuneCDWindow(QMainWindow):
         self._quit_real       = False
         self.memoria          = MemoriaManager()
         self.tools            = ToolManager()
+        self._adjuntos        = []      # archivos pendientes de enviar
+        self._grabadora       = None
+        self._transcriptor    = None
+        self._sondeo_prov     = None
+
+        # Historial de conversaciones en disco
+        self.chats = GestorConversaciones(
+            max_sesiones=self.config.get("chat", "max_sesiones", 50)
+        )
 
         # Banco de respuestas instantáneas con la personalidad de Lune
         nombre_bot = datos.get_personaje(datos.get_bot().get("personaje_default", "Lune")).get("nombre", "Lune")
@@ -80,7 +127,129 @@ class LuneCDWindow(QMainWindow):
 
         self._init_ui()
         self._build_tray()
+        self._restaurar_o_iniciar_sesion()
+
+        # Punto de estado de cada proveedor: se sondea al arrancar y cada 60 s,
+        # para no enterarte de que Ollama está caído al mandar un mensaje.
+        self._timer_estado = QTimer(self)
+        self._timer_estado.timeout.connect(self._sondear_proveedores)
+        self._timer_estado.start(60000)
+        QTimer.singleShot(800, self._sondear_proveedores)
+
+        if self.config.get("actualizaciones", "comprobar_al_iniciar", False):
+            QTimer.singleShot(4000, self._comprobar_updates_silencioso)
+
         log_info(f"Lune CD v{APP_VERSION} iniciado")
+
+    # ── Actualizaciones ───────────────────────────────────────────────────────
+    def _comprobar_updates_silencioso(self):
+        """
+        Mira si hay versión nueva al arrancar, sin interrumpir.
+        Solo avisa si hay algo; si no, ni se entera el usuario.
+        """
+        from settings_panel import GitWorker
+        self._git_check = GitWorker("comprobar", self.config.get("actualizaciones", "rama", "master"))
+        self._git_check.listo.connect(self._on_update_disponible)
+        self._git_check.start()
+
+    def _on_update_disponible(self, res):
+        if not res.get("ok") or not res.get("hay_novedades"):
+            return
+        n = res.get("pendientes", 0)
+        log_info(f"Hay {n} actualización(es) disponibles")
+        if self.tray is not None:
+            self.tray.showMessage(
+                "Lune CD", f"Hay {n} actualización(es). Ve a Ajustes → Actualizaciones.",
+                QSystemTrayIcon.MessageIcon.Information, 6000,
+            )
+        else:
+            self._burbuja_bot(
+                f"Por cierto: hay **{n} actualización(es)** esperando. "
+                "Cuando quieras, entra en ⚙️ Ajustes → Actualizaciones."
+            )
+
+    # ── Sesión de chat ────────────────────────────────────────────────────────
+    def _restaurar_o_iniciar_sesion(self):
+        """Reabre la última conversación si procede; si no, empieza una nueva."""
+        if not self.config.feature("guardar_conversaciones", True):
+            return
+        if self.config.get("chat", "restaurar_ultima", True):
+            sesion = self.chats.ultima()
+            if sesion and sesion.get("mensajes"):
+                self._pintar_sesion(sesion)
+                return
+        self.chats.nueva_sesion(
+            proveedor=self.current_provider,
+            personaje=datos.get_bot().get("personaje_default", "Lune"),
+        )
+
+    def _pintar_sesion(self, sesion):
+        """Vuelca una conversación guardada en el chat y en el contexto del modelo."""
+        while self.messages_layout.count() > 1:
+            item = self.messages_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        markdown = self.config.feature("markdown", True)
+        for m in sesion.get("mensajes", []):
+            burbuja = MessageBubble(
+                m.get("contenido", ""), is_user=(m.get("rol") == "user"),
+                provider_id=sesion.get("proveedor") or self.current_provider,
+                markdown=markdown,
+            )
+            self.messages_layout.insertWidget(self.messages_layout.count() - 1, burbuja)
+
+        # El modelo también tiene que saber de qué iba la conversación
+        self.ai_manager.cargar_historial(self.chats.como_historial())
+        self._scroll_bottom()
+
+    def _nueva_conversacion(self):
+        self.chats.nueva_sesion(
+            proveedor=self.current_provider,
+            personaje=datos.get_bot().get("personaje_default", "Lune"),
+        )
+        self.ai_manager.clear_history()
+        while self.messages_layout.count() > 1:
+            item = self.messages_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        self._add_welcome()
+        self.lune_face.set_state("normal")
+        self.stack.setCurrentIndex(0)
+        if hasattr(self, "historial_panel"):
+            self.historial_panel.refrescar()
+
+    def _abrir_conversacion(self, sesion_id):
+        sesion = self.chats.cargar(sesion_id)
+        if not sesion:
+            QMessageBox.warning(self, "No pude abrirla", "Esa conversación ya no está."); return
+        self._pintar_sesion(sesion)
+        self.stack.setCurrentIndex(0)
+        self.historial_panel.refrescar()
+
+    def _guardar_turno(self, rol, contenido, adjuntos=None, uso=None):
+        if self.config.feature("guardar_conversaciones", True):
+            self.chats.agregar(rol, contenido, adjuntos=adjuntos, uso=uso)
+
+    # ── Estado de los proveedores ─────────────────────────────────────────────
+    def _sondear_proveedores(self):
+        if self._sondeo_prov and self._sondeo_prov.isRunning():
+            return
+        self._sondeo_prov = SondeoProveedoresWorker(self.ai_manager.providers)
+        self._sondeo_prov.listo.connect(self._on_estado_proveedores)
+        self._sondeo_prov.start()
+
+    def _on_estado_proveedores(self, estados):
+        for pid, disponible in (estados or {}).items():
+            tab = self.provider_tabs.get(pid)
+            if not tab:
+                continue
+            if pid == "ollama":
+                detalle = (f"Ollama responde en {datos.ollama_url()}" if disponible
+                           else f"Sin respuesta de {datos.ollama_url()}")
+            else:
+                detalle = "API key configurada" if disponible else "Falta la API key"
+            tab.set_estado(disponible, detalle)
 
     # ── UI ────────────────────────────────────────────────────────────────────
     def _init_ui(self):
@@ -142,17 +311,6 @@ class LuneCDWindow(QMainWindow):
         fc.addStretch(); fc.addWidget(self.lune_face); fc.addStretch()
         layout.addLayout(fc)
 
-        # ── TELEGRAM ──
-        self.telegram_btn = QPushButton("  CONTINUAR EN TELEGRAM")
-        self.telegram_btn.setCursor(Qt.CursorShape.PointingHandCursor); self.telegram_btn.setFont(QFont(FONT_DISPLAY,10,QFont.Weight.Bold)); self.telegram_btn.setFixedHeight(42)
-        self._set_telegram_btn_style(False)
-        self.telegram_btn.clicked.connect(self._toggle_telegram)
-        layout.addWidget(self.telegram_btn)
-        self.telegram_status = QLabel("")
-        self.telegram_status.setFont(QFont(FONT_MONO,8)); self.telegram_status.setStyleSheet(f"color:{COLORS['text_muted']};background:transparent;padding-left:8px;")
-        self.telegram_status.setWordWrap(True)
-        layout.addWidget(self.telegram_status)
-
         # ── ACCIONES: grid de tiles ──
         layout.addWidget(self._overline("// ACCIONES"))
         grid = QGridLayout(); grid.setSpacing(7)
@@ -161,14 +319,24 @@ class LuneCDWindow(QMainWindow):
         opt_btn  = self._tile_btn("OPTIMIZAR", "bolt");  opt_btn.clicked.connect(self._toggle_optimizer)
         mem_btn  = self._tile_btn("MEMORIA", "brain");    mem_btn.clicked.connect(self._show_memoria)
         tools_btn= self._tile_btn("TOOLS", "tool");      tools_btn.clicked.connect(self._show_tools)
+        hist_btn = self._tile_btn("HISTORIAL", "history"); hist_btn.clicked.connect(self._toggle_historial)
+        # El tile de Telegram era relleno visual sin acción y solo aparecía si
+        # había voz. Ahora es el que enciende y apaga el bot, en lugar del botón
+        # ancho que se salía de la barra lateral.
+        self._telegram_tile = self._tile_btn("TELEGRAM", "telegram")
+        self._telegram_tile.clicked.connect(self._toggle_telegram)
+        self._set_telegram_btn_style(False)
+
         grid.addWidget(self._keys_btn, 0, 0); grid.addWidget(pers_btn, 0, 1)
         grid.addWidget(opt_btn, 1, 0); grid.addWidget(mem_btn, 1, 1)
-        grid.addWidget(tools_btn, 2, 0)
+        grid.addWidget(tools_btn, 2, 0); grid.addWidget(hist_btn, 2, 1)
         if self.voice.available:
-            self._voice_btn = self._tile_btn("VOZ: OFF", "volume_off"); self._voice_btn.clicked.connect(self._toggle_voice)
-            grid.addWidget(self._voice_btn, 2, 1)
+            self._voice_btn = self._tile_btn("VOZ: OFF", "volume_off")
+            self._voice_btn.clicked.connect(self._toggle_voice)
+            grid.addWidget(self._voice_btn, 3, 0)
+            grid.addWidget(self._telegram_tile, 3, 1)
         else:
-            grid.addWidget(self._tile_btn("TELEGRAM", "telegram"), 2, 1)  # relleno visual
+            grid.addWidget(self._telegram_tile, 3, 0)
         layout.addLayout(grid)
 
         # ── LIMPIAR CHAT (ancho completo, hover rojo) ──
@@ -194,16 +362,32 @@ class LuneCDWindow(QMainWindow):
         b.setStyleSheet(f"QPushButton{{background:{COLORS['surface2']};color:{COLORS['text_dim']};border:2px solid {COLORS['border']};border-radius:2px;letter-spacing:1px;text-align:center;}}QPushButton:hover{{background:{COLORS['surface3']};color:{COLORS['accent']};border-color:{COLORS['cyan_dark']};}}")
         return b
 
-    def _set_telegram_btn_style(self, active):
-        self.telegram_btn.setIconSize(QSize(15, 15))
+    def _set_telegram_btn_style(self, active, detalle=""):
+        """Pinta el tile de Telegram según esté el bot encendido o apagado."""
+        self._telegram_tile.setIconSize(QSize(18, 18))
         if active:
-            self.telegram_btn.setText("  TELEGRAM · ACTIVO")
-            self.telegram_btn.setIcon(icon("telegram", "#FFFFFF", 15))
-            self.telegram_btn.setStyleSheet(f"QPushButton{{background:qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 {COLORS['telegram_dark']},stop:1 {COLORS['telegram']});color:white;border:none;border-radius:3px;text-align:left;padding-left:12px;font-weight:bold;letter-spacing:1px;}}QPushButton:hover{{background:{COLORS['telegram']};}}")
+            self._telegram_tile.setText(" TG: ON")
+            self._telegram_tile.setIcon(icon("telegram", COLORS["bg"], 18))
+            self._telegram_tile.setStyleSheet(
+                f"QPushButton{{background:{COLORS['telegram']};color:{COLORS['bg']};"
+                f"border:2px solid {COLORS['telegram']};border-radius:2px;"
+                f"letter-spacing:1px;text-align:center;font-weight:bold;}}"
+                f"QPushButton:hover{{background:{COLORS['telegram_dark']};color:#FFFFFF;}}"
+            )
         else:
-            self.telegram_btn.setText("  CONTINUAR EN TELEGRAM")
-            self.telegram_btn.setIcon(icon("telegram", COLORS["telegram"], 15))
-            self.telegram_btn.setStyleSheet(f"QPushButton{{background:{COLORS['surface2']};color:{COLORS['telegram']};border:2px solid {COLORS['telegram']}55;border-radius:3px;text-align:left;padding-left:12px;letter-spacing:1px;}}QPushButton:hover{{background:{COLORS['telegram_dark']}44;border-color:{COLORS['telegram']};}}")
+            self._telegram_tile.setText(" TELEGRAM")
+            self._telegram_tile.setIcon(icon("telegram", COLORS["text_muted"], 18))
+            self._telegram_tile.setStyleSheet(
+                f"QPushButton{{background:{COLORS['surface2']};color:{COLORS['text_dim']};"
+                f"border:2px solid {COLORS['border']};border-radius:2px;"
+                f"letter-spacing:1px;text-align:center;}}"
+                f"QPushButton:hover{{background:{COLORS['surface3']};"
+                f"color:{COLORS['telegram']};border-color:{COLORS['telegram']};}}"
+            )
+        self._telegram_tile.setToolTip(
+            detalle or ("Bot de Telegram activo · clic para apagarlo"
+                        if active else "Encender el bot de Telegram")
+        )
 
     def _sidebar_btn(self, label):
         btn = QPushButton(f"  {label}")
@@ -227,21 +411,22 @@ class LuneCDWindow(QMainWindow):
     def _toggle_telegram(self):
         if hasattr(self,"_tg_worker") and self._tg_worker and self._tg_worker.isRunning():
             self._tg_worker.stop(); self._tg_worker.requestInterruption(); self._tg_worker.wait(3000); self._tg_worker = None
-            self._set_telegram_btn_style(False); self.telegram_status.setText(""); return
+            self._set_telegram_btn_style(False); return
         if not datos.telegram_token() or "TU_TOKEN" in datos.telegram_token():
             QMessageBox.warning(self,"Token faltante","Configura tu token de Telegram en la Configuración General."); return
         if not TelegramBotWorker.BOT_DIR.exists():
             QMessageBox.warning(self,"Carpeta no encontrada",f"No encontré la carpeta del bot en:\n{TelegramBotWorker.BOT_DIR}"); return
         self._tg_worker = TelegramBotWorker(); self._tg_worker.log_signal.connect(self._on_telegram_log); self._tg_worker.stopped.connect(self._on_telegram_stopped)
-        self._tg_worker.start(); self._set_telegram_btn_style(True); self.telegram_status.setText("Iniciando...")
+        self._tg_worker.start(); self._set_telegram_btn_style(True, "Iniciando el bot…")
 
     def _on_telegram_log(self, line):
         log_info(f"[Telegram] {line}")
-        if any(k in line for k in ["Bot iniciado","iniciado","Modelo:","Error"]): self.telegram_status.setText(line[:60])
+        # El detalle va al tooltip del tile; ya no hay etiqueta de estado.
+        if any(k in line for k in ["Bot iniciado","iniciado","Modelo:","Error"]):
+            self._telegram_tile.setToolTip(line[:120])
 
     def _on_telegram_stopped(self):
-        self._set_telegram_btn_style(False); self.telegram_status.setText("Bot detenido")
-        QTimer.singleShot(3000, lambda: self.telegram_status.setText(""))
+        self._set_telegram_btn_style(False, "Bot detenido")
 
     # ── MAIN AREA ─────────────────────────────────────────────────────────────
     def _build_main(self):
@@ -253,6 +438,7 @@ class LuneCDWindow(QMainWindow):
         self.stack.addWidget(self._build_keys_page())        # 1
         self.stack.addWidget(self._build_optimizer_page())   # 2
         self.stack.addWidget(self._build_personajes_page())  # 3
+        self.stack.addWidget(self._build_historial_page())   # 4
         layout.addWidget(self.stack,1); layout.addWidget(self._build_input_bar())
         return main
 
@@ -312,10 +498,31 @@ class LuneCDWindow(QMainWindow):
         layout.addWidget(self.personajes_panel)
         return page
 
+    def _build_historial_page(self):
+        page = QFrame(); page.setStyleSheet("QFrame{background:transparent;}")
+        layout = QVBoxLayout(page); layout.setContentsMargins(10,10,10,10)
+        self.historial_panel = HistorialPanel(self.chats)
+        self.historial_panel.abrir.connect(self._abrir_conversacion)
+        self.historial_panel.nueva.connect(self._nueva_conversacion)
+        layout.addWidget(self.historial_panel)
+        return page
+
     def _build_input_bar(self):
-        bar = QFrame(); bar.setFixedHeight(88)
+        bar = QFrame(); bar.setFixedHeight(118)
         bar.setStyleSheet(f"QFrame{{background:{COLORS['surface']};border-top:2px solid {COLORS['border']};}}")
-        layout = QHBoxLayout(bar); layout.setContentsMargins(20,20,20,20); layout.setSpacing(10)
+        externo = QVBoxLayout(bar); externo.setContentsMargins(20, 8, 20, 14); externo.setSpacing(6)
+
+        # Fila de adjuntos pendientes (oculta si no hay ninguno)
+        self.fila_adjuntos = QFrame()
+        self.fila_adjuntos.setStyleSheet("QFrame{background:transparent;border:none;}")
+        self.layout_adjuntos = QHBoxLayout(self.fila_adjuntos)
+        self.layout_adjuntos.setContentsMargins(0, 0, 0, 0); self.layout_adjuntos.setSpacing(6)
+        self.layout_adjuntos.addStretch()
+        self.fila_adjuntos.hide()
+        externo.addWidget(self.fila_adjuntos)
+
+        fila = QWidget(); fila.setStyleSheet("background:transparent;")
+        layout = QHBoxLayout(fila); layout.setContentsMargins(0, 0, 0, 0); layout.setSpacing(10)
 
         glyph = QLabel(">"); glyph.setFont(QFont(FONT_MONO,15,QFont.Weight.Bold))
         glyph.setStyleSheet(f"color:{COLORS['accent']};background:transparent;")
@@ -340,8 +547,152 @@ class LuneCDWindow(QMainWindow):
         self.stop_btn.clicked.connect(self._stop_generation)
         self.stop_btn.hide()
 
-        layout.addWidget(glyph); layout.addWidget(self.input_field,1); layout.addWidget(self.send_btn); layout.addWidget(self.stop_btn)
+        # Adjuntar documentos e imágenes
+        self.clip_btn = QPushButton(); self.clip_btn.setFixedSize(46, 46)
+        self.clip_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.clip_btn.setIcon(icon("clip", COLORS["text_muted"], 18)); self.clip_btn.setIconSize(QSize(18, 18))
+        self.clip_btn.setToolTip("Adjuntar documento o imagen")
+        self.clip_btn.setStyleSheet(self._estilo_btn_secundario())
+        self.clip_btn.clicked.connect(self._elegir_adjunto)
+
+        # Dictado por voz
+        self.mic_btn = QPushButton(); self.mic_btn.setFixedSize(46, 46)
+        self.mic_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.mic_btn.setIcon(icon("mic", COLORS["text_muted"], 18)); self.mic_btn.setIconSize(QSize(18, 18))
+        self.mic_btn.setToolTip("Dictar (clic para empezar, clic para parar)")
+        self.mic_btn.setStyleSheet(self._estilo_btn_secundario())
+        self.mic_btn.clicked.connect(self._toggle_dictado)
+
+        layout.addWidget(glyph); layout.addWidget(self.input_field, 1)
+        layout.addWidget(self.clip_btn); layout.addWidget(self.mic_btn)
+        layout.addWidget(self.send_btn); layout.addWidget(self.stop_btn)
+        externo.addWidget(fila)
         return bar
+
+    def _estilo_btn_secundario(self, activo=False):
+        if activo:
+            return (f"QPushButton{{background:{COLORS['error']};border:2px solid {COLORS['error']};"
+                    f"border-radius:3px;}}QPushButton:hover{{background:#ff5c78;}}")
+        return (f"QPushButton{{background:{COLORS['surface2']};border:2px solid {COLORS['border']};"
+                f"border-radius:3px;}}QPushButton:hover{{background:{COLORS['surface3']};"
+                f"border-color:{COLORS['accent']};}}")
+
+    # ── Adjuntos ──────────────────────────────────────────────────────────────
+    def _elegir_adjunto(self):
+        rutas, _ = QFileDialog.getOpenFileNames(
+            self, "Adjuntar archivos", "", adj.filtro_dialogo()
+        )
+        for ruta in rutas:
+            try:
+                a = adj.cargar(ruta, max_caracteres=self.config.get("adjuntos", "max_caracteres", 20000))
+            except ValueError as e:
+                QMessageBox.warning(self, "No pude leer el archivo", str(e))
+                continue
+            self._adjuntos.append(a)
+        self._refrescar_adjuntos()
+
+    def _refrescar_adjuntos(self):
+        while self.layout_adjuntos.count() > 1:
+            item = self.layout_adjuntos.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        if not self._adjuntos:
+            self.fila_adjuntos.hide()
+            return
+
+        for i, a in enumerate(self._adjuntos):
+            chip = QFrame()
+            chip.setStyleSheet(
+                f"QFrame{{background:{COLORS['surface2']};border:1px solid {COLORS['cyan_dark']};"
+                f"border-radius:2px;}}"
+            )
+            cl = QHBoxLayout(chip); cl.setContentsMargins(8, 3, 4, 3); cl.setSpacing(6)
+            nombre = a["nombre"]
+            detalle = f"{a['bytes']//1024} KB" if a["tipo"] == "imagen" else f"{a['caracteres']} car."
+            lbl = QLabel(f"{'🖼' if a['tipo'] == 'imagen' else '📄'} {nombre}  ·  {detalle}")
+            lbl.setFont(QFont(FONT_MONO, 8))
+            lbl.setStyleSheet(f"color:{COLORS['accent']};background:transparent;border:none;")
+            quitar = QPushButton(); quitar.setFixedSize(16, 16)
+            quitar.setCursor(Qt.CursorShape.PointingHandCursor)
+            quitar.setIcon(icon("close", COLORS["text_dim"], 10)); quitar.setIconSize(QSize(10, 10))
+            quitar.setStyleSheet("QPushButton{background:transparent;border:none;}")
+            quitar.clicked.connect(lambda _=False, idx=i: self._quitar_adjunto(idx))
+            cl.addWidget(lbl); cl.addWidget(quitar)
+            self.layout_adjuntos.insertWidget(self.layout_adjuntos.count() - 1, chip)
+
+        self.fila_adjuntos.show()
+
+    def _quitar_adjunto(self, idx):
+        if 0 <= idx < len(self._adjuntos):
+            self._adjuntos.pop(idx)
+        self._refrescar_adjuntos()
+
+    # ── Dictado ───────────────────────────────────────────────────────────────
+    def _toggle_dictado(self):
+        if self._grabadora and self._grabadora.grabando:
+            self._parar_dictado()
+            return
+
+        faltan = voz_entrada.dependencias_faltantes()
+        if faltan:
+            QMessageBox.information(self, "Falta instalar algo", voz_entrada.mensaje_instalacion())
+            return
+        hay_mic, detalle = voz_entrada.hay_microfono()
+        if not hay_mic:
+            QMessageBox.warning(self, "Sin micrófono", detalle); return
+
+        try:
+            self._grabadora = voz_entrada.Grabadora()
+            self._grabadora.iniciar()
+        except Exception as e:
+            QMessageBox.warning(self, "No pude grabar", str(e)); return
+
+        self.mic_btn.setIcon(icon("mic", "#FFFFFF", 18))
+        self.mic_btn.setStyleSheet(self._estilo_btn_secundario(activo=True))
+        self.mic_btn.setToolTip("Grabando… clic para parar")
+        self._set_status("GRABANDO", COLORS["error"])
+        self.lune_face.set_state("reading")
+
+    def _parar_dictado(self):
+        wav = self._grabadora.detener() if self._grabadora else None
+        self._grabadora = None
+        self.mic_btn.setIcon(icon("mic", COLORS["text_muted"], 18))
+        self.mic_btn.setStyleSheet(self._estilo_btn_secundario())
+        self.mic_btn.setToolTip("Dictar (clic para empezar, clic para parar)")
+
+        if wav is None:
+            self._set_status("LISTO", COLORS["success"])
+            self.lune_face.set_state("normal")
+            return
+
+        self._set_status("TRANSCRIBIENDO", COLORS["warning"])
+        self.mic_btn.setEnabled(False)
+        self._transcriptor = TranscripcionWorker(
+            wav,
+            self.config.get("voz", "modelo_whisper", "base"),
+            self.config.get("voz", "idioma", "es"),
+        )
+        self._transcriptor.listo.connect(self._on_transcrito)
+        self._transcriptor.fallo.connect(self._on_transcripcion_fallo)
+        self._transcriptor.start()
+
+    def _on_transcrito(self, texto):
+        self.mic_btn.setEnabled(True)
+        self._set_status("LISTO", COLORS["success"])
+        self.lune_face.set_state("normal")
+        if not texto.strip():
+            self._set_status("NO TE OÍ", COLORS["warning"]); return
+        # Se deja en el campo para que puedas corregir antes de enviar
+        actual = self.input_field.text().strip()
+        self.input_field.setText(f"{actual} {texto}".strip())
+        self.input_field.setFocus()
+
+    def _on_transcripcion_fallo(self, error):
+        self.mic_btn.setEnabled(True)
+        self._set_status("LISTO", COLORS["success"])
+        self.lune_face.set_state("normal")
+        QMessageBox.warning(self, "No pude transcribir", error)
 
     def _add_welcome(self):
         welcome = QFrame(); welcome.setStyleSheet("QFrame{background:transparent;}")
@@ -438,38 +789,58 @@ class LuneCDWindow(QMainWindow):
             self.stop_btn.hide(); self.send_btn.show()
             self.input_field.setEnabled(True); self.input_field.setFocus()
 
+    def _burbuja_bot(self, texto):
+        """Respuesta que no viene de la IA (memoria, banco, herramientas)."""
+        b = MessageBubble(texto, is_user=False, provider_id=self.current_provider,
+                          markdown=self.config.feature("markdown", True))
+        self.messages_layout.insertWidget(self.messages_layout.count() - 1, b)
+        return b
+
     def _send_message(self):
         text = self.input_field.text().strip()
-        if not text: return
+        adjuntos_envio = list(self._adjuntos)
+        # Adjuntar un archivo sin escribir nada es una petición implícita
+        if not text and adjuntos_envio:
+            text = "Échale un ojo a esto, por favor."
+        if not text:
+            return
         self.stack.setCurrentIndex(0)
 
-        bubble = MessageBubble(text, is_user=True, provider_id=self.current_provider)
+        bubble = MessageBubble(text, is_user=True, provider_id=self.current_provider,
+                               markdown=False, adjuntos=adjuntos_envio)
         self.messages_layout.insertWidget(self.messages_layout.count()-1, bubble)
         self.input_field.clear()
+        self._adjuntos = []
+        self._refrescar_adjuntos()
+        self._guardar_turno("user", text, adjuntos=adjuntos_envio)
 
-        respuesta_memoria = self.memoria.procesar_mensaje_usuario(text)
-        if respuesta_memoria:
-            bot_bubble = MessageBubble(respuesta_memoria, is_user=False, provider_id=self.current_provider)
-            self.messages_layout.insertWidget(self.messages_layout.count()-1, bot_bubble)
-            self.lune_face.set_state("happy", auto_revert_ms=4000); self._scroll_bottom(); return
+        # Con archivos adjuntos siempre va a la IA: ni la memoria ni el banco
+        # de respuestas saben qué hacer con un PDF.
+        if not adjuntos_envio:
+            respuesta_memoria = self.memoria.procesar_mensaje_usuario(text)
+            if respuesta_memoria:
+                self._burbuja_bot(respuesta_memoria)
+                self._guardar_turno("assistant", respuesta_memoria)
+                self.lune_face.set_state("happy", auto_revert_ms=4000); self._scroll_bottom(); return
 
-        # Banco de respuestas instantáneas (saludos, gracias, hora, chistes…) — sin IA
-        if self.config.feature("respuestas_predeterminadas", True):
-            self.banco.set_nombre_usuario(self.memoria.get_nombre_usuario())
-            rta_rapida = self.banco.responder(text)
-            if rta_rapida:
-                bot_bubble = MessageBubble(rta_rapida, is_user=False, provider_id=self.current_provider)
-                self.messages_layout.insertWidget(self.messages_layout.count()-1, bot_bubble)
-                self.lune_face.set_state("happy", auto_revert_ms=4000)
-                self.voice.speak(rta_rapida); self._scroll_bottom(); return
+            # Banco de respuestas instantáneas (saludos, gracias, hora…) — sin IA
+            if self.config.feature("respuestas_predeterminadas", True):
+                self.banco.set_nombre_usuario(self.memoria.get_nombre_usuario())
+                rta_rapida = self.banco.responder(text)
+                if rta_rapida:
+                    self._burbuja_bot(rta_rapida)
+                    self._guardar_turno("assistant", rta_rapida)
+                    self.lune_face.set_state("happy", auto_revert_ms=4000)
+                    self.voice.speak(rta_rapida); self._scroll_bottom(); return
 
-        tool_result = self.tools.detectar_y_ejecutar(text)
-        if tool_result:
-            icono = "✓" if tool_result.ok else "✕"
-            msg = f"{icono} {tool_result.mensaje}"
-            bot_bubble = MessageBubble(msg, is_user=False, provider_id=self.current_provider)
-            self.messages_layout.insertWidget(self.messages_layout.count()-1, bot_bubble)
-            self.lune_face.set_state("happy" if tool_result.ok else "error", auto_revert_ms=5000); self._scroll_bottom(); return
+            tool_result = self.tools.detectar_y_ejecutar(text)
+            if tool_result:
+                icono = "✓" if tool_result.ok else "✕"
+                msg = f"{icono} {tool_result.mensaje}"
+                self._burbuja_bot(msg)
+                self._guardar_turno("assistant", msg)
+                self.lune_face.set_state("happy" if tool_result.ok else "error", auto_revert_ms=5000)
+                self._scroll_bottom(); return
 
         self.input_field.setEnabled(False)
         self.send_btn.hide(); self.stop_btn.show()
@@ -485,10 +856,14 @@ class LuneCDWindow(QMainWindow):
 
         self._cancelado = False
         contexto_memoria = self.memoria.obtener_contexto_para_prompt()
+        # El texto de los documentos va en el system prompt; las imágenes van
+        # por el canal multimodal del proveedor.
+        contexto_archivos = adj.bloque_para_prompt(adjuntos_envio)
         self.ai_worker = AIWorker(
             self.ai_manager, text, self.current_provider,
-            extra_context=contexto_memoria,
+            extra_context=contexto_memoria + contexto_archivos,
             permitir_acciones=self.config.feature("acciones_ia", True),
+            imagenes=adj.imagenes_base64(adjuntos_envio),
         )
         if self.config.feature("streaming_tokens", True):
             self.ai_worker.token_received.connect(self._on_token)
@@ -497,13 +872,17 @@ class LuneCDWindow(QMainWindow):
         self.ai_worker.start()
 
     def _on_token(self, partial):
+        # En streaming se pinta texto plano: reconstruir los widgets de markdown
+        # 16 veces por segundo sería carísimo. Al terminar se formatea de golpe.
         if self._typing_indicator and self._current_bubble is None:
             self._typing_indicator.stop(); self._typing_indicator.deleteLater(); self._typing_indicator = None
-            self._current_bubble = MessageBubble(partial+" ▋", is_user=False, provider_id=self.current_provider)
+            self._current_bubble = MessageBubble(
+                partial + " ▋", is_user=False, provider_id=self.current_provider,
+                markdown=self.config.feature("markdown", True))
             self.messages_layout.insertWidget(self.messages_layout.count()-1, self._current_bubble)
             self.lune_face.set_state("typing")
         elif self._current_bubble:
-            self._current_bubble.update_text(partial+" ▋")
+            self._current_bubble.update_text(partial + " ▋", streaming=True)
         self._scroll_bottom()
 
     def _on_response(self, response):
@@ -511,12 +890,20 @@ class LuneCDWindow(QMainWindow):
 
         if self._typing_indicator: self._typing_indicator.stop(); self._typing_indicator.deleteLater(); self._typing_indicator = None
         if self._current_bubble:
+            # streaming=False → aquí sí se renderiza el markdown
             self._current_bubble.update_text(respuesta_limpia)
+            burbuja = self._current_bubble
         else:
             # Sin streaming: creamos la burbuja con la respuesta completa
-            bubble = MessageBubble(respuesta_limpia, is_user=False, provider_id=self.current_provider)
-            self.messages_layout.insertWidget(self.messages_layout.count()-1, bubble)
+            burbuja = MessageBubble(respuesta_limpia, is_user=False, provider_id=self.current_provider,
+                                    markdown=self.config.feature("markdown", True))
+            self.messages_layout.insertWidget(self.messages_layout.count()-1, burbuja)
         self._current_bubble = None
+
+        uso = self.ai_manager.uso(self.current_provider)
+        if uso and self.config.feature("contador_tokens", True):
+            burbuja.set_pie(self._texto_uso(uso))
+        self._guardar_turno("assistant", respuesta_limpia, uso=uso)
 
         self.stop_btn.hide(); self.send_btn.show()
         if not getattr(self, "_cancelado", False):
@@ -553,6 +940,20 @@ class LuneCDWindow(QMainWindow):
 
     # ── HELPERS ───────────────────────────────────────────────────────────────
 
+    @staticmethod
+    def _texto_uso(uso: dict) -> str:
+        """Pie de la burbuja: hora, tokens y costo (o velocidad, si es local)."""
+        hora = datetime.now().strftime("%H:%M")
+        partes = [hora, f"{uso.get('entrada', 0)}→{uso.get('salida', 0)} tokens"]
+        if uso.get("local"):
+            if uso.get("tokens_por_segundo"):
+                partes.append(f"{uso['tokens_por_segundo']} tok/s")
+            partes.append("local · gratis")
+        else:
+            costo = uso.get("costo", 0) or 0
+            partes.append(f"${costo:.5f}" if costo else "sin costo reportado")
+        return "  ·  ".join(partes)
+
     def _scroll_bottom(self):
         QTimer.singleShot(60, lambda: self.scroll.verticalScrollBar().setValue(self.scroll.verticalScrollBar().maximum()))
 
@@ -575,6 +976,13 @@ class LuneCDWindow(QMainWindow):
         if self.stack.currentIndex() != 3:
             self.personajes_panel.refrescar()
             self.stack.setCurrentIndex(3)
+        else:
+            self.stack.setCurrentIndex(0)
+
+    def _toggle_historial(self):
+        if self.stack.currentIndex() != 4:
+            self.historial_panel.refrescar()
+            self.stack.setCurrentIndex(4)
         else:
             self.stack.setCurrentIndex(0)
 
@@ -629,13 +1037,14 @@ class LuneCDWindow(QMainWindow):
         QMessageBox.information(self,"Guardado","Configuración guardada correctamente.")
 
     def _clear_chat(self):
-        reply = QMessageBox.question(self,"Limpiar chat","¿Eliminar todos los mensajes?", QMessageBox.StandardButton.Yes|QMessageBox.StandardButton.No)
+        guardando = self.config.feature("guardar_conversaciones", True)
+        texto = ("¿Empezar una conversación nueva?\n\n"
+                 "La actual queda guardada en el Historial."
+                 if guardando else "¿Eliminar todos los mensajes?")
+        reply = QMessageBox.question(self, "Limpiar chat", texto,
+                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         if reply == QMessageBox.StandardButton.Yes:
-            while self.messages_layout.count() > 1:
-                item = self.messages_layout.takeAt(0)
-                if item.widget(): item.widget().deleteLater()
-            self.ai_manager.clear_history()
-            self._add_welcome(); self.lune_face.set_state("normal")
+            self._nueva_conversacion()
 
     # ── BANDEJA DEL SISTEMA (hidden items) ────────────────────────────────────
     def _build_tray(self):
@@ -685,6 +1094,14 @@ class LuneCDWindow(QMainWindow):
             resumen = f"Sesión del {datetime.now().strftime('%d/%m/%Y')}. Mensajes intercambiados hoy: {stats.get('total_mensajes', 0)}."
             self.memoria.cerrar_sesion(resumen)
 
+        # Cortar el dictado y volcar la conversación antes de irnos
+        if self._grabadora is not None:
+            self._grabadora.cancelar()
+        if hasattr(self, "chats"):
+            self.chats.guardar()
+        if hasattr(self, "_timer_estado"):
+            self._timer_estado.stop()
+
         if hasattr(self,"lune_face") and self.lune_face._player: self.lune_face._player.stop()
         if hasattr(self,"_tg_worker") and self._tg_worker and self._tg_worker.isRunning():
             self._tg_worker.stop(); self._tg_worker.wait(3000)
@@ -707,9 +1124,64 @@ def _cargar_fuentes():
         QFontDatabase.addApplicationFont(ttf)
 
 
+CLAVE_INSTANCIA = "LuneCD-instancia-unica"
+
+
+def _mostrar_de_verdad(ventana):
+    """
+    Muestra una ventana ignorando el estado que herede del lanzador.
+
+    Windows pasa al proceso hijo el «estilo de ventana» con el que se lanzó
+    (STARTUPINFO), y Qt lo aplica a la primera ventana de nivel superior. Si
+    alguien arranca Lune en modo oculto —como hacía el .vbs con `Run cmd, 0`—
+    la app corría con la ventana invisible: se oía el video y no se veía nada.
+    Esto lo deshace explícitamente.
+    """
+    ventana.show()
+    ventana.setWindowState(
+        ventana.windowState() & ~Qt.WindowState.WindowMinimized
+    )
+    ventana.showNormal()
+    ventana.raise_()
+    ventana.activateWindow()
+
+
+def _ya_hay_una_instancia() -> bool:
+    """
+    ¿Hay otra Lune corriendo?
+
+    Se lanza desde un .vbs y desde la carpeta de Inicio, así que abrirla dos
+    veces es facilísimo (doble clic, o arrancar a mano lo que ya estaba). En vez
+    de tener dos Lunes peleándose por datos.json, memoria.json y el mismo puerto
+    del bot, la segunda avisa a la primera y se va.
+    """
+    from PyQt6.QtNetwork import QLocalServer, QLocalSocket
+
+    socket = QLocalSocket()
+    socket.connectToServer(CLAVE_INSTANCIA)
+    if socket.waitForConnected(300):
+        # Ya hay una viva: le pedimos que se muestre y nos retiramos.
+        socket.write(b"mostrar")
+        socket.waitForBytesWritten(300)
+        socket.disconnectFromServer()
+        return True
+
+    # Un servidor huérfano (de un cierre a lo bruto) bloquearía el arranque.
+    QLocalServer.removeServer(CLAVE_INSTANCIA)
+    servidor = QLocalServer()
+    servidor.listen(CLAVE_INSTANCIA)
+    # Referencia global para que no lo recoja el recolector de basura
+    globals()["_servidor_instancia"] = servidor
+    return False
+
+
 def main():
     app = QApplication(sys.argv)
     app.setApplicationName("Lune CD")
+
+    if _ya_hay_una_instancia():
+        log_info("Lune ya estaba abierta: no abro una segunda")
+        return
 
     # Tipografía Shibuya Punk: cargar las fuentes empaquetadas en fonts/.
     _cargar_fuentes()
@@ -738,9 +1210,28 @@ def main():
     palette.setColor(QPalette.ColorRole.Text,       QColor(COLORS["text"]))
     app.setPalette(palette)
 
-    # Iniciamos con la pantalla de bienvenida (abre LuneCDWindow al terminar)
-    ventana_inicio = PantallaInicio()
-    ventana_inicio.show()
+    # La ventana principal la crea y la conserva main(), no la pantalla de
+    # inicio: así nunca hay dos ventanas vivas a la vez y la referencia no
+    # depende de un objeto que se está destruyendo.
+    ventanas = {}
+
+    def abrir_principal():
+        if "principal" in ventanas:
+            return
+        ventana = LuneCDWindow()
+        ventanas["principal"] = ventana
+        _mostrar_de_verdad(ventana)
+
+        # Si intentas abrir Lune otra vez, la que ya está se trae al frente.
+        servidor = globals().get("_servidor_instancia")
+        if servidor is not None:
+            servidor.newConnection.connect(
+                lambda: (ventana.showNormal(), ventana.raise_(), ventana.activateWindow())
+            )
+
+    ventana_inicio = PantallaInicio(al_terminar=abrir_principal)
+    ventanas["inicio"] = ventana_inicio
+    _mostrar_de_verdad(ventana_inicio)
 
     sys.exit(app.exec())
 

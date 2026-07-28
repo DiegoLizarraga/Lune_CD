@@ -1,15 +1,33 @@
 """
-splash.py — Pantalla de inicio (pixel art) con video de bienvenida.
-Al terminar el video (o al pulsar saltar) abre la ventana principal.
+splash.py — Pantalla de inicio con el video de bienvenida.
+
+POR QUÉ ESTÁ ESTRUCTURADO ASÍ
+-----------------------------
+El problema anterior: el fondo de estrellas era el widget central y el video
+colgaba DE ÉL. Ese fondo repinta sus 800x600 completos 60 veces por segundo,
+mientras que el video solo se refresca a 24 fps — así que lo tapaba de negro
+entre fotograma y fotograma y no se veía nada.
+
+Ahora las estrellas son un HERMANO del contenido, mandado al fondo con
+`lower()`, y el QVideoWidget usa ventana nativa (`WA_NativeWindow`). Con su
+propio HWND, ningún QPainter del resto de la app puede pintar sobre él. Es la
+solución robusta: no depende de recortes ni del orden de repintado de Qt.
+
+La ventana principal la crea `main()` mediante el callback `al_terminar`, no
+esta clase. Así en ningún momento existen dos ventanas a la vez en la barra de
+tareas, y la pantalla de inicio se destruye limpiamente.
 """
 import random
 from pathlib import Path
 
-from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QFrame, QLabel, QPushButton
+from PyQt6.QtWidgets import (
+    QMainWindow, QWidget, QVBoxLayout, QFrame, QLabel, QPushButton,
+)
 from PyQt6.QtCore import Qt, QTimer, QUrl
 from PyQt6.QtGui import QColor, QPainter
 
 from config import Config
+from utils import log_info, log_error
 
 try:
     from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
@@ -18,143 +36,239 @@ try:
 except ImportError:
     _MULTIMEDIA_OK = False
 
+RUTA_VIDEO = Path(__file__).parent / "inicio.mp4"
 
-class FondoEstrellasPixeladas(QWidget):
+# Si el video no arranca en este tiempo, se entra a la app igualmente para no
+# dejar al usuario mirando un marco negro.
+MS_RENDIRSE = 6000
+
+
+class FondoEstrellas(QWidget):
+    """Estrellas cayendo. Va SIEMPRE al fondo, nunca por encima del video."""
+
     def __init__(self, parent=None, animar=True):
         super().__init__(parent)
         self.estrellas = []
-        self.colores = [QColor("#FFE000"), QColor("#00E5FF")] # Amarillo y Azul Cian
+        self.colores = [QColor("#FFE000"), QColor("#00E5FF")]
         self.animar = animar
+        # Deja pasar los clics al contenido que tiene encima
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
 
         if animar:
             for _ in range(100):
                 self.crear_estrella()
             self.timer = QTimer(self)
             self.timer.timeout.connect(self.animar_estrellas)
-            self.timer.start(16)
+            self.timer.start(33)          # ~30 fps, de sobra y más barato
 
     def crear_estrella(self):
-        x = random.randint(0, 2000)
-        y = random.randint(0, 1500)
-        tamano = random.randint(2, 4)
-        velocidad = random.uniform(0.5, 2.0)
-        color = random.choice(self.colores)
-        self.estrellas.append([x, y, tamano, velocidad, color])
+        self.estrellas.append([
+            random.randint(0, 900), random.randint(0, 700),
+            random.randint(2, 4), random.uniform(0.5, 2.0),
+            random.choice(self.colores),
+        ])
 
     def animar_estrellas(self):
-        for estrella in self.estrellas:
-            estrella[1] += estrella[3]
-            if estrella[1] > self.height():
-                estrella[1] = 0
-                estrella[0] = random.randint(0, self.width())
+        alto = max(1, self.height())
+        for e in self.estrellas:
+            e[1] += e[3]
+            if e[1] > alto:
+                e[1] = 0
+                e[0] = random.randint(0, max(1, self.width()))
         self.update()
 
-    def paintEvent(self, event):
+    def paintEvent(self, _event):
         painter = QPainter(self)
         painter.fillRect(self.rect(), QColor("#080B16"))
-        for x, y, tamano, _, color in self.estrellas:
+        for x, y, tamano, _v, color in self.estrellas:
             painter.fillRect(int(x), int(y), tamano, tamano, color)
         painter.end()
 
 
 class PantallaInicio(QMainWindow):
-    def __init__(self):
+    def __init__(self, al_terminar=None):
         super().__init__()
-        self.setWindowTitle("Lune CD - Iniciando Sistema...")
-        self.resize(800, 600)
+        self._al_terminar = al_terminar
+        self._terminado = False
 
+        self.setWindowTitle("Lune CD — Iniciando…")
+        self.resize(800, 600)
+        self._centrar()
+
+        # Central plano, sin paintEvent propio: nada compite con el video.
+        central = QWidget()
+        central.setStyleSheet("background-color:#080B16;")
+        self.setCentralWidget(central)
+
+        # Estrellas: hermano del contenido, al fondo del z-order.
         try:
             animar = Config().feature("fondo_estrellas", True)
         except Exception:
             animar = True
-        self.fondo = FondoEstrellasPixeladas(self, animar=animar)
-        self.setCentralWidget(self.fondo)
+        self.fondo = FondoEstrellas(central, animar=animar)
+        self.fondo.setGeometry(central.rect())
+        self.fondo.lower()
 
-        layout_principal = QVBoxLayout(self.fondo)
-        layout_principal.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        raiz = QVBoxLayout(central)
+        raiz.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        raiz.setSpacing(16)
 
-        # Marco del video pixel art
+        # ── Marco del video ──
         self.marco_video = QFrame()
         self.marco_video.setFixedSize(640, 360)
-        self.marco_video.setStyleSheet("""
-            QFrame {
-                background-color: #0F1424;
-                border: 4px solid #00E5FF;
-                padding: 4px;
-            }
-        """)
-        layout_marco = QVBoxLayout(self.marco_video)
-        layout_marco.setContentsMargins(0, 0, 0, 0)
+        self.marco_video.setStyleSheet(
+            "QFrame{background-color:#0F1424;border:4px solid #00E5FF;}"
+        )
+        marco_layout = QVBoxLayout(self.marco_video)
+        marco_layout.setContentsMargins(4, 4, 4, 4)
 
-        if _MULTIMEDIA_OK:
-            self.video_widget = QVideoWidget()
-            self.reproductor = QMediaPlayer()
-            self.salida_audio = QAudioOutput()
-
-            self.reproductor.setAudioOutput(self.salida_audio)
-            self.reproductor.setVideoOutput(self.video_widget)
-
-            # Relativa al script, no al directorio de trabajo: si se lanzaba
-            # desde otra carpeta el video no cargaba y la app se quedaba en la
-            # pantalla de inicio hasta pulsar «Saltar».
-            ruta_video = Path(__file__).parent / "inicio.mp4"
-            if ruta_video.exists():
-                self.reproductor.setSource(QUrl.fromLocalFile(str(ruta_video)))
-                self.reproductor.play()
-            else:
-                QTimer.singleShot(400, self.abrir_app_principal)
-
-            # --- LA MAGIA: CONECTAR EL FINAL DEL VIDEO CON LA APP PRINCIPAL ---
-            self.reproductor.mediaStatusChanged.connect(self._revisar_estado_video)
-
-            layout_marco.addWidget(self.video_widget)
-            layout_principal.addWidget(self.marco_video)
+        self.reproductor = None
+        if _MULTIMEDIA_OK and RUTA_VIDEO.exists():
+            self._montar_video(marco_layout)
         else:
-            error_lbl = QLabel("Multimedia no disponible. Faltan librerías.")
-            error_lbl.setStyleSheet("color: white;")
-            layout_marco.addWidget(error_lbl)
-            layout_principal.addWidget(self.marco_video)
+            motivo = ("Falta PyQt6.QtMultimedia" if not _MULTIMEDIA_OK
+                      else f"No encontré {RUTA_VIDEO.name}")
+            log_error(f"[splash] Sin video: {motivo}")
+            aviso = QLabel(motivo)
+            aviso.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            aviso.setStyleSheet("color:#97A6C4;border:none;background:transparent;")
+            marco_layout.addWidget(aviso)
+            QTimer.singleShot(1500, self.entrar)
 
-        self.titulo = QLabel("L U N E  C D")
-        self.titulo.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.titulo.setStyleSheet("color: #FFE000; font-size: 32px; font-weight: bold; letter-spacing: 4px;")
-        layout_principal.addWidget(self.titulo)
+        raiz.addWidget(self.marco_video, 0, Qt.AlignmentFlag.AlignCenter)
 
-        # Botón para saltar el video
+        # ── Título ──
+        titulo = QLabel("L U N E   C D")
+        titulo.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        titulo.setStyleSheet(
+            "color:#FFE000;font-size:32px;font-weight:bold;letter-spacing:4px;"
+            "background:transparent;border:none;"
+        )
+        raiz.addWidget(titulo)
+
+        # ── Botón de saltar ──
         self.boton_entrar = QPushButton("SALTAR VIDEO / INICIAR SISTEMA")
         self.boton_entrar.setFixedSize(300, 50)
         self.boton_entrar.setCursor(Qt.CursorShape.PointingHandCursor)
         self.boton_entrar.setStyleSheet("""
             QPushButton {
-                background-color: #080B16; color: #00E5FF; border: 3px solid #00E5FF;
-                font-size: 14px; font-weight: bold;
+                background-color:#080B16; color:#00E5FF; border:3px solid #00E5FF;
+                font-size:14px; font-weight:bold;
             }
-            QPushButton:hover { background-color: #00E5FF; color: #080B16; }
+            QPushButton:hover { background-color:#00E5FF; color:#080B16; }
         """)
-        self.boton_entrar.clicked.connect(self.abrir_app_principal)
-        layout_principal.addWidget(self.boton_entrar, alignment=Qt.AlignmentFlag.AlignCenter)
+        self.boton_entrar.clicked.connect(self.entrar)
+        raiz.addWidget(self.boton_entrar, 0, Qt.AlignmentFlag.AlignCenter)
 
-    def _revisar_estado_video(self, status):
-        """Entra a la app al terminar el video, o si el archivo no se puede leer."""
-        if status in (QMediaPlayer.MediaStatus.EndOfMedia,
-                      QMediaPlayer.MediaStatus.InvalidMedia):
-            self.abrir_app_principal()
+        # Red de seguridad: si en MS_RENDIRSE el video no ha avanzado, entramos.
+        QTimer.singleShot(MS_RENDIRSE, self._rendirse_si_no_arranco)
 
-    def abrir_app_principal(self):
-        """Detiene el video, muestra el chat principal y cierra esta ventana."""
-        # El botón «Saltar» y el fin del video pueden dispararse casi a la vez;
-        # sin esta guarda se abrían dos ventanas principales.
-        if getattr(self, "_abriendo", False):
+    # ── Video ─────────────────────────────────────────────────────────────────
+    def _montar_video(self, marco_layout):
+        # OJO: nada de WA_NativeWindow aquí.
+        #
+        # Ponerlo sobre un widget que todavía NO tiene padre hace que Qt lo cree
+        # como ventana de nivel superior independiente. El resultado era una
+        # ventana fantasma suelta y el splash quedándose con IsWindowVisible =
+        # False: el proceso corría, el video sonaba, y en pantalla no había nada.
+        #
+        # No hace falta: el fondo de estrellas ya es HERMANO del contenido y no
+        # su padre, así que nadie repinta encima del video.
+        self.video_widget = QVideoWidget()
+        self.video_widget.setStyleSheet("background-color:#000000;")
+
+        self.reproductor = QMediaPlayer()
+        self.salida_audio = QAudioOutput()
+        self.reproductor.setAudioOutput(self.salida_audio)
+        self.reproductor.setVideoOutput(self.video_widget)
+        self.reproductor.mediaStatusChanged.connect(self._on_estado_media)
+        self.reproductor.errorOccurred.connect(self._on_error_video)
+
+        marco_layout.addWidget(self.video_widget)
+        self.reproductor.setSource(QUrl.fromLocalFile(str(RUTA_VIDEO)))
+
+        # play() cuando el widget ya está en el layout y la ventana mostrada:
+        # llamarlo antes deja al reproductor sin superficie donde pintar.
+        QTimer.singleShot(0, self._reproducir)
+
+    def _reproducir(self):
+        try:
+            self.reproductor.play()
+            log_info(f"[splash] Reproduciendo {RUTA_VIDEO.name}")
+        except Exception as e:
+            log_error(f"[splash] No pude reproducir: {e}")
+            self.entrar()
+
+    def _on_estado_media(self, status):
+        if status == QMediaPlayer.MediaStatus.EndOfMedia:
+            log_info("[splash] Video terminado")
+            self.entrar()
+
+    def _on_error_video(self, *_args):
+        error = self.reproductor.errorString() if self.reproductor else "?"
+        log_error(f"[splash] Error de video: {error}")
+        # Puede ser un aviso no fatal: se confirma antes de rendirse.
+        QTimer.singleShot(2000, self._rendirse_si_no_arranco)
+
+    def _rendirse_si_no_arranco(self):
+        if self._terminado:
             return
-        self._abriendo = True
+        pos = self.reproductor.position() if self.reproductor else 0
+        if pos > 0:
+            return          # está reproduciendo, se le deja terminar
+        log_error("[splash] El video no arrancó; entrando igualmente")
+        self.entrar()
 
-        if _MULTIMEDIA_OK:
-            self.reproductor.stop()
+    # ── Transición ────────────────────────────────────────────────────────────
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if self.centralWidget():
+            self.fondo.setGeometry(self.centralWidget().rect())
+            self.fondo.lower()
 
-        # Import diferido para evitar dependencia circular con main.py
-        from main import LuneCDWindow
-        self.ventana_principal = LuneCDWindow()
-        self.ventana_principal.show()
+    def _centrar(self):
+        pantalla = self.screen()
+        if pantalla:
+            centro = pantalla.availableGeometry().center()
+            marco = self.frameGeometry()
+            marco.moveCenter(centro)
+            self.move(marco.topLeft())
 
-        # Cerramos la pantalla de inicio
+    def entrar(self):
+        """
+        Cierra la pantalla de inicio y avisa a main() para que abra la app.
+
+        La guarda `_terminado` es imprescindible: el fin del video, el botón de
+        saltar y el temporizador de seguridad pueden dispararse casi a la vez, y
+        sin ella se abrían DOS ventanas principales.
+        """
+        if self._terminado:
+            return
+        self._terminado = True
+
+        if self.reproductor is not None:
+            try:
+                self.reproductor.stop()
+                self.reproductor.setSource(QUrl())
+            except Exception:
+                pass
+        if getattr(self, "fondo", None) and self.fondo.animar:
+            self.fondo.timer.stop()
+
+        # Ocultar ANTES de crear la principal: si no, durante un instante hay
+        # dos ventanas y parece que la app se abre por duplicado.
+        self.hide()
         self.close()
+
+        if self._al_terminar:
+            self._al_terminar()
+
+        self.deleteLater()
+
+    def closeEvent(self, event):
+        """Cerrar con la X debe abrir la app, no dejar el proceso huérfano."""
+        if not self._terminado:
+            event.ignore()
+            self.entrar()
+            return
+        event.accept()

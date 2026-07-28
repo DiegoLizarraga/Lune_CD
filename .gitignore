@@ -67,3 +67,6 @@ tmp/
 # ─── Carpetas de trabajo generadas ──────────────────────────────
 documents/
 downloads/
+
+# Historial de conversaciones (local, no versionado)
+chats/

@@ -8,6 +8,10 @@ entre proveedores era una carrera esperando a ocurrir.
 
 El historial se recorta a `datos.max_historial()` turnos. Sin eso crecía sin
 límite y con modelos locales acababa desbordando la ventana de contexto.
+
+Visión: las imágenes se adjuntan SOLO al mensaje que se está enviando; en el
+historial queda la versión de texto. Guardar el base64 turno tras turno haría
+crecer el contexto sin parar y reenviaría la misma imagen en cada mensaje.
 """
 import asyncio
 import json
@@ -18,7 +22,7 @@ import requests
 
 import datos
 
-_USER_AGENT = "LuneCD/8.4"
+_USER_AGENT = "LuneCD/8.5"
 
 
 def _nueva_sesion() -> requests.Session:
@@ -28,18 +32,31 @@ def _nueva_sesion() -> requests.Session:
 
 
 class AIProvider(ABC):
+    ERROR = "Error:"
+
     def __init__(self):
         self.cancel_flag = False
         self.conversation_history: List[dict] = []
+        self.ultimo_uso: Dict = {}
         self._session = _nueva_sesion()
 
     @abstractmethod
-    async def chat(self, message: str, system_prompt: str = "", on_token: Callable = None) -> str: ...
+    async def chat(self, message: str, system_prompt: str = "",
+                   on_token: Callable = None, imagenes: Optional[List[str]] = None) -> str: ...
     @abstractmethod
     def is_available(self) -> bool: ...
 
     def clear_history(self) -> None:
         self.conversation_history = []
+        self.ultimo_uso = {}
+
+    def cargar_historial(self, mensajes: List[dict]):
+        """Reinyecta una conversación guardada para poder retomarla."""
+        self.conversation_history = [
+            {"role": m.get("role", "user"), "content": m.get("content", "")}
+            for m in mensajes if m.get("content")
+        ]
+        self._recortar_historial()
 
     # ── Historial ─────────────────────────────────────────────────────────────
     def _recortar_historial(self):
@@ -59,8 +76,8 @@ class AIProvider(ABC):
             mensajes.insert(0, {"role": "system", "content": system_prompt})
         return mensajes
 
-    def _registrar_respuesta(self, texto: str, prefijo_error: str):
-        if texto and not texto.startswith(prefijo_error) and not self.cancel_flag:
+    def _registrar_respuesta(self, texto: str):
+        if texto and not texto.startswith(self.ERROR) and not self.cancel_flag:
             self.conversation_history.append({"role": "assistant", "content": texto})
             self._recortar_historial()
 
@@ -77,7 +94,8 @@ class OllamaProvider(AIProvider):
     def configurar(self, url: str, model: str):
         self.url, self.model = url, model
 
-    async def chat(self, message: str, system_prompt: str = "", on_token: Callable = None) -> str:
+    async def chat(self, message: str, system_prompt: str = "",
+                   on_token: Callable = None, imagenes: Optional[List[str]] = None) -> str:
         if not message or not message.strip():
             return "El mensaje está vacío"
         if not self.model:
@@ -85,7 +103,10 @@ class OllamaProvider(AIProvider):
                     "Ve a Configuración → Red Neuronal · Local y pulsa «Buscar modelos».")
 
         messages = self._mensajes_para_envio(message, system_prompt)
-        # Se leen en el hilo llamante para no tocar datos.py desde el executor.
+        if imagenes:
+            # Ollama espera las imágenes en el propio mensaje, en base64 plano.
+            messages[-1] = {**messages[-1], "images": imagenes}
+
         timeout = datos.ollama_timeout()
         payload = {
             "model": self.model,
@@ -99,6 +120,7 @@ class OllamaProvider(AIProvider):
                 "temperature": datos.temperatura(),
             },
         }
+        self.ultimo_uso = {}
 
         def _call():
             try:
@@ -124,6 +146,7 @@ class OllamaProvider(AIProvider):
                         if on_token:
                             on_token(token)
                     if chunk.get("done"):
+                        self.ultimo_uso = self._uso_desde(chunk)
                         break
                 return full_response
             except requests.exceptions.ConnectionError:
@@ -136,8 +159,23 @@ class OllamaProvider(AIProvider):
                 return f"{self.ERROR} {e}"
 
         result = await asyncio.get_event_loop().run_in_executor(None, _call)
-        self._registrar_respuesta(result, self.ERROR)
+        self._registrar_respuesta(result)
         return result
+
+    @staticmethod
+    def _uso_desde(chunk: dict) -> dict:
+        entrada = chunk.get("prompt_eval_count", 0) or 0
+        salida = chunk.get("eval_count", 0) or 0
+        # eval_duration viene en nanosegundos
+        dur = (chunk.get("eval_duration") or 0) / 1e9
+        return {
+            "entrada": entrada,
+            "salida": salida,
+            "total": entrada + salida,
+            "tokens_por_segundo": round(salida / dur, 1) if dur > 0 else None,
+            "costo": 0.0,     # local = gratis
+            "local": True,
+        }
 
     def is_available(self) -> bool:
         try:
@@ -159,17 +197,30 @@ class OpenRouterProvider(AIProvider):
     def configurar(self, api_key: str, model: str):
         self.api_key, self.model = api_key, model
 
-    async def chat(self, message: str, system_prompt: str = "", on_token: Callable = None) -> str:
+    async def chat(self, message: str, system_prompt: str = "",
+                   on_token: Callable = None, imagenes: Optional[List[str]] = None) -> str:
         if not self.api_key:
             return "API key de OpenRouter no configurada."
 
         messages = self._mensajes_para_envio(message, system_prompt)
+        if imagenes:
+            # OpenRouter usa el formato de contenido por partes de OpenAI.
+            partes = [{"type": "text", "text": message}]
+            for img in imagenes:
+                partes.append({
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/png;base64,{img}"},
+                })
+            messages[-1] = {"role": "user", "content": partes}
+
         payload = {
             "model": self.model,
             "messages": messages,
             "stream": True,
             "temperature": datos.temperatura(),
             "max_tokens": datos.max_tokens(),
+            # Pide que el chunk final traiga tokens y costo real.
+            "usage": {"include": True},
         }
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -177,6 +228,7 @@ class OpenRouterProvider(AIProvider):
             "HTTP-Referer": "https://lunecd.local",
             "X-Title": "Lune CD",
         }
+        self.ultimo_uso = {}
 
         def _call():
             try:
@@ -200,6 +252,8 @@ class OpenRouterProvider(AIProvider):
                         chunk = json.loads(data_str)
                     except json.JSONDecodeError:
                         continue
+                    if chunk.get("usage"):
+                        self.ultimo_uso = self._uso_desde(chunk["usage"])
                     opciones = chunk.get("choices") or []
                     if not opciones:
                         continue
@@ -224,8 +278,21 @@ class OpenRouterProvider(AIProvider):
                 return f"{self.ERROR} {e}"
 
         result = await asyncio.get_event_loop().run_in_executor(None, _call)
-        self._registrar_respuesta(result, self.ERROR)
+        self._registrar_respuesta(result)
         return result
+
+    @staticmethod
+    def _uso_desde(uso: dict) -> dict:
+        entrada = uso.get("prompt_tokens", 0) or 0
+        salida = uso.get("completion_tokens", 0) or 0
+        return {
+            "entrada": entrada,
+            "salida": salida,
+            "total": uso.get("total_tokens", entrada + salida),
+            "tokens_por_segundo": None,
+            "costo": float(uso.get("cost", 0) or 0),
+            "local": False,
+        }
 
     def is_available(self) -> bool:
         return bool(self.api_key and self.api_key.strip())
@@ -248,10 +315,17 @@ class AIManager:
         self.providers["openrouter"].configurar(datos.openrouter_key(), datos.openrouter_model())
 
     async def chat(self, message: str, system_prompt: str = "",
-                   provider: Optional[str] = "openrouter", on_token: Callable = None) -> str:
+                   provider: Optional[str] = "openrouter", on_token: Callable = None,
+                   imagenes: Optional[List[str]] = None) -> str:
         if provider not in self.providers:
             return f"Proveedor '{provider}' no disponible"
-        return await self.providers[provider].chat(message, system_prompt, on_token=on_token)
+        return await self.providers[provider].chat(
+            message, system_prompt, on_token=on_token, imagenes=imagenes
+        )
+
+    def uso(self, provider: str) -> dict:
+        p = self.providers.get(provider)
+        return p.ultimo_uso if p else {}
 
     def clear_history(self, provider: Optional[str] = None):
         if provider and provider in self.providers:
@@ -259,3 +333,7 @@ class AIManager:
         else:
             for p in self.providers.values():
                 p.clear_history()
+
+    def cargar_historial(self, mensajes: List[dict]):
+        for p in self.providers.values():
+            p.cargar_historial(mensajes)

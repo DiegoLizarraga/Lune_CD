@@ -33,6 +33,19 @@ ICONS = {
     "bolt":       ("fill",   '<path d="M13 2 4.5 13.5H11l-1 8.5 8.5-11.5H12z"/>'),
     "user":       ("stroke", '<path d="M20 21a8 8 0 1 0-16 0"/><circle cx="12" cy="7" r="4"/>'),
     "import":     ("stroke", '<path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/>'),
+    "copy":       ("stroke", '<rect x="9" y="9" width="12" height="12" rx="2"/>'
+                             '<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>'),
+    "check":      ("stroke", '<path d="M20 6 9 17l-5-5"/>'),
+    "clip":       ("stroke", '<path d="M21.4 11.05 12.25 20.2a6 6 0 0 1-8.49-8.49l9.2-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>'),
+    "mic":        ("stroke", '<rect x="9" y="2" width="6" height="12" rx="3"/>'
+                             '<path d="M19 10a7 7 0 0 1-14 0"/><path d="M12 19v3"/>'),
+    "image":      ("stroke", '<rect x="3" y="3" width="18" height="18" rx="2"/>'
+                             '<circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/>'),
+    "history":    ("stroke", '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>'
+                             '<path d="M12 7v5l3 2"/>'),
+    "refresh":    ("stroke", '<path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/>'),
+    "close":      ("stroke", '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>'),
+    "plus":       ("stroke", '<path d="M12 5v14"/><path d="M5 12h14"/>'),
 }
 
 

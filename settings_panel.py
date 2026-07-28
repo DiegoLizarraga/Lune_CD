@@ -5,13 +5,15 @@ las features y el avatar pack (config.json).
 """
 from PyQt6.QtWidgets import (
     QFrame, QVBoxLayout, QHBoxLayout, QScrollArea, QLabel, QPushButton,
-    QLineEdit, QTextEdit, QCheckBox, QComboBox,
+    QLineEdit, QTextEdit, QCheckBox, QComboBox, QMessageBox,
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QFont
 
+import actualizador
 import datos
 import ollama_client
+import voz_entrada
 from config import Config
 from theme import COLORS, FONT_DISPLAY, FONT_MONO
 import lune_face
@@ -28,6 +30,47 @@ class SondeoOllamaWorker(QThread):
     def run(self):
         ok, modelos, mensaje = ollama_client.listar_modelos(self.url)
         self.listo.emit(ok, modelos, mensaje)
+
+
+class EstadoGitWorker(QThread):
+    """
+    Lee el estado del repo fuera del hilo de UI.
+
+    El panel de ajustes se construye al arrancar la app, así que llamar a git
+    aquí de forma síncrona retrasaba el arranque (y, sin CREATE_NO_WINDOW,
+    llenaba la pantalla de consolas parpadeando).
+    """
+    listo = pyqtSignal(object)
+
+    def run(self):
+        try:
+            self.listo.emit(actualizador.estado())
+        except Exception as e:
+            self.listo.emit({"ok": False, "mensaje": f"No pude leer el estado: {e}"})
+
+
+class GitWorker(QThread):
+    """
+    Consulta o aplica actualizaciones sin bloquear la UI.
+    `git fetch` y `pip install` pueden tardar bastante.
+    """
+    progreso = pyqtSignal(str)
+    listo = pyqtSignal(object)     # dict con el resultado
+
+    def __init__(self, modo: str, rama: str = ""):
+        super().__init__()
+        self.modo = modo           # "comprobar" | "actualizar"
+        self.rama = rama
+
+    def run(self):
+        try:
+            if self.modo == "comprobar":
+                self.listo.emit(actualizador.comprobar(self.rama or None))
+            else:
+                self.listo.emit(actualizador.actualizar(
+                    self.rama or None, on_progreso=self.progreso.emit))
+        except Exception as e:
+            self.listo.emit({"ok": False, "mensaje": f"Algo falló: {e}"})
 
 
 class SettingsPanel(QFrame):
@@ -141,6 +184,9 @@ class SettingsPanel(QFrame):
             ("voz_auto", "Leer cada respuesta en voz alta al iniciar"),
             ("minimizar_a_bandeja", "Al cerrar, mantener Lune en la bandeja del sistema"),
             ("acciones_ia", "Permitir que la IA abra webs y lance apps por su cuenta"),
+            ("markdown", "Formatear negritas, listas y bloques de código en el chat"),
+            ("guardar_conversaciones", "Guardar el historial de conversaciones en disco"),
+            ("contador_tokens", "Mostrar tokens y costo debajo de cada respuesta"),
         ]
         for clave, etiqueta in feats:
             chk = QCheckBox(etiqueta); chk.setChecked(self.config.feature(clave, True))
@@ -166,6 +212,14 @@ class SettingsPanel(QFrame):
         self.pack_combo.setStyleSheet(self._estilo_combo())
         fl_av.addWidget(self.pack_combo)
         layout.addWidget(frame_av)
+
+        # ── SECCIÓN 7: VOZ DE ENTRADA (dictado) ──
+        layout.addWidget(self._create_section_title("Voz de entrada (dictado con Whisper)"))
+        layout.addWidget(self._build_voz_group())
+
+        # ── SECCIÓN 8: ACTUALIZACIONES Y DEPENDENCIAS ──
+        layout.addWidget(self._create_section_title("Actualizaciones y dependencias"))
+        layout.addWidget(self._build_update_group())
 
         # Botón Guardar
         save_btn = QPushButton("GUARDAR CONFIGURACIÓN")
@@ -236,6 +290,189 @@ class SettingsPanel(QFrame):
                         "Temperatura (0 = preciso, 1 = creativo)",
                         str(modelos.get("temperatura", 0.7)), False)
         return frame
+
+    # ── Grupo de voz de entrada ────────────────────────────────────────────────
+    def _build_voz_group(self) -> QFrame:
+        frame = self._create_group_frame()
+        fl = QVBoxLayout(frame); fl.setSpacing(10)
+
+        faltan = voz_entrada.dependencias_faltantes()
+        if faltan:
+            aviso = QLabel(
+                "El dictado necesita librerías que no tienes:\n"
+                f"    pip install {' '.join(faltan)}\n\n"
+                "La transcripción es 100% local: el audio no sale de tu equipo. "
+                "En el PC con GPU podrás usar modelos más grandes."
+            )
+            aviso.setStyleSheet(f"color:{COLORS['warning']};border:none;")
+        else:
+            hay_mic, detalle = voz_entrada.hay_microfono()
+            aviso = QLabel(f"Listo para dictar. Micrófono: {detalle}" if hay_mic
+                           else f"Whisper está instalado, pero {detalle}")
+            aviso.setStyleSheet(
+                f"color:{COLORS['success'] if hay_mic else COLORS['warning']};border:none;")
+        aviso.setWordWrap(True); aviso.setFont(QFont("Segoe UI", 9))
+        fl.addWidget(aviso)
+
+        lbl = QLabel("Modelo de Whisper (más grande = mejor, pero más lento)")
+        lbl.setFont(QFont("Segoe UI", 10)); lbl.setStyleSheet(f"color:{COLORS['text']};border:none;padding:0;")
+        self.whisper_combo = QComboBox()
+        self.whisper_combo.addItems(voz_entrada.MODELOS)
+        self.whisper_combo.setCurrentText(self.config.get("voz", "modelo_whisper", "base"))
+        self.whisper_combo.setStyleSheet(self._estilo_combo())
+        fl.addWidget(lbl); fl.addWidget(self.whisper_combo)
+
+        self._add_input(fl, "voz_idioma", "Idioma del dictado (es, en, fr… vacío = detectar)",
+                        self.config.get("voz", "idioma", "es"), False)
+        return frame
+
+    # ── Grupo de actualizaciones ───────────────────────────────────────────────
+    def _build_update_group(self) -> QFrame:
+        frame = self._create_group_frame()
+        fl = QVBoxLayout(frame); fl.setSpacing(10)
+
+        # El estado real se rellena en cuanto responda el worker.
+        self.lbl_repo = QLabel("Consultando el repositorio…")
+        self.lbl_repo.setWordWrap(True); self.lbl_repo.setFont(QFont(FONT_MONO, 9))
+        self.lbl_repo.setStyleSheet(f"color:{COLORS['text_muted']};border:none;")
+        fl.addWidget(self.lbl_repo)
+
+        explicacion = QLabel(
+            "«Actualizar» trae los cambios de git, instala lo que falte de "
+            "requirements.txt y reinicia Lune. Si tienes trabajo sin commitear "
+            "no toca nada y te avisa."
+        )
+        explicacion.setWordWrap(True); explicacion.setFont(QFont("Segoe UI", 9))
+        explicacion.setStyleSheet(f"color:{COLORS['text_muted']};border:none;")
+        fl.addWidget(explicacion)
+
+        fila = QHBoxLayout(); fila.setSpacing(8)
+        self.btn_comprobar = QPushButton("BUSCAR ACTUALIZACIONES")
+        self.btn_comprobar.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_comprobar.setFont(QFont(FONT_MONO, 9, QFont.Weight.Bold)); self.btn_comprobar.setFixedHeight(36)
+        self.btn_comprobar.setStyleSheet(
+            f"QPushButton{{background:{COLORS['surface2']};color:{COLORS['accent']};"
+            f"border:2px solid {COLORS['cyan_dark']};border-radius:3px;padding:0 14px;letter-spacing:1px;}}"
+            f"QPushButton:hover{{background:{COLORS['surface3']};border-color:{COLORS['accent']};}}"
+            f"QPushButton:disabled{{color:{COLORS['text_dim']};border-color:{COLORS['border']};}}"
+        )
+        self.btn_comprobar.clicked.connect(self._comprobar_updates)
+        self.btn_comprobar.setEnabled(False)   # se habilita al saber el estado
+
+        self.btn_actualizar = QPushButton("ACTUALIZAR Y REINICIAR")
+        self.btn_actualizar.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_actualizar.setFont(QFont(FONT_MONO, 9, QFont.Weight.Bold)); self.btn_actualizar.setFixedHeight(36)
+        self.btn_actualizar.setStyleSheet(
+            f"QPushButton{{background:qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 {COLORS['cyan_dark']},"
+            f"stop:1 {COLORS['accent']});color:{COLORS['bg']};border:none;border-radius:3px;"
+            f"padding:0 14px;letter-spacing:1px;}}QPushButton:hover{{background:{COLORS['accent']};}}"
+            f"QPushButton:disabled{{background:{COLORS['surface3']};color:{COLORS['text_dim']};}}"
+        )
+        self.btn_actualizar.clicked.connect(self._aplicar_update)
+        self.btn_actualizar.setEnabled(False)
+        fila.addWidget(self.btn_comprobar); fila.addWidget(self.btn_actualizar); fila.addStretch()
+        fl.addLayout(fila)
+
+        self._estado_git = EstadoGitWorker()
+        self._estado_git.listo.connect(self._on_estado_repo)
+        self._estado_git.start()
+
+        self.lbl_update = QLabel("")
+        self.lbl_update.setWordWrap(True); self.lbl_update.setFont(QFont(FONT_MONO, 9))
+        self.lbl_update.setStyleSheet(f"color:{COLORS['text_muted']};border:none;")
+        fl.addWidget(self.lbl_update)
+
+        # Estado de las funciones opcionales
+        titulo_dep = QLabel("Funciones opcionales")
+        titulo_dep.setFont(QFont(FONT_MONO, 9, QFont.Weight.Bold))
+        titulo_dep.setStyleSheet(f"color:{COLORS['accent']};border:none;padding-top:8px;")
+        fl.addWidget(titulo_dep)
+
+        for o in actualizador.estado_opcionales():
+            if o["disponible"]:
+                texto, color = f"OK   {o['funcion']}", COLORS["success"]
+            else:
+                texto, color = f"—    {o['funcion']}  →  {o['comando']}", COLORS["warning"]
+            linea = QLabel(texto); linea.setFont(QFont(FONT_MONO, 9)); linea.setWordWrap(True)
+            linea.setToolTip(o["nota"])
+            linea.setStyleSheet(f"color:{color};border:none;")
+            fl.addWidget(linea)
+
+        return frame
+
+    def _on_estado_repo(self, est):
+        if est.get("ok"):
+            if est["limpio"]:
+                estado_local = "Sin cambios locales."
+            else:
+                estado_local = f"Tienes {len(est['modificados'])} archivo(s) sin guardar."
+            self.lbl_repo.setText(
+                f"Rama <b>{est['rama']}</b> · commit <b>{est['commit']}</b><br>{estado_local}")
+            self.btn_comprobar.setEnabled(True)
+            self.btn_actualizar.setEnabled(True)
+        else:
+            self.lbl_repo.setText(est.get("mensaje", "No pude leer el repositorio."))
+
+    def _comprobar_updates(self):
+        self.btn_comprobar.setEnabled(False); self.btn_comprobar.setText("BUSCANDO…")
+        self.lbl_update.setText("Consultando el remoto…")
+        self.lbl_update.setStyleSheet(f"color:{COLORS['text_muted']};border:none;")
+        self._git = GitWorker("comprobar", self.config.get("actualizaciones", "rama", "master"))
+        self._git.listo.connect(self._on_comprobado)
+        self._git.start()
+
+    def _on_comprobado(self, res):
+        self.btn_comprobar.setEnabled(True); self.btn_comprobar.setText("BUSCAR ACTUALIZACIONES")
+        mensaje = res.get("mensaje", "")
+        if res.get("commits"):
+            mensaje += "\n\n" + "\n".join(f"  · {c}" for c in res["commits"][:10])
+        color = COLORS["success"] if res.get("ok") else COLORS["error"]
+        if res.get("ok") and not res.get("hay_novedades"):
+            color = COLORS["text_muted"]
+        self.lbl_update.setText(mensaje)
+        self.lbl_update.setStyleSheet(f"color:{color};border:none;")
+
+    def _aplicar_update(self):
+        r = QMessageBox.question(
+            self, "Actualizar Lune",
+            "Voy a traer los cambios de git, instalar lo que falte y reiniciar la app.\n\n"
+            "¿Seguimos?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if r != QMessageBox.StandardButton.Yes:
+            return
+        self.btn_actualizar.setEnabled(False); self.btn_comprobar.setEnabled(False)
+        self.btn_actualizar.setText("ACTUALIZANDO…")
+        self._git = GitWorker("actualizar", self.config.get("actualizaciones", "rama", "master"))
+        self._git.progreso.connect(
+            lambda m: (self.lbl_update.setText(m),
+                       self.lbl_update.setStyleSheet(f"color:{COLORS['text_muted']};border:none;")))
+        self._git.listo.connect(self._on_actualizado)
+        self._git.start()
+
+    def _on_actualizado(self, res):
+        self.btn_actualizar.setEnabled(True); self.btn_comprobar.setEnabled(True)
+        self.btn_actualizar.setText("ACTUALIZAR Y REINICIAR")
+
+        if not res.get("ok"):
+            self.lbl_update.setText(res.get("mensaje", "No se pudo actualizar."))
+            self.lbl_update.setStyleSheet(f"color:{COLORS['error']};border:none;")
+            QMessageBox.warning(self, "No pude actualizar", res.get("mensaje", ""))
+            return
+
+        detalle = res.get("detalle", "")
+        self.lbl_update.setText(res["mensaje"])
+        self.lbl_update.setStyleSheet(f"color:{COLORS['success']};border:none;")
+
+        if not res.get("actualizado"):
+            QMessageBox.information(self, "Todo al día", res["mensaje"])
+            return
+
+        r = QMessageBox.question(
+            self, "Reiniciar",
+            f"{res['mensaje']}\n\n{detalle[:400]}\n\n¿Reinicio Lune ahora para aplicarlo?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if r == QMessageBox.StandardButton.Yes:
+            actualizador.reiniciar()
 
     def _probar_ollama(self):
         url = self.fields["ollama_url"].text().strip()
@@ -338,10 +575,13 @@ class SettingsPanel(QFrame):
 
         datos.guardar(d)
 
-        # Features y avatar pack en config.json
+        # Features, avatar y voz de entrada en config.json
         for clave, chk in self.feature_checks.items():
             self.config.config.setdefault("features", {})[clave] = chk.isChecked()
         self.config.config.setdefault("avatar", {})["pack"] = self.pack_combo.currentText()
+        voz = self.config.config.setdefault("voz", {})
+        voz["modelo_whisper"] = self.whisper_combo.currentText()
+        voz["idioma"] = self.fields["voz_idioma"].text().strip()
         self.config.save()
 
         # Aplicar cambios en caliente

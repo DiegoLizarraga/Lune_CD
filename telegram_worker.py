@@ -2,10 +2,16 @@
 telegram_worker.py — Lanza y supervisa el bot de Telegram (Node.js)
 en un hilo aparte, retransmitiendo su salida a la UI.
 """
+import os
 import subprocess
 from pathlib import Path
 
 from PyQt6.QtCore import QThread, pyqtSignal
+
+# Sin ventana de consola en Windows: npm abría una terminal negra encima de la app.
+SIN_CONSOLA = {}
+if os.name == "nt":
+    SIN_CONSOLA = {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)}
 
 
 class TelegramBotWorker(QThread):
@@ -20,11 +26,11 @@ class TelegramBotWorker(QThread):
             self.log_signal.emit(f"No encontré la carpeta: {self.BOT_DIR}"); self.stopped.emit(); return
         if not (self.BOT_DIR / "node_modules").exists():
             self.log_signal.emit("Instalando dependencias (npm install)...")
-            try: subprocess.run(["npm","install"], cwd=str(self.BOT_DIR), check=True, capture_output=True)
+            try: subprocess.run(["npm","install"], cwd=str(self.BOT_DIR), check=True, capture_output=True, shell=(os.name == "nt"), **SIN_CONSOLA)
             except Exception as e: self.log_signal.emit(f"npm install falló: {e}"); self.stopped.emit(); return
         self.log_signal.emit("Iniciando bot de Telegram...")
         try:
-            self._process = subprocess.Popen(["npm","start"], cwd=str(self.BOT_DIR), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+            self._process = subprocess.Popen(["npm","start"], cwd=str(self.BOT_DIR), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, shell=(os.name == "nt"), **SIN_CONSOLA)
             for line in self._process.stdout:
                 self.log_signal.emit(line.rstrip())
                 if self.isInterruptionRequested(): break
