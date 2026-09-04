@@ -272,6 +272,8 @@ cards* de TavernAI / SillyTavern (`.json` o `.png`).
 
 🎨 **Avatar Packs:** suelta una carpeta en `lune_face/packs/<nombre>/`.
 Roadmap completo (Live2D / VRM estilo Mate-Engine) en [ROADMAP_MODELOS.md](ROADMAP_MODELOS.md).
+El plan de la **serie 9** (host + terminales, avatar flotante, RAG, voz) está en
+[ROADMAP_9.0.md](ROADMAP_9.0.md).
 
 ---
 
