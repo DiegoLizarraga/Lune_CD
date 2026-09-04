@@ -115,3 +115,25 @@ def test_un_archivo_corrupto_no_rompe_el_listado(gestor):
     gestor.nueva_sesion(); gestor.agregar("user", "buena")
     (gestor.dir / "chat_rota.json").write_text("{esto no es json", encoding="utf-8")
     assert len(gestor.listar()) == 1
+
+
+def test_ultima_es_correcta_aunque_el_reloj_no_avance(tmp_path, monkeypatch):
+    """
+    Reloj congelado a propósito: simula la resolución de ~15 ms de
+    datetime.now() en Windows con Python 3.11, donde dos sesiones seguidas
+    compartían 'actualizado' y ultima() devolvía la vieja.
+    """
+    import conversaciones as c
+    from datetime import datetime as _dt
+    fijo = _dt(2026, 1, 1, 12, 0, 0)
+
+    class RelojParado:
+        @staticmethod
+        def now():
+            return fijo
+
+    monkeypatch.setattr(c, "datetime", RelojParado)
+    g = c.GestorConversaciones(directorio=tmp_path / "chats")
+    g.nueva_sesion(); g.agregar("user", "vieja")
+    g.nueva_sesion(); g.agregar("user", "nueva")
+    assert g.ultima()["mensajes"][0]["contenido"] == "nueva"

@@ -19,15 +19,30 @@ y el historial es "lo que os dijisteis". Borrar uno no debería borrar el otro.
 import json
 import re
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Optional
 
 CHATS_DIR = Path(__file__).parent / "chats"
 
 
+_ultimo_instante = None
+
+
 def _ahora() -> str:
-    return datetime.now().isoformat()
+    """
+    Marca de tiempo estrictamente creciente dentro del proceso.
+
+    En Windows con Python 3.11, datetime.now() avanza a saltos de ~15 ms: dos
+    sesiones creadas seguidas compartían `actualizado`, el orden entre ellas
+    quedaba al azar del sistema de archivos y `ultima()` devolvía la vieja.
+    """
+    global _ultimo_instante
+    t = datetime.now()
+    if _ultimo_instante is not None and t <= _ultimo_instante:
+        t = _ultimo_instante + timedelta(microseconds=1)
+    _ultimo_instante = t
+    return t.isoformat()
 
 
 def _titulo_desde(texto: str, largo: int = 48) -> str:
