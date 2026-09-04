@@ -17,7 +17,7 @@ const config = loadConfig();
 const bot = new Bot(config.telegramToken);
 
 // ── SEGURIDAD: solo tu usuario puede usar el bot ─────────────────────────────
-// Pon tu Telegram ID en config.json como "adminId": 123456789
+// Pon tu Telegram ID en datos.json como apis.telegram_admin_id
 // Para saber tu ID escribe /id al bot antes de activar el filtro
 function esAdmin(ctx) {
   if (!config.adminId) return true; // si no esta configurado, permite todo
@@ -69,7 +69,7 @@ bot.command("start", async (ctx) => {
 
 // ── /id (para saber tu Telegram ID) ──────────────────────────────────────────
 bot.command("id", async (ctx) => {
-  await ctx.reply(`Tu Telegram ID es: \`${ctx.from.id}\`\nPonlo en config.json como "adminId" para activar la proteccion.`, { parse_mode: "Markdown" });
+  await ctx.reply(`Tu Telegram ID es: \`${ctx.from.id}\`\nPonlo en datos.json como apis.telegram_admin_id para que solo tu puedas usar el bot.`, { parse_mode: "Markdown" });
 });
 
 // ── Callbacks del menu ────────────────────────────────────────────────────────
