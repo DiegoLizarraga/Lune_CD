@@ -151,6 +151,25 @@ Pulsa **BUSCAR MODELOS**: si aparece la lista, ya está funcionando.
 > Abre el puerto 11434 en el firewall del servidor. Y **no expongas Ollama a
 > internet** sin autenticación delante: no la trae.
 
+### Que el servidor no se duerma
+
+Un portátil o un handheld enchufado se suspende a los pocos minutos sin tocarlo,
+y con él se va Ollama. En el equipo servidor, en PowerShell como administrador:
+
+```powershell
+powercfg /change standby-timeout-ac 0
+powercfg /change hibernate-timeout-ac 0
+```
+
+Solo afecta a cuando está **enchufado**; con batería conserva el ahorro normal.
+La pantalla puede seguir apagándose sola: el equipo sigue despierto. Si la Wi-Fi
+se cae con descargas largas, ponla en máximo rendimiento:
+
+```powershell
+powercfg /setacvalueindex SCHEME_CURRENT 19cbb8fa-5279-450e-9fac-8a3d5fedd0c1 12bbebe6-58d6-4636-95bb-3217ef867c1a 0
+powercfg /setactive SCHEME_CURRENT
+```
+
 ---
 
 ## 📎 Adjuntar archivos e imágenes
