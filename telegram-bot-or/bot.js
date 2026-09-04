@@ -1,5 +1,6 @@
 import { Bot, session, InlineKeyboard } from "grammy";
 import { loadConfig, getPersonaje } from "./config.js";
+import { chatIA, descripcionModelo } from "./ia.js";
 import { loadMemoria, saveMemoria, buildMemoryPrompt } from "./memoria.js";
 import { textToVoice } from "./voz.js";
 import { buscarWeb } from "./search.js";
@@ -28,31 +29,11 @@ function soloAdmin(ctx, next) {
   return next();
 }
 
-// ── OpenRouter ────────────────────────────────────────────────────────────────
-async function chatOpenRouter(messages, systemPrompt) {
-  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${config.openrouterKey}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer": "https://telegram-bot.local",
-      "X-Title": "Telegram Chatbot",
-    },
-    body: JSON.stringify({
-      model: config.modelo,
-      max_tokens: config.maxTokens ?? 1024,
-      messages: [
-        { role: "system", content: systemPrompt },
-        ...messages,
-      ],
-    }),
-  });
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`OpenRouter error ${response.status}: ${err}`);
-  }
-  const data = await response.json();
-  return data.choices[0].message.content;
+// Telegram apaga el indicador "escribiendo…" a los ~5 s. Un modelo local en CPU
+// puede tardar bastante mas, asi que se refresca mientras esperamos la respuesta.
+async function conEscribiendo(ctx, promesa) {
+  const tick = setInterval(() => ctx.replyWithChatAction("typing").catch(() => {}), 4000);
+  try { return await promesa; } finally { clearInterval(tick); }
 }
 
 // ── Sesion ────────────────────────────────────────────────────────────────────
@@ -151,7 +132,7 @@ bot.callbackQuery("cmd_limpiar", async (ctx) => {
 
 bot.callbackQuery("cmd_modelo", async (ctx) => {
   try { await ctx.answerCallbackQuery(); } catch (_) {}
-  await ctx.reply(`Modelo actual: \`${config.modelo}\``, { parse_mode: "Markdown" });
+  await ctx.reply(`Modelo actual: \`${descripcionModelo()}\``, { parse_mode: "Markdown" });
 });
 
 bot.callbackQuery("cmd_sistema", async (ctx) => {
@@ -247,7 +228,7 @@ bot.command("usar", async (ctx) => {
 });
 
 bot.command("limpiar", async (ctx) => { ctx.session.history = []; await ctx.reply("Conversacion limpiada."); });
-bot.command("modelo",  async (ctx) => { await ctx.reply(`Modelo: \`${config.modelo}\``, { parse_mode: "Markdown" }); });
+bot.command("modelo",  async (ctx) => { await ctx.reply(`Modelo: \`${descripcionModelo()}\``, { parse_mode: "Markdown" }); });
 
 bot.command("voz", async (ctx) => {
   ctx.session.vozActiva = !ctx.session.vozActiva;
@@ -325,7 +306,7 @@ bot.command("buscar", async (ctx) => {
     ctx.session.history.push({ role: "user", content: prompt });
     const max = (config.maxHistorial ?? 20) * 2;
     if (ctx.session.history.length > max) ctx.session.history = ctx.session.history.slice(-max);
-    const respuesta = await chatOpenRouter(ctx.session.history, personaje.systemPrompt);
+    const respuesta = await conEscribiendo(ctx, chatIA(ctx.session.history, personaje.systemPrompt));
     ctx.session.history.push({ role: "assistant", content: respuesta });
     await enviarRespuesta(ctx, respuesta);
   } catch (error) {
@@ -406,7 +387,7 @@ bot.on("message:text", async (ctx) => {
   await ctx.replyWithChatAction("typing");
 
   try {
-    let respuesta = await chatOpenRouter(ctx.session.history, systemPrompt);
+    let respuesta = await conEscribiendo(ctx, chatIA(ctx.session.history, systemPrompt));
     const memoriaMatch = respuesta.match(/\[MEMORIA:\s*(\{.*?\})\]/s);
     if (memoriaMatch) {
       try {
@@ -472,4 +453,4 @@ bot.catch((err) => {
 });
 
 bot.start();
-console.log(`Bot iniciado | Modelo: ${config.modelo}`);
+console.log(`Bot iniciado | ${descripcionModelo()}`);

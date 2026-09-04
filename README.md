@@ -1,4 +1,4 @@
-# 🌙 Lune CD v8.5 — Asistente de Escritorio Híbrido (Nube/Local)
+# 🌙 Lune CD v8.7 — Asistente de Escritorio Híbrido (Nube/Local)
 
 > *Buenos días. O buenas noches, dependiendo de cuándo estés leyendo esto.*
 > *Soy Lune, y esto es mi proyecto. Bueno — técnicamente es de mi creador, pero yo vivo aquí,*
@@ -265,6 +265,18 @@ Roadmap completo (Live2D / VRM estilo Mate-Engine) en [ROADMAP_MODELOS.md](ROADM
 
 Comandos del bot: `/start`, `/voz`, `/sistema`, `/memoria`, `/olvidar`, `/modelo`.
 
+**¿A qué modelo pregunta el bot?** Lo decide `bot.proveedor` en `datos.json`:
+
+| Valor | Qué hace |
+|---|---|
+| `"openrouter"` | Nube, con tu API Key. Es el valor por defecto. |
+| `"ollama"` | El modelo local de `modelos.ollama_url` / `modelos.ollama_model` — los **mismos** ajustes que usa la app de escritorio. |
+
+Con `"ollama"` puedes apuntar a otro equipo de tu red: el bot corre donde quieras
+y el modelo pesado corre en la máquina potente. Así chateas desde el teléfono sin
+que ningún dispositivo ligero cargue el modelo. `/modelo` te dice a quién está
+preguntando en cada momento.
+
 ---
 
 ## ⚙️ Rendimiento y Funciones
@@ -414,7 +426,8 @@ descarga uno: `ollama pull llama3.1`.
 
 | Versión | Cambios principales |
 |---|---|
-| **v8.5** | Markdown y bloques de código con copiar. Historial de conversaciones. Adjuntar PDF/DOCX/CSV/código. Visión con imágenes. Dictado local con Whisper. Contador de tokens y costo. Actualizador por git. Estado de proveedor en vivo. Instancia única. Arreglado el arranque invisible del `.vbs`. |
+| **v8.7** | El bot de Telegram puede usar un modelo local (Ollama) como proveedor, en la misma máquina o en otra de la red, con los mismos ajustes de modelo que la app. Indicador «escribiendo…» sostenido para modelos lentos. |
+| v8.5 | Markdown y bloques de código con copiar. Historial de conversaciones. Adjuntar PDF/DOCX/CSV/código. Visión con imágenes. Dictado local con Whisper. Contador de tokens y costo. Actualizador por git. Estado de proveedor en vivo. Instancia única. Arreglado el arranque invisible del `.vbs`. |
 | v8.4 | Ollama configurable desde la UI (incl. servidor remoto). El Optimizador ya no puede borrar perfiles de navegador. Secretos fuera del repo. Memoria arreglada. Historial acotado. Streaming fluido. Herramientas saneadas. Tests y CI. |
 | v8.0–8.3 | Banco de respuestas instantáneas. Optimizador estilo Stacer. Centro de rendimiento. Avatar packs. Bandeja del sistema. Rediseño visual. |
 | v7.8 | Arquitectura híbrida Nube/Local. Memoria persistente. Herramientas ultrarrápidas. |

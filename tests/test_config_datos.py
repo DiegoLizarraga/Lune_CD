@@ -98,3 +98,19 @@ def test_el_banco_responde_a_frases_comunes(mensaje):
 ])
 def test_el_banco_deja_pasar_las_peticiones_reales(mensaje):
     assert BancoRespuestas().responder(mensaje) is None
+
+
+# ── Plantilla y bot de Telegram ────────────────────────────────────────────────
+
+def test_la_plantilla_declara_el_proveedor_del_bot():
+    """
+    El bot elige proveedor con `bot.proveedor` y reutiliza las claves de
+    `modelos` de la app. Si alguien las renombra, el bot pierde el modelo local
+    sin que Python se entere: este test es el aviso.
+    """
+    ruta = Path(__file__).resolve().parent.parent / "datos.example.json"
+    d = json.loads(ruta.read_text("utf-8"))
+    assert d["bot"]["proveedor"] in ("ollama", "openrouter")
+    for clave in ("ollama_url", "ollama_model", "ollama_keep_alive",
+                  "ollama_num_ctx", "ollama_timeout", "temperatura"):
+        assert clave in d["modelos"], clave
