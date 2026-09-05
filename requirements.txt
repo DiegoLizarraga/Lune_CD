@@ -6,6 +6,7 @@
 # ── NÚCLEO (sin esto la app no arranca) ──────────────────────────
 PyQt6>=6.6.0
 requests>=2.31.0
+websockets>=12.0          # hub host/terminales (lune_core)
 
 # ── SISTEMA: Optimizador e info de hardware ──────────────────────
 psutil>=5.9.0

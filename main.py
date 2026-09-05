@@ -104,6 +104,11 @@ class LuneCDWindow(QMainWindow):
         self._quit_real       = False
         self.memoria          = MemoriaManager()
         self.tools            = ToolManager()
+        # Red de Lune: host (sirvo a otros), terminal (memoria del host) o local
+        self._hub_en_hilo     = None
+        self._hub_cliente     = None
+        self._modo_red        = datos.hub_modo()
+        self._configurar_red()
         self._adjuntos        = []      # archivos pendientes de enviar
         self._grabadora       = None
         self._transcriptor    = None
@@ -167,6 +172,63 @@ class LuneCDWindow(QMainWindow):
                 f"Por cierto: hay **{n} actualización(es)** esperando. "
                 "Cuando quieras, entra en ⚙️ Ajustes → Actualizaciones."
             )
+
+    # ── Red de Lune (hub) ─────────────────────────────────────────────────────
+    def _configurar_red(self):
+        """
+        host     → levanta el hub en un hilo y sirve la memoria de este equipo.
+        terminal → la memoria pasa a ser la del host (con respaldo local si no
+                   responde, sin bloquear la interfaz).
+        local    → nada nuevo.
+        """
+        modo = self._modo_red
+        if modo == "host":
+            try:
+                from lune_core import Hub, HubEnHilo, ServicioMemoria
+                token = datos.asegurar_token_hub()
+                hub = Hub(token, host="0.0.0.0", puerto=datos.hub_puerto())
+                hub.estado_extra = {"busy": False, "model": datos.ollama_model()}
+                memoria_local = self.memoria
+                self._hub_en_hilo = HubEnHilo(hub, servicios=lambda h: ServicioMemoria(h, memoria_local))
+                if self._hub_en_hilo.iniciar(timeout=5):
+                    log_info(f"[red] host: hub sirviendo en el puerto {hub.puerto}")
+                else:
+                    log_error("[red] host: el hub no arrancó a tiempo")
+            except Exception as e:
+                log_error(f"[red] host: no pude levantar el hub: {e}")
+                self._hub_en_hilo = None
+        elif modo == "terminal":
+            url = datos.hub_url_host()
+            if not url:
+                log_error("[red] terminal sin URL de host: sigo en local")
+                return
+            try:
+                import socket
+                from lune_core import ClienteEnHilo
+                from lune_core.memoria_remota import MemoriaRemota
+                nombre = f"app-{socket.gethostname()}".lower()
+                self._hub_cliente = ClienteEnHilo(
+                    url, datos.hub_token(), nombre=nombre, kind="app",
+                    eventos_emitidos=["input:text"],
+                    on_evento=lambda ev: log_info(f"[red] evento {ev.type} de {ev.meta.source.id}"),
+                    on_estado=lambda e: log_info(f"[red] cliente: {e}"),
+                )
+                # Espera corta: si el host no está, la app arranca igual con la
+                # memoria local y el cliente sigue reintentando por detrás.
+                conectado = self._hub_cliente.iniciar(timeout=4)
+                self.memoria = MemoriaRemota(self._hub_cliente, respaldo=self.memoria)
+                log_info(f"[red] terminal: {'conectado a' if conectado else 'sin conexión aún con'} {url}")
+            except Exception as e:
+                log_error(f"[red] terminal: {e}")
+                self._hub_cliente = None
+
+    def _estado_red(self) -> str:
+        if self._modo_red == "host" and self._hub_en_hilo:
+            n = len(self._hub_en_hilo.hub.peers)
+            return f"host · {n} conectado(s)"
+        if self._modo_red == "terminal" and self._hub_cliente:
+            return f"terminal · {self._hub_cliente.estado}"
+        return "local"
 
     # ── Sesión de chat ────────────────────────────────────────────────────────
     def _restaurar_o_iniciar_sesion(self):
@@ -253,7 +315,7 @@ class LuneCDWindow(QMainWindow):
 
     # ── UI ────────────────────────────────────────────────────────────────────
     def _init_ui(self):
-        self.setWindowTitle("Lune CD · IA Activa")
+        self.setWindowTitle(f"Lune CD · IA Activa · {self._estado_red()}")
         self.setGeometry(80, 60, 1200, 800)
         self.setMinimumSize(900, 640)
         self.setStyleSheet(f"QMainWindow,QWidget{{background:{COLORS['bg']};}}")
@@ -1034,6 +1096,10 @@ class LuneCDWindow(QMainWindow):
                 f"De vuelta, {nombre}. Dime qué necesitas." if nombre else "Lune en línea. Dime qué necesitas.")
             self.welcome_t2.setText(saludo)
 
+        if datos.hub_modo() != self._modo_red:
+            QMessageBox.information(self, "Guardado",
+                "Configuración guardada. El modo de red cambió: reinicia Lune para aplicarlo.")
+            return
         QMessageBox.information(self,"Guardado","Configuración guardada correctamente.")
 
     def _clear_chat(self):
@@ -1101,6 +1167,10 @@ class LuneCDWindow(QMainWindow):
             self.chats.guardar()
         if hasattr(self, "_timer_estado"):
             self._timer_estado.stop()
+        if self._hub_cliente is not None:
+            self._hub_cliente.detener()
+        if self._hub_en_hilo is not None:
+            self._hub_en_hilo.detener()
 
         if hasattr(self,"lune_face") and self.lune_face._player: self.lune_face._player.stop()
         if hasattr(self,"_tg_worker") and self._tg_worker and self._tg_worker.isRunning():

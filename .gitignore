@@ -70,3 +70,7 @@ downloads/
 
 # Historial de conversaciones (local, no versionado)
 chats/
+
+# Modelos 3D del avatar (licencias de terceros, pesados): no se versionan
+*.vrm
+modelo_vrm/

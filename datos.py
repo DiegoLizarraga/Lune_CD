@@ -150,3 +150,31 @@ def max_historial() -> int:
 
 def max_tokens() -> int:
     return int(_num(get_bot().get("max_tokens"), 1024))
+
+
+# ── Atajos: hub (red de Lune: host y terminales) ──
+def get_hub() -> dict: return _load().get("hub", {})
+
+
+def hub_modo() -> str:
+    """'local' (todo aquí) · 'host' (sirvo a otros) · 'terminal' (me conecto a otro)."""
+    m = str(get_hub().get("modo") or "local").lower()
+    return m if m in ("local", "host", "terminal") else "local"
+
+
+def hub_puerto() -> int: return int(_num(get_hub().get("puerto"), 7777))
+def hub_token() -> str: return str(get_hub().get("token") or "")
+def hub_url_host() -> str: return str(get_hub().get("url_host") or "").rstrip("/")
+
+
+def asegurar_token_hub() -> str:
+    """Devuelve el token del hub; si no hay, genera uno y lo guarda en datos.json."""
+    token = hub_token()
+    if token:
+        return token
+    from lune_core.protocolo import generar_token
+    d = cargar()
+    d.setdefault("hub", {})["token"] = generar_token()
+    guardar(d)
+    return d["hub"]["token"]
+

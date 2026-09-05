@@ -213,6 +213,10 @@ class SettingsPanel(QFrame):
         fl_av.addWidget(self.pack_combo)
         layout.addWidget(frame_av)
 
+        # ── SECCIÓN 6b: RED DE LUNE (host y terminales) ──
+        layout.addWidget(self._create_section_title("Red de Lune · host y terminales"))
+        layout.addWidget(self._build_hub_group())
+
         # ── SECCIÓN 7: VOZ DE ENTRADA (dictado) ──
         layout.addWidget(self._create_section_title("Voz de entrada (dictado con Whisper)"))
         layout.addWidget(self._build_voz_group())
@@ -290,6 +294,56 @@ class SettingsPanel(QFrame):
                         "Temperatura (0 = preciso, 1 = creativo)",
                         str(modelos.get("temperatura", 0.7)), False)
         return frame
+
+    # ── Grupo de red (hub) ─────────────────────────────────────────────────────
+    def _build_hub_group(self) -> QFrame:
+        frame = self._create_group_frame()
+        fl = QVBoxLayout(frame); fl.setSpacing(10)
+        hub = self.datos_data.get("hub", {})
+
+        info = QLabel(
+            "Un equipo potente hace de <b>host</b>: sirve la memoria compartida (y en versiones "
+            "siguientes el modelo, la voz y las herramientas). Los demás equipos son <b>terminales</b> "
+            "y ven la misma memoria. En modo <b>local</b> todo ocurre en este equipo, como siempre."
+        )
+        info.setWordWrap(True); info.setFont(QFont("Segoe UI", 9))
+        info.setStyleSheet(f"color:{COLORS['text_muted']};border:none;")
+        fl.addWidget(info)
+
+        lbl = QLabel("Modo de este equipo")
+        lbl.setFont(QFont("Segoe UI", 10)); lbl.setStyleSheet(f"color:{COLORS['text']};border:none;padding:0;")
+        self.hub_modo_combo = QComboBox()
+        self.hub_modo_combo.addItem("local — todo en este equipo", "local")
+        self.hub_modo_combo.addItem("host — este equipo sirve a los demás", "host")
+        self.hub_modo_combo.addItem("terminal — me conecto al host", "terminal")
+        modo = str(hub.get("modo") or "local")
+        idx = max(0, self.hub_modo_combo.findData(modo))
+        self.hub_modo_combo.setCurrentIndex(idx)
+        self.hub_modo_combo.setStyleSheet(self._estilo_combo())
+        fl.addWidget(lbl); fl.addWidget(self.hub_modo_combo)
+
+        self._add_input(fl, "hub_puerto", "Puerto del hub (modo host)", str(hub.get("puerto", 7777)), False)
+        self._add_input(fl, "hub_url_host", "URL del host (modo terminal), p. ej. ws://192.168.1.50:7777",
+                        str(hub.get("url_host", "")), False)
+        self._add_input(fl, "hub_token", "Token del hub (igual en host y terminales)",
+                        str(hub.get("token", "")), True)
+
+        fila = QHBoxLayout(); fila.setSpacing(8)
+        btn_tok = QPushButton("GENERAR TOKEN")
+        btn_tok.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_tok.setFont(QFont(FONT_MONO, 9, QFont.Weight.Bold)); btn_tok.setFixedHeight(34)
+        btn_tok.setStyleSheet(f"QPushButton{{background:{COLORS['surface2']};color:{COLORS['accent']};border:2px solid {COLORS['cyan_dark']};border-radius:3px;padding:0 14px;letter-spacing:1px;}}QPushButton:hover{{background:{COLORS['surface3']};border-color:{COLORS['accent']};}}")
+        btn_tok.clicked.connect(self._generar_token_hub)
+        nota = QLabel("Genera el token en el host y cópialo a cada terminal. Se guarda en datos.json, que no se versiona.")
+        nota.setWordWrap(True); nota.setFont(QFont(FONT_MONO, 8))
+        nota.setStyleSheet(f"color:{COLORS['text_dim']};border:none;")
+        fila.addWidget(btn_tok); fila.addWidget(nota, 1)
+        fl.addLayout(fila)
+        return frame
+
+    def _generar_token_hub(self):
+        from lune_core.protocolo import generar_token
+        self.fields["hub_token"].setText(generar_token())
 
     # ── Grupo de voz de entrada ────────────────────────────────────────────────
     def _build_voz_group(self) -> QFrame:
@@ -563,6 +617,13 @@ class SettingsPanel(QFrame):
         d["modelos"]["ollama_num_ctx"] = self._entero(self.fields["ollama_num_ctx"].text(), 8192)
         d["modelos"]["ollama_timeout"] = self._entero(self.fields["ollama_timeout"].text(), 300)
         d["modelos"]["temperatura"] = self._flotante(self.fields["temperatura"].text(), 0.7)
+
+        # Red de Lune (hub)
+        h = d.setdefault("hub", {})
+        h["modo"] = self.hub_modo_combo.currentData() or "local"
+        h["puerto"] = self._entero(self.fields["hub_puerto"].text(), 7777)
+        h["url_host"] = self.fields["hub_url_host"].text().strip().rstrip("/")
+        h["token"] = self.fields["hub_token"].text().strip()
 
         # Personalidad: SOLO el personaje activo
         idx = self._indice_personaje_activo()

@@ -1,7 +1,7 @@
 import { Bot, session, InlineKeyboard } from "grammy";
 import { loadConfig, getPersonaje } from "./config.js";
 import { chatIA, descripcionModelo } from "./ia.js";
-import { loadMemoria, saveMemoria, buildMemoryPrompt } from "./memoria.js";
+import { loadMemoria, saveMemoria, buildMemoryPrompt, iniciarHub, estadoHub } from "./memoria.js";
 import { textToVoice } from "./voz.js";
 import { buscarWeb } from "./search.js";
 import { unlinkSync, createWriteStream, existsSync, createReadStream } from "fs";
@@ -112,7 +112,7 @@ bot.callbackQuery("cmd_buscar", async (ctx) => {
 
 bot.callbackQuery("cmd_memoria", async (ctx) => {
   try { await ctx.answerCallbackQuery(); } catch (_) {}
-  const mem = loadMemoria(String(ctx.from.id));
+  const mem = await loadMemoria(String(ctx.from.id));
   if (!mem || Object.keys(mem).length === 0) { await ctx.reply("No tengo nada guardado todavia."); return; }
   const texto = Object.entries(mem).map(([k, v]) => `- *${k}*: ${v}`).join("\n");
   await ctx.reply(`*Lo que recuerdo de ti:*\n\n${texto}`, { parse_mode: "Markdown" });
@@ -120,7 +120,7 @@ bot.callbackQuery("cmd_memoria", async (ctx) => {
 
 bot.callbackQuery("cmd_olvidar", async (ctx) => {
   try { await ctx.answerCallbackQuery(); } catch (_) {}
-  saveMemoria(String(ctx.from.id), {});
+  await saveMemoria(String(ctx.from.id), {});
   await ctx.reply("Memoria borrada.", { reply_markup: menuPrincipal() });
 });
 
@@ -236,14 +236,14 @@ bot.command("voz", async (ctx) => {
 });
 
 bot.command("memoria", async (ctx) => {
-  const mem = loadMemoria(String(ctx.from.id));
+  const mem = await loadMemoria(String(ctx.from.id));
   if (!mem || Object.keys(mem).length === 0) { await ctx.reply("No tengo nada guardado todavia."); return; }
   const texto = Object.entries(mem).map(([k, v]) => `- *${k}*: ${v}`).join("\n");
   await ctx.reply(`*Lo que recuerdo:*\n\n${texto}`, { parse_mode: "Markdown" });
 });
 
 bot.command("olvidar", async (ctx) => {
-  saveMemoria(String(ctx.from.id), {});
+  await saveMemoria(String(ctx.from.id), {});
   await ctx.reply("Memoria borrada.");
 });
 
@@ -376,7 +376,7 @@ bot.on("message:text", async (ctx) => {
     } catch (e) { console.error("Busqueda auto:", e.message); }
   }
 
-  const memoria = buildMemoryPrompt(userId);
+  const memoria = await buildMemoryPrompt(userId);
   const systemPrompt = personaje.systemPrompt + memoria +
     `\n\nSi el usuario menciono datos personales (nombre, edad, gustos, trabajo, ciudad), extráelos al final:\n[MEMORIA: {"clave": "valor"}]`;
 
@@ -392,8 +392,8 @@ bot.on("message:text", async (ctx) => {
     if (memoriaMatch) {
       try {
         const nuevaMemoria = JSON.parse(memoriaMatch[1]);
-        const memoriaActual = loadMemoria(userId) || {};
-        saveMemoria(userId, { ...memoriaActual, ...nuevaMemoria });
+        const memoriaActual = (await loadMemoria(userId)) || {};
+        await saveMemoria(userId, { ...memoriaActual, ...nuevaMemoria });
       } catch (e) {}
       respuesta = respuesta.replace(/\[MEMORIA:.*?\]/s, "").trim();
     }
@@ -452,5 +452,7 @@ bot.catch((err) => {
   console.error("Error:", e?.message ?? e);
 });
 
+await iniciarHub();
+console.log(`Memoria: ${estadoHub()}`);
 bot.start();
 console.log(`Bot iniciado | ${descripcionModelo()}`);

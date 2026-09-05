@@ -29,5 +29,12 @@
       "fraseInicial": "Buenos días. ¿En qué te puedo ayudar hoy? 👀",
       "avatar_pack": "default"
     }
-  ]
+  ],
+  "hub": {
+    "_nota": "Red de Lune. modo: 'local' = todo en este equipo; 'host' = este equipo sirve el hub a otros (python -m lune_core serve); 'terminal' = me conecto al hub de otro equipo (url_host + token). El token se genera solo en el host.",
+    "modo": "local",
+    "puerto": 7777,
+    "token": "",
+    "url_host": ""
+  }
 }

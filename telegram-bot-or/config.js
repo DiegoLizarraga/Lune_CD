@@ -50,6 +50,14 @@ export function loadConfig() {
     ollamaTimeoutMs:  (Number(m.ollama_timeout) || 300) * 1000,
     temperatura:      Number(m.temperatura ?? 0.7),
 
+    // Hub de Lune: en modo 'host' el bot corre junto al núcleo (127.0.0.1);
+    // en 'terminal' se conecta a la URL del host; en 'local' no hay hub.
+    hubModo:          (datos.hub?.modo ?? "local").toLowerCase(),
+    hubUrl:           (datos.hub?.modo ?? "local").toLowerCase() === "host"
+                        ? `ws://127.0.0.1:${Number(datos.hub?.puerto) || 7777}`
+                        : ((datos.hub?.modo ?? "local").toLowerCase() === "terminal" ? (datos.hub?.url_host ?? "") : ""),
+    hubToken:         datos.hub?.token ?? "",
+
     personajeDefault: datos.bot?.personaje_default    ?? "",
     maxHistorial:     datos.bot?.max_historial        ?? 20,
     maxTokens:        datos.bot?.max_tokens           ?? 1024,

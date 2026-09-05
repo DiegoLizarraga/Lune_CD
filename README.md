@@ -111,6 +111,29 @@ es local).
 
 ---
 
+## 🌐 Red de Lune · host y terminales (serie 9)
+
+Un equipo potente hace de **host** de lo pesado; los demás son **terminales**
+que comparten su memoria. Se elige en **⚙️ AJUSTES → Red de Lune**.
+
+| Modo | Qué hace este equipo |
+|---|---|
+| **local** | Todo aquí, como siempre. Es el valor por defecto. |
+| **host** | Sirve el hub a los demás: `python -m lune_core serve` o la propia app. Genera un **token** y compártelo. |
+| **terminal** | Se conecta al host (`ws://IP-del-host:7777`) con ese token; su memoria pasa a ser la del host. |
+
+El bot de Telegram es un terminal más: con `hub.modo` en `host` o `terminal`,
+lee y escribe **la misma** `memoria.json` que la app. Si el host no responde, el
+terminal sigue funcionando con su memoria local y reconecta solo.
+
+> El token se genera en el host (botón **GENERAR TOKEN** o `python -m lune_core token`)
+> y se copia a cada terminal. Vive en `datos.json`, que no se versiona.
+
+Esto es la **fase 9.0** del plan; el resto (agente, avatar, RAG, voz) está en
+[ROADMAP_9.0.md](ROADMAP_9.0.md).
+
+---
+
 ## 🦙 Modelos locales con Ollama
 
 **⚙️ AJUSTES → Red Neuronal · Local (Ollama)**:
