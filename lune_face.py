@@ -87,6 +87,18 @@ EMOTION_KEYWORDS = {
 }
 
 
+# Emoción canónica del protocolo <|ACT|> (lune_core) → estado visual de la cara.
+EMOCION_A_ESTADO = {
+    "happy": "happy", "sad": "sad", "angry": "error", "think": "thinking",
+    "surprised": "happy", "awkward": "confused", "question": "confused",
+    "curious": "reading", "neutral": "normal",
+}
+
+
+def estado_desde_emocion(emocion: str) -> str:
+    return EMOCION_A_ESTADO.get((emocion or "").lower(), "normal")
+
+
 def detect_emotion(text: str) -> str:
     text_lower = text.lower()
     if any(kw in text_lower for kw in EMOTION_KEYWORDS["error"]): return "error"

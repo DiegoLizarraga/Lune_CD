@@ -9,6 +9,7 @@ from PyQt6.QtCore import QThread, pyqtSignal
 
 from theme import PROVIDER_META
 from utils import log_error
+from lune_core.prompt import GRAMATICA_EMOCIONES
 
 
 REGLAS_HERRAMIENTAS = (
@@ -35,13 +36,14 @@ class AIWorker(QThread):
 
     def __init__(self, ai_manager, message: str, provider_id: str,
                  extra_context: str = "", permitir_acciones: bool = True,
-                 imagenes=None):
+                 imagenes=None, emociones: bool = True):
         super().__init__()
         self.ai_manager        = ai_manager
         self.message           = message
         self.provider_id       = provider_id
         self.extra_context     = extra_context
         self.permitir_acciones = permitir_acciones
+        self.emociones         = emociones
         self.imagenes          = imagenes or []
         self._buffer           = ""
         self._ultimo_emit      = 0.0
@@ -58,6 +60,9 @@ class AIWorker(QThread):
             # al modelo que existen: así no las sugiere ni las intenta.
             if self.permitir_acciones:
                 system_prompt += REGLAS_HERRAMIENTAS
+
+            if self.emociones:
+                system_prompt += "\n\n" + GRAMATICA_EMOCIONES
 
             def on_token(token):
                 self._buffer += token

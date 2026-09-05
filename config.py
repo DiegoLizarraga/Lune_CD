@@ -31,6 +31,7 @@ class Config:
             "markdown": True,                    # formatear negritas, listas y código
             "guardar_conversaciones": True,      # historial de chats en disco
             "contador_tokens": True,             # mostrar tokens y costo por respuesta
+            "emociones": True,                   # la IA emite <|ACT|> y la cara reacciona
         },
         # Avatar/expresiones: permite cambiar el "modelo" visual de Lune.
         "avatar": {

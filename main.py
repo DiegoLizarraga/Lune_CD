@@ -35,6 +35,7 @@ from theme import (
     FONT_DISPLAY, FONT_BODY, FONT_MONO, FONT_JP, FONT_FALLBACKS,
 )
 import lune_face
+from lune_core import marcadores
 from lune_face import LuneFaceWidget, detect_emotion
 from icons import icon, icon_pixmap
 from effects import apply_glow, clear_glow
@@ -926,6 +927,7 @@ class LuneCDWindow(QMainWindow):
             extra_context=contexto_memoria + contexto_archivos,
             permitir_acciones=self.config.feature("acciones_ia", True),
             imagenes=adj.imagenes_base64(adjuntos_envio),
+            emociones=self.config.feature("emociones", True),
         )
         if self.config.feature("streaming_tokens", True):
             self.ai_worker.token_received.connect(self._on_token)
@@ -936,15 +938,17 @@ class LuneCDWindow(QMainWindow):
     def _on_token(self, partial):
         # En streaming se pinta texto plano: reconstruir los widgets de markdown
         # 16 veces por segundo sería carísimo. Al terminar se formatea de golpe.
+        # Los marcadores <|ACT|>/<|DELAY|> se ocultan mientras se escribe.
+        visible = marcadores.limpiar_para_mostrar(partial)
         if self._typing_indicator and self._current_bubble is None:
             self._typing_indicator.stop(); self._typing_indicator.deleteLater(); self._typing_indicator = None
             self._current_bubble = MessageBubble(
-                partial + " ▋", is_user=False, provider_id=self.current_provider,
+                visible + " ▋", is_user=False, provider_id=self.current_provider,
                 markdown=self.config.feature("markdown", True))
             self.messages_layout.insertWidget(self.messages_layout.count()-1, self._current_bubble)
             self.lune_face.set_state("typing")
         elif self._current_bubble:
-            self._current_bubble.update_text(partial + " ▋", streaming=True)
+            self._current_bubble.update_text(visible + " ▋", streaming=True)
         self._scroll_bottom()
 
     def _on_response(self, response):
@@ -983,9 +987,20 @@ class LuneCDWindow(QMainWindow):
                     self.messages_layout.insertWidget(self.messages_layout.count()-1, tool_bubble)
 
         self.memoria.procesar_respuesta_lune(respuesta_limpia)
-        emotion = detect_emotion(respuesta_limpia)
+
+        # Emoción: si el modelo emitió un <|ACT|>, manda ese; si no, la heurística
+        # léxica de siempre. El texto hablable no incluye los marcadores.
+        hablable, control = marcadores.separar(respuesta_limpia)
+        acts = [v for c, v in control if c == "act"]
+        if acts:
+            emotion = lune_face.estado_desde_emocion(acts[-1]["emotion"])
+        else:
+            hablable = respuesta_limpia
+            emotion = detect_emotion(respuesta_limpia)
+        if acts and hablable.strip():
+            burbuja.update_text(hablable)   # la burbuja final sin marcadores
         self.lune_face.set_state(emotion, auto_revert_ms=6000)
-        self.voice.speak(respuesta_limpia)
+        self.voice.speak(hablable)
         self._scroll_bottom()
 
     def _on_error(self, error):
