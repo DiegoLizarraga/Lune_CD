@@ -74,3 +74,8 @@ chats/
 # Modelos 3D del avatar (licencias de terceros, pesados): no se versionan
 *.vrm
 modelo_vrm/
+
+# Notas personales y su índice RAG (no se versionan)
+notas/
+*.rag.db
+rag.db

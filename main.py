@@ -36,6 +36,7 @@ from theme import (
 )
 import lune_face
 from lune_core import marcadores
+from notas_service import NotasService
 from lune_face import LuneFaceWidget, detect_emotion
 from icons import icon, icon_pixmap
 from effects import apply_glow, clear_glow
@@ -119,6 +120,11 @@ class LuneCDWindow(QMainWindow):
         self.chats = GestorConversaciones(
             max_sesiones=self.config.get("chat", "max_sesiones", 50)
         )
+
+        # Notas + RAG (memoria larga). Perezoso: solo indexa si está activo.
+        self.notas = NotasService(self.config)
+        if self.notas.activo:
+            QTimer.singleShot(1500, self.notas.reindexar)
 
         # Banco de respuestas instantáneas con la personalidad de Lune
         nombre_bot = datos.get_personaje(datos.get_bot().get("personaje_default", "Lune")).get("nombre", "Lune")
@@ -922,9 +928,16 @@ class LuneCDWindow(QMainWindow):
         # El texto de los documentos va en el system prompt; las imágenes van
         # por el canal multimodal del proveedor.
         contexto_archivos = adj.bloque_para_prompt(adjuntos_envio)
+        # Notas relevantes (RAG): se añaden como [Contexto] envuelto/no confiable.
+        contexto_notas = ""
+        if self.notas.activo:
+            frags = self.notas.contexto_para(text)
+            if frags:
+                from lune_core.prompt import bloque_contexto
+                contexto_notas = "\n\n" + bloque_contexto(frags)
         self.ai_worker = AIWorker(
             self.ai_manager, text, self.current_provider,
-            extra_context=contexto_memoria + contexto_archivos,
+            extra_context=contexto_memoria + contexto_archivos + contexto_notas,
             permitir_acciones=self.config.feature("acciones_ia", True),
             imagenes=adj.imagenes_base64(adjuntos_envio),
             emociones=self.config.feature("emociones", True),
@@ -1180,6 +1193,8 @@ class LuneCDWindow(QMainWindow):
             self._grabadora.cancelar()
         if hasattr(self, "chats"):
             self.chats.guardar()
+        if hasattr(self, "notas"):
+            self.notas.cerrar()
         if hasattr(self, "_timer_estado"):
             self._timer_estado.stop()
         if self._hub_cliente is not None:

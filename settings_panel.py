@@ -138,6 +138,10 @@ class SettingsPanel(QFrame):
         layout.addWidget(self._create_section_title("Red Neuronal · Local (Ollama)"))
         layout.addWidget(self._build_ollama_group(modelos))
 
+        # ── SECCIÓN 2b: NOTAS (memoria larga / RAG) ──
+        layout.addWidget(self._create_section_title("Notas · memoria larga (RAG)"))
+        layout.addWidget(self._build_notas_group())
+
         # ── SECCIÓN 3: TELEGRAM ──
         layout.addWidget(self._create_section_title("Integración Telegram"))
         frame_tg = self._create_group_frame()
@@ -293,6 +297,32 @@ class SettingsPanel(QFrame):
         self._add_input(fl, "temperatura",
                         "Temperatura (0 = preciso, 1 = creativo)",
                         str(modelos.get("temperatura", 0.7)), False)
+        return frame
+
+    # ── Grupo de notas (RAG) ───────────────────────────────────────────────────
+    def _build_notas_group(self) -> QFrame:
+        frame = self._create_group_frame()
+        fl = QVBoxLayout(frame); fl.setSpacing(10)
+        notas = self.config.config.get("notas", {})
+
+        info = QLabel(
+            "Lune puede recordar tus documentos: pon notas markdown en una carpeta y "
+            "las consultará cuando vengan al caso, citándolas. Necesita un modelo de "
+            "embeddings en Ollama (p. ej. «ollama pull nomic-embed-text»)."
+        )
+        info.setWordWrap(True); info.setFont(QFont("Segoe UI", 9))
+        info.setStyleSheet(f"color:{COLORS['text_muted']};border:none;")
+        fl.addWidget(info)
+
+        self.notas_check = QCheckBox("Activar memoria larga sobre mis notas")
+        self.notas_check.setChecked(bool(notas.get("activo", False)))
+        self.notas_check.setFont(QFont("Segoe UI", 10))
+        self.notas_check.setStyleSheet(f"QCheckBox{{color:{COLORS['text']};border:none;spacing:8px;}}QCheckBox::indicator{{width:16px;height:16px;}}")
+        fl.addWidget(self.notas_check)
+
+        self._add_input(fl, "notas_carpeta", "Carpeta de notas (.md)", str(notas.get("carpeta", "notas")), False)
+        self._add_input(fl, "notas_modelo", "Modelo de embeddings", str(notas.get("modelo_embeddings", "nomic-embed-text")), False)
+        self._add_input(fl, "notas_topk", "Trozos que inyecta por mensaje", str(notas.get("top_k", 3)), False)
         return frame
 
     # ── Grupo de red (hub) ─────────────────────────────────────────────────────
@@ -617,6 +647,13 @@ class SettingsPanel(QFrame):
         d["modelos"]["ollama_num_ctx"] = self._entero(self.fields["ollama_num_ctx"].text(), 8192)
         d["modelos"]["ollama_timeout"] = self._entero(self.fields["ollama_timeout"].text(), 300)
         d["modelos"]["temperatura"] = self._flotante(self.fields["temperatura"].text(), 0.7)
+
+        # Notas (RAG)
+        n = self.config.config.setdefault("notas", {})
+        n["activo"] = self.notas_check.isChecked()
+        n["carpeta"] = self.fields["notas_carpeta"].text().strip() or "notas"
+        n["modelo_embeddings"] = self.fields["notas_modelo"].text().strip() or "nomic-embed-text"
+        n["top_k"] = self._entero(self.fields["notas_topk"].text(), 3)
 
         # Red de Lune (hub)
         h = d.setdefault("hub", {})

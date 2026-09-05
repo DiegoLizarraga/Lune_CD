@@ -53,6 +53,13 @@ class Config:
         "adjuntos": {
             "max_caracteres": 20000,             # texto máximo por documento
         },
+        # Notas + RAG (memoria larga sobre documentos markdown, ver lune_core/rag.py).
+        "notas": {
+            "activo": False,               # apagado por defecto: requiere embeddings
+            "carpeta": "notas",            # dónde están las notas .md
+            "modelo_embeddings": "nomic-embed-text",
+            "top_k": 3,                    # cuántos trozos se inyectan por mensaje
+        },
         # Voz de entrada con Whisper (ver voz_entrada.py).
         "voz": {
             "modelo_whisper": "base",            # tiny · base · small · medium · large-v3
