@@ -56,3 +56,130 @@ class VoiceEngine:
     def available(self): return self._engine is not None
     @property
     def engine_name(self): return self._engine or "sin voz"
+
+    # ── Síntesis de una frase a archivo (para el pipeline en streaming) ─────────
+    def _sintetizar_a_archivo(self, texto: str):
+        """Devuelve la ruta de un audio con `texto`, o None. Sin reproducir."""
+        clean = re.sub(r'[^\w\s,.!?áéíóúüñ¿¡]', '', texto, flags=re.UNICODE).strip()
+        if not clean or not self._engine:
+            return None
+        try:
+            import tempfile
+            t = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False); t.close()
+            if self._engine == "edge":
+                import asyncio, edge_tts
+                async def _s():
+                    await edge_tts.Communicate(clean, voice="es-MX-DaliaNeural").save(t.name)
+                asyncio.run(_s())
+            else:
+                from gtts import gTTS
+                gTTS(clean, lang="es").save(t.name)
+            return t.name
+        except Exception:
+            return None
+
+    def _reproducir_archivo(self, ruta: str):
+        try:
+            import pygame
+            pygame.mixer.music.load(ruta); pygame.mixer.music.play()
+            while pygame.mixer.music.get_busy():
+                threading.Event().wait(0.05)
+            os.unlink(ruta)
+        except Exception:
+            pass
+
+
+class VozStreaming:
+    """
+    Habla por frases MIENTRAS el modelo escribe: segmenta el stream, sintetiza
+    varias frases en paralelo y las reproduce en orden. Corre en su propio hilo
+    con un bucle asyncio para no tocar el hilo de Qt.
+
+        vs = VozStreaming(voice_engine)
+        vs.iniciar()
+        vs.escribir(chunk)   # varias veces, con el texto acumulado que llega
+        vs.terminar()        # emite lo que quede y cierra
+        vs.cancelar()        # el usuario interrumpió
+    """
+    def __init__(self, voz: "VoiceEngine", concurrencia: int = 3):
+        self.voz = voz
+        self.concurrencia = concurrencia
+        self._loop = None
+        self._hilo = None
+        self._pipe = None
+        self._seg = None
+        self._ultimo = ""      # texto ya procesado (para deltas del buffer acumulado)
+
+    def iniciar(self) -> bool:
+        if not self.voz.available or not self.voz._enabled:
+            return False
+        import asyncio
+        from lune_core.voz import SegmentadorStream, PipelineVoz
+
+        self._seg = SegmentadorStream()
+        self._ultimo = ""
+
+        def _correr():
+            self._loop = asyncio.new_event_loop(); asyncio.set_event_loop(self._loop)
+
+            async def _sint(texto):
+                return await self._loop.run_in_executor(None, self.voz._sintetizar_a_archivo, texto)
+            async def _rep(ruta, _texto):
+                await self._loop.run_in_executor(None, self.voz._reproducir_archivo, ruta)
+
+            self._pipe = PipelineVoz(_sint, _rep, concurrencia=self.concurrencia)
+            self._loop.run_forever()
+
+        self._hilo = threading.Thread(target=_correr, name="voz-streaming", daemon=True)
+        self._hilo.start()
+        # esperar a que el pipe exista
+        for _ in range(50):
+            if self._pipe is not None:
+                return True
+            threading.Event().wait(0.02)
+        return self._pipe is not None
+
+    def escribir(self, buffer_acumulado: str):
+        """Recibe el buffer ACUMULADO del stream; procesa solo lo nuevo."""
+        if self._pipe is None:
+            return
+        delta = buffer_acumulado[len(self._ultimo):] if buffer_acumulado.startswith(self._ultimo) else buffer_acumulado
+        self._ultimo = buffer_acumulado
+        for frase in self._seg.escribir(delta):
+            self._encolar(frase)
+
+    def terminar(self):
+        if self._pipe is None:
+            return
+        for frase in self._seg.vaciar():
+            self._encolar(frase)
+        self._detener()
+
+    def cancelar(self):
+        if self._pipe is None:
+            return
+        import asyncio
+        try:
+            asyncio.run_coroutine_threadsafe(self._pipe.cancelar(), self._loop).result(timeout=2)
+        except Exception:
+            pass
+        self._parar_loop()
+
+    def _encolar(self, frase: str):
+        import asyncio
+        try:
+            asyncio.run_coroutine_threadsafe(self._pipe.encolar(frase), self._loop)
+        except Exception:
+            pass
+
+    def _detener(self):
+        import asyncio
+        try:
+            asyncio.run_coroutine_threadsafe(self._pipe.fin(), self._loop).result(timeout=60)
+        except Exception:
+            pass
+        self._parar_loop()
+
+    def _parar_loop(self):
+        if self._loop and self._loop.is_running():
+            self._loop.call_soon_threadsafe(self._loop.stop)

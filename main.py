@@ -40,7 +40,7 @@ from notas_service import NotasService
 from lune_face import LuneFaceWidget, detect_emotion
 from icons import icon, icon_pixmap
 from effects import apply_glow, clear_glow
-from voice import VoiceEngine
+from voice import VoiceEngine, VozStreaming
 from telegram_worker import TelegramBotWorker
 from chat_widgets import ProviderTab, MessageBubble, TypingIndicator
 from ai_worker import AIWorker
@@ -100,6 +100,7 @@ class LuneCDWindow(QMainWindow):
         self.current_provider = "openrouter"
         self.ai_worker        = None
         self._current_bubble  = None
+        self._voz_stream      = None
         self._typing_indicator= None
         self._tg_worker       = None
         self.tray             = None
@@ -852,6 +853,8 @@ class LuneCDWindow(QMainWindow):
             # Sin esta bandera, _on_response pisaba el estado con "LISTO" y
             # parecía que la interrupción no había funcionado.
             self._cancelado = True
+            if self._voz_stream is not None:
+                self._voz_stream.cancelar(); self._voz_stream = None
             self._set_status("INTERRUMPIDO", COLORS["warning"])
             self.lune_face.set_state("normal")
 
@@ -920,6 +923,13 @@ class LuneCDWindow(QMainWindow):
         self._set_status("PROCESANDO", COLORS["warning"]); self.lune_face.set_state("thinking")
 
         self._typing_indicator = TypingIndicator(self.current_provider)
+
+        # Voz por frases mientras escribe (opcional). Si falla, se usa la de siempre.
+        self._voz_stream = None
+        if self.config.feature("voz_streaming", False) and self.voice.available and self.voice._enabled:
+            vs = VozStreaming(self.voice)
+            if vs.iniciar():
+                self._voz_stream = vs
         self.messages_layout.insertWidget(self.messages_layout.count()-1, self._typing_indicator)
         self._scroll_bottom()
 
@@ -953,6 +963,8 @@ class LuneCDWindow(QMainWindow):
         # 16 veces por segundo sería carísimo. Al terminar se formatea de golpe.
         # Los marcadores <|ACT|>/<|DELAY|> se ocultan mientras se escribe.
         visible = marcadores.limpiar_para_mostrar(partial)
+        if self._voz_stream is not None:
+            self._voz_stream.escribir(visible)
         if self._typing_indicator and self._current_bubble is None:
             self._typing_indicator.stop(); self._typing_indicator.deleteLater(); self._typing_indicator = None
             self._current_bubble = MessageBubble(
@@ -1013,7 +1025,11 @@ class LuneCDWindow(QMainWindow):
         if acts and hablable.strip():
             burbuja.update_text(hablable)   # la burbuja final sin marcadores
         self.lune_face.set_state(emotion, auto_revert_ms=6000)
-        self.voice.speak(hablable)
+        if self._voz_stream is not None:
+            self._voz_stream.terminar()   # emite lo que quede y cierra
+            self._voz_stream = None
+        else:
+            self.voice.speak(hablable)
         self._scroll_bottom()
 
     def _on_error(self, error):
