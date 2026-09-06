@@ -204,7 +204,7 @@ class SettingsPanel(QFrame):
         frame_av = self._create_group_frame()
         fl_av = QVBoxLayout(frame_av); fl_av.setSpacing(8)
         info_av = QLabel("Elige el set de expresiones. Suelta nuevos packs en lune_face/packs/. "
-                         "Próximamente: modelos VRM/Live2D animados (ver ROADMAP_MODELOS.md).")
+                         "La mascota flotante (tile MASCOTA) usa estos packs; modelos VRM 3D en camino.")
         info_av.setWordWrap(True); info_av.setFont(QFont("Segoe UI", 9)); info_av.setStyleSheet(f"color:{COLORS['text_muted']};border:none;")
         fl_av.addWidget(info_av)
         self.pack_combo = QComboBox()

@@ -129,8 +129,8 @@ terminal sigue funcionando con su memoria local y reconecta solo.
 > El token se genera en el host (botón **GENERAR TOKEN** o `python -m lune_core token`)
 > y se copia a cada terminal. Vive en `datos.json`, que no se versiona.
 
-Esto es la **fase 9.0** del plan; el resto (agente, avatar, RAG, voz) está en
-[ROADMAP_9.0.md](ROADMAP_9.0.md).
+Esto es la base de la **serie 9** (host y terminales); sobre ella funcionan el
+avatar flotante, la memoria larga (RAG) y el servicio de voz.
 
 ---
 
@@ -294,9 +294,6 @@ Desde **PERSONAJES** puedes cambiar quién habla contigo e importar *character
 cards* de TavernAI / SillyTavern (`.json` o `.png`).
 
 🎨 **Avatar Packs:** suelta una carpeta en `lune_face/packs/<nombre>/`.
-Roadmap completo (Live2D / VRM estilo Mate-Engine) en [ROADMAP_MODELOS.md](ROADMAP_MODELOS.md).
-El plan de la **serie 9** (host + terminales, avatar flotante, RAG, voz) está en
-[ROADMAP_9.0.md](ROADMAP_9.0.md).
 
 ---
 

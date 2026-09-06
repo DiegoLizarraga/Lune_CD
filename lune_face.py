@@ -1,7 +1,7 @@
 """
 lune_face.py — Cara animada de Lune, emociones y avatar packs.
 Maneja imágenes/videos de expresión y los packs intercambiables
-(base para futuros modelos VRM/Live2D — ver ROADMAP_MODELOS.md).
+(base para modelos VRM/Live2D; ver avatar_overlay.py).
 """
 from pathlib import Path
 
@@ -45,7 +45,7 @@ FACE_FALLBACK_IMAGE = {
 
 # ── Avatar packs (base para "modelos" intercambiables estilo Mate-Engine) ───────
 # Un pack es una subcarpeta en lune_face/packs/<nombre> con los mismos archivos.
-# "default" usa directamente lune_face/. Ver ROADMAP_MODELOS.md.
+# "default" usa directamente lune_face/.
 PACKS_DIR = FACE_DIR / "packs"
 _ACTIVE_PACK = "default"
 _ANIM_VIDEO = True   # se ajusta desde config.json (features.animaciones_video)
