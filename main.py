@@ -37,6 +37,7 @@ from theme import (
 import lune_face
 from lune_core import marcadores
 from notas_service import NotasService
+from avatar_overlay import AvatarOverlay
 from lune_face import LuneFaceWidget, detect_emotion
 from icons import icon, icon_pixmap
 from effects import apply_glow, clear_glow
@@ -101,6 +102,7 @@ class LuneCDWindow(QMainWindow):
         self.ai_worker        = None
         self._current_bubble  = None
         self._voz_stream      = None
+        self._overlay         = None
         self._typing_indicator= None
         self._tg_worker       = None
         self.tray             = None
@@ -390,6 +392,7 @@ class LuneCDWindow(QMainWindow):
         mem_btn  = self._tile_btn("MEMORIA", "brain");    mem_btn.clicked.connect(self._show_memoria)
         tools_btn= self._tile_btn("TOOLS", "tool");      tools_btn.clicked.connect(self._show_tools)
         hist_btn = self._tile_btn("HISTORIAL", "history"); hist_btn.clicked.connect(self._toggle_historial)
+        masc_btn = self._tile_btn("MASCOTA", "user"); masc_btn.clicked.connect(self._toggle_overlay)
         # El tile de Telegram era relleno visual sin acción y solo aparecía si
         # había voz. Ahora es el que enciende y apaga el bot, en lugar del botón
         # ancho que se salía de la barra lateral.
@@ -400,6 +403,7 @@ class LuneCDWindow(QMainWindow):
         grid.addWidget(self._keys_btn, 0, 0); grid.addWidget(pers_btn, 0, 1)
         grid.addWidget(opt_btn, 1, 0); grid.addWidget(mem_btn, 1, 1)
         grid.addWidget(tools_btn, 2, 0); grid.addWidget(hist_btn, 2, 1)
+        grid.addWidget(masc_btn, 4, 0)
         if self.voice.available:
             self._voice_btn = self._tile_btn("VOZ: OFF", "volume_off")
             self._voice_btn.clicked.connect(self._toggle_voice)
@@ -921,6 +925,8 @@ class LuneCDWindow(QMainWindow):
             self.ai_manager.providers[self.current_provider].cancel_flag = False
 
         self._set_status("PROCESANDO", COLORS["warning"]); self.lune_face.set_state("thinking")
+        if self._overlay is not None and self._overlay.isVisible():
+            self._overlay.set_estado("thinking")
 
         self._typing_indicator = TypingIndicator(self.current_provider)
 
@@ -1025,6 +1031,8 @@ class LuneCDWindow(QMainWindow):
         if acts and hablable.strip():
             burbuja.update_text(hablable)   # la burbuja final sin marcadores
         self.lune_face.set_state(emotion, auto_revert_ms=6000)
+        if self._overlay is not None and self._overlay.isVisible():
+            self._overlay.set_estado(emotion, 6000)
         if self._voz_stream is not None:
             self._voz_stream.terminar()   # emite lo que quede y cierra
             self._voz_stream = None
@@ -1084,6 +1092,15 @@ class LuneCDWindow(QMainWindow):
             self.stack.setCurrentIndex(3)
         else:
             self.stack.setCurrentIndex(0)
+
+    def _toggle_overlay(self):
+        """Muestra u oculta la mascota flotante (avatar sobre el escritorio)."""
+        if self._overlay is None:
+            self._overlay = AvatarOverlay(self.config)
+        if self._overlay.isVisible():
+            self._overlay.hide()
+        else:
+            self._overlay.show(); self._overlay.raise_()
 
     def _toggle_historial(self):
         if self.stack.currentIndex() != 4:
@@ -1211,6 +1228,8 @@ class LuneCDWindow(QMainWindow):
             self.chats.guardar()
         if hasattr(self, "notas"):
             self.notas.cerrar()
+        if self._overlay is not None:
+            self._overlay.close()
         if hasattr(self, "_timer_estado"):
             self._timer_estado.stop()
         if self._hub_cliente is not None:
