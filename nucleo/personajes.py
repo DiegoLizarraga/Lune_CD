@@ -29,7 +29,8 @@ import struct
 from pathlib import Path
 from typing import List, Dict, Optional
 
-import datos
+from nucleo import datos
+
 
 
 # ── Carga / guardado de datos.json ──────────────────────────────────────────────

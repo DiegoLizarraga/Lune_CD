@@ -10,9 +10,10 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont
 
-from theme import COLORS, FONT_DISPLAY, FONT_MONO, FONT_BODY
-from icons import icon
-import personajes
+from ui.theme import COLORS, FONT_DISPLAY, FONT_MONO, FONT_BODY
+from ui.icons import icon
+from nucleo import personajes
+
 
 
 class PersonajesPanel(QFrame):

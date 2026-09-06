@@ -5,7 +5,7 @@ tintados con el color que se pida, para que combinen con el contexto
 (cyan / azul / amarillo / texto).
 
 Uso:
-    from icons import icon, icon_pixmap
+    from ui.icons import icon, icon_pixmap
     boton.setIcon(icon("gear", COLORS["accent"], 18))
     label.setPixmap(icon_pixmap("cpu", COLORS["cyan"], 20))
 """

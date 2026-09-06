@@ -1,0 +1,30 @@
+<!-- @dsCard group="Colors" viewport="700x230" name="Signal · Cyan + Electric Blue" subtitle="The dominant duo — every primary action and live state" -->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8" />
+<link rel="stylesheet" href="../styles.css" />
+<style>
+  body{ margin:0; padding:24px; }
+  .grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:14px; }
+  .sw{ position:relative; height:150px; border:var(--bw) solid var(--ink-950); padding:12px; display:flex; flex-direction:column; justify-content:flex-end; clip-path:var(--clip-tr); overflow:hidden; }
+  .sw .k{ font:var(--text-data); font-size:11px; opacity:.85; }
+  .sw .n{ font-family:var(--font-display); font-weight:700; font-size:14px; text-transform:uppercase; letter-spacing:.04em; }
+  .sw .hex{ font:var(--text-data); font-size:11px; }
+  .on-dark{ color:var(--paper); } .on-light{ color:var(--ink-950); }
+  .scan::after{ content:""; position:absolute; inset:0; background:var(--tex-scanline); pointer-events:none; }
+</style></head>
+<body class="lune-backdrop">
+  <div class="grid">
+    <div class="sw scan on-light" style="background:var(--cyan-500)">
+      <div class="k">--accent</div><div class="n">Cyan 500</div><div class="hex">#00E5FF</div>
+    </div>
+    <div class="sw scan on-light" style="background:var(--cyan-400)">
+      <div class="k">--accent-hover</div><div class="n">Cyan 400</div><div class="hex">#36ECFF</div>
+    </div>
+    <div class="sw scan on-dark" style="background:var(--blue-500)">
+      <div class="k">--accent-2</div><div class="n">Blue 500</div><div class="hex">#1E55FF</div>
+    </div>
+    <div class="sw scan on-dark" style="background:var(--blue-600)">
+      <div class="k">--accent-2 dk</div><div class="n">Blue 600</div><div class="hex">#1340DB</div>
+    </div>
+  </div>
+</body></html>

@@ -27,7 +27,7 @@ OnEvento = Callable[[Evento], None]
 
 def _log(msg: str):
     try:
-        from utils import log_info
+        from nucleo.utils import log_info
         log_info(f"[cliente] {msg}")
     except Exception:
         print(f"[cliente] {msg}")
@@ -50,6 +50,7 @@ class Cliente:
         self.peers: list = []
         self._ws = None
         self._pendientes: Dict[str, asyncio.Future] = {}
+        self._streams: Dict[str, Callable[[Evento], None]] = {}   # parent_id → sink de streaming
         self._tarea_ping: Optional[asyncio.Task] = None
         self._tarea_recv: Optional[asyncio.Task] = None
         self._cerrar = False
@@ -162,6 +163,14 @@ class Cliente:
                 if fut is not None and not fut.done():
                     fut.set_result(ev)
                     continue
+                # Streaming (chat): varios eventos con el mismo parent_id.
+                sink = self._streams.get(ev.meta.parent_id) if ev.meta.parent_id else None
+                if sink is not None:
+                    try:
+                        sink(ev)
+                    except Exception as e:
+                        _log(f"sink de streaming falló: {e}")
+                    continue
                 if ev.type == Tipo.PONG.value:
                     continue
                 if self.on_evento:
@@ -219,6 +228,47 @@ class Cliente:
             return await asyncio.wait_for(fut, timeout=timeout)
         finally:
             self._pendientes.pop(ev.meta.id, None)
+
+    async def chat_remoto(self, texto: str, imagenes: Optional[list] = None,
+                          on_delta: Optional[Callable[[str], None]] = None,
+                          on_act: Optional[Callable[[dict], None]] = None,
+                          provider: Optional[str] = None, timeout: float = 180.0) -> dict:
+        """
+        Envía input:text al host y recoge el streaming (delta/act) hasta done.
+        Devuelve {"text", "usage", "tools"}. `on_delta` recibe cada trozo nuevo.
+        """
+        if not self.conectado:
+            raise ConnectionError("el cliente no está listo")
+        loop = asyncio.get_running_loop()
+        fin: asyncio.Future = loop.create_future()
+        acumulado = {"text": "", "usage": {}, "tools": []}
+        ev = P.nuevo_evento(Tipo.INPUT_TEXT,
+                            {"text": texto, "images": imagenes or [], "provider": provider},
+                            self.fuente)
+
+        def sink(e: Evento):
+            if e.type == Tipo.OUTPUT_DELTA.value:
+                t = e.data.get("text", "")
+                acumulado["text"] += t
+                if on_delta and t:
+                    on_delta(t)
+            elif e.type == Tipo.OUTPUT_ACT.value:
+                if on_act:
+                    on_act(e.data)
+            elif e.type == Tipo.OUTPUT_DONE.value:
+                acumulado["text"] = e.data.get("text", acumulado["text"])
+                acumulado["usage"] = e.data.get("usage", {})
+                acumulado["tools"] = e.data.get("tools", [])
+                if not fin.done():
+                    fin.set_result(True)
+
+        self._streams[ev.meta.id] = sink
+        await self._ws.send(P.codificar(ev))
+        try:
+            await asyncio.wait_for(fin, timeout=timeout)
+        finally:
+            self._streams.pop(ev.meta.id, None)
+        return acumulado
 
     async def esperar_listo(self, timeout: float) -> bool:
         try:
@@ -307,6 +357,15 @@ class ClienteEnHilo:
     def enviar_sync(self, tipo, data: dict, to: Optional[list] = None, timeout: float = 5.0) -> Evento:
         return asyncio.run_coroutine_threadsafe(
             self.cliente.enviar(tipo, data, to=to), self._loop).result(timeout)
+
+    def chat_remoto_sync(self, texto: str, imagenes: Optional[list] = None,
+                         on_delta: Optional[Callable[[str], None]] = None,
+                         on_act: Optional[Callable[[dict], None]] = None,
+                         provider: Optional[str] = None, timeout: float = 180.0) -> dict:
+        """Chat con el host desde código síncrono (el hilo del AIWorker)."""
+        return asyncio.run_coroutine_threadsafe(
+            self.cliente.chat_remoto(texto, imagenes, on_delta, on_act, provider, timeout),
+            self._loop).result(timeout + 5)
 
     def detener(self):
         if self._loop and self._loop.is_running():

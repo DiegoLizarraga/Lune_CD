@@ -1,0 +1,21 @@
+<!-- @dsCard group="Spacing" viewport="700x210" name="Corners & Clips" subtitle="Sharp edges + clip-path notch shapes (no rounding)" -->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8" />
+<link rel="stylesheet" href="../styles.css" />
+<style>
+  body{ margin:0; padding:26px; }
+  .row{ display:flex; gap:20px; flex-wrap:wrap; }
+  .item{ display:flex; flex-direction:column; gap:9px; align-items:center; }
+  .box{ width:120px; height:96px; background:linear-gradient(135deg,var(--blue-600),var(--cyan-500)); border:var(--bw) solid var(--ink-950); }
+  .px{ font-family:var(--font-display); font-weight:700; font-size:12px; color:var(--text); text-transform:uppercase; }
+  .t{ font:var(--text-data); font-size:10px; color:var(--text-dim); }
+</style></head>
+<body class="lune-backdrop">
+  <div class="row">
+    <div class="item"><div class="box" style="border-radius:0"></div><div class="px">Sharp</div><div class="t">radius-0</div></div>
+    <div class="item"><div class="box" style="clip-path:var(--clip-tr)"></div><div class="px">Cut TR</div><div class="t">clip-tr</div></div>
+    <div class="item"><div class="box" style="clip-path:var(--clip-notch)"></div><div class="px">Notch</div><div class="t">clip-notch</div></div>
+    <div class="item"><div class="box" style="clip-path:var(--clip-blade)"></div><div class="px">Blade</div><div class="t">clip-blade</div></div>
+    <div class="item"><div class="box" style="clip-path:var(--clip-tag)"></div><div class="px">Tag</div><div class="t">clip-tag</div></div>
+  </div>
+</body></html>

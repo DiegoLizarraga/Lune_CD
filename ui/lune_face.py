@@ -6,10 +6,10 @@ Maneja imágenes/videos de expresión y los packs intercambiables
 from pathlib import Path
 
 from PyQt6.QtWidgets import QFrame, QVBoxLayout, QLabel
-from PyQt6.QtCore import Qt, QTimer, QUrl
+from PyQt6.QtCore import Qt, QTimer, QUrl, pyqtSignal
 from PyQt6.QtGui import QFont, QPixmap
 
-from theme import COLORS, FONT_MONO, FONT_JP
+from ui.theme import COLORS, FONT_MONO, FONT_JP
 
 # Etiqueta de estado que se muestra en el escenario de la mascota (月 EN LÍNEA)
 STATE_LABELS = {
@@ -25,7 +25,7 @@ try:
 except ImportError:
     _MULTIMEDIA_OK = False
 
-FACE_DIR = Path(__file__).parent / "lune_face"
+FACE_DIR = Path(__file__).parent.parent / "lune_face"
 
 FACE_FILES = {
     "normal":    ("lune_normal.png",    "image"),
@@ -126,8 +126,13 @@ def get_face_info(state: str) -> tuple:
 
 
 class LuneFaceWidget(QFrame):
+    # Avisa a quien la contiene (p.ej. el overlay) de que cambió la cara, para
+    # que pueda recalcular la máscara de silueta (click-through).
+    estado_cambiado = pyqtSignal(str)
+
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._pixmap_actual = None      # pixmap escalado que se está mostrando (o None)
         self.setFixedSize(196, 260)
         # Escenario "Shibuya Punk": fondo tinta + marco neón cyan
         self.setStyleSheet(
@@ -179,6 +184,7 @@ class LuneFaceWidget(QFrame):
 
     def _load_face(self, state: str):
         path, kind = get_face_info(state); self._stop_video()
+        self._pixmap_actual = None
         if path and kind == "video" and _MULTIMEDIA_OK and self._player:
             self.image_label.hide(); self._fallback_label.hide(); self.video_widget.show()
             self._player.setSource(QUrl.fromLocalFile(path)); self._player.play(); return
@@ -186,6 +192,7 @@ class LuneFaceWidget(QFrame):
             pixmap = QPixmap(path)
             if not pixmap.isNull():
                 scaled = pixmap.scaled(190, 250, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                self._pixmap_actual = scaled
                 self.image_label.setPixmap(scaled); self.image_label.show(); self._fallback_label.hide(); return
         fallback_marks = { "normal": "月", "happy": "月", "thinking": "…", "typing": "…", "reading": "夜", "sad": "夜", "confused": "?", "error": "✕" }
         self._fallback_label.setText(fallback_marks.get(state, "月")); self._fallback_label.show(); self.image_label.hide()
@@ -202,3 +209,4 @@ class LuneFaceWidget(QFrame):
         )
         if auto_revert_ms > 0: self._revert_timer.start(auto_revert_ms)
         else: self._revert_timer.stop()
+        self.estado_cambiado.emit(state)

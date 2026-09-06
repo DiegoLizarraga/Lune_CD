@@ -15,8 +15,9 @@ from typing import List, Optional, Tuple
 
 from PyQt6.QtCore import QObject, QThread, pyqtSignal
 
-import datos
-from utils import log_info, log_error
+from nucleo import datos
+
+from nucleo.utils import log_info, log_error
 
 
 class IndexadorWorker(QThread):

@@ -1,0 +1,53 @@
+/* ============================================================
+   LUNE CD — SPACING, RADII, LAYOUT
+   8px base grid. Shibuya Punk geometry is SHARP — radii stay
+   near-zero; "rounding" is expressed as cut/notched corners
+   via clip-path (see effects.css), not border-radius.
+   ============================================================ */
+:root {
+  /* ── SPACE SCALE (8px base) ── */
+  --space-0:  0;
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+
+  /* ── RADII — angular by default ── */
+  --radius-0:   0px;     /* default — hard edge */
+  --radius-sm:  2px;
+  --radius-md:  3px;
+  --radius-lg:  4px;
+  --radius-pill: 999px;  /* status pills / chips only */
+
+  /* corner-cut sizes for clipped (notched) shapes */
+  --cut-sm: 8px;
+  --cut-md: 14px;
+  --cut-lg: 22px;
+
+  /* ── BORDER WIDTHS — punk lines are thick ── */
+  --bw-hairline: 1px;   /* @kind spacing */
+  --bw:          1.5px; /* @kind spacing */
+  --bw-bold:     2px;   /* @kind spacing */
+  --bw-heavy:    3px;   /* @kind spacing */
+
+  /* ── LAYOUT METRICS (Lune desktop app) ── */
+  --app-sidebar:  248px;
+  --app-topbar:   60px;
+  --app-inputbar: 88px;
+  --app-min-w:    1024px;
+  --container:    1280px;
+
+  /* ── Z-INDEX ── */
+  --z-base:   1;     /* @kind other */
+  --z-raised: 10;    /* @kind other */
+  --z-sticky: 100;   /* @kind other */
+  --z-overlay:1000;  /* @kind other */
+  --z-toast:  2000;  /* @kind other */
+}

@@ -13,7 +13,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from memoria import MemoriaManager  # noqa: E402
+from nucleo.memoria import MemoriaManager  # noqa: E402
 
 
 @pytest.fixture

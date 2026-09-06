@@ -1,0 +1,37 @@
+<!-- @dsCard group="Brand" viewport="700x300" name="Mascot · Lune" subtitle="Anime cel-shaded — die-cut sticker, 9 expresiones" -->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8" />
+<link rel="stylesheet" href="../styles.css" />
+<style>
+  body{ margin:0; padding:24px; display:flex; gap:22px; align-items:stretch; height:300px; box-sizing:border-box; }
+  .stage{ position:relative; width:200px; flex:none; background:radial-gradient(circle at 50% 35%, rgba(0,229,255,.22), transparent 65%), var(--ink-950); border:var(--bw) solid var(--ink-500); display:flex; align-items:flex-end; justify-content:center; overflow:hidden; clip-path:var(--clip-notch); }
+  .stage::after{ content:""; position:absolute; inset:0; background:var(--tex-scanline); pointer-events:none; }
+  .stage img{ height:96%; width:100%; object-fit:contain; object-position:bottom center; }
+  .stage .tag{ position:absolute; top:10px; left:10px; font:var(--text-data); font-size:10px; color:var(--cyan-400); background:rgba(5,7,15,.7); padding:3px 7px; border:1px solid var(--cyan-700); z-index:2; }
+  .notes{ flex:1; display:flex; flex-direction:column; justify-content:center; gap:14px; }
+  .notes h3{ font-family:var(--font-display); font-weight:700; font-size:22px; text-transform:uppercase; letter-spacing:.04em; color:var(--text-strong); margin:0; }
+  .notes p{ font-family:var(--font-sans); font-size:13px; line-height:1.55; color:var(--text-muted); margin:0; }
+  .states{ display:flex; gap:8px; flex-wrap:wrap; }
+  .pill{ font:var(--text-data); font-size:10px; text-transform:uppercase; color:var(--ink-950); background:var(--cyan-500); padding:3px 9px; clip-path:var(--clip-tr); }
+  .pill.b{ background:var(--blue-500); color:var(--white); } .pill.y{ background:var(--yellow-500); }
+</style></head>
+<body class="lune-backdrop">
+  <div class="stage">
+    <span class="tag">// COMPOSED.png</span>
+    <img src="../assets/mascot/anime/lune-composed.png" alt="Lune mascot" />
+  </div>
+  <div class="notes">
+    <h3>Lune — La Asistente</h3>
+    <p>Secretaria privada en estilo anime cel-shaded. Reacciona a su propia respuesta y siempre va die-cut con contorno blanco tipo sticker. Set completo en <code style="font-family:var(--font-mono)">assets/mascot/anime/</code>.</p>
+    <div class="states">
+      <span class="pill">composed</span>
+      <span class="pill y">happy</span>
+      <span class="pill b">thinking</span>
+      <span class="pill b">nervous</span>
+      <span class="pill">wave</span>
+      <span class="pill y">surprised</span>
+      <span class="pill">angry</span>
+      <span class="pill b">dismiss</span>
+    </div>
+  </div>
+</body></html>

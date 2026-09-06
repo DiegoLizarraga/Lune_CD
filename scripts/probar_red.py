@@ -17,9 +17,10 @@ import tempfile
 import time
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import datos
+from nucleo import datos
+
 from lune_core import protocolo as P
 
 
@@ -65,7 +66,7 @@ def probar_local() -> bool:
     from lune_core.hub import Hub, HubEnHilo
     from lune_core.cliente import ClienteEnHilo
     from lune_core.servicio_memoria import ServicioMemoria
-    from memoria import MemoriaManager
+    from nucleo.memoria import MemoriaManager
 
     print("\nModo LOCAL/HOST → levanto un hub aquí y pruebo el viaje de ida y vuelta")
     tmp = Path(tempfile.mkdtemp()) / "memoria_prueba.json"

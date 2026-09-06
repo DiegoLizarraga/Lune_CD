@@ -10,6 +10,7 @@
  * Vive aparte de bot.js para poder probarlo sin arrancar Telegram.
  */
 import { loadConfig } from "./config.js";
+import { hubDisponible, chatViaHost } from "./memoria.js";
 
 const config = loadConfig();
 
@@ -91,6 +92,15 @@ export async function chatOllama(messages, systemPrompt) {
 
 // Un solo punto de entrada: el proveedor lo decide datos.json (bot.proveedor).
 export async function chatIA(messages, systemPrompt) {
+  // Si hay un host conectado, el chat lo corre EL HOST (agente): mismo cerebro,
+  // misma memoria y las herramientas de escritorio. El bot solo manda el texto.
+  if (hubDisponible()) {
+    const ultimo = [...messages].reverse().find(m => m.role === "user")?.content ?? "";
+    if (ultimo) {
+      try { return await chatViaHost(ultimo); }
+      catch (e) { console.error("[hub] chat via host fallo, uso local:", e.message); }
+    }
+  }
   if (config.proveedor === "ollama") {
     if (!config.ollamaModel) {
       throw new Error("No hay modelo local configurado (modelos.ollama_model en datos.json).");
@@ -99,6 +109,8 @@ export async function chatIA(messages, systemPrompt) {
   }
   return chatOpenRouter(messages, systemPrompt);
 }
+
+export function chatViaHostDisponible() { return hubDisponible(); }
 
 export function descripcionModelo() {
   return config.proveedor === "ollama"

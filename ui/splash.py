@@ -26,8 +26,8 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QTimer, QUrl
 from PyQt6.QtGui import QColor, QPainter
 
-from config import Config
-from utils import log_info, log_error
+from nucleo.config import Config
+from nucleo.utils import log_info, log_error
 
 try:
     from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
@@ -36,7 +36,7 @@ try:
 except ImportError:
     _MULTIMEDIA_OK = False
 
-RUTA_VIDEO = Path(__file__).parent / "inicio.mp4"
+RUTA_VIDEO = Path(__file__).parent.parent / "assets" / "inicio.mp4"
 
 # Si el video no arranca en este tiempo, se entra a la app igualmente para no
 # dejar al usuario mirando un marco negro.

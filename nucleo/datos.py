@@ -13,7 +13,7 @@ import shutil
 from pathlib import Path
 from typing import Any, Dict
 
-_ROOT = Path(__file__).parent
+_ROOT = Path(__file__).parent.parent
 _PATH = _ROOT / "datos.json"
 _EJEMPLO = _ROOT / "datos.example.json"
 

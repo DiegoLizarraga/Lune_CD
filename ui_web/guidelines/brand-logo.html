@@ -1,0 +1,22 @@
+<!-- @dsCard group="Brand" viewport="700x230" name="Logo Lockup" subtitle="App mark + wordmark + katakana" -->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8" />
+<link rel="stylesheet" href="../styles.css" />
+<style>
+  body{ margin:0; padding:28px; display:flex; align-items:center; gap:24px; }
+  .mark{ width:118px; height:118px; flex:none; border:var(--bw-bold) solid var(--ink-950); box-shadow:var(--shadow-hard); clip-path:var(--clip-tr); object-fit:cover; }
+  .lock .eyebrow{ font:var(--text-overline); letter-spacing:var(--ls-mega); text-transform:uppercase; color:var(--accent); margin:0 0 6px; }
+  .word{ font-family:var(--font-display); font-weight:700; font-size:46px; line-height:.95; text-transform:uppercase; letter-spacing:.02em; color:var(--text-strong); margin:0; }
+  .word em{ font-style:normal; color:var(--cyan-500); text-shadow:var(--text-glow-cyan); }
+  .jp{ font-family:var(--font-jp); font-weight:900; font-size:24px; color:var(--yellow-500); margin-top:6px; }
+  .tag{ font:var(--text-data); font-size:11px; color:var(--text-dim); margin-top:4px; }
+</style></head>
+<body class="lune-backdrop">
+  <img class="mark" src="../assets/lune-logo.png" alt="Lune CD logo" />
+  <div class="lock">
+    <p class="eyebrow">// Hybrid Desktop AI</p>
+    <h1 class="word">Lune <em>CD</em></h1>
+    <div class="jp">ルネ・シーディー</div>
+    <div class="tag">v7.8 · Nube / Local</div>
+  </div>
+</body></html>

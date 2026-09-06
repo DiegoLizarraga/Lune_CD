@@ -20,7 +20,8 @@ from typing import Callable, Dict, List, Optional
 
 import requests
 
-import datos
+from nucleo import datos
+
 
 _USER_AGENT = "LuneCD/8.5"
 

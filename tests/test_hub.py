@@ -15,7 +15,7 @@ from lune_core import protocolo as P  # noqa: E402
 from lune_core.hub import Hub, HubEnHilo  # noqa: E402
 from lune_core.cliente import Cliente, ClienteEnHilo  # noqa: E402
 from lune_core.servicio_memoria import ServicioMemoria  # noqa: E402
-from memoria import MemoriaManager  # noqa: E402
+from nucleo.memoria import MemoriaManager  # noqa: E402
 
 TOKEN = "secreto-de-prueba"
 

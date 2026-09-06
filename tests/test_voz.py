@@ -167,7 +167,8 @@ def test_voz_streaming_habla_por_frases_en_orden(monkeypatch):
     Sin audio real: se simula el motor. Verifica que al alimentar el buffer
     acumulado del stream, las frases se sintetizan y 'reproducen' en orden.
     """
-    import voice
+    from servicios import voice
+
     reproducidos = []
 
     class MotorFalso:
@@ -189,9 +190,43 @@ def test_voz_streaming_habla_por_frases_en_orden(monkeypatch):
 
 
 def test_voz_streaming_no_arranca_si_esta_muda():
-    import voice
+    from servicios import voice
+
     class Muda:
         available = False
         _enabled = False
     vs = voice.VozStreaming(Muda())
     assert vs.iniciar() is False
+
+
+# ── Voz local: Kokoro y RVC (degradación) ───────────────────────────────────────
+
+def test_kokoro_degrada_sin_dependencias():
+    """Sin kokoro-onnx ni pesos, ni disponible() ni sintetizar() revientan."""
+    from lune_core.voz import kokoro_backend as k
+    # En el entorno de test no hay pesos ni el paquete: debe reportar no-disponible.
+    assert k.disponible("carpeta_que_no_existe") is False
+    assert k.sintetizar("hola", carpeta="carpeta_que_no_existe") is None
+    assert "kokoro" in k.mensaje_instalacion().lower()
+    assert k.VOZ_POR_DEFECTO in k.VOCES_ES
+
+
+def test_rvc_degrada_devolviendo_el_audio_original():
+    """Sin rvc-python ni modelo, convertir() devuelve la ruta de entrada intacta."""
+    from lune_core.voz import rvc_backend as r
+    assert r.disponible("") is False
+    assert r.disponible("modelo_inexistente.pth") is False
+    assert r.convertir("/tmp/entrada.wav", "modelo_inexistente.pth") == "/tmp/entrada.wav"
+
+
+def test_voiceengine_pide_kokoro_pero_cae_a_edge_si_no_esta():
+    """Elegir 'kokoro' sin pesos no deja a Lune muda: cae a edge/gtts."""
+    from servicios import voice
+
+    class ConfigFalsa:
+        def get(self, seccion, clave, default=None):
+            return {"motor_salida": "kokoro"}.get(clave, default)
+    ve = voice.VoiceEngine(ConfigFalsa())
+    # No hay pesos de Kokoro en el entorno de test → motor real distinto de kokoro.
+    assert ve._engine in ("edge", "gtts", None)
+    assert ve._engine != "kokoro"

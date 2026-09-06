@@ -9,9 +9,9 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import datos  # noqa: E402
-from config import Config  # noqa: E402
-from respuestas import BancoRespuestas  # noqa: E402
+from nucleo import datos  # noqa: E402
+from nucleo.config import Config  # noqa: E402
+from nucleo.respuestas import BancoRespuestas  # noqa: E402
 
 
 # ── config.py ──────────────────────────────────────────────────────────────────
@@ -76,7 +76,7 @@ def test_max_historial(monkeypatch):
 
 
 def test_la_url_se_normaliza_al_guardar():
-    from ollama_client import normalizar_url
+    from servicios.ollama_client import normalizar_url
     assert normalizar_url("192.168.1.50") == "http://192.168.1.50:11434"
     assert normalizar_url("localhost:11434") == "http://localhost:11434"
     assert normalizar_url("http://pc-potente:11434/") == "http://pc-potente:11434"

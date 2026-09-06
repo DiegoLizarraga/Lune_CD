@@ -1,0 +1,23 @@
+<!-- @dsCard group="Effects" viewport="700x200" name="Textures" subtitle="Scanlines · technical grid · halftone · hazard stripes" -->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8" />
+<link rel="stylesheet" href="../styles.css" />
+<style>
+  body{ margin:0; padding:24px; }
+  .grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:14px; }
+  .tex{ position:relative; height:120px; border:var(--bw) solid var(--ink-950); display:flex; align-items:flex-end; padding:9px; overflow:hidden; }
+  .tex span{ font:var(--text-data); font-size:10px; color:var(--paper); background:var(--ink-950); padding:2px 6px; position:relative; z-index:2; }
+  .scan{ background:var(--ink-700); }
+  .scan::after{ content:""; position:absolute; inset:0; background:var(--tex-scanline); }
+  .gr{ background:var(--ink-800); background-image:var(--tex-grid); background-size:var(--tex-grid-size); }
+  .half{ background:var(--ink-700); background-image:var(--tex-halftone); background-size:var(--tex-halftone-size); }
+  .haz{ background:var(--tex-hazard); }
+</style></head>
+<body class="lune-backdrop">
+  <div class="grid">
+    <div class="tex scan"><span>scanline</span></div>
+    <div class="tex gr"><span>grid</span></div>
+    <div class="tex half"><span>halftone</span></div>
+    <div class="tex haz"><span>hazard</span></div>
+  </div>
+</body></html>

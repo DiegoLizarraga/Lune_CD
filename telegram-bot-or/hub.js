@@ -22,6 +22,7 @@ export class HubCliente {
     this.peerId = null;
     this.ws = null;
     this.pendientes = new Map();     // id -> {resolve, reject, timer}
+    this.chats = new Map();          // id -> {resolve, reject, timer, onDelta} (streaming de chat)
     this.oyentes = new Map();        // type -> [handlers]
     this._cerrar = false;
     this._intento = 0;
@@ -111,6 +112,16 @@ export class HubCliente {
     let ev;
     try { ev = JSON.parse(typeof m.data === "string" ? m.data : m.data.toString()); } catch { return; }
     const pid = ev.meta?.parent_id;
+    // Streaming de chat: varios eventos con el mismo parent_id hasta el done.
+    if (pid && this.chats.has(pid)) {
+      const c = this.chats.get(pid);
+      if (ev.type === "output:chat:delta") { c.onDelta?.(ev.data?.text ?? ""); return; }
+      if (ev.type === "output:chat:act") return;                 // emociones: el bot no las usa
+      if (ev.type === "output:chat:done") {
+        clearTimeout(c.timer); this.chats.delete(pid); c.resolve(ev); return;
+      }
+      return;
+    }
     if (pid && this.pendientes.has(pid)) {
       const p = this.pendientes.get(pid);
       clearTimeout(p.timer);
@@ -129,6 +140,8 @@ export class HubCliente {
     this.ws = null;
     for (const [, p] of this.pendientes) { clearTimeout(p.timer); p.reject(new Error("conexion perdida")); }
     this.pendientes.clear();
+    for (const [, c] of this.chats) { clearTimeout(c.timer); c.reject(new Error("conexion perdida")); }
+    this.chats.clear();
     if (this._cerrar) { this.estado = "idle"; return; }
     if (c?.code === 4001) { this.estado = "failed"; return; }
     this.estado = "reconnecting";
@@ -169,6 +182,20 @@ export class HubCliente {
       this.pendientes.set(ev.meta.id, { resolve, reject, timer });
       this.ws.send(JSON.stringify(ev));
     });
+  }
+
+  /**
+   * Envia input:text y espera el output:chat:done del host (agente). Los
+   * output:chat:delta llegan a onDelta si se pasa. Devuelve el texto final.
+   */
+  pedirChat(text, { onDelta = null, imagenes = [], provider = null, timeoutMs = 180000 } = {}) {
+    if (!this.listo) return Promise.reject(new Error("el cliente del hub no esta listo"));
+    const ev = this._sobre("input:text", { text, images: imagenes, provider });
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => { this.chats.delete(ev.meta.id); reject(new Error("sin respuesta del host (chat)")); }, timeoutMs);
+      this.chats.set(ev.meta.id, { resolve, reject, timer, onDelta });
+      this.ws.send(JSON.stringify(ev));
+    }).then(ev => ev.data?.text ?? "");
   }
 
   cerrar() {

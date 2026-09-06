@@ -1,0 +1,52 @@
+/* ============================================================
+   LUNE CD — BASE / RESET
+   Minimal element defaults + a couple of reusable utility
+   classes used across specimen cards and kits. Components
+   should still reference tokens directly rather than these.
+   ============================================================ */
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: var(--text-body);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection { background: var(--cyan-500); color: var(--ink-950); }
+
+a { color: var(--accent); text-decoration: none; }
+
+/* App-shell ambient backdrop: ink + faint grid + cyan bloom */
+.lune-backdrop {
+  background:
+    radial-gradient(900px 500px at 12% -10%, rgba(30,85,255,.18), transparent 60%),
+    radial-gradient(700px 500px at 100% 110%, rgba(0,229,255,.12), transparent 55%),
+    var(--tex-grid),
+    var(--bg);
+  background-size: auto, auto, var(--tex-grid-size), var(--tex-grid-size), auto;
+}
+
+/* Overline / eyebrow label */
+.lune-overline {
+  font: var(--text-overline);
+  letter-spacing: var(--ls-mega);
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+/* Scanline overlay — drop on a positioned ancestor */
+.lune-scanlines::after {
+  content: "";
+  position: absolute; inset: 0;
+  background: var(--tex-scanline);
+  pointer-events: none;
+  mix-blend-mode: screen;
+}
+
+/* Katakana accent text */
+.lune-jp { font-family: var(--font-jp); font-weight: var(--fw-black); }

@@ -7,7 +7,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import adjuntos  # noqa: E402
+from nucleo import adjuntos  # noqa: E402
 
 
 # PNG 1x1 real, para no depender de tener Pillow

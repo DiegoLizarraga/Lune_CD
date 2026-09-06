@@ -6,7 +6,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from conversaciones import GestorConversaciones  # noqa: E402
+from nucleo.conversaciones import GestorConversaciones  # noqa: E402
 
 
 @pytest.fixture
@@ -123,7 +123,8 @@ def test_ultima_es_correcta_aunque_el_reloj_no_avance(tmp_path, monkeypatch):
     datetime.now() en Windows con Python 3.11, donde dos sesiones seguidas
     compartían 'actualizado' y ultima() devolvía la vieja.
     """
-    import conversaciones as c
+    from nucleo import conversaciones as c
+
     from datetime import datetime as _dt
     fijo = _dt(2026, 1, 1, 12, 0, 0)
 

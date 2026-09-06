@@ -1,0 +1,24 @@
+<!-- @dsCard group="Colors" viewport="700x180" name="Semantic States" subtitle="Provider roles + success / info / warning / danger" -->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8" />
+<link rel="stylesheet" href="../styles.css" />
+<style>
+  body{ margin:0; padding:24px; }
+  .row{ display:flex; gap:12px; flex-wrap:wrap; }
+  .chip{ flex:1; min-width:120px; display:flex; align-items:center; gap:10px; padding:14px; border:var(--bw) solid var(--ink-950); background:var(--ink-800); clip-path:var(--clip-tr); }
+  .dot{ width:18px; height:18px; flex:none; box-shadow:var(--glow-cyan-sm); }
+  .meta .n{ font-family:var(--font-display); font-weight:700; font-size:13px; color:var(--text); text-transform:uppercase; }
+  .meta .r{ font:var(--text-data); font-size:10px; color:var(--text-dim); }
+</style></head>
+<body class="lune-backdrop">
+  <div class="row" style="margin-bottom:12px;">
+    <div class="chip"><span class="dot" style="background:var(--cyan-500)"></span><div class="meta"><div class="n">Local</div><div class="r">--surface-local · offline</div></div></div>
+    <div class="chip"><span class="dot" style="background:var(--blue-500)"></span><div class="meta"><div class="n">Nube</div><div class="r">--surface-cloud · online</div></div></div>
+    <div class="chip"><span class="dot" style="background:var(--yellow-500)"></span><div class="meta"><div class="n">Warning</div><div class="r">--warning</div></div></div>
+  </div>
+  <div class="row">
+    <div class="chip"><span class="dot" style="background:var(--success)"></span><div class="meta"><div class="n">Success</div><div class="r">--success</div></div></div>
+    <div class="chip"><span class="dot" style="background:var(--info)"></span><div class="meta"><div class="n">Info</div><div class="r">--info</div></div></div>
+    <div class="chip"><span class="dot" style="background:var(--danger)"></span><div class="meta"><div class="n">Danger</div><div class="r">--danger</div></div></div>
+  </div>
+</body></html>

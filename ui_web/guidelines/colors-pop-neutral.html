@@ -1,0 +1,21 @@
+<!-- @dsCard group="Colors" viewport="700x230" name="Pop + Neutrals" subtitle="Acid yellow graffiti accent, cool whites & steel grays" -->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8" />
+<link rel="stylesheet" href="../styles.css" />
+<style>
+  body{ margin:0; padding:24px; }
+  .grid{ display:grid; grid-template-columns:repeat(5,1fr); gap:12px; }
+  .sw{ position:relative; height:150px; border:var(--bw) solid var(--ink-950); padding:11px; display:flex; flex-direction:column; justify-content:flex-end; clip-path:var(--clip-tr); }
+  .sw .n{ font-family:var(--font-display); font-weight:700; font-size:13px; text-transform:uppercase; }
+  .sw .hex{ font:var(--text-data); font-size:10px; }
+  .on-dark{ color:var(--paper); } .on-light{ color:var(--ink-950); }
+</style></head>
+<body class="lune-backdrop">
+  <div class="grid">
+    <div class="sw on-light" style="background:var(--yellow-500)"><div class="n">Yellow</div><div class="hex">#FFE000</div></div>
+    <div class="sw on-light" style="background:var(--white)"><div class="n">White</div><div class="hex">#FFFFFF</div></div>
+    <div class="sw on-light" style="background:var(--paper)"><div class="n">Paper</div><div class="hex">#EAF1FF</div></div>
+    <div class="sw on-light" style="background:var(--gray-300)"><div class="n">Gray 300</div><div class="hex">#97A6C4</div></div>
+    <div class="sw on-dark" style="background:var(--gray-500)"><div class="n">Gray 500</div><div class="hex">#4B5878</div></div>
+  </div>
+</body></html>

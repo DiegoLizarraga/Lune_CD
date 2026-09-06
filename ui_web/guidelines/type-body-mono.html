@@ -1,0 +1,26 @@
+<!-- @dsCard group="Type" viewport="700x260" name="Body + Mono" subtitle="Space Grotesk for prose, Space Mono for system data" -->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8" />
+<link rel="stylesheet" href="../styles.css" />
+<style>
+  body{ margin:0; padding:28px; display:grid; grid-template-columns:1fr 1fr; gap:28px; }
+  .col h4{ font:var(--text-overline); letter-spacing:var(--ls-mega); text-transform:uppercase; color:var(--text-dim); margin:0 0 12px; }
+  .body{ font-family:var(--font-sans); font-size:15px; line-height:1.55; color:var(--text); margin:0; }
+  .body b{ color:var(--cyan-400); font-weight:600; }
+  .mono{ font-family:var(--font-mono); font-size:13px; line-height:1.7; color:var(--text-muted); margin:0; }
+  .mono .c{ color:var(--cyan-500); } .mono .y{ color:var(--yellow-500); } .mono .d{ color:var(--text-faint); }
+</style></head>
+<body class="lune-backdrop">
+  <div class="col">
+    <h4>Body — Space Grotesk</h4>
+    <p class="body">Lune vive en tu escritorio. Alterna entre <b>nube</b> y <b>local</b>, recuerda lo que importa y ejecuta herramientas al instante — sin gastar tokens en lo trivial.</p>
+  </div>
+  <div class="col">
+    <h4>Data — Space Mono</h4>
+    <pre class="mono"><span class="d">$</span> lune status
+<span class="c">PROVIDER</span>  ollama <span class="d">(local)</span>
+<span class="c">MEMORY</span>    24 nodes
+<span class="c">CPU</span>       <span class="y">18%</span>  <span class="c">RAM</span> <span class="y">42%</span>
+<span class="d">&gt;</span> listo_</pre>
+  </div>
+</body></html>

@@ -9,8 +9,8 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QSize, pyqtSignal
 from PyQt6.QtGui import QFont
 
-from theme import COLORS, FONT_DISPLAY, FONT_MONO, FONT_BODY
-from icons import icon
+from ui.theme import COLORS, FONT_DISPLAY, FONT_MONO, FONT_BODY
+from ui.icons import icon
 
 
 def _fecha_legible(iso: str) -> str:

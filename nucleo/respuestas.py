@@ -10,7 +10,7 @@ Beneficios:
   Personalidad consistente, alegre y servicial de Lune
 
 Uso desde main.py:
-    from respuestas import BancoRespuestas
+    from nucleo.respuestas import BancoRespuestas
     banco = BancoRespuestas()
     rta = banco.responder("hola")     # -> str alegre, o None si no aplica
     if rta:

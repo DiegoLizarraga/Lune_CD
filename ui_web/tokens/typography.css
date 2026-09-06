@@ -1,0 +1,54 @@
+/* ============================================================
+   LUNE CD — TYPOGRAPHY
+   Display: Chakra Petch (angular techno, uppercase, tracked)
+   Body/UI: Space Grotesk (clean grotesque)
+   Data:    Space Mono (timestamps, code, system readouts)
+   JP:      Noto Sans JP (katakana graffiti accents)
+   ============================================================ */
+:root {
+  /* ── FAMILIES ── */
+  --font-display: 'Chakra Petch', 'Space Grotesk', system-ui, sans-serif;
+  --font-sans:    'Space Grotesk', system-ui, -apple-system, sans-serif;
+  --font-mono:    'Space Mono', 'JetBrains Mono', ui-monospace, monospace;
+  --font-jp:      'Noto Sans JP', 'Chakra Petch', sans-serif;
+
+  /* ── WEIGHTS ── */
+  --fw-regular:  400; /* @kind font */
+  --fw-medium:   500; /* @kind font */
+  --fw-semibold: 600; /* @kind font */
+  --fw-bold:     700; /* @kind font */
+  --fw-black:    900; /* @kind font */
+
+  /* ── TYPE SCALE (px) ── */
+  --fs-display: 64px;  /* graffiti hero */
+  --fs-h1:      40px;
+  --fs-h2:      30px;
+  --fs-h3:      22px;
+  --fs-h4:      18px;
+  --fs-lg:      16px;
+  --fs-body:    15px;
+  --fs-sm:      13px;
+  --fs-xs:      11px;
+  --fs-2xs:     10px;  /* micro labels / overlines */
+
+  /* ── LINE HEIGHTS ── */
+  --lh-tight:   1.05; /* @kind other */
+  --lh-snug:    1.25; /* @kind other */
+  --lh-normal:  1.5;  /* @kind other */
+  --lh-relaxed: 1.65; /* @kind other */
+
+  /* ── LETTER SPACING — Shibuya signage runs wide & uppercase ── */
+  --ls-mega:    0.16em;  /* overlines, eyebrows  @kind other */
+  --ls-wide:    0.08em;  /* display headings  @kind other */
+  --ls-normal:  0.01em;  /* @kind other */
+  --ls-tight:  -0.01em;  /* @kind other */
+
+  /* ── SEMANTIC ROLES ── */
+  --text-overline:    var(--fw-bold) var(--fs-2xs)/1.2 var(--font-mono);
+  --text-display:     var(--fw-bold) var(--fs-display)/var(--lh-tight) var(--font-display);
+  --text-title:       var(--fw-bold) var(--fs-h2)/var(--lh-snug) var(--font-display);
+  --text-heading:     var(--fw-semibold) var(--fs-h4)/var(--lh-snug) var(--font-display);
+  --text-body:        var(--fw-regular) var(--fs-body)/var(--lh-normal) var(--font-sans);
+  --text-label:       var(--fw-medium) var(--fs-sm)/1.2 var(--font-sans);
+  --text-data:        var(--fw-regular) var(--fs-sm)/1.3 var(--font-mono);
+}

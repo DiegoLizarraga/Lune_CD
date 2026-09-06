@@ -80,7 +80,7 @@ def test_el_codigo_deshace_el_arranque_oculto():
 # ── Pantalla de inicio ─────────────────────────────────────────────────────────
 
 def test_el_splash_no_abre_dos_ventanas(qapp):
-    from splash import PantallaInicio
+    from ui.splash import PantallaInicio
     llamadas = []
     s = PantallaInicio(al_terminar=lambda: llamadas.append(1))
     # Fin del video + botón de saltar + red de seguridad, casi a la vez
@@ -89,7 +89,7 @@ def test_el_splash_no_abre_dos_ventanas(qapp):
 
 
 def test_el_splash_marca_que_termino(qapp):
-    from splash import PantallaInicio
+    from ui.splash import PantallaInicio
     s = PantallaInicio(al_terminar=lambda: None)
     assert s._terminado is False
     s.entrar()
@@ -101,7 +101,7 @@ def test_el_fondo_no_es_el_padre_del_video(qapp):
     El fondo repinta a 30 fps y el video va a 24: si el video colgara de él,
     lo taparía de negro entre fotogramas. Deben ser hermanos.
     """
-    from splash import PantallaInicio
+    from ui.splash import PantallaInicio
     s = PantallaInicio(al_terminar=lambda: None)
     if not hasattr(s, "video_widget"):
         pytest.skip("Sin multimedia o sin inicio.mp4")
@@ -118,7 +118,7 @@ def test_el_video_no_es_una_ventana_suelta(qapp):
     jerarquía del splash quedaba rota. No hace falta ninguna ventana nativa —
     el fondo de estrellas ya es hermano del contenido, no su padre.
     """
-    from splash import PantallaInicio
+    from ui.splash import PantallaInicio
     s = PantallaInicio(al_terminar=lambda: None)
     if not hasattr(s, "video_widget"):
         pytest.skip("Sin multimedia o sin inicio.mp4")

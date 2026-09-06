@@ -34,7 +34,7 @@ Estructura de memoria.json:
 }
 
 Uso desde main.py:
-    from memoria import MemoriaManager
+    from nucleo.memoria import MemoriaManager
     memoria = MemoriaManager()
     contexto = memoria.obtener_contexto_para_prompt()
     respuesta = memoria.procesar_mensaje_usuario(texto)   # str o None
@@ -52,7 +52,7 @@ from datetime import datetime
 from typing import Optional
 
 
-MEMORIA_PATH = Path(__file__).parent / "memoria.json"
+MEMORIA_PATH = Path(__file__).parent.parent / "memoria.json"
 
 TIPOS_RECUERDO = {
     "hecho":        "·",

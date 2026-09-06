@@ -16,7 +16,7 @@ if os.name == "nt":
 
 class TelegramBotWorker(QThread):
     log_signal = pyqtSignal(str); stopped = pyqtSignal()
-    BOT_DIR = Path(__file__).parent / "telegram-bot-or"
+    BOT_DIR = Path(__file__).parent.parent / "telegram-bot-or"
 
     def __init__(self):
         super().__init__(); self._process = None

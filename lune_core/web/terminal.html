@@ -88,10 +88,23 @@ function conectar(){
   ws.onerror = () => {};
 }
 
+let _burbujaLune = null;   // burbuja en curso mientras llega el streaming
 function manejar(ev){
   const fut = ev.meta?.parent_id && pendientes.get(ev.meta.parent_id);
   if (fut){ pendientes.delete(ev.meta.parent_id); fut(ev); return; }
-  if (ev.type==="output:chat:done"){ burbuja("lune", ev.data?.text || ""); }
+  if (ev.type==="output:chat:delta"){
+    if (!_burbujaLune){
+      _burbujaLune = document.createElement("div"); _burbujaLune.className = "msg lune";
+      $("#chat").appendChild(_burbujaLune);
+    }
+    _burbujaLune.textContent += ev.data?.text || "";
+    $("#chat").scrollTop = $("#chat").scrollHeight;
+  }
+  else if (ev.type==="output:chat:done"){
+    // el done trae el texto limpio y definitivo (sin marcadores ni comandos)
+    if (_burbujaLune){ _burbujaLune.textContent = ev.data?.text || _burbujaLune.textContent; _burbujaLune = null; }
+    else { burbuja("lune", ev.data?.text || ""); }
+  }
   else if (ev.type==="host:status"){ estado("host: " + (ev.data?.model||"?") + (ev.data?.busy?" · ocupado":""), true); }
   else if (ev.type==="memory:changed"){ /* alguien cambió la memoria */ }
 }
@@ -108,7 +121,7 @@ function entrarApp(){
   $("#login").classList.add("oculto");
   ["#app","#chat","#barra"].forEach(s=>$(s).classList.remove("oculto"));
   estado("conectado", true);
-  burbuja("sys", "Conectado al host. Prueba /memoria — el chat con IA llega con el agente en el host.");
+  burbuja("sys", "Conectado al host. Escribe para chatear con Lune (el host corre el modelo) o usa /memoria.");
   $("#txt").focus();
 }
 function mostrarLogin(err){

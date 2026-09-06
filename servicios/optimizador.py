@@ -23,7 +23,7 @@ y se contabiliza en `bloqueadas`. Nunca se hace `rmtree` sobre algo que no
 haya pasado por ahí.
 
 Uso típico (desde un hilo, porque escanear puede tardar):
-    from optimizador import Optimizador
+    from servicios.optimizador import Optimizador
     opt = Optimizador()
     categorias = opt.escanear()           # lista de CategoriaLimpieza
     resultado = opt.limpiar(["temp_usuario", "papelera"])

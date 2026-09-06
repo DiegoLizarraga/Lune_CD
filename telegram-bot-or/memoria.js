@@ -50,6 +50,18 @@ export function estadoHub() {
 
 function hubListo() { return !!(hub && hub.listo); }
 
+/** ¿Hay un host al que delegar el chat (agente)? */
+export function hubDisponible() { return hubListo(); }
+
+/**
+ * El chat lo corre el HOST (mismo cerebro, memoria y herramientas). Devuelve el
+ * texto final; onDelta recibe el streaming si se quiere. Lanza si no hay hub.
+ */
+export async function chatViaHost(text, { onDelta = null, imagenes = [], timeoutMs = 180000 } = {}) {
+  if (!hubListo()) throw new Error("sin hub para el chat");
+  return hub.pedirChat(text, { onDelta, imagenes, timeoutMs });
+}
+
 // ── Local (como antes) ────────────────────────────────────────────────────────
 
 function memoriaPath(userId) { return join(MEMORIA_DIR, `memoria_${userId}.json`); }

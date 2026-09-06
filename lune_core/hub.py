@@ -35,7 +35,7 @@ Manejador = Callable[[Evento, "Peer"], Awaitable[None]]
 
 def _log(msg: str):
     try:
-        from utils import log_info
+        from nucleo.utils import log_info
         log_info(f"[hub] {msg}")
     except Exception:
         print(f"[hub] {msg}")

@@ -5,5 +5,4 @@ Estaba repetida en theme.py (8.0) y utils.py (4.5) y ambas se habían quedado
 atrás respecto a los commits. Ahora todo el mundo importa de aquí.
 """
 
-APP_VERSION = "8.7"
-APP_NAME = "Lune CD"
+APP_VERSION = "9.0"

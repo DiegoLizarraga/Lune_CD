@@ -8,7 +8,7 @@ sesión completa en `chats/`, una por archivo, para poder reabrirlas.
 Es deliberadamente aparte de memoria.py: la memoria es "lo que Lune sabe de ti"
 y el historial es "lo que os dijisteis". Borrar uno no debería borrar el otro.
 
-    from conversaciones import GestorConversaciones
+    from nucleo.conversaciones import GestorConversaciones
     gestor = GestorConversaciones()
     gestor.nueva_sesion(proveedor="ollama", personaje="Lune")
     gestor.agregar("user", "hola")
@@ -23,7 +23,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Optional
 
-CHATS_DIR = Path(__file__).parent / "chats"
+CHATS_DIR = Path(__file__).parent.parent / "chats"
 
 
 _ultimo_instante = None

@@ -10,10 +10,10 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QThread, QTimer, pyqtSignal
 from PyQt6.QtGui import QFont
 
-from config import Config
-from theme import COLORS, FONT_DISPLAY, FONT_MONO
-from optimizador import Optimizador, formatear_bytes
-from utils import log_error
+from nucleo.config import Config
+from ui.theme import COLORS, FONT_DISPLAY, FONT_MONO
+from servicios.optimizador import Optimizador, formatear_bytes
+from nucleo.utils import log_error
 
 
 class OptimizadorWorker(QThread):

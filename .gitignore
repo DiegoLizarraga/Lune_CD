@@ -75,6 +75,13 @@ chats/
 *.vrm
 modelo_vrm/
 
+# Pesos de voz local (Kokoro TTS y modelos RVC): pesados, no se versionan
+modelos_voz/
+*.onnx
+voices-*.bin
+*.pth
+*.index
+
 # Notas personales y su índice RAG (no se versionan)
 notas/
 *.rag.db

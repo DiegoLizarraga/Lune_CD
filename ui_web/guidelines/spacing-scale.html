@@ -1,0 +1,23 @@
+<!-- @dsCard group="Spacing" viewport="700x180" name="Spacing Scale" subtitle="8px base grid — 4 → 64" -->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8" />
+<link rel="stylesheet" href="../styles.css" />
+<style>
+  body{ margin:0; padding:26px; }
+  .row{ display:flex; align-items:flex-end; gap:18px; }
+  .item{ display:flex; flex-direction:column; align-items:center; gap:8px; }
+  .bar{ background:var(--cyan-500); width:var(--w); height:var(--w); box-shadow:var(--shadow-hard-sm); }
+  .t{ font:var(--text-data); font-size:10px; color:var(--text-dim); }
+  .px{ font-family:var(--font-display); font-weight:700; font-size:12px; color:var(--text); }
+</style></head>
+<body class="lune-backdrop">
+  <div class="row">
+    <div class="item"><div class="bar" style="--w:8px"></div><div class="px">8</div><div class="t">space-2</div></div>
+    <div class="item"><div class="bar" style="--w:12px"></div><div class="px">12</div><div class="t">space-3</div></div>
+    <div class="item"><div class="bar" style="--w:16px"></div><div class="px">16</div><div class="t">space-4</div></div>
+    <div class="item"><div class="bar" style="--w:24px"></div><div class="px">24</div><div class="t">space-6</div></div>
+    <div class="item"><div class="bar" style="--w:32px"></div><div class="px">32</div><div class="t">space-8</div></div>
+    <div class="item"><div class="bar" style="--w:48px"></div><div class="px">48</div><div class="t">space-12</div></div>
+    <div class="item"><div class="bar" style="--w:64px"></div><div class="px">64</div><div class="t">space-16</div></div>
+  </div>
+</body></html>

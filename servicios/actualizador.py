@@ -18,7 +18,7 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Optional
 
-RAIZ = Path(__file__).parent
+RAIZ = Path(__file__).parent.parent
 TIMEOUT_GIT = 120
 
 # En Windows, cada subprocess abre una ventana de consola que parpadea encima de

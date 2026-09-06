@@ -9,12 +9,33 @@ import threading
 
 
 class VoiceEngine:
-    def __init__(self):
+    def __init__(self, config=None):
+        self.config = config
         self._enabled = False; self._lock = threading.Lock(); self._engine = None; self._init_engine()
 
+    def _cfg(self, clave, default):
+        """Lee una clave de la sección 'voz' de config, con respaldo."""
+        try:
+            if self.config is not None:
+                return self.config.get("voz", clave, default)
+        except Exception:
+            pass
+        return default
+
     def _init_engine(self):
-        try: import edge_tts; import pygame; pygame.mixer.init(); self._engine = "edge"; return
-        except ImportError: pass
+        pref = self._cfg("motor_salida", "auto")
+        # Voz local Kokoro: solo si se pide explícitamente y está disponible.
+        if pref == "kokoro":
+            try:
+                from lune_core.voz import kokoro_backend
+                if kokoro_backend.disponible(self._cfg("kokoro_carpeta", "modelos_voz")):
+                    import pygame; pygame.mixer.init(); self._engine = "kokoro"; return
+            except Exception:
+                pass
+            # se pidió kokoro pero no está: se cae a edge (degradación silenciosa)
+        if pref in ("auto", "edge", "kokoro"):
+            try: import edge_tts; import pygame; pygame.mixer.init(); self._engine = "edge"; return
+            except ImportError: pass
         try: from gtts import gTTS; import pygame; pygame.mixer.init(); self._engine = "gtts"; return
         except ImportError: pass
         self._engine = None
@@ -28,6 +49,9 @@ class VoiceEngine:
         with self._lock:
             if self._engine == "edge": self._speak_edge(text)
             elif self._engine == "gtts": self._speak_gtts(text)
+            elif self._engine == "kokoro":
+                ruta = self._sintetizar_a_archivo(text)
+                if ruta: self._reproducir_archivo(ruta)
 
     def _speak_edge(self, text: str):
         try:
@@ -55,7 +79,9 @@ class VoiceEngine:
     @property
     def available(self): return self._engine is not None
     @property
-    def engine_name(self): return self._engine or "sin voz"
+    def engine_name(self):
+        return {"edge": "edge-tts", "gtts": "gTTS",
+                "kokoro": "Kokoro (local)"}.get(self._engine, "sin voz")
 
     # ── Síntesis de una frase a archivo (para el pipeline en streaming) ─────────
     def _sintetizar_a_archivo(self, texto: str):
@@ -63,6 +89,20 @@ class VoiceEngine:
         clean = re.sub(r'[^\w\s,.!?áéíóúüñ¿¡]', '', texto, flags=re.UNICODE).strip()
         if not clean or not self._engine:
             return None
+        # Kokoro local → WAV, con posible conversión de voz (RVC) encima.
+        if self._engine == "kokoro":
+            try:
+                from lune_core.voz import kokoro_backend
+                ruta = kokoro_backend.sintetizar(
+                    clean,
+                    voz=self._cfg("kokoro_voz", kokoro_backend.VOZ_POR_DEFECTO),
+                    velocidad=self._cfg("kokoro_velocidad", 1.0),
+                    carpeta=self._cfg("kokoro_carpeta", "modelos_voz"),
+                    idioma=self._cfg("idioma", "es"),
+                )
+                return self._quizas_rvc(ruta) if ruta else None
+            except Exception:
+                return None
         try:
             import tempfile
             t = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False); t.close()
@@ -77,6 +117,27 @@ class VoiceEngine:
             return t.name
         except Exception:
             return None
+
+    def _quizas_rvc(self, ruta_wav):
+        """Si RVC está activado y disponible, convierte el audio; si no, lo deja igual."""
+        if not ruta_wav or not self._cfg("rvc_activo", False):
+            return ruta_wav
+        modelo = self._cfg("rvc_modelo", "")
+        try:
+            from lune_core.voz import rvc_backend
+            if not rvc_backend.disponible(modelo):
+                return ruta_wav
+            salida = rvc_backend.convertir(
+                ruta_wav, modelo,
+                transpose=self._cfg("rvc_transpose", 0),
+                index_rate=self._cfg("rvc_index_rate", 0.5),
+            )
+            if salida != ruta_wav:                 # limpiar el WAV intermedio de Kokoro
+                try: os.unlink(ruta_wav)
+                except OSError: pass
+            return salida
+        except Exception:
+            return ruta_wav
 
     def _reproducir_archivo(self, ruta: str):
         try:

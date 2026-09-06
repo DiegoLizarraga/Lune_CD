@@ -34,9 +34,17 @@ class Config:
             "emociones": True,                   # la IA emite <|ACT|> y la cara reacciona
             "voz_streaming": False,              # hablar por frases mientras escribe (vs. al final)
         },
+        # Interfaz principal: "web" = piel Shibuya Punk (QWebEngineView), "nativo"
+        # = la interfaz PyQt clásica.
+        "interfaz": {
+            "modo": "web",
+        },
         # Avatar/expresiones: permite cambiar el "modelo" visual de Lune.
         "avatar": {
             "pack": "default",                   # carpeta lune_face/ por defecto
+            "render": "sprites",                 # sprites · vrm (avatar 3D)
+            "vrm_archivo": "",                   # ruta a un .vrm; vacío = el 1º en modelo_vrm/
+            "click_through": False,              # mascota "fantasma": deja pasar los clics
         },
         # Optimizador estilo Stacer: qué categorías limpiar por defecto.
         "optimizador": {
@@ -54,6 +62,12 @@ class Config:
         "adjuntos": {
             "max_caracteres": 20000,             # texto máximo por documento
         },
+        # Red de Lune: rol de este dispositivo y descubrimiento en la LAN.
+        "red": {
+            "rol": "hibrido",              # host · interaccion · hibrido (ver descubrimiento.py)
+            "nombre": "",                  # nombre visible; vacío = nombre del equipo
+            "anunciar": True,              # anunciarse por mDNS para que otros lo vean
+        },
         # Notas + RAG (memoria larga sobre documentos markdown, ver lune_core/rag.py).
         "notas": {
             "activo": False,               # apagado por defecto: requiere embeddings
@@ -61,10 +75,20 @@ class Config:
             "modelo_embeddings": "nomic-embed-text",
             "top_k": 3,                    # cuántos trozos se inyectan por mensaje
         },
-        # Voz de entrada con Whisper (ver voz_entrada.py).
+        # Voz de entrada (Whisper) y de salida (edge-tts / Kokoro local).
         "voz": {
             "modelo_whisper": "base",            # tiny · base · small · medium · large-v3
             "idioma": "es",
+            # ── Salida (ver voice.py y lune_core/voz/kokoro_backend.py) ──
+            "motor_salida": "auto",              # auto · edge · gtts · kokoro
+            "kokoro_carpeta": "modelos_voz",     # dónde están los pesos .onnx / .bin
+            "kokoro_voz": "ef_dora",             # ef_dora · em_alex · em_santa
+            "kokoro_velocidad": 1.0,             # 1.0 = normal
+            # ── Conversión de voz opcional (experimental) ──
+            "rvc_activo": False,
+            "rvc_modelo": "",                    # ruta a un .pth entrenado
+            "rvc_transpose": 0,                  # semitonos
+            "rvc_index_rate": 0.5,
         },
         # Actualizaciones por git (ver actualizador.py).
         "actualizaciones": {

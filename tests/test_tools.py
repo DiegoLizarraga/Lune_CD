@@ -12,7 +12,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from tools import ToolManager, _nombre_app_seguro, _url_segura  # noqa: E402
+from servicios.tools import ToolManager, _nombre_app_seguro, _url_segura  # noqa: E402
 
 
 # ── Nombres de aplicación ──────────────────────────────────────────────────────

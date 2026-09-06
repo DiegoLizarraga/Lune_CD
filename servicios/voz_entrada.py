@@ -197,11 +197,3 @@ def transcribir(ruta_wav: Path, modelo: str = "base", idioma: str = "es") -> str
             Path(ruta_wav).unlink(missing_ok=True)
         except OSError:
             pass
-
-
-def descargar_modelo():
-    """Suelta el modelo de memoria (útil para liberar VRAM)."""
-    global _modelo_cargado, _modelo_nombre
-    with _lock_modelo:
-        _modelo_cargado = None
-        _modelo_nombre = None

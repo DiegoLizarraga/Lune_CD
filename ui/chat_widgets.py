@@ -10,10 +10,11 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QSize, QTimer, pyqtSignal
 from PyQt6.QtGui import QFont
 
-import markdown_qt
-from theme import COLORS, PROVIDER_META, FONT_DISPLAY, FONT_BODY, FONT_MONO
-from icons import icon, icon_pixmap
-from effects import apply_glow, clear_glow
+from ui import markdown_qt
+
+from ui.theme import COLORS, PROVIDER_META, FONT_DISPLAY, FONT_BODY, FONT_MONO
+from ui.icons import icon, icon_pixmap
+from ui.effects import apply_glow, clear_glow
 
 
 class ProviderTab(QFrame):

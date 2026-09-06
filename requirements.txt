@@ -7,6 +7,7 @@
 PyQt6>=6.6.0
 requests>=2.31.0
 websockets>=12.0          # hub host/terminales (lune_core)
+zeroconf>=0.130          # descubrir dispositivos Lune en la red local
 
 # ── SISTEMA: Optimizador e info de hardware ──────────────────────
 psutil>=5.9.0
@@ -29,6 +30,18 @@ python-docx>=1.1.0
 # VOZ DE ENTRADA (dictado con Whisper, 100% local).
 # Pesa bastante; recomendado en el equipo con GPU:
 #     pip install faster-whisper sounddevice
+#
+# VOZ DE SALIDA 100% LOCAL (Kokoro, sin internet). Ligera (ONNX, sin PyTorch),
+# pero necesita espeak-ng del sistema para el español y los pesos aparte
+# (kokoro-v1.0.onnx + voices-v1.0.bin) en la carpeta modelos_voz/:
+#     pip install kokoro-onnx
+#
+# CONVERSIÓN DE VOZ (RVC, experimental). Pesada: arrastra torch. Necesita un
+# modelo de voz .pth entrenado aparte:
+#     pip install rvc-python
+#
+# AVATAR 3D (VRM) en la mascota flotante. Debe coincidir con tu versión de PyQt6:
+#     pip install PyQt6-WebEngine
 #
 # TESTS (desarrollo):
 #     pip install pytest

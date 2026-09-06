@@ -7,8 +7,8 @@ import time
 
 from PyQt6.QtCore import QThread, pyqtSignal
 
-from theme import PROVIDER_META
-from utils import log_error
+from ui.theme import PROVIDER_META
+from nucleo.utils import log_error
 from lune_core.prompt import GRAMATICA_EMOCIONES
 
 

@@ -12,7 +12,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import markdown_qt as md  # noqa: E402
+from ui import markdown_qt as md  # noqa: E402
 
 
 # ── Separación en bloques ──────────────────────────────────────────────────────

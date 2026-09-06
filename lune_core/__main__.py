@@ -17,9 +17,9 @@ RAIZ = Path(__file__).resolve().parent.parent
 if str(RAIZ) not in sys.path:
     sys.path.insert(0, str(RAIZ))
 
-import datos  # noqa: E402
-from memoria import MemoriaManager  # noqa: E402
-from utils import log_info  # noqa: E402
+from nucleo import datos  # noqa: E402
+from nucleo.memoria import MemoriaManager  # noqa: E402
+from nucleo.utils import log_info  # noqa: E402
 
 from .hub import Hub  # noqa: E402
 from .protocolo import Tipo, PUERTO_POR_DEFECTO  # noqa: E402
@@ -43,11 +43,15 @@ async def _servir(hub: Hub):
         log_info(f"[core] terminal web en http://<este-equipo>:{web.puerto}/")
         print(f"Terminal web: http://<ip-de-este-equipo>:{web.puerto}/")
 
-    # Anuncio por mDNS (si zeroconf está instalado).
-    from .descubrimiento import AnuncioHost
-    anuncio = AnuncioHost(hub.puerto)
+    # Anuncio por mDNS (si zeroconf está instalado): este equipo es un host con
+    # su modelo, para que los terminales lo descubran y lo elijan.
+    from .descubrimiento import AnuncioLune, ROL_HOST, nombre_por_defecto
+    anuncio = AnuncioLune(
+        nombre_por_defecto(), ROL_HOST, hub.puerto,
+        capacidades={"modelo": datos.ollama_model(), "voz": "1"},
+    )
     if anuncio.iniciar():
-        log_info("[core] anunciado por mDNS (los terminales pueden descubrirlo)")
+        log_info("[core] anunciado por mDNS como host (los terminales pueden descubrirlo)")
 
     try:
         await asyncio.Future()
@@ -63,7 +67,25 @@ async def _servir(hub: Hub):
 def construir_hub(host: str, puerto: int, token: str) -> Hub:
     hub = Hub(token, host=host, puerto=puerto)
     hub.estado_extra = {"busy": False, "model": datos.ollama_model()}
-    ServicioMemoria(hub, MemoriaManager())
+    memoria = MemoriaManager()
+    ServicioMemoria(hub, memoria)
+    # Agente: el host corre el modelo y sirve el chat (y las herramientas) a los
+    # terminales. Si algo falta, el hub sigue sirviendo al menos la memoria.
+    try:
+        from servicios.ai_manager import AIManager
+        from servicios.tools import ToolManager
+        from nucleo import personajes
+
+        from .servicio_chat import ServicioChat
+        provider = "ollama" if datos.ollama_model() else "openrouter"
+        ServicioChat(
+            hub, AIManager(), memoria=memoria, tools=ToolManager(),
+            provider_por_defecto=provider,
+            persona=lambda: personajes.build_system_prompt(personajes.get_activo()),
+        )
+        log_info(f"[core] agente de chat activo (proveedor por defecto: {provider})")
+    except Exception as e:
+        log_info(f"[core] sin agente de chat ({e}): el host solo servirá memoria")
     return hub
 
 

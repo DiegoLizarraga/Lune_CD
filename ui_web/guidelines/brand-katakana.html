@@ -1,0 +1,25 @@
+<!-- @dsCard group="Brand" viewport="700x210" name="Graffiti Stickers" subtitle="Katakana tags, hazard divider & sticker motifs" -->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8" />
+<link rel="stylesheet" href="../styles.css" />
+<style>
+  body{ margin:0; padding:26px; }
+  .wrap{ display:flex; gap:14px; flex-wrap:wrap; align-items:center; margin-bottom:18px; }
+  .sticker{ font-family:var(--font-jp); font-weight:900; font-size:26px; padding:8px 16px; border:var(--bw-bold) solid var(--ink-950); box-shadow:var(--shadow-hard-sm); transform:rotate(-3deg); }
+  .s1{ background:var(--cyan-500); color:var(--ink-950); }
+  .s2{ background:var(--yellow-500); color:var(--ink-950); transform:rotate(2deg); }
+  .s3{ background:var(--blue-500); color:var(--white); transform:rotate(-1deg); }
+  .s4{ background:var(--ink-900); color:var(--cyan-400); box-shadow:var(--glow-cyan); transform:rotate(3deg); }
+  .hazard{ height:18px; background:var(--tex-hazard); border:var(--bw) solid var(--ink-950); }
+  .label{ font:var(--text-overline); letter-spacing:var(--ls-mega); color:var(--text-dim); text-transform:uppercase; margin:18px 0 8px; }
+</style></head>
+<body class="lune-backdrop">
+  <div class="wrap">
+    <span class="sticker s1">ルネ</span>
+    <span class="sticker s2">夜</span>
+    <span class="sticker s3">渋谷</span>
+    <span class="sticker s4">AI</span>
+  </div>
+  <div class="label">// Hazard divider</div>
+  <div class="hazard"></div>
+</body></html>

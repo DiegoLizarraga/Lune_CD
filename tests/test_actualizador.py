@@ -11,7 +11,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import actualizador  # noqa: E402
+from servicios import actualizador  # noqa: E402
 
 
 def test_se_niega_a_actualizar_con_cambios_sin_guardar(monkeypatch):

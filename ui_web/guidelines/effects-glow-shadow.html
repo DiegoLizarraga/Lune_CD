@@ -1,0 +1,19 @@
+<!-- @dsCard group="Effects" viewport="700x220" name="Glows & Hard Shadows" subtitle="Neon outer glows + offset print-shadows" -->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8" />
+<link rel="stylesheet" href="../styles.css" />
+<style>
+  body{ margin:0; padding:30px; }
+  .row{ display:flex; gap:26px; flex-wrap:wrap; align-items:center; }
+  .item{ display:flex; flex-direction:column; gap:12px; align-items:center; }
+  .box{ width:130px; height:86px; display:flex; align-items:center; justify-content:center; font-family:var(--font-display); font-weight:700; font-size:13px; text-transform:uppercase; }
+  .t{ font:var(--text-data); font-size:10px; color:var(--text-dim); }
+</style></head>
+<body class="lune-backdrop">
+  <div class="row">
+    <div class="item"><div class="box" style="background:var(--ink-700); color:var(--cyan-500); box-shadow:var(--glow-cyan)">Cyan</div><div class="t">--glow-cyan</div></div>
+    <div class="item"><div class="box" style="background:var(--ink-700); color:var(--blue-400); box-shadow:var(--glow-blue)">Blue</div><div class="t">--glow-blue</div></div>
+    <div class="item"><div class="box" style="background:var(--ink-700); color:var(--yellow-500); box-shadow:var(--glow-yellow)">Yellow</div><div class="t">--glow-yellow</div></div>
+    <div class="item"><div class="box" style="background:var(--cyan-500); color:var(--ink-950); box-shadow:var(--shadow-hard)">Hard</div><div class="t">--shadow-hard</div></div>
+  </div>
+</body></html>

@@ -1,0 +1,89 @@
+/* ============================================================
+   LUNE CD — COLOR SYSTEM
+   Shibuya Punk · Grind Fiction. Deep Tokyo-night ink, electric
+   cyan + electric blue as the dominant signal colors, acid
+   yellow as the graffiti pop, cool whites and steel grays.
+   ============================================================ */
+:root {
+  /* ── INK / BASE — deep Shibuya-at-night navy-black ── */
+  --ink-950: #05070F;   /* void */
+  --ink-900: #080B16;   /* app background */
+  --ink-850: #0B0F1E;   /* app background alt */
+  --ink-800: #0F1424;   /* surface */
+  --ink-700: #141B30;   /* surface raised */
+  --ink-600: #1B2440;   /* surface high / hover */
+  --ink-500: #232F52;   /* border strong */
+  --ink-400: #2E3D66;   /* border */
+  --ink-300: #415379;   /* divider bright */
+
+  /* ── CYAN — primary signal (dominant) ── */
+  --cyan-300: #7DF5FF;
+  --cyan-400: #36ECFF;
+  --cyan-500: #00E5FF;  /* core electric cyan */
+  --cyan-600: #00BEDB;
+  --cyan-700: #0091AB;
+
+  /* ── ELECTRIC BLUE — secondary signal (dominant) ── */
+  --blue-300: #6E9BFF;
+  --blue-400: #3D74FF;
+  --blue-500: #1E55FF;  /* core electric blue */
+  --blue-600: #1340DB;
+  --blue-700: #0E2FA8;
+
+  /* ── YELLOW — acid graffiti pop ── */
+  --yellow-300: #FFF27A;
+  --yellow-400: #FFE839;
+  --yellow-500: #FFE000;  /* core acid yellow */
+  --yellow-600: #E6C200;
+
+  /* ── WHITE / STEEL GRAY — cool neutrals ── */
+  --white:    #FFFFFF;
+  --paper:    #EAF1FF;  /* cool off-white (primary text) */
+  --gray-200: #C4D0E6;
+  --gray-300: #97A6C4;
+  --gray-400: #6E7D9E;  /* muted text */
+  --gray-500: #4B5878;  /* dim text */
+  --gray-600: #34405E;
+
+  /* ── DESTRUCTIVE (kept minimal, outside core palette) ── */
+  --red-500:  #FF3B5C;
+  --red-600:  #DB2247;
+
+  /* ============================================================
+     SEMANTIC ALIASES — reference these in components
+     ============================================================ */
+  --bg:             var(--ink-900);
+  --bg-alt:         var(--ink-850);
+  --surface:        var(--ink-800);
+  --surface-2:      var(--ink-700);
+  --surface-3:      var(--ink-600);
+  --border:         var(--ink-400);
+  --border-strong:  var(--ink-500);
+  --border-bright:  var(--ink-300);
+
+  --text:           var(--paper);
+  --text-strong:    var(--white);
+  --text-muted:     var(--gray-300);
+  --text-dim:       var(--gray-400);
+  --text-faint:     var(--gray-500);
+
+  --accent:         var(--cyan-500);   /* primary — electric cyan */
+  --accent-hover:   var(--cyan-400);
+  --accent-press:   var(--cyan-600);
+  --accent-2:       var(--blue-500);   /* secondary — electric blue */
+  --accent-2-hover: var(--blue-400);
+  --pop:            var(--yellow-500); /* graffiti accent */
+  --pop-hover:      var(--yellow-400);
+
+  --on-accent:      var(--ink-950);    /* text on cyan/yellow fills */
+  --on-blue:        var(--white);      /* text on electric-blue fills */
+
+  --success:        var(--cyan-500);
+  --info:           var(--blue-500);
+  --warning:        var(--yellow-500);
+  --danger:         var(--red-500);
+
+  /* role surfaces */
+  --surface-cloud:  var(--blue-500);   /* "Nube" / cloud provider */
+  --surface-local:  var(--cyan-500);   /* "Local" / offline provider */
+}

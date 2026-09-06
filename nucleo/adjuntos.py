@@ -17,7 +17,7 @@ import csv
 import io
 import mimetypes
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List
 
 # ── Qué sabemos leer ───────────────────────────────────────────────────────────
 
@@ -31,12 +31,6 @@ EXT_TEXTO = {
 EXT_CSV = {".csv", ".tsv"}
 EXT_PDF = {".pdf"}
 EXT_DOCX = {".docx"}
-
-# Extensión → (paquete pip, módulo de import) de lo que hace falta instalar
-DEPENDENCIAS = {
-    ".pdf": ("pypdf", "pypdf"),
-    ".docx": ("python-docx", "docx"),
-}
 
 MAX_CARACTERES = 20000
 MAX_BYTES_IMAGEN = 12 * 1024 * 1024
@@ -248,13 +242,3 @@ def resumen(adjuntos: List[Dict]) -> str:
         else:
             partes.append(f"{a['nombre']} ({a['caracteres']} car.)")
     return " · ".join(partes)
-
-
-def dependencias_faltantes() -> List[Tuple[str, str]]:
-    """[(extensión, paquete pip)] de los formatos que ahora mismo no se pueden leer."""
-    import importlib.util
-    faltan = []
-    for ext, (paquete, modulo) in DEPENDENCIAS.items():
-        if importlib.util.find_spec(modulo) is None:
-            faltan.append((ext, paquete))
-    return faltan

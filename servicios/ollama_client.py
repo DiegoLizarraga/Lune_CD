@@ -64,26 +64,3 @@ def listar_modelos(url: str, timeout: int = TIMEOUT_SONDEO) -> Tuple[bool, List[
     if not modelos:
         return True, [], "Conectado, pero no hay modelos descargados (usa «ollama pull»)."
     return True, modelos, f"Conectado · {len(modelos)} modelo(s) disponible(s)."
-
-
-def detalle_modelo(url: str, modelo: str, timeout: int = TIMEOUT_SONDEO) -> dict:
-    """Metadatos de un modelo (tamaño, familia, cuantización). {} si falla."""
-    url = normalizar_url(url)
-    try:
-        r = _session.post(f"{url}/api/show", json={"name": modelo}, timeout=timeout)
-        r.raise_for_status()
-        return r.json()
-    except Exception:
-        return {}
-
-
-def formatear_tamano(num) -> str:
-    try:
-        num = float(num)
-    except (TypeError, ValueError):
-        return "?"
-    for unidad in ["B", "KB", "MB", "GB", "TB"]:
-        if num < 1024:
-            return f"{num:.1f} {unidad}"
-        num /= 1024
-    return f"{num:.1f} PB"

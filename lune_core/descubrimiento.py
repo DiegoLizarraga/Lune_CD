@@ -18,12 +18,25 @@ from __future__ import annotations
 
 import json
 import socket
-from typing import List, Optional
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional
 
 from . import protocolo as P
 
 TIPO_PAYLOAD = "lune:server-channel"
 SERVICIO_MDNS = "_lunecd._tcp.local."
+
+# Roles que puede tener un dispositivo en la red de Lune.
+ROL_HOST = "host"              # sirve el modelo, la memoria y la voz a los demás
+ROL_INTERACCION = "interaccion"  # solo interactúa: chat, avatar; usa el host
+ROL_HIBRIDO = "hibrido"        # hace todo aquí mismo (equipo único)
+ROLES = (ROL_HOST, ROL_INTERACCION, ROL_HIBRIDO)
+
+ETIQUETA_ROL = {
+    ROL_HOST: "Host (aloja el modelo)",
+    ROL_INTERACCION: "Interacción (chat y avatar)",
+    ROL_HIBRIDO: "Híbrido (todo aquí)",
+}
 
 
 # ── IPs del host ────────────────────────────────────────────────────────────────
@@ -87,34 +100,99 @@ def zeroconf_disponible() -> bool:
     return importlib.util.find_spec("zeroconf") is not None
 
 
-class AnuncioHost:
-    """Publica el host en la LAN por mDNS. No-op si zeroconf no está."""
-    def __init__(self, puerto: int, nombre: str = "Lune"):
-        self.puerto = puerto
-        self.nombre = nombre
+@dataclass
+class DispositivoLune:
+    """Un Lune visto en la red (o este mismo)."""
+    nombre: str
+    rol: str
+    host: str                       # IP en la LAN
+    hub_puerto: int
+    capacidades: Dict[str, str] = field(default_factory=dict)
+    es_este: bool = False
+
+    @property
+    def url_hub(self) -> str:
+        return f"ws://{self.host}:{self.hub_puerto}"
+
+    @property
+    def modelo(self) -> str:
+        return self.capacidades.get("modelo", "")
+
+    @property
+    def aloja_modelo(self) -> bool:
+        return self.rol in (ROL_HOST, ROL_HIBRIDO) and bool(self.modelo)
+
+    def descripcion(self) -> str:
+        etq = ETIQUETA_ROL.get(self.rol, self.rol)
+        extra = f" · {self.modelo}" if self.modelo else ""
+        return f"{self.nombre} — {etq}{extra}  [{self.host}]"
+
+
+def nombre_por_defecto() -> str:
+    try:
+        return socket.gethostname() or "lune"
+    except OSError:
+        return "lune"
+
+
+class AnuncioLune:
+    """
+    Publica ESTE Lune en la LAN por mDNS, con su rol y capacidades, para que
+    otros dispositivos lo descubran. No-op si zeroconf no está instalado.
+    Cualquier instancia de Lune se anuncia, no solo un host.
+    """
+    def __init__(self, nombre: str, rol: str, hub_puerto: int,
+                 capacidades: Optional[dict] = None):
+        self.nombre = nombre or nombre_por_defecto()
+        self.rol = rol if rol in ROLES else ROL_HIBRIDO
+        self.hub_puerto = hub_puerto
+        self.capacidades = dict(capacidades or {})
         self._zc = None
         self._info = None
+
+    def _service_info(self):
+        from zeroconf import ServiceInfo
+        props = {"version": str(P.VERSION), "rol": self.rol,
+                 "hub_puerto": str(self.hub_puerto)}
+        props.update({k: str(v) for k, v in self.capacidades.items()})
+        ips = ips_locales()
+        # Nombre único de instancia para no colisionar con otro Lune homónimo.
+        instancia = f"{self.nombre}-{self.hub_puerto}".replace(".", "-")
+        return ServiceInfo(
+            SERVICIO_MDNS,
+            f"{instancia}.{SERVICIO_MDNS}",
+            addresses=[socket.inet_aton(ip) for ip in ips] or [socket.inet_aton("127.0.0.1")],
+            port=self.hub_puerto,
+            properties={k.encode(): str(v).encode() for k, v in props.items()},
+            server=f"{instancia}.local.",
+        )
 
     def iniciar(self) -> bool:
         if not zeroconf_disponible():
             return False
         try:
-            from zeroconf import Zeroconf, ServiceInfo
-            ips = ips_locales()
-            if not ips:
-                return False
+            from zeroconf import Zeroconf
             self._zc = Zeroconf()
-            self._info = ServiceInfo(
-                SERVICIO_MDNS,
-                f"{self.nombre}.{SERVICIO_MDNS}",
-                addresses=[socket.inet_aton(ip) for ip in ips],
-                port=self.puerto,
-                properties={"version": str(P.VERSION)},
-            )
+            self._info = self._service_info()
             self._zc.register_service(self._info)
             return True
         except Exception:
             return False
+
+    def actualizar(self, rol: Optional[str] = None, capacidades: Optional[dict] = None):
+        """Re-anuncia con rol/capacidades nuevos (p. ej. tras cambiar de modelo)."""
+        if rol is not None:
+            self.rol = rol if rol in ROLES else self.rol
+        if capacidades is not None:
+            self.capacidades = dict(capacidades)
+        if self._zc is None:
+            return
+        try:
+            nuevo = self._service_info()
+            self._zc.update_service(nuevo)
+            self._info = nuevo
+        except Exception:
+            pass
 
     def detener(self):
         try:
@@ -126,24 +204,39 @@ class AnuncioHost:
             pass
 
 
-def buscar_hosts(timeout: float = 3.0) -> List[dict]:
-    """Busca hosts de Lune en la LAN. [] si zeroconf no está o no hay ninguno."""
+def buscar_dispositivos(timeout: float = 3.0,
+                        excluir_puerto: Optional[int] = None) -> List[DispositivoLune]:
+    """
+    Descubre los Lune en la LAN. `excluir_puerto` marca este equipo como
+    `es_este=True` (por el puerto del hub) en vez de esconderlo. [] sin zeroconf.
+    """
     if not zeroconf_disponible():
         return []
     try:
         import time
         from zeroconf import Zeroconf, ServiceBrowser
-        encontrados = {}
+
+        encontrados: Dict[str, DispositivoLune] = {}
 
         class _L:
             def add_service(self, zc, tipo, nombre):
                 info = zc.get_service_info(tipo, nombre, timeout=int(timeout * 1000))
                 if not info:
                     return
-                for addr in info.parsed_addresses():
-                    encontrados[nombre] = {"nombre": nombre.split(".")[0],
-                                           "url": f"ws://{addr}:{info.port}"}
-                    break
+                props = {k.decode(): (v.decode() if v else "")
+                         for k, v in (info.properties or {}).items()}
+                direcciones = info.parsed_addresses() or ["127.0.0.1"]
+                puerto = info.port or 7777
+                caps = {k: v for k, v in props.items()
+                        if k not in ("version", "rol", "hub_puerto")}
+                encontrados[nombre] = DispositivoLune(
+                    nombre=nombre.split(".")[0].rsplit("-", 1)[0],
+                    rol=props.get("rol", ROL_HIBRIDO),
+                    host=direcciones[0],
+                    hub_puerto=puerto,
+                    capacidades=caps,
+                    es_este=(excluir_puerto is not None and puerto == excluir_puerto),
+                )
             def update_service(self, *a): pass
             def remove_service(self, *a): pass
 
@@ -151,6 +244,6 @@ def buscar_hosts(timeout: float = 3.0) -> List[dict]:
         ServiceBrowser(zc, SERVICIO_MDNS, _L())
         time.sleep(timeout)
         zc.close()
-        return list(encontrados.values())
+        return sorted(encontrados.values(), key=lambda d: (not d.aloja_modelo, d.nombre))
     except Exception:
         return []

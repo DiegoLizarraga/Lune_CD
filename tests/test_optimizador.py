@@ -12,7 +12,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from optimizador import (  # noqa: E402
+from servicios.optimizador import (  # noqa: E402
     Optimizador, _ruta_vaciable, formatear_bytes,
 )
 

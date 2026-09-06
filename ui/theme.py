@@ -8,7 +8,8 @@ Adaptado del Design System "Lune CD — Shibuya Punk" a las limitaciones
 de Qt (sin clip-path/box-shadow/webfonts): esquinas casi rectas con
 bordes neón gruesos, y fuentes con fallback a las del sistema.
 """
-import datos
+from nucleo import datos
+
 from version import APP_VERSION  # noqa: F401  (reexportado: media app lo importa de aquí)
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -20,7 +21,6 @@ FONT_DISPLAY = "Chakra Petch"   # encabezados, en MAYÚSCULAS con tracking
 FONT_BODY    = "Space Grotesk"  # texto / UI
 FONT_MONO    = "Space Mono"     # datos, modelos, timestamps, estado
 FONT_JP      = "Noto Sans JP"   # acentos katakana
-FONT_EMOJI   = "Segoe UI Emoji"
 
 # Fallbacks si la fuente de diseño no está instalada en el sistema
 FONT_FALLBACKS = {
@@ -85,7 +85,8 @@ COLORS = {
 
 def _get_system_prompt():
     # Construye el prompt rico de roleplay del personaje activo.
-    import personajes
+    from nucleo import personajes
+
     return personajes.build_system_prompt(personajes.get_activo())
 
 

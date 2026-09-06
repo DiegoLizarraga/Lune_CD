@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8" />
+<link rel="stylesheet" href="styles.css" />
+<style>
+  html,body{ margin:0; width:1280px; height:854px; overflow:hidden; }
+  .tile{ display:flex; width:1280px; height:854px; }
+  .main{ width:75%; height:100%; background:var(--cyan-500); display:flex; align-items:center; justify-content:center; }
+  .name{ font-family:var(--font-display); font-weight:700; font-size:170px; letter-spacing:.02em; text-transform:uppercase; color:var(--ink-950); white-space:nowrap; line-height:1; }
+  .strip{ width:25%; height:100%; display:flex; flex-direction:column; }
+  .strip div{ flex:1; }
+</style></head>
+<body>
+  <div class="tile">
+    <div class="main"><div class="name">Lune CD</div></div>
+    <div class="strip">
+      <div style="background:var(--yellow-500)"></div>
+      <div style="background:var(--blue-400)"></div>
+      <div style="background:var(--blue-500)"></div>
+      <div style="background:var(--blue-700)"></div>
+    </div>
+  </div>
+</body></html>

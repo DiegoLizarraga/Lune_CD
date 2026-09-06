@@ -1,9 +1,8 @@
 """
 main.py — Ventana principal de Lune CD y punto de entrada.
-La UI está repartida en módulos:
-  theme.py · lune_face.py · voice.py · telegram_worker.py
-  chat_widgets.py · ai_worker.py · settings_panel.py
-  optimizer_panel.py · splash.py
+El código está por capas: nucleo/ (datos, config, memoria…), servicios/
+(ai_manager, voice, tools…) y ui/ (paneles y widgets Qt). El núcleo de red
+está en lune_core/.
 """
 import sys
 import os
@@ -18,38 +17,44 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QTimer, QSize, QEvent, QThread, pyqtSignal
 from PyQt6.QtGui import QFont, QColor, QPalette, QIcon, QAction, QPixmap, QFontDatabase
 
-import adjuntos as adj
-import voz_entrada
-from config import Config
-from ai_manager import AIManager
-from conversaciones import GestorConversaciones
-from historial_panel import HistorialPanel
-from utils import Logger, log_info, log_error
-import datos
-from memoria import MemoriaManager
-from tools import ToolManager
-from respuestas import BancoRespuestas
+from nucleo import adjuntos as adj
 
-from theme import (
+from servicios import voz_entrada
+
+from nucleo.config import Config
+from servicios.ai_manager import AIManager
+from nucleo.conversaciones import GestorConversaciones
+from ui.historial_panel import HistorialPanel
+from nucleo.utils import Logger, log_info, log_error
+from nucleo import datos
+
+from nucleo.memoria import MemoriaManager
+from servicios.tools import ToolManager
+from nucleo.respuestas import BancoRespuestas
+
+from ui.theme import (
     COLORS, APP_VERSION, PROVIDER_META,
     FONT_DISPLAY, FONT_BODY, FONT_MONO, FONT_JP, FONT_FALLBACKS,
 )
-import lune_face
+from ui import lune_face
+
 from lune_core import marcadores
-from notas_service import NotasService
-from avatar_overlay import AvatarOverlay
-from lune_face import LuneFaceWidget, detect_emotion
-from icons import icon, icon_pixmap
-from effects import apply_glow, clear_glow
-from voice import VoiceEngine, VozStreaming
-from telegram_worker import TelegramBotWorker
-from chat_widgets import ProviderTab, MessageBubble, TypingIndicator
-from ai_worker import AIWorker
-from settings_panel import SettingsPanel
-from optimizer_panel import OptimizadorPanel
-from personajes_panel import PersonajesPanel
-import personajes
-from splash import PantallaInicio
+from servicios.notas_service import NotasService
+from servicios.red_service import RedService
+from ui.avatar_overlay import AvatarOverlay
+from ui.lune_face import LuneFaceWidget, detect_emotion
+from ui.icons import icon, icon_pixmap
+from ui.effects import apply_glow, clear_glow
+from servicios.voice import VoiceEngine, VozStreaming
+from servicios.telegram_worker import TelegramBotWorker
+from ui.chat_widgets import ProviderTab, MessageBubble, TypingIndicator
+from servicios.ai_worker import AIWorker
+from ui.settings_panel import SettingsPanel
+from ui.optimizer_panel import OptimizadorPanel
+from ui.personajes_panel import PersonajesPanel
+from nucleo import personajes
+
+from ui.splash import PantallaInicio
 
 logger = Logger()
 
@@ -97,7 +102,7 @@ class LuneCDWindow(QMainWindow):
         # Config visual/features (config.json) + APIs/personalidad (datos.json)
         self.config           = Config()
         self.ai_manager       = AIManager()
-        self.voice            = VoiceEngine()
+        self.voice            = VoiceEngine(self.config)
         self.current_provider = "openrouter"
         self.ai_worker        = None
         self._current_bubble  = None
@@ -112,6 +117,8 @@ class LuneCDWindow(QMainWindow):
         # Red de Lune: host (sirvo a otros), terminal (memoria del host) o local
         self._hub_en_hilo     = None
         self._hub_cliente     = None
+        self._chat_remoto     = None    # chat vía el host (modo terminal)
+        self._motor_chat      = None    # motor usado en el último envío (para el uso)
         self._modo_red        = datos.hub_modo()
         self._configurar_red()
         self._adjuntos        = []      # archivos pendientes de enviar
@@ -128,6 +135,10 @@ class LuneCDWindow(QMainWindow):
         self.notas = NotasService(self.config)
         if self.notas.activo:
             QTimer.singleShot(1500, self.notas.reindexar)
+
+        # Presencia en la red local: anunciarse para que otros Lune lo descubran.
+        self.red = RedService(self.config)
+        QTimer.singleShot(1200, self.red.anunciar)
 
         # Banco de respuestas instantáneas con la personalidad de Lune
         nombre_bot = datos.get_personaje(datos.get_bot().get("personaje_default", "Lune")).get("nombre", "Lune")
@@ -162,7 +173,7 @@ class LuneCDWindow(QMainWindow):
         Mira si hay versión nueva al arrancar, sin interrumpir.
         Solo avisa si hay algo; si no, ni se entera el usuario.
         """
-        from settings_panel import GitWorker
+        from ui.settings_panel import GitWorker
         self._git_check = GitWorker("comprobar", self.config.get("actualizaciones", "rama", "master"))
         self._git_check.listo.connect(self._on_update_disponible)
         self._git_check.start()
@@ -227,6 +238,9 @@ class LuneCDWindow(QMainWindow):
                 # memoria local y el cliente sigue reintentando por detrás.
                 conectado = self._hub_cliente.iniciar(timeout=4)
                 self.memoria = MemoriaRemota(self._hub_cliente, respaldo=self.memoria)
+                # El chat también pasa por el host: la app no carga el modelo.
+                from lune_core.chat_remota import ChatRemoto
+                self._chat_remoto = ChatRemoto(self._hub_cliente)
                 log_info(f"[red] terminal: {'conectado a' if conectado else 'sin conexión aún con'} {url}")
             except Exception as e:
                 log_error(f"[red] terminal: {e}")
@@ -331,7 +345,7 @@ class LuneCDWindow(QMainWindow):
         self.setStyleSheet(f"QMainWindow,QWidget{{background:{COLORS['bg']};}}")
 
         for ext in ("ico","png"):
-            icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f"lune_icon.{ext}")
+            icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", f"lune_icon.{ext}")
             if os.path.exists(icon_path):
                 self.setWindowIcon(QIcon(icon_path)); break
 
@@ -349,7 +363,7 @@ class LuneCDWindow(QMainWindow):
         # ── MARCA: logo en caja + "LUNE CD" (CD en cyan) ──
         logo_row = QHBoxLayout(); logo_row.setSpacing(11)
         mark = QLabel(); mark.setFixedSize(42, 42)
-        icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "lune_icon.png")
+        icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "lune_icon.png")
         if os.path.exists(icon_path):
             pm = QPixmap(icon_path).scaled(40, 40, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
             mark.setPixmap(pm); mark.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -774,7 +788,7 @@ class LuneCDWindow(QMainWindow):
 
         # Marca de bienvenida: logo/月 en un escenario enmarcado (estilo del UI kit)
         mark = QLabel(); mark.setFixedSize(140, 140); mark.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        wicon = os.path.join(os.path.dirname(os.path.abspath(__file__)), "lune_icon.png")
+        wicon = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "lune_icon.png")
         if os.path.exists(wicon):
             mark.setPixmap(QPixmap(wicon).scaled(118, 118, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
         else:
@@ -951,8 +965,15 @@ class LuneCDWindow(QMainWindow):
             if frags:
                 from lune_core.prompt import bloque_contexto
                 contexto_notas = "\n\n" + bloque_contexto(frags)
+        # En modo terminal (conectado al host), el chat va por el host: la app no
+        # carga el modelo. Si el host no está, se usa el motor local de siempre.
+        if (self._modo_red == "terminal" and self._chat_remoto is not None
+                and self._chat_remoto.conectado):
+            self._motor_chat = self._chat_remoto
+        else:
+            self._motor_chat = self.ai_manager
         self.ai_worker = AIWorker(
-            self.ai_manager, text, self.current_provider,
+            self._motor_chat, text, self.current_provider,
             extra_context=contexto_memoria + contexto_archivos + contexto_notas,
             permitir_acciones=self.config.feature("acciones_ia", True),
             imagenes=adj.imagenes_base64(adjuntos_envio),
@@ -997,7 +1018,7 @@ class LuneCDWindow(QMainWindow):
             self.messages_layout.insertWidget(self.messages_layout.count()-1, burbuja)
         self._current_bubble = None
 
-        uso = self.ai_manager.uso(self.current_provider)
+        uso = (self._motor_chat or self.ai_manager).uso(self.current_provider)
         if uso and self.config.feature("contador_tokens", True):
             burbuja.set_pie(self._texto_uso(uso))
         self._guardar_turno("assistant", respuesta_limpia, uso=uso)
@@ -1032,7 +1053,12 @@ class LuneCDWindow(QMainWindow):
             burbuja.update_text(hablable)   # la burbuja final sin marcadores
         self.lune_face.set_state(emotion, auto_revert_ms=6000)
         if self._overlay is not None and self._overlay.isVisible():
-            self._overlay.set_estado(emotion, 6000)
+            # Con ACT pasamos emoción + intensidad (el VRM las aprovecha); si no,
+            # el estado colapsado de la heurística.
+            if acts:
+                self._overlay.set_act(acts[-1], 6000)
+            else:
+                self._overlay.set_estado(emotion, 6000)
         if self._voz_stream is not None:
             self._voz_stream.terminar()   # emite lo que quede y cierra
             self._voz_stream = None
@@ -1141,6 +1167,8 @@ class LuneCDWindow(QMainWindow):
                 f"<span style='color:{COLORS['accent']};'>CD</span>")
 
     def _on_keys_saved(self):
+        if hasattr(self, 'red'):
+            self.red.reanunciar()
         # datos.guardar() ya invalidó la caché, así que esto lee lo recién escrito.
         self.ai_manager.reload_provider()
         self.stack.setCurrentIndex(0)
@@ -1228,6 +1256,8 @@ class LuneCDWindow(QMainWindow):
             self.chats.guardar()
         if hasattr(self, "notas"):
             self.notas.cerrar()
+        if hasattr(self, "red"):
+            self.red.detener()
         if self._overlay is not None:
             self._overlay.close()
         if hasattr(self, "_timer_estado"):
@@ -1310,7 +1340,32 @@ def _ya_hay_una_instancia() -> bool:
     return False
 
 
+def _crear_ventana_principal():
+    """
+    Ventana principal. Por defecto la piel web "Shibuya Punk" (QWebEngineView);
+    con interfaz.modo="nativo" en config.json, o si la web falla, la PyQt clásica.
+    """
+    try:
+        from nucleo.config import Config
+        modo = str(Config().get("interfaz", "modo", "web"))
+    except Exception:
+        modo = "web"
+    if modo == "web":
+        try:
+            from ui.web_shell import VentanaWeb
+            return VentanaWeb()
+        except Exception as e:
+            log_error(f"[ui] no pude abrir la piel web ({e}); uso la interfaz nativa")
+    return LuneCDWindow()
+
+
 def main():
+    # QtWebEngine (avatar VRM) necesita compartir el contexto OpenGL; hay que
+    # pedirlo ANTES de crear QApplication. Inofensivo si no se usa el VRM.
+    try:
+        QApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts, True)
+    except Exception:
+        pass
     app = QApplication(sys.argv)
     app.setApplicationName("Lune CD")
 
@@ -1333,7 +1388,7 @@ def main():
 
     base_dir = os.path.dirname(os.path.abspath(__file__))
     for ext in ("ico","png"):
-        icon_path = os.path.join(base_dir, f"lune_icon.{ext}")
+        icon_path = os.path.join(base_dir, "assets", f"lune_icon.{ext}")
         if os.path.exists(icon_path):
             app.setWindowIcon(QIcon(icon_path))
             break
@@ -1353,7 +1408,7 @@ def main():
     def abrir_principal():
         if "principal" in ventanas:
             return
-        ventana = LuneCDWindow()
+        ventana = _crear_ventana_principal()
         ventanas["principal"] = ventana
         _mostrar_de_verdad(ventana)
 
