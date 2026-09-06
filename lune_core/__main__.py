@@ -35,12 +35,28 @@ async def _estado_periodico(hub: Hub, cada_s: int = 30):
 async def _servir(hub: Hub):
     await hub.iniciar()
     tarea = asyncio.create_task(_estado_periodico(hub))
+
+    # Terminal web (página estática) en el puerto del hub + 1.
+    from .web_server import ServidorWeb
+    web = ServidorWeb(hub.puerto, host="0.0.0.0")
+    if web.iniciar():
+        log_info(f"[core] terminal web en http://<este-equipo>:{web.puerto}/")
+        print(f"Terminal web: http://<ip-de-este-equipo>:{web.puerto}/")
+
+    # Anuncio por mDNS (si zeroconf está instalado).
+    from .descubrimiento import AnuncioHost
+    anuncio = AnuncioHost(hub.puerto)
+    if anuncio.iniciar():
+        log_info("[core] anunciado por mDNS (los terminales pueden descubrirlo)")
+
     try:
         await asyncio.Future()
     except (asyncio.CancelledError, KeyboardInterrupt):
         pass
     finally:
         tarea.cancel()
+        anuncio.detener()
+        web.detener()
         await hub.detener()
 
 
