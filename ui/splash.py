@@ -21,7 +21,7 @@ import random
 from pathlib import Path
 
 from PyQt6.QtWidgets import (
-    QMainWindow, QWidget, QVBoxLayout, QFrame, QLabel, QPushButton,
+    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QFrame, QLabel, QPushButton,
 )
 from PyQt6.QtCore import Qt, QTimer, QUrl
 from PyQt6.QtGui import QColor, QPainter
@@ -160,6 +160,78 @@ class PantallaInicio(QMainWindow):
         self.boton_entrar.clicked.connect(self.entrar)
         raiz.addWidget(self.boton_entrar, 0, Qt.AlignmentFlag.AlignCenter)
 
+        # ── Elegir modo al abrir: Completo · Bajos recursos · Patata ──────────
+        # Se recuerda en config (interfaz.modo). Si no eliges, al acabar el
+        # video sigue con el recordado tras una cuenta atrás corta.
+        try:
+            self.modo_recordado = str(Config().get("interfaz", "modo", "web") or "web")
+        except Exception:
+            self.modo_recordado = "web"
+        self.modo_elegido = None
+        self._cuenta = 0
+        self._timer_cuenta = QTimer(self)
+        self._timer_cuenta.timeout.connect(self._tic_cuenta)
+
+        fila = QHBoxLayout(); fila.setSpacing(10)
+        self.botones_modo = {}
+        for modo, texto, tip in (
+            ("web", "COMPLETO", "Piel web animada, mascota en video, tema Nube/Local"),
+            ("nativo", "BAJOS RECURSOS", "Interfaz nativa ligera: sin animaciones ni videos"),
+            ("patata", "PATATA", "Solo terminal: texto y caritas :D  (sin Qt, sin imágenes)"),
+        ):
+            b = QPushButton(texto)
+            b.setToolTip(tip); b.setFixedSize(190, 40)
+            b.setCursor(Qt.CursorShape.PointingHandCursor)
+            b.clicked.connect(lambda _=False, m=modo: self._elegir(m))
+            self.botones_modo[modo] = b
+            fila.addWidget(b)
+        self._pintar_botones_modo()
+        cont = QWidget(); cont.setStyleSheet("background:transparent;"); cont.setLayout(fila)
+        raiz.addWidget(cont, 0, Qt.AlignmentFlag.AlignCenter)
+        pista = QLabel("¿Cómo abrimos hoy?  Elige un modo o espera: sigue con el que usaste la última vez.")
+        pista.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        pista.setStyleSheet("color:#6E7D9E;font-size:11px;background:transparent;border:none;")
+        raiz.addWidget(pista)
+
+    # ── Selector de modo ──────────────────────────────────────────────────────
+    def _pintar_botones_modo(self, cuenta: int = 0):
+        for modo, b in self.botones_modo.items():
+            activo = (modo == self.modo_recordado)
+            base = ("background-color:#00E5FF;color:#080B16;border:3px solid #00E5FF;"
+                    if activo else
+                    "background-color:#080B16;color:#97A6C4;border:2px solid #2E3D66;")
+            b.setStyleSheet("QPushButton{" + base + "font-size:12px;font-weight:bold;letter-spacing:1px;}"
+                            "QPushButton:hover{background-color:#00E5FF;color:#080B16;border-color:#00E5FF;}")
+            etiqueta = {"web": "COMPLETO", "nativo": "BAJOS RECURSOS", "patata": "PATATA"}[modo]
+            b.setText(f"{etiqueta} · {cuenta}" if (activo and cuenta) else etiqueta)
+
+    def _elegir(self, modo: str):
+        """El usuario eligió: se guarda y se entra ya."""
+        self._timer_cuenta.stop()
+        self.modo_elegido = modo
+        try:
+            Config().set("interfaz", "modo", modo)
+        except Exception as e:
+            log_error(f"[splash] no pude guardar el modo: {e}")
+        log_info(f"[splash] modo elegido: {modo}")
+        self.entrar()
+
+    def _iniciar_cuenta(self, segundos: int = 4):
+        """Acabó el video: cuenta atrás sobre el modo recordado; un clic la corta."""
+        if self._terminado or self.modo_elegido:
+            return
+        self._cuenta = segundos
+        self._pintar_botones_modo(self._cuenta)
+        self._timer_cuenta.start(1000)
+
+    def _tic_cuenta(self):
+        self._cuenta -= 1
+        if self._cuenta <= 0:
+            self._timer_cuenta.stop()
+            self.entrar()
+        else:
+            self._pintar_botones_modo(self._cuenta)
+
         # Red de seguridad: si en MS_RENDIRSE el video no ha avanzado, entramos.
         QTimer.singleShot(MS_RENDIRSE, self._rendirse_si_no_arranco)
 
@@ -202,7 +274,7 @@ class PantallaInicio(QMainWindow):
     def _on_estado_media(self, status):
         if status == QMediaPlayer.MediaStatus.EndOfMedia:
             log_info("[splash] Video terminado")
-            self.entrar()
+            self._iniciar_cuenta()     # unos segundos para elegir modo; luego sigue solo
 
     def _on_error_video(self, *_args):
         error = self.reproductor.errorString() if self.reproductor else "?"

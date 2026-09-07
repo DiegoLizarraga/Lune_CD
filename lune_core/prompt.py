@@ -28,11 +28,16 @@ from .marcadores import EMOCIONES
 # Regla de emociones que se añade al system prompt para que el modelo sepa emitir
 # los marcadores. Corta y estable (parte de la caché de prefijo).
 GRAMATICA_EMOCIONES = (
-    "Puedes expresar emoción intercalando en tu texto, cuando venga al caso, un "
-    "marcador de la forma <|ACT {\"emotion\":\"NOMBRE\",\"intensity\":0.8}|> donde "
-    "NOMBRE es una de: " + ", ".join(EMOCIONES) + ". Para una pausa breve usa "
-    "<|DELAY 1.5|> (segundos). Estos marcadores no se leen en voz; escribe con "
-    "naturalidad y úsalos con moderación."
+    "Eres muy expresiva: intercala en tu texto, cuando venga al caso, un marcador "
+    "<|ACT {\"emotion\":\"NOMBRE\",\"intensity\":0.8}|> donde NOMBRE es una de: "
+    + ", ".join(EMOCIONES) + ". Guía: happy=alegría o buena noticia; sad=pena o mala "
+    "noticia; angry=enfado o algo que te molesta; surprised=sorpresa; think=estás "
+    "razonando; question=pides aclaración; curious=algo te intriga; awkward=momento "
+    "incómodo; nervous=nervios o duda; wave=saludo o despedida (úsalo al saludar y al "
+    "despedirte); dismiss=rechazas, corriges o descartas algo sin ganas; neutral=calma. "
+    "intensity va de 0.2 (leve) a 1.0 (fuerte) y marca cuánto dura la expresión. "
+    "Para una pausa breve usa <|DELAY 1.5|> (segundos). Estos marcadores no se leen en "
+    "voz; escribe con naturalidad y pon uno por respuesta (dos si cambia el ánimo)."
 )
 
 REGLA_ANTI_INYECCION = (

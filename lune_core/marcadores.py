@@ -28,7 +28,11 @@ Pieza = Tuple[str, Any]
 
 # Vocabulario canónico de emociones (AIRI stage-ui/constants/emotions.ts).
 EMOCIONES = ("happy", "sad", "angry", "think", "surprised",
-             "awkward", "question", "curious", "neutral")
+             "awkward", "question", "curious", "neutral",
+             # v10 — expresividad: coinciden con los clips animados de la mascota.
+             "nervous",   # nerviosa / con duda (gota de sudor)
+             "wave",      # saludo / despedida
+             "dismiss")   # rechaza o corrige sin ganas (gesto de "no")
 
 # Estados que ya usaba lune_face → emoción canónica.
 ALIAS_EMOCION = {
@@ -36,6 +40,12 @@ ALIAS_EMOCION = {
     "confused": "question", "error": "sad", "thinking": "think",
     "surprise": "surprised", "fun": "happy", "joy": "happy",
     "sorrow": "sad", "excited": "happy",
+    # v10
+    "hello": "wave", "hi": "wave", "greet": "wave", "greeting": "wave",
+    "bye": "wave", "goodbye": "wave", "adios": "wave", "hola": "wave",
+    "worried": "nervous", "anxious": "nervous", "nervioso": "nervous",
+    "nerviosa": "nervous", "unamused": "dismiss", "dismissive": "dismiss",
+    "rechazo": "dismiss", "no": "dismiss", "annoyed": "dismiss",
 }
 
 _ABRE = "<|"

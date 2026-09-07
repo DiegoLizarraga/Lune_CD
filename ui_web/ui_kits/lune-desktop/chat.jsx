@@ -66,11 +66,35 @@ function TypingIndicator({ provider }) {
 
 function Welcome({ provider, onEjemplo }) {
   const ejemplos = ['abre youtube', 'busca lofi de shibuya', 'estado del pc', 'recuerda que entrego el viernes'];
+  const chips = (cls) => (
+    <div className={cls}>
+      {ejemplos.map((t, i) => (
+        <button key={i} type="button" className="ln-chip ln-chip-btn"
+          onClick={() => onEjemplo && onEjemplo(t)}>"{t}"</button>
+      ))}
+    </div>
+  );
+  // Modo Nube: hero "LUNE ENTRE NUBES" (cielo nocturno, avatar flotando sobre una nube).
+  if (provider === 'cloud') {
+    const Nube = window.NubeSvg;
+    return (
+      <div className="nube-hero">
+        <div className="nube-avatar-wrap">
+          <img className="nube-avatar" src="../../assets/mascot/anime/lune_inicio.png" alt="Lune" />
+          {Nube && <Nube className="nube-avatar-cloud" width={150} fill="#f3f8ff" opacity="0.95" />}
+        </div>
+        <div className="nube-kanji">ルネ起動</div>
+        <h1 className="nube-h1">LUNE ENTRE NUBES</h1>
+        <p className="nube-p">Tu asistente de escritorio. Memoria persistente, herramientas al instante, modelos en la nube.</p>
+        {chips('nube-chips')}
+      </div>
+    );
+  }
   return (
     <div className="ln-welcome">
       <div className="ln-welcome-giant" aria-hidden="true">LUNE</div>
       <div className="ln-welcome-mark">
-        <img src="../../assets/mascot/anime/lune-wave.png" alt="Lune" />
+        <img src="../../assets/mascot/anime/lune_inicio.png" alt="Lune" />
       </div>
       <div className="ln-welcome-jp lune-jp">ルネ起動</div>
       <h1 className="ln-welcome-title">LUNE EN LÍNEA</h1>
@@ -78,12 +102,7 @@ function Welcome({ provider, onEjemplo }) {
         Tu asistente de escritorio. Memoria persistente, herramientas al instante,
         {provider==='cloud' ? ' modelos en la nube.' : ' 100% local y privada.'}
       </p>
-      <div className="ln-welcome-chips">
-        {ejemplos.map((t, i) => (
-          <button key={i} type="button" className="ln-chip ln-chip-btn"
-            onClick={() => onEjemplo && onEjemplo(t)}>"{t}"</button>
-        ))}
-      </div>
+      {chips('ln-welcome-chips')}
     </div>
   );
 }

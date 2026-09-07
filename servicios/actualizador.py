@@ -53,6 +53,31 @@ OPCIONALES: Dict[str, Dict] = {
         "modulos": {"psutil": "psutil"},
         "nota": "Monitor de CPU/RAM y limpieza de archivos temporales.",
     },
+    "Interfaz completa (piel web animada)": {
+        "modulos": {"PyQt6.QtWebEngineWidgets": "PyQt6-WebEngine"},
+        "nota": "La interfaz Shibuya Punk / Nube con animaciones y la mascota en video. "
+                "Sin esto Lune usa la interfaz nativa ligera (modo bajos recursos).",
+    },
+    "Red local (descubrir dispositivos)": {
+        "modulos": {"zeroconf": "zeroconf"},
+        "nota": "Para que Lune encuentre otros equipos con Lune en tu red (host/terminales).",
+    },
+    "Voz 100% local (Kokoro)": {
+        "modulos": {"kokoro_onnx": "kokoro-onnx"},
+        "nota": "Lune habla sin internet. Además necesita espeak-ng y los pesos en modelos_voz/.",
+    },
+    "Conversión de voz RVC (experimental)": {
+        "modulos": {"rvc_python": "rvc-python"},
+        "nota": "Cambia el timbre de la voz con un modelo .pth. Muy pesado (arrastra torch).",
+    },
+}
+
+# Lo que hace falta sí o sí para que la app arranque (instalador para usuarios nuevos).
+NUCLEO: Dict[str, Dict] = {
+    "Núcleo de Lune (obligatorio)": {
+        "modulos": {"PyQt6": "PyQt6", "requests": "requests", "websockets": "websockets"},
+        "nota": "La ventana, la conexión con los modelos y la red entre equipos. Sin esto no arranca.",
+    },
 }
 
 

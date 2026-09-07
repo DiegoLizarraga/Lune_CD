@@ -1,5 +1,14 @@
 name: Tests
 
+# Qué es esto: cada vez que subes a master, GitHub arranca una máquina limpia,
+# instala Lune y corre los tests. Si algo falla te llega el aviso "Tests
+# workflow run failed". No hace falta para usar Lune: es solo el chequeo
+# automático. Si no lo quieres, borra la carpeta .github/ y se acabó.
+#
+# Hasta 10.0 este job instalaba solo requests+psutil, y desde la serie 9 los
+# tests tocan PyQt6, pygame y compañía: por eso fallaba SIEMPRE. Ahora instala
+# requirements.txt (igual que instalar_lune.bat) y corre Qt sin pantalla.
+
 on:
   push:
     branches: [master]
@@ -8,6 +17,10 @@ on:
 jobs:
   pytest:
     runs-on: windows-latest
+    env:
+      QT_QPA_PLATFORM: offscreen      # Qt sin ventana (la máquina de CI no tiene escritorio)
+      SDL_AUDIODRIVER: dummy          # pygame sin tarjeta de sonido
+      PYTHONIOENCODING: utf-8
     steps:
       - uses: actions/checkout@v4
 
@@ -19,13 +32,13 @@ jobs:
       - name: Instalar dependencias
         run: |
           python -m pip install --upgrade pip
-          pip install requests psutil pytest
+          pip install -r requirements.txt pytest numpy
 
       - name: Tests
-        run: python -m pytest
+        run: python -m pytest -q
 
       - name: Comprobar que todos los módulos compilan
-        run: python -m compileall -q .
+        run: python -m compileall -q main.py patata.py instalador.py nucleo servicios ui lune_core scripts
 
   secretos:
     runs-on: ubuntu-latest

@@ -42,9 +42,12 @@ class Config:
         # Avatar/expresiones: permite cambiar el "modelo" visual de Lune.
         "avatar": {
             "pack": "default",                   # carpeta lune_face/ por defecto
-            "render": "sprites",                 # sprites · vrm (avatar 3D)
+            "render": "animado",                 # animado (video anime) · vrm (3D, próximamente) · sprites (ligero, bajos recursos)
             "vrm_archivo": "",                   # ruta a un .vrm; vacío = el 1º en modelo_vrm/
             "click_through": False,              # mascota "fantasma": deja pasar los clics
+            "comentarios_cada_min": 0,           # companion comenta la pantalla cada N min (0 = off)
+            "overlay_x": None, "overlay_y": None,      # posición de la mascota clásica
+            "companion_x": None, "companion_y": None,  # posición del companion animado
         },
         # Optimizador estilo Stacer: qué categorías limpiar por defecto.
         "optimizador": {
@@ -57,6 +60,7 @@ class Config:
         "chat": {
             "max_sesiones": 50,                  # cuántas conversaciones se conservan
             "restaurar_ultima": True,            # reabrir la última al arrancar
+            "aburrimiento_min": 10,              # tras N min sin escribirle, Lune se aburre y te dice algo (0 = nunca)
         },
         # Adjuntos: documentos e imágenes (ver adjuntos.py).
         "adjuntos": {
@@ -79,6 +83,10 @@ class Config:
         "voz": {
             "modelo_whisper": "base",            # tiny · base · small · medium · large-v3
             "idioma": "es",
+            # ── Dispositivos (por NOMBRE; vacío = el del sistema). Ver voz_entrada.py ──
+            "dispositivo_entrada": "",           # micrófono para dictar y para la llamada
+            "dispositivo_salida": "",            # por dónde suena Lune (pygame/SDL)
+            "llamada_umbral": 0.015,             # energía RMS mínima para «estás hablando»
             # ── Salida (ver voice.py y lune_core/voz/kokoro_backend.py) ──
             "motor_salida": "auto",              # auto · edge · gtts · kokoro
             "kokoro_carpeta": "modelos_voz",     # dónde están los pesos .onnx / .bin

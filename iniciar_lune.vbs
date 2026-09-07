@@ -57,8 +57,10 @@ Next
 
 If pyw = "" Then
     MsgBox "No encontre un Python con las dependencias de Lune." & vbCrLf & vbCrLf & _
-           "Instalalas con:" & vbCrLf & _
-           "    pip install -r requirements.txt" & vbCrLf & vbCrLf & _
+           "Lo mas facil: doble clic en  instalar_lune.bat  (te explica cada cosa)." & vbCrLf & _
+           "O a mano:  pip install -r requirements.txt" & vbCrLf & vbCrLf & _
+           "Mientras tanto, Lune sigue disponible en la terminal (modo patata):" & vbCrLf & _
+           "    lune_patata.bat" & vbCrLf & vbCrLf & _
            "Si usas varios Python, hazlo con el mismo que este en el PATH.", _
            16, "Lune CD"
     WScript.Quit 1

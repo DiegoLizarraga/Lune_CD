@@ -8,6 +8,12 @@ import sys
 import os
 from datetime import datetime
 
+# ANTES de PyQt6: precarga el runtime de C++ de Windows. Si no, PyQt6 mete su
+# MSVCP140.dll de 2020 y Whisper (ctranslate2) revienta el proceso al dictar.
+# Detalle y motivo en nucleo/runtime_win.py.
+from nucleo.runtime_win import precargar_msvc
+precargar_msvc()
+
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLineEdit, QPushButton, QLabel, QScrollArea, QFrame,
@@ -1171,6 +1177,9 @@ class LuneCDWindow(QMainWindow):
             self.red.reanunciar()
         # datos.guardar() ya invalidó la caché, así que esto lee lo recién escrito.
         self.ai_manager.reload_provider()
+        # Salida de audio elegida en Configuración → se aplica sin reiniciar.
+        if self.voice.available:
+            self.voice.aplicar_salida(self.config.get("voz", "dispositivo_salida", "") or "")
         self.stack.setCurrentIndex(0)
 
         personaje = datos.get_personaje(datos.get_bot().get("personaje_default", "Lune"))
@@ -1340,6 +1349,30 @@ def _ya_hay_una_instancia() -> bool:
     return False
 
 
+def _lanzar_patata() -> bool:
+    """Abre patata.py (Lune en terminal) en una consola NUEVA y devuelve si pudo.
+    Desde el .vbs corremos con pythonw (sin consola): se busca el python.exe
+    hermano para que la terminal sí tenga ventana."""
+    import subprocess
+    raiz = os.path.dirname(os.path.abspath(__file__))
+    script = os.path.join(raiz, "patata.py")
+    if not os.path.exists(script):
+        return False
+    exe = sys.executable
+    if exe.lower().endswith("pythonw.exe"):
+        candidato = os.path.join(os.path.dirname(exe), "python.exe")
+        if os.path.exists(candidato):
+            exe = candidato
+    try:
+        flags = getattr(subprocess, "CREATE_NEW_CONSOLE", 0) if os.name == "nt" else 0
+        subprocess.Popen([exe, script], cwd=raiz, creationflags=flags)
+        log_info("[ui] modo patata: Lune abierta en la terminal")
+        return True
+    except Exception as e:
+        log_error(f"[ui] no pude lanzar patata.py: {e}")
+        return False
+
+
 def _crear_ventana_principal():
     """
     Ventana principal. Por defecto la piel web "Shibuya Punk" (QWebEngineView);
@@ -1350,6 +1383,13 @@ def _crear_ventana_principal():
         modo = str(Config().get("interfaz", "modo", "web"))
     except Exception:
         modo = "web"
+    if modo == "patata":
+        # Modo patata: Lune en la terminal, sin Qt. Se abre en una consola nueva
+        # (venimos de pythonw, sin consola) y esta app se retira.
+        if _lanzar_patata():
+            return None
+        log_error("[ui] no pude abrir el modo patata; uso la interfaz nativa")
+        return LuneCDWindow()
     if modo == "web":
         try:
             from ui.web_shell import VentanaWeb
@@ -1409,6 +1449,10 @@ def main():
         if "principal" in ventanas:
             return
         ventana = _crear_ventana_principal()
+        if ventana is None:
+            # Modo patata: Lune ya vive en la terminal; esta app Qt se retira.
+            QApplication.instance().quit()
+            return
         ventanas["principal"] = ventana
         _mostrar_de_verdad(ventana)
 

@@ -1,6 +1,15 @@
 """
 voice.py — Motor de voz de Lune (edge-tts con fallback a gTTS).
 Reproduce las respuestas en voz alta de forma asíncrona.
+
+SALIDA DE AUDIO (v10)
+---------------------
+pygame/SDL manda el sonido al dispositivo que Windows tenga por defecto, que
+no siempre es el que quieres (con Steam instalado aparece un «Speakers (Steam
+Streaming Microphone)» virtual, y el headset Bluetooth no se vuelve el default
+solo por estar conectado). Por eso el usuario puede elegir la salida en
+Configuración → Audio; se guarda por NOMBRE en config (`voz.dispositivo_salida`,
+vacío = la del sistema) y se aplica al abrir el mixer con `devicename=`.
 """
 import io
 import os
@@ -8,10 +17,37 @@ import re
 import threading
 
 
+def listar_salidas():
+    """
+    Nombres de las salidas de audio que ve SDL (pygame). Lista vacía si pygame
+    no está o no hay tarjeta de sonido. SDL solo enumera con el subsistema de
+    audio iniciado, así que si el mixer está cerrado se abre un momento.
+    """
+    try:
+        import pygame
+        from pygame._sdl2 import audio as sdl_audio
+    except Exception:
+        return []
+    abierto_aqui = False
+    try:
+        if not pygame.mixer.get_init():
+            pygame.mixer.init(); abierto_aqui = True
+        nombres = [str(n) for n in sdl_audio.get_audio_device_names(False)]
+    except Exception:
+        nombres = []
+    finally:
+        if abierto_aqui:
+            try: pygame.mixer.quit()
+            except Exception: pass
+    return nombres
+
+
 class VoiceEngine:
     def __init__(self, config=None):
         self.config = config
-        self._enabled = False; self._lock = threading.Lock(); self._engine = None; self._init_engine()
+        self._enabled = False; self._lock = threading.Lock(); self._engine = None
+        self._salida = ""          # nombre de la salida con la que se abrió el mixer ("" = sistema)
+        self._init_engine()
 
     def _cfg(self, clave, default):
         """Lee una clave de la sección 'voz' de config, con respaldo."""
@@ -22,6 +58,65 @@ class VoiceEngine:
             pass
         return default
 
+    # ── Mixer y dispositivo de salida ───────────────────────────────────────────
+    def _abrir_mixer(self, nombre=None):
+        """
+        Abre pygame.mixer en la salida pedida (o la de config). Si ese nombre ya
+        no existe (headset apagado), cae a la del sistema sin quejarse: mejor
+        oír a Lune por los altavoces que no oírla.
+        """
+        import pygame
+        nombre = (self._cfg("dispositivo_salida", "") if nombre is None else nombre) or ""
+        nombre = str(nombre).strip()
+        if pygame.mixer.get_init():
+            pygame.mixer.quit()
+        if nombre:
+            try:
+                pygame.mixer.init(devicename=nombre); self._salida = nombre; return True
+            except Exception:
+                pass
+        pygame.mixer.init(); self._salida = ""
+        return not nombre
+
+    @property
+    def salida_actual(self):
+        return self._salida
+
+    def aplicar_salida(self, nombre):
+        """Cambia la salida en caliente. Devuelve True si se abrió la pedida."""
+        if not self._engine:
+            return False
+        with self._lock:
+            try:
+                return self._abrir_mixer(nombre or "")
+            except Exception:
+                return False
+
+    def probar_salida(self):
+        """Suena un tono corto por la salida actual (para saber si es la buena)."""
+        if not self._engine:
+            return False
+        def _beep():
+            with self._lock:
+                try:
+                    import math, struct, pygame
+                    sr = 22050
+                    if not pygame.mixer.get_init():
+                        self._abrir_mixer()
+                    frec, ch = pygame.mixer.get_init()[0] or sr, pygame.mixer.get_init()[2] or 2
+                    n = int(frec * 0.35)
+                    muestras = bytearray()
+                    for i in range(n):
+                        env = min(1.0, i / (frec * 0.02), (n - i) / (frec * 0.06))
+                        v = int(9000 * env * math.sin(2 * math.pi * 660 * i / frec))
+                        muestras += struct.pack("<h", v) * ch
+                    s = pygame.mixer.Sound(buffer=bytes(muestras)); s.play()
+                    threading.Event().wait(0.45)
+                except Exception:
+                    pass
+        threading.Thread(target=_beep, daemon=True).start()
+        return True
+
     def _init_engine(self):
         pref = self._cfg("motor_salida", "auto")
         # Voz local Kokoro: solo si se pide explícitamente y está disponible.
@@ -29,15 +124,17 @@ class VoiceEngine:
             try:
                 from lune_core.voz import kokoro_backend
                 if kokoro_backend.disponible(self._cfg("kokoro_carpeta", "modelos_voz")):
-                    import pygame; pygame.mixer.init(); self._engine = "kokoro"; return
+                    self._abrir_mixer(); self._engine = "kokoro"; return
             except Exception:
                 pass
             # se pidió kokoro pero no está: se cae a edge (degradación silenciosa)
         if pref in ("auto", "edge", "kokoro"):
-            try: import edge_tts; import pygame; pygame.mixer.init(); self._engine = "edge"; return
+            try: import edge_tts; self._abrir_mixer(); self._engine = "edge"; return
             except ImportError: pass
-        try: from gtts import gTTS; import pygame; pygame.mixer.init(); self._engine = "gtts"; return
+            except Exception: pass          # sin tarjeta de sonido: mudo, no muerto
+        try: from gtts import gTTS; self._abrir_mixer(); self._engine = "gtts"; return
         except ImportError: pass
+        except Exception: pass
         self._engine = None
 
     def speak(self, text: str):

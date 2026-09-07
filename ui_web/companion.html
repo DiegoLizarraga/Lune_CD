@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lune</title>
+<link rel="stylesheet" href="styles.css" />
+<style>
+  html, body { margin:0; height:100%; background:transparent; overflow:hidden;
+    font-family:var(--font-body, system-ui, sans-serif); }
+  #wrap { display:flex; flex-direction:column; align-items:center; justify-content:flex-end;
+    height:100vh; gap:8px; padding:8px; box-sizing:border-box; }
+
+  /* Burbuja de comentario (arriba de la mascota) */
+  #bubble { max-width:230px; background:var(--ink-800,#0F1424); color:var(--paper,#EAF1FF);
+    border:2px solid var(--cyan-700,#0091AB); border-radius:3px; clip-path:var(--clip-tr, none);
+    padding:9px 12px; font-size:12.5px; line-height:1.38; box-shadow:0 6px 22px rgba(0,0,0,.55);
+    opacity:0; transform:translateY(6px); transition:opacity .25s, transform .25s; pointer-events:none; }
+  #bubble.on { opacity:1; transform:translateY(0); }
+  #bubble .who { font-family:var(--font-mono, monospace); font-size:9px; letter-spacing:.12em;
+    color:var(--cyan-400,#36ECFF); text-transform:uppercase; display:block; margin-bottom:3px; }
+  #bubble .who .jp { color:var(--yellow-500,#FFE000); }
+
+  /* Mini-stage con la mascota animada */
+  #stage { position:relative; width:210px; height:290px; overflow:hidden;
+    background:radial-gradient(circle at 50% 30%, rgba(0,229,255,.16), transparent 62%), var(--ink-950,#080B16);
+    border:2px solid var(--ink-500,#232F52); border-radius:7px;
+    display:flex; align-items:flex-end; justify-content:center; }
+  #stage video { height:97%; width:100%; object-fit:contain; object-position:bottom center; }
+  #stage::after { content:""; position:absolute; inset:0; background:var(--tex-scanline, none);
+    opacity:.45; pointer-events:none; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="bubble"><span class="who"><span class="jp">月</span> Lune</span><span id="btxt"></span></div>
+  <div id="stage"><video id="v" autoplay loop muted playsinline></video></div>
+</div>
+<script>
+  var V = 'assets/mascot/anime-videos/';
+  // v10 — un estado por clip; los que aún no tienen video caen al idle.
+  var MAP = { normal:'composed', thinking:'thinking', happy:'happy', angry:'angry', error:'angry',
+              surprised:'surprised', nervous:'nervous', wave:'wave', dismiss:'dismiss',
+              sad:'sad', curious:'curious', reading:'curious',
+              typing:'working', listening:'listening', talking:'talking',
+              laughing:'laughing', bored:'bored' };
+  var vid = document.getElementById('v');
+  var bub = document.getElementById('bubble');
+  var btxt = document.getElementById('btxt');
+  var bt = null;
+
+  function put(src) {
+    if (vid.getAttribute('src') !== src) {
+      vid.setAttribute('src', src);
+      if (vid.load) vid.load();
+      if (vid.play) vid.play().catch(function(){});
+    }
+  }
+  window.setEmocion = function (s) {
+    var base = MAP[s] || 'composed';
+    var src = V + 'lune-' + base + '.webm';
+    var idle = V + 'lune-composed.webm';
+    vid.onerror = function () { if (vid.getAttribute('src') !== idle) put(idle); };
+    put(src);
+  };
+  window.comentar = function (t) {
+    if (!t) return;
+    btxt.textContent = t;
+    bub.classList.add('on');
+    if (bt) clearTimeout(bt);
+    bt = setTimeout(function () { bub.classList.remove('on'); }, 14000);
+  };
+  window.pensando = function () { btxt.textContent = '…'; bub.classList.add('on'); };
+  window.ocultarBurbuja = function () { bub.classList.remove('on'); };
+
+  window.setEmocion('wave');   // saluda al aparecer
+</script>
+</body>
+</html>

@@ -50,6 +50,35 @@ const SHARDS = [
   { l:'92%', s:32, c:'var(--blue-400)',  d:'30s', dl:'-20s', o:.08 },
 ];
 
+// Tema "Nube": cielo nocturno con estrellas, luna y nubecitas a la deriva.
+// Va dentro de .ln-main (solo con Lune AI · Nube); las barras y la vista quedan encima.
+const NUBES = [
+  { w:180, top:'10%', o:.85, d:'70s',  dl:'-10s', c:'#e6efff' },
+  { w:110, top:'26%', o:.5,  d:'95s',  dl:'-48s', c:'#c9dbff' },
+  { w:240, top:'56%', o:.35, d:'120s', dl:'-70s', c:'#b7cdf7' },
+  { w:90,  top:'70%', o:.45, d:'60s',  dl:'-22s', c:'#dbe7ff' },
+  { w:150, top:'42%', o:.6,  d:'85s',  dl:'-60s', c:'#e6efff' },
+  { w:70,  top:'84%', o:.3,  d:'55s',  dl:'-35s', c:'#c9dbff' },
+];
+const NubeSvg = ({ fill, ...p }) => (
+  <svg viewBox="0 0 120 60" fill={fill} {...p}>
+    <ellipse cx="35" cy="42" rx="24" ry="15"/><ellipse cx="62" cy="30" rx="26" ry="19"/><ellipse cx="90" cy="43" rx="21" ry="13"/>
+  </svg>
+);
+function BgNube() {
+  return (
+    <div className="nube-sky" aria-hidden="true">
+      <div className="nube-stars" />
+      <div className="nube-moon" />
+      {NUBES.map((n, i) => (
+        <NubeSvg key={i} className="nube-cloud" width={n.w} fill={n.c}
+          style={{ top:n.top, opacity:n.o, animation:`nube-drift ${n.d} linear ${n.dl} infinite` }} />
+      ))}
+    </div>
+  );
+}
+window.NubeSvg = NubeSvg;
+
 function BgShards() {
   return (
     <div className="p3-bg" aria-hidden="true">
@@ -76,8 +105,10 @@ function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [adjuntos, setAdjuntos] = useState([]);   // nombres de archivos adjuntos
   const [grabando, setGrabando] = useState(false); // micrófono grabando
+  const [llamadaOn, setLlamadaOn] = useState(false); // modo llamada por voz
   const [toast, setToast] = useState('');          // aviso breve del backend
   const toastT = useRef(null);
+  const sendRef = useRef(null);                    // send() actual, para las señales
   const [fx, setFx] = useState(() => {
     try { return JSON.parse(localStorage.getItem('lune-fx')) || { bg:true, sweep:true, micro:true }; }
     catch(e){ return { bg:true, sweep:true, micro:true }; }
@@ -87,6 +118,7 @@ function App() {
   const timers = useRef([]);
   const providerRef = useRef(provider); providerRef.current = provider;
   const streamId = useRef(null);   // id del mensaje del bot que se está llenando
+  const holdRef = useRef(4000);    // cuánto dura la última expresión (según intensidad)
 
   const mostrarToast = useCallback((msg) => {
     if (!msg) return;
@@ -114,12 +146,28 @@ function App() {
         });
       });
       b.acto.connect((estado) => setMascot(estado));
+      // Emoción final con intensidad: cuanto más intensa, más dura antes de volver al idle.
+      b.emocion.connect((estado, inten) => {
+        const i = Math.max(0, Math.min(1, Number(inten) || 0.6));
+        holdRef.current = 2500 + Math.round(i * 5000);   // 2.5 s (leve) … 7.5 s (fuerte)
+        if (estado) setMascot(estado);
+      });
       b.voz_estado.connect((on) => setVoiceOn(!!on));
       b.telegram_estado.connect((run, detail) => { setTelegramOn(!!run); if (detail) mostrarToast(detail); });
       b.adjuntos_cambio.connect((j) => { try { setAdjuntos(JSON.parse(j) || []); } catch (e) { setAdjuntos([]); } });
       b.grabando.connect((on) => setGrabando(!!on));
       b.dictado.connect((texto) => { if (texto) setInput((v) => (v ? v + ' ' : '') + texto); });
       b.aviso.connect((msg) => mostrarToast(msg));
+      // Modo llamada: lo que dice el usuario entra como mensaje y se envía solo.
+      b.usuario_dijo.connect((texto) => { if (texto && sendRef.current) sendRef.current(texto); });
+      b.llamada_estado.connect((on, estado) => {
+        setLlamadaOn(!!on);
+        // La mascota "actúa" la llamada: escucha, piensa, habla.
+        const M = { escuchando:'listening', transcribiendo:'thinking', esperando:'thinking', hablando:'talking', off:'normal' };
+        if (on && M[estado]) setMascot(M[estado]);
+        if (!on) setMascot('normal');
+        if (estado && (!on || estado === 'escuchando')) mostrarToast(on ? 'Llamada: te escucho' : estado);
+      });
       b.herramienta.connect((ok, icon, title, detail) => {
         setTyping(false);
         setMessages((m) => [...m, { id: uid(), kind:'tool', tool:{ ok, icon, title, detail } }]);
@@ -134,7 +182,8 @@ function App() {
           return m;
         });
         setMascot(mascota || 'happy');
-        const tr = setTimeout(() => setMascot('normal'), 4000); timers.current.push(tr);
+        // Vuelve al idle tras un tiempo proporcional a la intensidad de la emoción.
+        const tr = setTimeout(() => setMascot('normal'), holdRef.current || 4000); timers.current.push(tr);
       });
     }
     if (window.lune) wire();
@@ -229,6 +278,12 @@ function App() {
     if (window.lune) window.lune.dictar(() => {});
     else mostrarToast('El dictado necesita la app (Whisper local).');
   }, [mostrarToast]);
+  // Modo llamada (toggle, como Telegram): conversación continua solo por voz.
+  const toggleLlamada = useCallback(() => {
+    if (window.lune) window.lune.llamada_toggle(() => {});
+    else mostrarToast('El modo llamada necesita la app (Whisper + voz).');
+  }, [mostrarToast]);
+  sendRef.current = send;   // las señales del puente usan siempre el send() vigente
   const cargarHistorial = useCallback((msgs) => {
     clearTimers();
     setMessages((msgs || []).map((m) => ({ id: uid(), role: m.role, provider: providerRef.current, text: m.text, time: '' })));
@@ -236,10 +291,11 @@ function App() {
   }, []);
 
   return (
-    <div className={`ln-app lune-backdrop${fx.bg?'':' fx-no-bg'}${fx.sweep?'':' fx-no-sweep'}${fx.micro?'':' fx-no-micro'}`}>
+    <div className={`ln-app lune-backdrop${fx.bg?'':' fx-no-bg'}${fx.sweep?'':' fx-no-sweep'}${fx.micro?'':' fx-no-micro'}${provider==='cloud'?' tema-nube':''}`}>
       {fx.bg && <BgShards />}
       <window.Sidebar provider={provider} onProvider={setProvider} mascotState={mascot} />
       <main className="ln-main">
+        {provider==='cloud' && <BgNube />}
         <Topbar provider={provider} status={status} view={view} onView={setView} onMenu={() => setMenuOpen(true)} />
         <div className="ln-view" key={view}>
           {view === 'chat' ? <window.ChatStream messages={messages} typing={typing} provider={provider} onEjemplo={send} />
@@ -266,6 +322,7 @@ function App() {
         { label:'Mascota', desc:'Mascota flotante de escritorio', onClick:toggleMascota },
         { label:`Voz ${voiceOn?'ON':'OFF'}`, desc:'edge-tts · es-MX', on:voiceOn, onClick:toggleVoz },
         { label:'Telegram', desc:'Bot sincronizado', on:telegramOn, onClick:toggleTelegram },
+        { label:`Llamada ${llamadaOn?'ON':'OFF'}`, desc:'Conversación solo por voz', on:llamadaOn, onClick:toggleLlamada },
         { label:'Limpiar chat', desc:'Borra la conversación actual', danger:true, onClick:clear },
       ]} />
       {toast && <div className="ln-toast" role="status">{toast}</div>}

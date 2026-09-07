@@ -18,11 +18,11 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from PyQt6.QtCore import Qt, QUrl
-from PyQt6.QtWidgets import QApplication, QMainWindow
+from PyQt6.QtWidgets import QApplication, QMainWindow, QSystemTrayIcon, QMenu
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWebEngineCore import QWebEngineSettings
 from PyQt6.QtWebChannel import QWebChannel
-from PyQt6.QtGui import QIcon
+from PyQt6.QtGui import QIcon, QAction
 
 RAIZ = Path(__file__).resolve().parent.parent
 DIR_WEB = RAIZ / "ui_web"
@@ -61,8 +61,59 @@ class _ServidorEstatico:
 
 
 class _HandlerSilencioso(SimpleHTTPRequestHandler):
+    # Tipos MIME correctos para los assets de la UI (mp4 para la mascota animada).
+    extensions_map = {
+        **SimpleHTTPRequestHandler.extensions_map,
+        ".mp4": "video/mp4", ".webm": "video/webm",
+        ".jsx": "text/plain", ".js": "text/javascript",
+        ".css": "text/css", ".html": "text/html",
+    }
+
     def log_message(self, *a):
         pass
+
+    def do_GET(self):
+        # Soporta HTTP Range (206) para que los <video> grandes (mascota) reproduzcan
+        # y loopeen sin cortes; el resto se sirve normal (200).
+        import os
+        import re
+        rango = self.headers.get("Range")
+        if not rango:
+            return super().do_GET()
+        ruta = self.translate_path(self.path.split("?", 1)[0])
+        if not os.path.isfile(ruta):
+            return super().do_GET()
+        try:
+            f = open(ruta, "rb")
+        except OSError:
+            self.send_error(404); return
+        tam = os.fstat(f.fileno()).st_size
+        m = re.match(r"bytes=(\d*)-(\d*)", rango)
+        ini = int(m.group(1)) if m and m.group(1) else 0
+        fin = int(m.group(2)) if m and m.group(2) else tam - 1
+        fin = min(fin, tam - 1)
+        if ini > fin or ini >= tam:
+            self.send_response(416)
+            self.send_header("Content-Range", f"bytes */{tam}")
+            self.end_headers(); f.close(); return
+        self.send_response(206)
+        self.send_header("Content-Type", self.guess_type(ruta))
+        self.send_header("Accept-Ranges", "bytes")
+        self.send_header("Content-Range", f"bytes {ini}-{fin}/{tam}")
+        self.send_header("Content-Length", str(fin - ini + 1))
+        self.end_headers()
+        f.seek(ini)
+        restante = fin - ini + 1
+        while restante > 0:
+            chunk = f.read(min(65536, restante))
+            if not chunk:
+                break
+            try:
+                self.wfile.write(chunk)
+            except (BrokenPipeError, ConnectionResetError):
+                break
+            restante -= len(chunk)
+        f.close()
 
 
 class VentanaWeb(QMainWindow):
@@ -70,13 +121,16 @@ class VentanaWeb(QMainWindow):
 
     def __init__(self, config=None, ai_manager=None, memoria=None, tools=None, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Lune CD · Shibuya Punk")
+        self.setWindowTitle("Lune CD")
         self.resize(1280, 820)
+        self._icono = QIcon()
         for ext in ("ico", "png"):
-            icono = RAIZ / "assets" / f"lune_icon.{ext}"
-            if icono.exists():
-                self.setWindowIcon(QIcon(str(icono)))
+            ruta = RAIZ / "assets" / f"lune_icon.{ext}"
+            if ruta.exists():
+                self._icono = QIcon(str(ruta))
+                self.setWindowIcon(self._icono)
                 break
+        self._salir = False   # True solo cuando el usuario elige "Salir" en la bandeja
 
         self._servidor = _ServidorEstatico(DIR_WEB)
         if not self._servidor.iniciar():
@@ -97,8 +151,57 @@ class VentanaWeb(QMainWindow):
         self.web.setUrl(QUrl(self._servidor.url()))
         self.setCentralWidget(self.web)
 
+        # Quedarse en segundo plano (como Discord): al cerrar, se oculta en la
+        # bandeja y sigue viva; se reabre desde la bandeja o relanzando el .vbs.
+        QApplication.instance().setQuitOnLastWindowClosed(False)
+        self._construir_bandeja()
+
+    def _construir_bandeja(self):
+        if not QSystemTrayIcon.isSystemTrayAvailable():
+            self.tray = None
+            return
+        self.tray = QSystemTrayIcon(self._icono, self)
+        self.tray.setToolTip("Lune CD")
+        menu = QMenu()
+        act_abrir = QAction("Abrir Lune", self)
+        act_abrir.triggered.connect(self._mostrar)
+        act_salir = QAction("Salir", self)
+        act_salir.triggered.connect(self._salir_de_verdad)
+        menu.addAction(act_abrir)
+        menu.addSeparator()
+        menu.addAction(act_salir)
+        self.tray.setContextMenu(menu)
+        self.tray.activated.connect(
+            lambda r: self._mostrar() if r in (
+                QSystemTrayIcon.ActivationReason.Trigger,
+                QSystemTrayIcon.ActivationReason.DoubleClick) else None)
+        self.tray.show()
+
+    def _mostrar(self):
+        self.showNormal(); self.raise_(); self.activateWindow()
+
+    def _salir_de_verdad(self):
+        self._salir = True
+        self.close()
+        QApplication.instance().quit()
+
     def closeEvent(self, ev):
+        # Cerrar la ventana = ocultarla en la bandeja; solo "Salir" cierra de verdad.
+        if not self._salir and getattr(self, "tray", None) is not None:
+            self.hide()
+            if not getattr(self, "_aviso_bandeja", False):
+                self._aviso_bandeja = True
+                try:
+                    self.tray.showMessage("Lune sigue aquí",
+                                          "Sigo en segundo plano. Ábreme desde la bandeja.",
+                                          self._icono, 4000)
+                except Exception:
+                    pass
+            ev.ignore()
+            return
         self._servidor.detener()
+        if getattr(self, "tray", None) is not None:
+            self.tray.hide()
         ev.accept()
 
 

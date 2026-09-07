@@ -53,6 +53,8 @@ EMOCION_A_VRM = {
     "happy": "happy", "sad": "sad", "angry": "angry", "surprised": "surprised",
     "think": "think", "question": "question", "curious": "curious",
     "awkward": "awkward", "neutral": "neutral",
+    # v10: emociones nuevas del vocabulario (el VRM no tiene gesto propio; se aproximan).
+    "nervous": "awkward", "wave": "happy", "dismiss": "angry",
 }
 # Estado visual de sprite (lune_face) → expresión VRM (para set_estado).
 ESTADO_A_VRM = {

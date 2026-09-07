@@ -102,7 +102,7 @@ Reusable React primitives (compiled into `_ds_bundle.js`, exposed on `window.Lun
 
 - **No emoji, no Unicode glyphs as icons.** The original app leaned on emoji (☁️ 🦙 🤖 ⚙️ 🧠 🛠 🔊); the redesign replaces every one with a **line SVG icon** (Lucide-style, 2px stroke, round caps) defined in `ui_kits/lune-desktop/icons.jsx` (Cloud, Cpu, Gear, Brain, Tool, Volume, Send, Stop, Telegram, Moon, Search, Bolt, External). Stroke icons inherit `currentColor` so they tint cyan/blue/yellow with their context.
 - **Filled glyphs** (Send arrow, Stop square, Bolt) are used only where a solid mark reads better at small sizes.
-- **Brand marks are PNG raster assets**, not icons: the app logo (`assets/lune-logo.png`) and the mascot expression set (`assets/mascot/lune-{normal,happy,reading,error}.png`).
+- **Brand marks are PNG raster assets**, not icons: the app logo (`assets/lune-logo.png`) and the anime mascot expression set (`assets/mascot/anime/lune-*.png`, plus the animated VP9 clips in `assets/mascot/anime-videos/lune-*.webm` and the welcome portrait `lune_inicio.png`).
 - **Katakana** (Noto Sans JP) functions as decorative iconography — sticker tags (ルネ / 月 / 夜 / 渋谷), never as functional labels.
 - **Substitution flag:** if you need a wider icon set, **Lucide** ([lucide.dev](https://lucide.dev)) is the closest match to the hand-built set here (same 2px stroke, 24px grid) and can be linked from CDN.
 
@@ -132,7 +132,8 @@ ui_kits/
   lune-desktop/                ← interactive desktop-app recreation (index.html + jsx)
 assets/
   lune-logo.png                ← app mark
-  mascot/                      ← lune-{normal,happy,reading,error}.png
+  mascot/anime/                ← lune-*.png (9 expression states) + lune_inicio.png (welcome)
+  mascot/anime-videos/         ← lune-*.webm (VP9 animated clips; QtWebEngine has no H.264)
 SKILL.md                       ← Agent-Skill entry point
 readme.md                      ← this file
 ```

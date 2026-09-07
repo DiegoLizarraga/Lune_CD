@@ -17,6 +17,7 @@ from nucleo import datos
 from servicios import ollama_client
 
 from servicios import voz_entrada
+from servicios.voice import listar_salidas
 
 from lune_core.voz import kokoro_backend
 from nucleo.config import Config
@@ -350,6 +351,39 @@ class SettingsPanel(QFrame):
     def _build_hub_group(self) -> QFrame:
         frame = self._create_group_frame()
         fl = QVBoxLayout(frame); fl.setSpacing(10)
+
+        # ── Modo de interfaz: Completa (web) · Bajos recursos (esta nativa) ──
+        # Desde aquí el usuario en bajos recursos puede volver a la interfaz completa.
+        lbl_ui = QLabel("Modo de interfaz (se aplica al reiniciar Lune)")
+        lbl_ui.setFont(QFont("Segoe UI", 10)); lbl_ui.setStyleSheet(f"color:{COLORS['text']};border:none;padding:0;")
+        self.interfaz_combo = QComboBox()
+        self.interfaz_combo.addItem("Completa (piel web, animada)", "web")
+        self.interfaz_combo.addItem("Bajos recursos (nativa, ligera)", "nativo")
+        self.interfaz_combo.addItem("Patata (solo terminal, sin imágenes)", "patata")
+        modo_ui = str(self.config.config.get("interfaz", {}).get("modo", "web"))
+        self.interfaz_combo.setCurrentIndex(max(0, self.interfaz_combo.findData(modo_ui)))
+        self.interfaz_combo.setStyleSheet(self._estilo_combo())
+        fl.addWidget(lbl_ui); fl.addWidget(self.interfaz_combo)
+
+        # ── Calidad de vida: arrancar con Windows + instalador de componentes ──
+        from servicios import autoinicio as _auto
+        self.autoinicio_check = QCheckBox("Arrancar Lune junto con Windows")
+        self.autoinicio_check.setChecked(_auto.activo())
+        self.autoinicio_check.setStyleSheet(f"QCheckBox{{color:{COLORS['text']};border:none;spacing:8px;}}QCheckBox::indicator{{width:16px;height:16px;}}")
+        fl.addWidget(self.autoinicio_check)
+        btn_inst = QPushButton("INSTALAR COMPONENTES…")
+        btn_inst.setToolTip("Abre el instalador: explica para qué sirve cada cosa (voz, dictado, interfaz animada…) y lo instala.")
+        btn_inst.setCursor(Qt.CursorShape.PointingHandCursor); btn_inst.setFont(QFont(FONT_DISPLAY, 10, QFont.Weight.Bold)); btn_inst.setFixedHeight(36)
+        btn_inst.setStyleSheet(f"QPushButton{{background:transparent;color:{COLORS['text_muted']};border:2px solid {COLORS['border']};border-radius:2px;letter-spacing:1px;}}QPushButton:hover{{color:{COLORS['accent']};border-color:{COLORS['cyan_dark']};}}")
+        def _abrir_instalador():
+            import subprocess, sys
+            from pathlib import Path
+            ruta = Path(__file__).resolve().parent.parent / "instalador.py"
+            try: subprocess.Popen([sys.executable, str(ruta)], cwd=str(ruta.parent))
+            except Exception as e: QMessageBox.warning(self, "Instalador", f"No pude abrir el instalador:\n{e}")
+        btn_inst.clicked.connect(_abrir_instalador)
+        fl.addWidget(btn_inst)
+
         hub = self.datos_data.get("hub", {})
 
         info = QLabel(
@@ -526,6 +560,48 @@ class SettingsPanel(QFrame):
         self._add_input(fl, "voz_idioma", "Idioma del dictado (es, en, fr… vacío = detectar)",
                         self.config.get("voz", "idioma", "es"), False)
 
+        # ── Micrófono: cuál usar (por nombre; vacío = el del sistema) y probarlo ──
+        lbl_mic = QLabel("Micrófono (dictado y modo llamada)")
+        lbl_mic.setFont(QFont("Segoe UI", 10)); lbl_mic.setStyleSheet(f"color:{COLORS['text']};border:none;padding:0;")
+        self.mic_combo = QComboBox()
+        self.mic_combo.addItem("Por defecto del sistema", "")
+        for e in voz_entrada.listar_entradas():
+            self.mic_combo.addItem(e["nombre"] + (" (defecto)" if e["defecto"] else ""), e["nombre"])
+        idx_mic = self.mic_combo.findData(self.config.get("voz", "dispositivo_entrada", "") or "")
+        self.mic_combo.setCurrentIndex(idx_mic if idx_mic >= 0 else 0)
+        self.mic_combo.setStyleSheet(self._estilo_combo())
+        fl.addWidget(lbl_mic); fl.addWidget(self.mic_combo)
+
+        fila_mic = QHBoxLayout(); fila_mic.setSpacing(8)
+        self.btn_probar_mic = QPushButton("PROBAR MICRÓFONO")
+        self.btn_probar_mic.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_probar_mic.setFont(QFont(FONT_MONO, 9, QFont.Weight.Bold)); self.btn_probar_mic.setFixedHeight(32)
+        self.btn_probar_mic.setStyleSheet(
+            f"QPushButton{{background:{COLORS['surface2']};color:{COLORS['accent']};"
+            f"border:2px solid {COLORS['cyan_dark']};border-radius:3px;padding:0 14px;letter-spacing:1px;}}"
+            f"QPushButton:hover{{background:{COLORS['surface3']};border-color:{COLORS['accent']};}}"
+            f"QPushButton:disabled{{color:{COLORS['text_dim']};border-color:{COLORS['border']};}}"
+        )
+        self.btn_probar_mic.clicked.connect(self._probar_microfono)
+        self.lbl_mic_prueba = QLabel("Pulsa, habla 1.5 s y te digo si te oigo.")
+        self.lbl_mic_prueba.setWordWrap(True); self.lbl_mic_prueba.setFont(QFont("Segoe UI", 9))
+        self.lbl_mic_prueba.setStyleSheet(f"color:{COLORS['text_muted']};border:none;")
+        fila_mic.addWidget(self.btn_probar_mic); fila_mic.addWidget(self.lbl_mic_prueba, 1)
+        fl.addLayout(fila_mic)
+        self._probador_mic = None
+
+        # ── Salida: por dónde suena Lune (pygame/SDL; vacío = la del sistema) ──
+        lbl_out = QLabel("Salida de audio (por dónde habla Lune)")
+        lbl_out.setFont(QFont("Segoe UI", 10)); lbl_out.setStyleSheet(f"color:{COLORS['text']};border:none;padding:0;")
+        self.salida_combo = QComboBox()
+        self.salida_combo.addItem("Por defecto del sistema", "")
+        for nombre in listar_salidas():
+            self.salida_combo.addItem(nombre, nombre)
+        idx_out = self.salida_combo.findData(self.config.get("voz", "dispositivo_salida", "") or "")
+        self.salida_combo.setCurrentIndex(idx_out if idx_out >= 0 else 0)
+        self.salida_combo.setStyleSheet(self._estilo_combo())
+        fl.addWidget(lbl_out); fl.addWidget(self.salida_combo)
+
         # ── Voz de SALIDA: cómo habla Lune ─────────────────────────────────────
         sep = QLabel("Voz de salida (cómo habla Lune)")
         sep.setFont(QFont(FONT_DISPLAY, 11)); sep.setStyleSheet(f"color:{COLORS['accent']};border:none;padding-top:8px;")
@@ -578,6 +654,33 @@ class SettingsPanel(QFrame):
         self._add_input(fl, "rvc_transpose", "RVC: tono en semitonos (0 = igual)",
                         str(self.config.get("voz", "rvc_transpose", 0)), False)
         return frame
+
+    def _probar_microfono(self):
+        """Graba 1.5 s del micrófono elegido (en un hilo) y dice si se oyó algo."""
+        from ui.audio_prueba import ProbadorMic
+        if self._probador_mic is not None and self._probador_mic.isRunning():
+            return
+        nombre = self.mic_combo.currentData() or ""
+        idx = voz_entrada.resolver_entrada(nombre) if nombre else None
+        if nombre and idx is None:
+            self.lbl_mic_prueba.setText(f"No encuentro «{nombre}». ¿Está conectado?")
+            return
+        self.btn_probar_mic.setEnabled(False)
+        self.lbl_mic_prueba.setText("Habla ahora…")
+        self._probador_mic = ProbadorMic(idx, parent=self)
+        self._probador_mic.listo.connect(self._on_mic_probado)
+        self._probador_mic.start()
+
+    def _on_mic_probado(self, payload: str):
+        import json
+        self.btn_probar_mic.setEnabled(True)
+        try:
+            r = json.loads(payload)
+        except Exception:
+            r = {"mensaje": "No pude probar el micrófono."}
+        self.lbl_mic_prueba.setText(r.get("mensaje", ""))
+        self.lbl_mic_prueba.setStyleSheet(
+            f"color:{COLORS['success'] if r.get('ok') else COLORS['warning']};border:none;")
 
     # ── Grupo de actualizaciones ───────────────────────────────────────────────
     def _build_update_group(self) -> QFrame:
@@ -882,12 +985,22 @@ class SettingsPanel(QFrame):
         voz = self.config.config.setdefault("voz", {})
         voz["modelo_whisper"] = self.whisper_combo.currentText()
         voz["idioma"] = self.fields["voz_idioma"].text().strip()
+        voz["dispositivo_entrada"] = self.mic_combo.currentData() or ""
+        voz["dispositivo_salida"] = self.salida_combo.currentData() or ""
         voz["motor_salida"] = self.voz_motor_combo.currentData() or "auto"
         voz["kokoro_voz"] = self.kokoro_voz_combo.currentData() or "ef_dora"
         voz["kokoro_velocidad"] = self._flotante(self.fields["kokoro_velocidad"].text(), 1.0)
         voz["rvc_activo"] = self.rvc_check.isChecked()
         voz["rvc_modelo"] = self.fields["rvc_modelo"].text().strip()
         voz["rvc_transpose"] = self._entero(self.fields["rvc_transpose"].text(), 0)
+        # Modo de interfaz (web · nativo); se aplica al reiniciar.
+        self.config.config.setdefault("interfaz", {})["modo"] = self.interfaz_combo.currentData() or "web"
+        # Autoinicio con Windows (clave Run del usuario; ver servicios/autoinicio.py)
+        try:
+            from servicios import autoinicio as _auto
+            _auto.establecer(self.autoinicio_check.isChecked())
+        except Exception:
+            pass
         self.config.save()
 
         # Aplicar cambios en caliente

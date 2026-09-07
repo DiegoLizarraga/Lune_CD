@@ -47,12 +47,71 @@ const CFG_DEMO = {
   telegram_token:'', nombre:'Lune',
   system_prompt:'Eres Lune. Directa, con personalidad y filo. Sin relleno, sin emoji.',
   voz:false, memoria:true, acciones_ia:true,
+  mascota_render:'animado', interfaz_modo:'web',
+  autoinicio:false, aburrimiento_min:10,
+  dispositivo_entrada:'', dispositivo_salida:'', modelo_whisper:'base', voz_idioma:'es',
 };
+const AUDIO_DEMO = { entradas:[], salidas:[], faltan:[], modelos_whisper:['tiny','base','small','medium','large-v3'], modelos_descargados:[] };
+
+/* Guía de Ollama: en este equipo o en otro de la red (el "?" junto a Ollama). */
+function AyudaOllama({ onClose }) {
+  const { Button, Badge } = window.LUNE;
+  const [tab, setTab] = React.useState('local');
+  const Code = ({ children }) => <pre className="ln-code">{children}</pre>;
+  const copiar = (t) => { try { navigator.clipboard.writeText(t); } catch (e) {} };
+  return (
+    <div className="ln-modal-bg" onClick={onClose}>
+      <div className="ln-modal" onClick={(e)=>e.stopPropagation()} role="dialog" aria-label="Cómo configurar Ollama">
+        <div className="lune-overline">// Modelo local</div>
+        <h3 className="ln-modal-title">¿Dónde va a correr Ollama?</h3>
+        <div className="ln-modal-tabs">
+          <Button variant={tab==='local'?'primary':'ghost'} size="sm" onClick={()=>setTab('local')}>En este equipo</Button>
+          <Button variant={tab==='red'?'primary':'ghost'} size="sm" onClick={()=>setTab('red')}>En otro equipo de la red</Button>
+        </div>
+
+        {tab==='local' ? (
+          <div className="ln-modal-body">
+            <p>Lo más simple: Ollama y Lune en la misma PC.</p>
+            <ol>
+              <li>Instala Ollama desde <b>ollama.com/download</b> (Windows, macOS o Linux).</li>
+              <li>Baja un modelo (una vez, necesita internet). Ejemplos: <Code>ollama pull qwen2.5:7b</Code> <Code>ollama pull llama3.1</Code>
+                Para que Lune <b>vea imágenes</b>: <Code>ollama pull llava</Code></li>
+              <li>Deja <b>Servidor</b> en <code>http://localhost:11434</code>, pulsa <b>Guardar</b> y luego elige el modelo en <b>Modelo local</b>.</li>
+            </ol>
+            <p className="ln-modal-nota">Si el modelo tarda en arrancar en frío, sube el <i>Timeout</i>. <i>keep_alive</i> decide cuánto se queda cargado en VRAM.</p>
+          </div>
+        ) : (
+          <div className="ln-modal-body">
+            <p>Tienes una PC potente y quieres que esta use su modelo. Ollama corre allá; Lune se conecta por Wi-Fi.</p>
+            <ol>
+              <li><b>En la PC potente</b>: instala Ollama y haz que escuche en la red (no solo en localhost):
+                <Code>setx OLLAMA_HOST 0.0.0.0:11434</Code>
+                <span className="ln-modal-nota">Cierra y vuelve a abrir Ollama para que lo tome. En Linux/macOS: <code>export OLLAMA_HOST=0.0.0.0:11434</code> y <code>ollama serve</code>.</span></li>
+              <li><b>Firewall</b> de esa PC: permite el puerto <b>11434</b> (TCP) en la red privada.</li>
+              <li>Averigua su <b>IP local</b> (en esa PC: <code>ipconfig</code> → "Dirección IPv4", algo como <code>192.168.1.50</code>).</li>
+              <li><b>Aquí en Lune</b>: en <b>Servidor</b> pon <code>http://192.168.1.50:11434</code> (con su IP), Guardar, y elige el modelo.</li>
+              <li>Que no se duerma: en la PC potente, PowerShell como administrador:
+                <Code>powercfg /change standby-timeout-ac 0{'\n'}powercfg /change hibernate-timeout-ac 0</Code>
+                <span className="ln-modal-nota">Solo afecta enchufada; la pantalla puede apagarse igual.</span></li>
+            </ol>
+            <p className="ln-modal-nota">⚠️ No expongas Ollama a internet: no trae autenticación. Solo en tu red local.
+              Si el modelo remoto falla, la mascota cae sola a la nube (OpenRouter) para no dejarte colgado.</p>
+          </div>
+        )}
+        <div className="ln-modal-foot">
+          <Badge variant="ink" outline>Guía de Lune</Badge>
+          <Button variant="primary" size="sm" onClick={onClose}>Entendido</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function SettingsPanel({ voiceOn, onVoice, fx = { bg:true, sweep:true, micro:true }, setFxKey = () => () => {} }) {
   const { Card, Input, Switch, Button, Badge } = window.LUNE;
   const [cfg, setCfg] = React.useState(null);
   const [msg, setMsg] = React.useState('');
+  const [ayudaOllama, setAyudaOllama] = React.useState(false);
 
   React.useEffect(() => {
     if (window.lune) window.lune.get_config((j) => { try { setCfg(JSON.parse(j)); } catch(e){ setCfg({ ...CFG_DEMO }); } });
@@ -71,6 +130,33 @@ function SettingsPanel({ voiceOn, onVoice, fx = { bg:true, sweep:true, micro:tru
   };
 
   const c = cfg || CFG_DEMO;
+
+  // ── Audio: dispositivos reales del equipo y pruebas de micrófono/salida ──
+  const [audio, setAudio] = React.useState(AUDIO_DEMO);
+  const [micMsg, setMicMsg] = React.useState('');
+  const [micNivel, setMicNivel] = React.useState(0);
+  const [probando, setProbando] = React.useState(false);
+  React.useEffect(() => {
+    if (!window.lune) return undefined;
+    window.lune.dispositivos_audio((j) => { try { setAudio((a) => ({ ...a, ...JSON.parse(j) })); } catch (e) {} });
+    const onPrueba = (j) => {
+      setProbando(false);
+      try { const r = JSON.parse(j); setMicMsg(r.mensaje || ''); setMicNivel(Number(r.pico) || 0); } catch (e) {}
+    };
+    try { window.lune.mic_prueba.connect(onPrueba); } catch (e) {}
+    return () => { try { window.lune.mic_prueba.disconnect(onPrueba); } catch (e) {} };
+  }, []);
+  const probarMic = () => {
+    if (!window.lune) { setMicMsg('Demo · sin backend'); return; }
+    setProbando(true); setMicMsg('Habla ahora… (1.5 s)'); setMicNivel(0);
+    window.lune.probar_microfono(c.dispositivo_entrada || '', (ok) => { if (!ok) setProbando(false); });
+  };
+  const probarSalida = () => {
+    if (!window.lune) { setMsg('Demo · sin backend'); setTimeout(()=>setMsg(''),2500); return; }
+    window.lune.probar_salida(c.dispositivo_salida || '', () => {});
+  };
+  const micDef = (audio.entradas.find((e) => e.defecto) || {}).nombre;
+
   return (
     <div className="ln-settings">
       {fx.bg && <MoonField />}
@@ -87,12 +173,17 @@ function SettingsPanel({ voiceOn, onVoice, fx = { bg:true, sweep:true, micro:tru
           </div>
         </Card>
 
-        <Card eyebrow={<><window.IconCpu width={13} height={13}/> Red Neuronal · Local</>} title="Ollama" tone="cyan" tick>
+        <Card eyebrow={<><window.IconCpu width={13} height={13}/> Red Neuronal · Local
+            <button type="button" className="ln-help-btn" title="¿Cómo configuro Ollama? (aquí o en otro equipo)"
+              onClick={()=>setAyudaOllama(true)} aria-label="Ayuda de Ollama">?</button></>}
+          title="Ollama" tone="cyan" tick>
           <div className="ln-settings-grid">
-            <Input label="Servidor" value={c.ollama_url||''} onChange={set('ollama_url')} hint="http://localhost:11434 o una IP de tu red" />
+            <Input label="Servidor" value={c.ollama_url||''} onChange={set('ollama_url')} hint="http://localhost:11434 o la IP de otro equipo de tu red" />
             <Input label="Modelo local" value={c.ollama_model||''} onChange={set('ollama_model')} hint="p. ej. qwen2.5:7b" />
           </div>
+          <p className="ln-modal-nota" style={{margin:'10px 0 0'}}>¿Ollama en otra computadora? Pulsa el <b>?</b> de arriba: Lune te explica paso a paso.</p>
         </Card>
+        {ayudaOllama && <AyudaOllama onClose={()=>setAyudaOllama(false)} />}
 
         <Card eyebrow={<><window.IconTelegram width={13} height={13}/> Integración</>} title="Telegram" tone="blue">
           <Input label="Token del Bot" type="password" value={c.telegram_token||''} onChange={set('telegram_token')} hint="@BotFather → /newbot" />
@@ -107,6 +198,95 @@ function SettingsPanel({ voiceOn, onVoice, fx = { bg:true, sweep:true, micro:tru
             <Switch label="Voz (edge-tts · es-MX)" checked={voiceOn} onChange={onVoice} />
             <Switch label="Memoria persistente" checked={!!c.memoria} onChange={setBl('memoria')} accent="blue" />
             <Switch label="Herramientas de escritorio" checked={!!c.acciones_ia} onChange={setBl('acciones_ia')} />
+          </div>
+        </Card>
+
+        <Card eyebrow={<><window.IconMic width={13} height={13}/> Audio</>} title="Micrófono y salida" tone="cyan">
+          <p className="ln-card-nota">
+            Para dictar (🎙 en el chat) y para el modo llamada. Windows suele traer varios micrófonos (el de la laptop, el headset,
+            «Steam Streaming»…): elige el que tienes puesto y pruébalo antes de llamar.
+          </p>
+          {audio.faltan && audio.faltan.length > 0 && (
+            <p className="ln-modal-nota" style={{ margin:'0 0 12px', color:'var(--yellow-500)' }}>
+              Falta instalar: <code>pip install {audio.faltan.join(' ')}</code> — o usa «Instalar componentes…» más abajo.
+            </p>
+          )}
+          <div className="ln-settings-grid">
+            <div className="lune-field">
+              <label className="lune-field-label" htmlFor="f-mic">Micrófono de entrada</label>
+              <select id="f-mic" className="lune-input ln-select" value={c.dispositivo_entrada || ''} onChange={set('dispositivo_entrada')}>
+                <option value="">Por defecto del sistema{micDef ? ` · ${micDef}` : ''}</option>
+                {audio.entradas.map((e) => <option key={e.id} value={e.nombre}>{e.nombre}{e.defecto ? ' (defecto)' : ''}</option>)}
+              </select>
+              <span className="lune-field-hint">{audio.entradas.length ? `${audio.entradas.length} detectados · si el tuyo no sale, conéctalo y vuelve a abrir Configuración` : 'No detecté micrófonos'}</span>
+            </div>
+            <div className="lune-field">
+              <label className="lune-field-label" htmlFor="f-out">Salida de audio (por dónde habla Lune)</label>
+              <select id="f-out" className="lune-input ln-select" value={c.dispositivo_salida || ''} onChange={set('dispositivo_salida')}>
+                <option value="">Por defecto del sistema</option>
+                {audio.salidas.map((n) => <option key={n} value={n}>{n}</option>)}
+              </select>
+              <span className="lune-field-hint">«Speakers (Steam Streaming …)» es virtual: si lo eliges no oirás nada.</span>
+            </div>
+          </div>
+          <div className="ln-audio-row">
+            <Button variant="ghost" size="sm" onClick={probarMic} disabled={probando}>{probando ? 'Escuchando…' : 'Probar micrófono'}</Button>
+            <div className="ln-vu" aria-hidden="true"><i style={{ width: `${Math.min(100, Math.round(micNivel * 400))}%` }} /></div>
+            <Button variant="ghost" size="sm" onClick={probarSalida}><window.IconVolume width={13} height={13}/> Probar salida</Button>
+          </div>
+          {micMsg && <p className="ln-modal-nota" style={{ margin:'8px 0 0' }}>{micMsg}</p>}
+          <div style={{height:14}} />
+          <div className="ln-settings-grid">
+            <div className="lune-field">
+              <label className="lune-field-label" htmlFor="f-whisper">Modelo de Whisper (transcripción local)</label>
+              <select id="f-whisper" className="lune-input ln-select" value={c.modelo_whisper || 'base'} onChange={set('modelo_whisper')}>
+                {(audio.modelos_whisper || []).map((m) => (
+                  <option key={m} value={m}>{m}{(audio.modelos_descargados || []).includes(m) ? ' · descargado' : ' · se descarga la 1ª vez'}</option>
+                ))}
+              </select>
+              <span className="lune-field-hint">tiny/base van bien en CPU; small o más grande con GPU. La descarga es una sola vez y necesita internet.</span>
+            </div>
+            <Input label="Idioma del dictado" value={c.voz_idioma ?? 'es'} onChange={set('voz_idioma')} hint="es, en, fr… vacío = detectar solo" />
+          </div>
+        </Card>
+
+        <Card eyebrow={<><window.IconBolt width={13} height={13}/> Sistema</>} title="Calidad de vida" tone="blue">
+          <div className="ln-toggle-row">
+            <Switch label="Arrancar Lune junto con Windows" checked={!!c.autoinicio} onChange={setBl('autoinicio')} accent="blue" />
+          </div>
+          <div style={{height:14}} />
+          <div className="ln-settings-grid">
+            <Input label="Lune se aburre tras (minutos sin escribirle)" type="number" min="0" value={c.aburrimiento_min ?? 10}
+              onChange={set('aburrimiento_min')} hint="0 = nunca. Te dice algo una vez por racha; tu siguiente mensaje la rearma." />
+            <div>
+              <div className="lune-overline" style={{marginBottom:6}}>Componentes</div>
+              <Button variant="ghost" size="sm" onClick={()=>{ if (window.lune) window.lune.abrir_instalador(()=>{}); else setMsg('Demo · sin backend'); }}>
+                Instalar componentes…
+              </Button>
+              <p className="ln-modal-nota" style={{margin:'6px 0 0'}}>Abre el instalador: explica para qué sirve cada cosa (voz, dictado, interfaz animada…) y lo instala.</p>
+            </div>
+          </div>
+        </Card>
+
+        <Card eyebrow={<><window.IconMoon width={13} height={13}/> Escritorio</>} title="Mascota" tone="cyan">
+          <p style={{margin:'0 0 12px', font:'var(--text-data)', fontSize:12, color:'var(--text-dim)'}}>
+            Cómo se dibuja Lune cuando la sacas al escritorio (menú → Mascota). Haz clic sobre ella para que comente tu pantalla.
+          </p>
+          <div className="ln-seg-row">
+            <Button variant={c.mascota_render==='animado'?'primary':'ghost'} size="sm" onClick={()=>set('mascota_render')('animado')}>Imágenes animadas</Button>
+            <Button variant="ghost" size="sm" disabled title="Avatar 3D — próximamente">VRM 3D · próximamente</Button>
+            <Button variant={c.mascota_render==='sprites'?'primary':'ghost'} size="sm" onClick={()=>set('mascota_render')('sprites')}>Sprites ligeros</Button>
+          </div>
+        </Card>
+
+        <Card eyebrow={<><window.IconCpu width={13} height={13}/> Rendimiento</>} title="Modo de interfaz" tone="yellow">
+          <p style={{margin:'0 0 12px', font:'var(--text-data)', fontSize:12, color:'var(--text-dim)'}}>
+            <b>Bajos recursos</b> usa la interfaz nativa ligera (sin Chromium ni videos) para no consumir tanto en equipos modestos. Se aplica al reiniciar Lune.
+          </p>
+          <div className="ln-seg-row">
+            <Button variant={(c.interfaz_modo||'web')==='web'?'primary':'ghost'} size="sm" onClick={()=>set('interfaz_modo')('web')}>Completa</Button>
+            <Button variant={c.interfaz_modo==='nativo'?'primary':'ghost'} size="sm" onClick={()=>set('interfaz_modo')('nativo')}>Bajos recursos</Button>
+            <Button variant={c.interfaz_modo==='patata'?'primary':'ghost'} size="sm" onClick={()=>set('interfaz_modo')('patata')} title="Solo terminal: texto y caritas :D — sin Qt, sin imágenes">Patata (terminal)</Button>
           </div>
         </Card>
 

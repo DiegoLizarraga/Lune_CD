@@ -7,6 +7,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Lune CD · Desktop</title>
 <link rel="stylesheet" href="../../styles.css" />
+<!-- Fuentes del tema "Nube" (cielo nocturno): Exo 2 para el título, JetBrains Mono para datos. -->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Exo+2:ital,wght@1,700;1,800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
 <style>
   html, body { margin:0; height:100%; background:var(--ink-950); }
   #root { height:100vh; }
@@ -63,7 +66,9 @@
 
   .ln-mascot{ flex:1; min-height:0; display:flex; flex-direction:column; justify-content:flex-end; }
   .ln-mascot-stage{
-    position:relative; height:100%; max-height:520px; min-height:150px; background:
+    /* Los clips de la mascota son 9:16 (720×1280): el stage toma esa misma proporción
+       para que el video lo llene entero, sin banda vacía arriba. */
+    position:relative; width:100%; aspect-ratio:9/16; height:auto; max-height:520px; min-height:150px; background:
       radial-gradient(circle at 50% 32%, rgba(0,229,255,.12), transparent 62%),
       var(--ink-950);
     border:var(--bw) solid var(--ink-500); clip-path:var(--clip-notch);
@@ -71,7 +76,7 @@
   }
   .ln-mascot-stage::after{ display:none; }
   .ln-mascot-stage::after{ content:""; position:absolute; inset:0; background:var(--tex-scanline); pointer-events:none; }
-  .ln-mascot-stage img{ height:94%; object-fit:contain; object-position:bottom center; }
+  .ln-mascot-stage img, .ln-mascot-stage video{ height:100%; width:100%; object-fit:cover; object-position:center bottom; }
   .ln-mascot-tag{ display:none; }
 
   .ln-telegram{
@@ -275,6 +280,74 @@
   .ln-welcome-chips{ display:flex; flex-wrap:wrap; gap:9px; justify-content:center; margin-top:8px; max-width:520px; }
   .ln-chip{ font-family:var(--font-mono); font-size:11px; color:var(--cyan-300); background:var(--ink-800); border:var(--bw) solid var(--cyan-700); padding:6px 11px; clip-path:var(--clip-tr); }
   .ln-chip-btn{ cursor:pointer; appearance:none; -webkit-appearance:none; }
+  .ln-seg-row{ display:flex; flex-wrap:wrap; gap:8px; }
+
+  /* ═══════════ TEMA "NUBE" — se activa con Lune AI · Nube (cielo nocturno con nubecitas) ═══════════ */
+  @keyframes nube-drift{ from{ transform:translateX(-18vw); } to{ transform:translateX(88vw); } }
+  @keyframes nube-bob{ 0%,100%{ transform:translateY(0); } 50%{ transform:translateY(-10px); } }
+  @keyframes nube-twinkle{ 0%,100%{ opacity:.9; } 50%{ opacity:.25; } }
+  .nube-sky{ position:absolute; inset:0; z-index:0; overflow:hidden; pointer-events:none;
+    background:linear-gradient(180deg,#0a1230 0%,#122253 55%,#20386f 100%); }
+  .nube-stars{ position:absolute; inset:0; animation:nube-twinkle 5s ease-in-out infinite; background-image:
+    radial-gradient(1.5px 1.5px at 8% 18%,#fff 50%,transparent 51%),
+    radial-gradient(1px 1px at 22% 40%,#cfe0ff 50%,transparent 51%),
+    radial-gradient(2px 2px at 36% 12%,#fff 50%,transparent 51%),
+    radial-gradient(1px 1px at 48% 30%,#cfe0ff 50%,transparent 51%),
+    radial-gradient(1.5px 1.5px at 64% 8%,#fff 50%,transparent 51%),
+    radial-gradient(1px 1px at 78% 24%,#cfe0ff 50%,transparent 51%),
+    radial-gradient(2px 2px at 90% 14%,#fff 50%,transparent 51%),
+    radial-gradient(1px 1px at 15% 62%,#cfe0ff 50%,transparent 51%),
+    radial-gradient(1.5px 1.5px at 85% 48%,#fff 50%,transparent 51%); }
+  .nube-moon{ position:absolute; top:48px; right:72px; width:74px; height:74px; border-radius:50%;
+    box-shadow:16px 10px 0 0 #ffe9a3; filter:drop-shadow(0 0 24px rgba(255,233,163,.45)); transform:rotate(-18deg); }
+  .nube-cloud{ position:absolute; left:0; }
+  /* Sobre el cielo: barras y vista por encima, fondos transparentes para que se vea el cielo */
+  .tema-nube .ln-topbar, .tema-nube .ln-view, .tema-nube .ln-inputbar{ position:relative; z-index:1; }
+  .tema-nube .ln-view, .tema-nube .ln-stream{ background:transparent; }
+  .tema-nube .ln-topbar{ background:linear-gradient(90deg,#0a1226,#0d1836); border-bottom:1px solid #16233f; }
+  .tema-nube .ln-inputbar{ background:#0c1530; border-top:1px solid #1b2c52; }
+  .tema-nube .ln-input{ background:#0e1a3a; border:1px solid #2b4a8f; border-radius:999px; clip-path:none;
+    font-family:'JetBrains Mono', var(--font-mono), monospace; font-size:13.5px; color:#e2edff; padding-left:20px; }
+  .tema-nube .ln-input:focus{ border-color:#7db3ff; box-shadow:0 0 0 3px rgba(125,179,255,.18); }
+  .tema-nube .ln-input-glyph{ display:none; }
+  .tema-nube .ln-chip{ border-radius:999px; clip-path:none; border:1px solid rgba(190,215,255,.55);
+    background:rgba(220,235,255,.12); color:#e2edff; font-size:12.5px; padding:9px 18px; }
+  .tema-nube .ln-chip:hover{ background:rgba(220,235,255,.24); color:#fff; border-color:#9cc3ff; transform:none; }
+  /* Hero "LUNE ENTRE NUBES" (estado vacío del chat en modo Nube) */
+  .nube-hero{ position:relative; height:100%; overflow-y:auto; display:flex; flex-direction:column; align-items:center;
+    gap:14px; padding:24px; text-align:center; }
+  .nube-avatar-wrap{ position:relative; animation:nube-bob 6s ease-in-out infinite; margin-top:auto; }
+  .nube-avatar{ display:block; width:190px; height:190px; object-fit:cover; object-position:top center; border-radius:22px;
+    border:2px solid #9cc3ff; box-shadow:0 0 34px rgba(125,179,255,.45); }
+  .nube-avatar-cloud{ position:absolute; bottom:-34px; left:50%; transform:translateX(-50%); pointer-events:none; }
+  .nube-kanji{ margin-top:26px; color:#ffd60a; font-size:15px; font-weight:700; letter-spacing:4px;
+    text-shadow:0 0 14px rgba(255,214,10,.5); font-family:var(--font-jp); }
+  .nube-h1{ margin:0; font-family:'Exo 2', var(--font-display), sans-serif; font-style:italic; font-weight:800; font-size:52px;
+    color:#fff; letter-spacing:2px; text-shadow:0 0 26px rgba(156,195,255,.8),0 0 60px rgba(59,130,246,.5); white-space:nowrap; }
+  .nube-p{ margin:0; max-width:520px; font-size:14.5px; line-height:1.7; color:#c3d4f2;
+    font-family:'JetBrains Mono', var(--font-mono), monospace; }
+  .nube-chips{ display:flex; flex-wrap:wrap; justify-content:center; gap:10px; max-width:640px; margin-top:6px; margin-bottom:auto; }
+  @media (prefers-reduced-motion: reduce){ .nube-cloud, .nube-stars, .nube-avatar-wrap{ animation:none; } }
+
+  /* ═══════════ Ayuda ("?") y modal de guía ═══════════ */
+  .ln-help-btn{ margin-left:8px; width:18px; height:18px; border-radius:50%; border:var(--bw) solid var(--cyan-700);
+    background:var(--ink-900); color:var(--cyan-400); font:700 11px/1 var(--font-mono); cursor:pointer; vertical-align:middle;
+    appearance:none; -webkit-appearance:none; padding:0; }
+  .ln-help-btn:hover{ background:var(--cyan-500); color:var(--ink-950); border-color:var(--cyan-500); }
+  .ln-modal-bg{ position:fixed; inset:0; z-index:200; background:rgba(4,6,14,.72); backdrop-filter:blur(3px);
+    display:flex; align-items:center; justify-content:center; padding:24px; }
+  .ln-modal{ width:min(720px, 100%); max-height:88vh; overflow-y:auto; background:var(--ink-850); color:var(--text);
+    border:var(--bw-bold) solid var(--cyan-700); clip-path:var(--clip-notch); padding:22px 24px; box-shadow:0 20px 60px rgba(0,0,0,.6); }
+  .ln-modal-title{ margin:4px 0 12px; font-family:var(--font-display); font-weight:700; font-style:italic; font-size:22px;
+    letter-spacing:.04em; color:var(--text-strong); text-shadow:var(--text-glow-cyan); }
+  .ln-modal-tabs{ display:flex; gap:8px; margin-bottom:14px; }
+  .ln-modal-body{ font-family:var(--font-sans); font-size:13.5px; line-height:1.6; color:var(--text); }
+  .ln-modal-body ol{ padding-left:22px; margin:8px 0; } .ln-modal-body li{ margin:8px 0; }
+  .ln-modal-body code{ font-family:var(--font-mono); font-size:12px; color:var(--cyan-300); background:var(--ink-900); padding:1px 5px; }
+  .ln-modal-nota{ display:block; font-family:var(--font-mono); font-size:11.5px; color:var(--text-muted); margin-top:4px; }
+  .ln-code{ margin:6px 0; padding:9px 12px; font-family:var(--font-mono); font-size:12px; color:var(--yellow-500);
+    background:var(--ink-950); border-left:3px solid var(--cyan-700); white-space:pre-wrap; user-select:all; }
+  .ln-modal-foot{ display:flex; align-items:center; justify-content:space-between; margin-top:16px; }
 
   /* ── INPUT BAR ── */
   .ln-inputbar{ position:relative; z-index:5; height:var(--app-inputbar); flex:none; display:flex; align-items:center; gap:10px; padding:0 22px; background:var(--ink-850); border-top:var(--bw) solid var(--border-strong); }
@@ -345,6 +418,15 @@
   .ln-settings .lune-card-title{ font-style:italic; }
   .ln-settings-grid{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
   .ln-toggle-row{ display:flex; flex-wrap:wrap; gap:18px; }
+  /* Audio: <select> con el mismo look que los Input del kit + medidor de nivel del micrófono */
+  select.ln-select, select.ln-select:focus{ appearance:none; -webkit-appearance:none; cursor:pointer; padding-right:34px;
+    background-image:linear-gradient(45deg, transparent 50%, var(--cyan-500) 50%), linear-gradient(135deg, var(--cyan-500) 50%, transparent 50%);
+    background-position:calc(100% - 18px) 50%, calc(100% - 12px) 50%; background-size:6px 6px, 6px 6px; background-repeat:no-repeat; }
+  select.ln-select option{ background:var(--ink-900); color:var(--text); }
+  .ln-audio-row{ display:flex; align-items:center; gap:12px; margin-top:14px; flex-wrap:wrap; }
+  .ln-vu{ flex:1; min-width:120px; height:10px; background:var(--ink-900); border:var(--bw) solid var(--border); overflow:hidden; }
+  .ln-vu i{ display:block; height:100%; width:0; background:linear-gradient(90deg, var(--cyan-500), var(--yellow-500)); transition:width .25s ease; }
+  .ln-card-nota{ margin:0 0 12px; font:var(--text-data); font-size:12px; color:var(--text-dim); }
   .ln-settings-foot{ display:flex; align-items:center; justify-content:space-between; gap:14px; padding:4px 0 10px; }
   .ln-settings::-webkit-scrollbar{ width:9px; } .ln-settings::-webkit-scrollbar-thumb{ background:var(--ink-500); }
   /* entrance: cards drop + settle into tilt */
@@ -387,9 +469,15 @@
     </svg>
   </template>
 
-  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
-  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
-  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+  <!-- React, ReactDOM y Babel van EN LOCAL (ui_web/vendor, mismos bytes que el CDN:
+       los hashes SRI coinciden). Así Lune abre sin internet y no espera 3 MB del
+       CDN en cada arranque. Si alguien borra vendor/, se cae al CDN. -->
+  <script src="../../vendor/react.development.js"></script>
+  <script>window.React || document.write('<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"><\/script>');</script>
+  <script src="../../vendor/react-dom.development.js"></script>
+  <script>window.ReactDOM || document.write('<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"><\/script>');</script>
+  <script src="../../vendor/babel.min.js"></script>
+  <script>window.Babel || document.write('<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"><\/script>');</script>
   <script src="../../_ds_bundle.js"></script>
   <script>window.LUNE = window.LuneCDShibuyaPunkDesignSystem_8598db;</script>
   <!-- Puente al backend de Lune (solo dentro de la app; en el navegador queda inactivo). -->
