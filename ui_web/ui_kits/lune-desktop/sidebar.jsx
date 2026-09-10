@@ -41,7 +41,20 @@ function MascotStage({ state }) {
   );
 }
 
-function Sidebar({ provider, onProvider, mascotState }) {
+// Lune está fuera (mascota de escritorio): el escenario no la dibuja dos veces.
+// Queda un aviso y un botón para traerla de vuelta a la ventana.
+function MascotFuera({ onTraer }) {
+  return (
+    <div className="ln-mascot-out">
+      <div className="ln-mascot-out-jp lune-jp">月</div>
+      <div className="ln-mascot-out-t">Lune está en tu escritorio</div>
+      <div className="ln-mascot-out-d">Anda por ahí como mascota flotante. Aquí no la verás doble.</div>
+      {onTraer && <button className="ln-mascot-out-btn" onClick={onTraer}>Traerla de vuelta</button>}
+    </div>
+  );
+}
+
+function Sidebar({ provider, onProvider, mascotState, mascotaFuera = false, onTraer }) {
   const { ProviderTab } = window.LUNE;
   return (
     <aside className="ln-sidebar">
@@ -62,8 +75,8 @@ function Sidebar({ provider, onProvider, mascotState }) {
       </div>
 
       <div className="ln-mascot">
-        <div className="ln-mascot-stage">
-          <MascotStage state={mascotState} />
+        <div className={`ln-mascot-stage${mascotaFuera ? ' is-out' : ''}`}>
+          {mascotaFuera ? <MascotFuera onTraer={onTraer} /> : <MascotStage state={mascotState} />}
         </div>
       </div>
     </aside>

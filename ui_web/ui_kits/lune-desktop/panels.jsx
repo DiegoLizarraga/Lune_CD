@@ -17,9 +17,18 @@ function PanelShell({ overline, title, children }) {
 function PersonajesPanel() {
   const { Card, Button, Badge } = window.LUNE;
   const [lista, setLista] = React.useState([]);
-  const cargar = () => { if (window.lune) window.lune.personajes_lista((j) => { try { setLista(JSON.parse(j)); } catch (e) {} }); };
+  const [vrm, setVrm] = React.useState({ webengine:false, modelos:[] });   // modelos 3D disponibles
+  const cargar = () => {
+    if (!window.lune) return;
+    window.lune.personajes_lista((j) => { try { setLista(JSON.parse(j)); } catch (e) {} });
+    window.lune.vrm_modelos((j) => { try { setVrm(JSON.parse(j)); } catch (e) {} });
+  };
   React.useEffect(cargar, []);
   const activar = (nombre) => { if (window.lune) window.lune.personaje_activar(nombre, () => cargar()); };
+  // Cada personaje puede tener su propio .vrm (se ve cuando la mascota está en modo VRM).
+  const asignarVrm = (nombre, archivo) => { if (window.lune) window.lune.personaje_vrm(nombre, archivo, () => cargar()); };
+  const importar = () => { if (window.lune) window.lune.vrm_importar(() => cargar()); };
+  const modelos = vrm.modelos || [];
   return (
     <PanelShell overline="Roleplay" title="PERSONAJES">
       {lista.length === 0 && <p className="ln-empty">Sin personajes (o backend inactivo).</p>}
@@ -27,13 +36,28 @@ function PersonajesPanel() {
         <Card key={p.nombre} tone={p.activo ? 'cyan' : 'default'} tick={p.activo} title={p.nombre}
           eyebrow={p.activo ? <Badge variant="cyan">Activo</Badge> : null}>
           <p className="ln-panel-desc">{p.descripcion || '—'}</p>
-          {!p.activo && (
-            <div style={{ marginTop: 12 }}>
-              <Button variant="ghost" size="sm" onClick={() => activar(p.nombre)}>Activar</Button>
-            </div>
-          )}
+          <div className="ln-panel-foot">
+            <label className="ln-vrm-pick" title={vrm.webengine ? 'Su modelo 3D cuando la mascota está en modo VRM' : 'El avatar 3D necesita PyQt6-WebEngine'}>
+              <span className="lune-overline">Modelo 3D</span>
+              <select className="lune-input" value={p.vrm || ''} onChange={(e) => asignarVrm(p.nombre, e.target.value)}>
+                <option value="">— el de la mascota</option>
+                {modelos.map((m) => <option key={m} value={m}>{m}</option>)}
+                {p.vrm && !modelos.includes(p.vrm) && <option value={p.vrm}>{p.vrm}</option>}
+              </select>
+            </label>
+            {!p.activo && <Button variant="ghost" size="sm" onClick={() => activar(p.nombre)}>Activar</Button>}
+          </div>
         </Card>
       ))}
+      <Card title="Modelos 3D (VRM)" tone="blue">
+        <p className="ln-panel-desc">
+          {modelos.length ? `${modelos.length} en modelo_vrm/: ${modelos.join(', ')}.` : 'Aún no hay ningún .vrm en modelo_vrm/.'}
+          {' '}Cada personaje puede tener el suyo; el resto usa el modelo por defecto de Ajustes → Mascota.
+        </p>
+        <div style={{ marginTop: 12 }}>
+          <Button variant="ghost" size="sm" onClick={importar}>Importar .vrm…</Button>
+        </div>
+      </Card>
     </PanelShell>
   );
 }

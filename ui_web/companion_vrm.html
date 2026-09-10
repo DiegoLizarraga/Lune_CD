@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lune VRM</title>
+<link rel="stylesheet" href="styles.css" />
+<style>
+  html, body { margin:0; height:100%; background:transparent; overflow:hidden;
+    font-family:var(--font-body, system-ui, sans-serif); }
+  #wrap { display:flex; flex-direction:column; align-items:center; justify-content:flex-end;
+    height:100vh; gap:6px; padding:6px; box-sizing:border-box; }
+
+  /* Burbuja de comentario (misma que companion.html) */
+  #bubble { max-width:92%; background:var(--ink-800,#0F1424); color:var(--paper,#EAF1FF);
+    border:2px solid var(--cyan-700,#0091AB); border-radius:3px; clip-path:var(--clip-tr, none);
+    padding:9px 12px; font-size:12.5px; line-height:1.38; box-shadow:0 6px 22px rgba(0,0,0,.55);
+    opacity:0; transform:translateY(6px); transition:opacity .25s, transform .25s; pointer-events:none; }
+  #bubble.on { opacity:1; transform:translateY(0); }
+  #bubble .who { font-family:var(--font-mono, monospace); font-size:9px; letter-spacing:.12em;
+    color:var(--cyan-400,#36ECFF); text-transform:uppercase; display:block; margin-bottom:3px; }
+  #bubble .who .jp { color:var(--yellow-500,#FFE000); }
+
+  /* El avatar 3D: sin marco ni fondo, la ventana recorta a lo que pinta el modelo */
+  #stage { position:relative; flex:1; min-height:0; width:100%; }
+  #c { display:block; width:100%; height:100%; }
+
+  /* "z z z" mientras duerme */
+  #zzz { position:absolute; top:6%; right:14%; pointer-events:none; opacity:0; transition:opacity .6s;
+    font-family:var(--font-display, var(--font-mono, monospace)); font-weight:700; color:var(--cyan-400,#36ECFF);
+    text-shadow:0 0 10px rgba(54,236,255,.6); }
+  #zzz.on { opacity:1; }
+  #zzz span { position:absolute; right:0; animation:zzz 2.4s linear infinite; font-size:14px; }
+  #zzz span:nth-child(2) { animation-delay:-.8s; font-size:18px; right:10px; }
+  #zzz span:nth-child(3) { animation-delay:-1.6s; font-size:22px; right:22px; }
+  @keyframes zzz { 0%{ transform:translate(0,0) rotate(0); opacity:0; } 15%{ opacity:.9; } 100%{ transform:translate(14px,-46px) rotate(18deg); opacity:0; } }
+
+  #aviso { position:absolute; inset:0; display:none; place-content:center; text-align:center;
+    font:12.5px/1.5 var(--font-body, system-ui, sans-serif); color:#eee; background:rgba(15,20,36,.86);
+    border:2px solid var(--cyan-700,#0091AB); padding:18px; box-sizing:border-box; }
+  #aviso.on { display:grid; }
+  #aviso code { color:#a5b4fc; word-break:break-all; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="bubble"><span class="who"><span class="jp">月</span> Lune</span><span id="btxt"></span></div>
+  <div id="stage">
+    <canvas id="c"></canvas>
+    <div id="zzz"><span>z</span><span>z</span><span>z</span></div>
+    <div id="aviso"></div>
+  </div>
+</div>
+
+<!-- three.js y @pixiv/three-vrm empaquetados en ui_web/vendor (sin red). -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "./vendor/three/three.module.min.js",
+    "three/addons/": "./vendor/three/",
+    "@pixiv/three-vrm": "./vendor/three/three-vrm.module.min.js"
+  }
+}
+</script>
+<script type="module">
+import { crearMascota } from './vrm/lune_vrm.js';
+
+const params = new URLSearchParams(location.search);
+const SRC = params.get('src') || '/vrm/actual.vrm';
+const ENC = params.get('enc') === 'cuerpo' ? 'cuerpo' : 'retrato';
+
+const bub = document.getElementById('bubble'), btxt = document.getElementById('btxt');
+const zzz = document.getElementById('zzz'), aviso = document.getElementById('aviso');
+let bt = null;
+
+function mostrarAviso(html) { aviso.innerHTML = html; aviso.classList.add('on'); document.title = 'Lune VRM error'; }
+// Solo los fallos de arranque (módulos, WebGL) tapan el escenario; un error puntual
+// con el modelo ya cargado se registra y no se pinta encima del avatar.
+window.addEventListener('error', (e) => {
+  if (window.luneReady) { console.warn('lune_vrm', e.message || e.error); return; }
+  mostrarAviso(`<div><b>No se pudo cargar el visor 3D.</b><br><small>${String(e.message || e.error || '').slice(0, 200)}</small></div>`);
+});
+
+// Frases cortas de Lune para eventos de mascota (sin usar el modelo).
+const FRASES = {
+  arrastre: ['Eh, eh, ¿a dónde me llevas?', '¿Me mudas de sitio otra vez?', 'Vale, pero con cuidado.', 'Ay… no me sueltes.'],
+  caricia: ['…Está bien, un poco más.', 'Eso. Justo ahí.', 'No te acostumbres.'],
+  dormir: ['zzz…'],
+  despertar: ['¿Eh? Ya, ya estoy.', 'No estaba dormida. Pensaba.'],
+};
+const frase = (k) => FRASES[k][Math.floor(Math.random() * FRASES[k].length)];
+
+const mascota = crearMascota({
+  canvas: document.getElementById('c'), src: SRC + (SRC.includes('?') ? '&' : '?') + 'v=' + (params.get('v') || '0'),
+  encuadre: ENC,
+  onEvento: (tipo, dato) => {
+    if (tipo === 'listo') { aviso.classList.remove('on'); document.title = 'Lune VRM listo'; window.luneReady = true; }
+    else if (tipo === 'error') { mostrarAviso(`<div><b>No pude abrir el modelo.</b><br><code>${SRC}</code><br><small>${dato}</small></div>`); }
+    else if (tipo === 'arrastre' && dato && Math.random() < 0.45) window.comentar(frase('arrastre'), 3500);
+    else if (tipo === 'caricia' && dato && Math.random() < 0.6) window.comentar(frase('caricia'), 3500);
+    else if (tipo === 'dormir') { zzz.classList.toggle('on', !!dato); if (!dato && Math.random() < 0.7) window.comentar(frase('despertar'), 3000); else if (dato) window.ocultarBurbuja(); }
+  },
+});
+
+// ── API para Python (QWebEngineView.page().runJavaScript) ─────────────────────
+window.luneReady = false;
+window.setEmocion = (s) => mascota.setEstado(s);                 // mismo nombre que companion.html
+window.luneSetEmotion = (s) => mascota.setEstado(s);             // compat con el visor anterior
+window.luneSpeak = (on) => mascota.setHablando(!!on);
+window.luneCursor = (nx, ny, px, py, dentro) => mascota.cursor(nx, ny, px, py, dentro);
+window.luneDrag = (on, vx, vy) => mascota.drag(!!on, vx, vy);
+window.luneSleep = (on) => mascota.dormir(!!on);
+window.luneTouch = () => mascota.tocar();
+window.luneEncuadre = (m) => mascota.encuadrar(m);
+window.luneCargarModelo = (url) => { window.luneReady = false; document.title = 'Lune VRM'; mascota.cargar(url); };
+window.luneSetFPS = (n) => mascota.setFPS(n);
+window.luneMeta = () => JSON.stringify(mascota.meta());
+window.comentar = (t, ms) => {
+  if (!t) return;
+  btxt.textContent = t;
+  bub.classList.add('on');
+  if (bt) clearTimeout(bt);
+  bt = setTimeout(() => bub.classList.remove('on'), ms || 14000);
+};
+window.pensando = () => { btxt.textContent = '…'; bub.classList.add('on'); if (bt) clearTimeout(bt); bt = null; };
+window.ocultarBurbuja = () => { bub.classList.remove('on'); };
+</script>
+</body>
+</html>

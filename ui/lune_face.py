@@ -92,6 +92,9 @@ EMOCION_A_ESTADO = {
     "happy": "happy", "sad": "sad", "angry": "error", "think": "thinking",
     "surprised": "happy", "awkward": "confused", "question": "confused",
     "curious": "reading", "neutral": "normal",
+    # v10 / v10.1 (los sprites no tienen cara propia: se aproximan)
+    "nervous": "confused", "wave": "happy", "dismiss": "normal",
+    "laughing": "happy", "bored": "sad",
 }
 
 

@@ -44,7 +44,7 @@ from ui.theme import (
 )
 from ui import lune_face
 
-from lune_core import marcadores
+from lune_core import marcadores, expresiones
 from servicios.notas_service import NotasService
 from servicios.red_service import RedService
 from ui.avatar_overlay import AvatarOverlay
@@ -103,12 +103,21 @@ class SondeoProveedoresWorker(QThread):
 #  MAIN WINDOW
 # ─────────────────────────────────────────────────────────────────────────────
 class LuneCDWindow(QMainWindow):
+    _hablando = pyqtSignal(bool)     # la voz suena (hilo de audio) → boca de la mascota 3D
+    _acto_voz = pyqtSignal(str)      # empieza a sonar un tramo con esta emoción
     def __init__(self):
         super().__init__()
         # Config visual/features (config.json) + APIs/personalidad (datos.json)
         self.config           = Config()
         self.ai_manager       = AIManager()
-        self.voice            = VoiceEngine(self.config)
+        self.voice = VoiceEngine(self.config)
+        # La voz avisa cuándo suena (hilo de audio) → señal → boca del avatar 3D.
+        self._hablando.connect(self._on_hablando)
+        self.voice.al_hablar = self._hablando.emit
+        self._acto_voz.connect(self._expresar)
+        self._seguidor = None            # <|ACT|> vistos en el stream en curso
+        self._expresado_en_stream = False
+        self._timers_plan = []
         self.current_provider = "openrouter"
         self.ai_worker        = None
         self._current_bubble  = None
@@ -877,6 +886,9 @@ class LuneCDWindow(QMainWindow):
             # Sin esta bandera, _on_response pisaba el estado con "LISTO" y
             # parecía que la interrupción no había funcionado.
             self._cancelado = True
+            self._seguidor = None; self._cancelar_plan()
+            try: self.voice.cancelar()
+            except Exception: pass
             if self._voz_stream is not None:
                 self._voz_stream.cancelar(); self._voz_stream = None
             self._set_status("INTERRUMPIDO", COLORS["warning"])
@@ -901,6 +913,11 @@ class LuneCDWindow(QMainWindow):
         if not text:
             return
         self.stack.setCurrentIndex(0)
+        # Lo pendiente de la respuesta anterior no debe pisar esta: expresiones
+        # programadas, marcadores del stream viejo y voz por tramos.
+        self._cancelar_plan(); self._expresado_en_stream = False; self._seguidor = None
+        try: self.voice.cancelar()
+        except Exception: pass
 
         bubble = MessageBubble(text, is_user=True, provider_id=self.current_provider,
                                markdown=False, adjuntos=adjuntos_envio)
@@ -945,6 +962,8 @@ class LuneCDWindow(QMainWindow):
             self.ai_manager.providers[self.current_provider].cancel_flag = False
 
         self._set_status("PROCESANDO", COLORS["warning"]); self.lune_face.set_state("thinking")
+        self._cancelar_plan(); self._expresado_en_stream = False
+        self._seguidor = expresiones.SeguidorActs()
         if self._overlay is not None and self._overlay.isVisible():
             self._overlay.set_estado("thinking")
 
@@ -998,13 +1017,20 @@ class LuneCDWindow(QMainWindow):
         visible = marcadores.limpiar_para_mostrar(partial)
         if self._voz_stream is not None:
             self._voz_stream.escribir(visible)
+        # La cara cambia según llegan los <|ACT|> (salvo que la voz vaya a leer la
+        # respuesta al final: entonces cambia al ritmo de la voz).
+        if self._seguidor is not None and not self._voz_lee_al_final():
+            for act in self._seguidor.nuevos(partial):
+                self._expresado_en_stream = True
+                self._expresar(act.get("emotion", "neutral"))
         if self._typing_indicator and self._current_bubble is None:
             self._typing_indicator.stop(); self._typing_indicator.deleteLater(); self._typing_indicator = None
             self._current_bubble = MessageBubble(
                 visible + " ▋", is_user=False, provider_id=self.current_provider,
                 markdown=self.config.feature("markdown", True))
             self.messages_layout.insertWidget(self.messages_layout.count()-1, self._current_bubble)
-            self.lune_face.set_state("typing")
+            if not self._expresado_en_stream:
+                self.lune_face.set_state("typing")
         elif self._current_bubble:
             self._current_bubble.update_text(visible + " ▋", streaming=True)
         self._scroll_bottom()
@@ -1046,31 +1072,82 @@ class LuneCDWindow(QMainWindow):
 
         self.memoria.procesar_respuesta_lune(respuesta_limpia)
 
-        # Emoción: si el modelo emitió un <|ACT|>, manda ese; si no, la heurística
-        # léxica de siempre. El texto hablable no incluye los marcadores.
-        hablable, control = marcadores.separar(respuesta_limpia)
-        acts = [v for c, v in control if c == "act"]
-        if acts:
-            emotion = lune_face.estado_desde_emocion(acts[-1]["emotion"])
-        else:
-            hablable = respuesta_limpia
-            emotion = detect_emotion(respuesta_limpia)
-        if acts and hablable.strip():
+        # Emoción: el plan de expresiones del modelo (hasta tres tramos); sin
+        # marcadores, la heurística léxica de siempre. El texto hablable no los
+        # incluye. La última expresión SE QUEDA (no vuelve sola al idle).
+        plan = expresiones.planificar(respuesta_limpia)
+        hablable = expresiones.hablable(plan)
+        con_acts = bool(expresiones.emociones(plan))
+        if con_acts and hablable.strip():
             burbuja.update_text(hablable)   # la burbuja final sin marcadores
-        self.lune_face.set_state(emotion, auto_revert_ms=6000)
-        if self._overlay is not None and self._overlay.isVisible():
-            # Con ACT pasamos emoción + intensidad (el VRM las aprovecha); si no,
-            # el estado colapsado de la heurística.
-            if acts:
-                self._overlay.set_act(acts[-1], 6000)
-            else:
-                self._overlay.set_estado(emotion, 6000)
+        hablo = False
+        cancelado = getattr(self, "_cancelado", False)
         if self._voz_stream is not None:
             self._voz_stream.terminar()   # emite lo que quede y cierra
             self._voz_stream = None
+        elif cancelado:
+            pass                          # interrumpida: ni habla ni programa expresiones
+        elif con_acts:
+            # Por tramos: la cara cambia cuando empieza a sonar cada uno y, al
+            # acabar, se queda con la última (aunque su tramo no tenga texto).
+            hablo = self.voice.speak_segmentos(
+                expresiones.segmentos_voz(plan),
+                al_segmento=lambda _i, e: self._acto_voz.emit(e),
+                al_terminar=lambda f=expresiones.final(plan): self._acto_voz.emit(f))
         else:
             self.voice.speak(hablable)
+        if not hablo and not cancelado:
+            if con_acts and not self._expresado_en_stream:
+                self._programar_plan(plan)             # de golpe: al ritmo de lectura
+            elif con_acts:
+                self._expresar(expresiones.final(plan))
+            else:
+                self._expresar_estado(detect_emotion(respuesta_limpia))
         self._scroll_bottom()
+
+    # ── Expresiones (hasta tres por respuesta; la última se queda) ──────────────
+    def _voz_lee_al_final(self) -> bool:
+        return bool(getattr(self.voice, "available", False) and getattr(self.voice, "_enabled", False)
+                    and self._voz_stream is None)
+
+    # Estados de PROCESO de los sprites (escribiendo, leyendo, error…): no son una
+    # emoción y sí vuelven solos al idle; las emociones (feliz, triste…) se quedan.
+    _ESTADOS_PROCESO = ("typing", "reading", "thinking", "error", "confused")
+
+    def _expresar(self, emocion: str):
+        """Emoción canónica del modelo → cara del escenario y mascota (se queda)."""
+        if not emocion:
+            return
+        estado = lune_face.estado_desde_emocion(emocion)
+        self.lune_face.set_state(estado, auto_revert_ms=6000 if estado in self._ESTADOS_PROCESO else 0)
+        ov = self._mascota_viva()
+        if ov is not None and ov.isVisible():
+            ov.set_emocion(emocion, 0)     # la mascota sí tiene clip/gesto para cada emoción
+
+    def _expresar_estado(self, estado: str):
+        ms = 6000 if estado in self._ESTADOS_PROCESO else 0
+        self.lune_face.set_state(estado, auto_revert_ms=ms)
+        ov = self._mascota_viva()
+        if ov is not None and ov.isVisible():
+            ov.set_estado(estado, ms)
+
+    def _cancelar_plan(self):
+        for t in getattr(self, "_timers_plan", []):
+            try: t.stop()
+            except Exception: pass
+        self._timers_plan = []
+
+    def _programar_plan(self, plan):
+        """Sin voz y sin streaming: las expresiones al ritmo de lectura."""
+        self._cancelar_plan()
+        horario = expresiones.horario(plan)
+        if not horario:
+            return
+        self._expresar(horario[0][1])
+        for t_s, emocion, _ in horario[1:]:
+            tm = QTimer(self); tm.setSingleShot(True)
+            tm.timeout.connect(lambda e=emocion: self._expresar(e))
+            tm.start(int(t_s * 1000)); self._timers_plan.append(tm)
 
     def _on_error(self, error):
         if self._typing_indicator: self._typing_indicator.stop(); self._typing_indicator.deleteLater(); self._typing_indicator = None
@@ -1126,13 +1203,64 @@ class LuneCDWindow(QMainWindow):
             self.stack.setCurrentIndex(0)
 
     def _toggle_overlay(self):
-        """Muestra u oculta la mascota flotante (avatar sobre el escritorio)."""
-        if self._overlay is None:
-            self._overlay = AvatarOverlay(self.config)
+        """Muestra u oculta la mascota flotante (avatar sobre el escritorio).
+        Con avatar.render = "vrm" es el avatar 3D (ui/companion.py); si no, los
+        sprites ligeros. Mientras está fuera, el escenario lateral no la dibuja."""
+        if self._overlay is None or getattr(self._overlay, "cerrado", False):
+            self._overlay = self._crear_mascota()
         if self._overlay.isVisible():
             self._overlay.hide()
         else:
             self._overlay.show(); self._overlay.raise_()
+
+    def _crear_mascota(self):
+        render = str(self.config.get("avatar", "render", "sprites") or "sprites")
+        ov = None
+        if render == "vrm":
+            try:
+                from ui.companion import CompanionFlotante
+                ov = CompanionFlotante(self.config, ai_manager=self.ai_manager, render="vrm")
+            except Exception as e:
+                log_error(f"[mascota] no pude abrir el avatar 3D ({e}); uso sprites")
+                ov = None
+        if ov is None:
+            ov = AvatarOverlay(self.config)
+        try:
+            ov.visibilidad.connect(self._on_mascota_visible)
+        except Exception:
+            pass
+        try:
+            ov.recrear.connect(self._mascota_recrear)      # arrancó en vídeo y ya hay .vrm
+        except Exception:
+            pass
+        return ov
+
+    def _on_mascota_visible(self, fuera: bool):
+        """Lune fuera → el escenario de la barra lateral se apaga (no verla doble)."""
+        if hasattr(self, "lune_face"):
+            self.lune_face.setVisible(not fuera)
+
+    def _mascota_viva(self):
+        ov = self._overlay
+        return ov if (ov is not None and not getattr(ov, "cerrado", False)) else None
+
+    def _on_hablando(self, activo: bool):
+        ov = self._mascota_viva()
+        if ov is not None and ov.isVisible() and hasattr(ov, "set_hablando"):
+            try:
+                ov.set_hablando(bool(activo))
+            except Exception:
+                pass
+
+    def _mascota_recrear(self):
+        ov = self._overlay
+        vis = ov is not None and not getattr(ov, "cerrado", False) and ov.isVisible()
+        if ov is not None:
+            try: ov.close()
+            except Exception: pass
+        self._overlay = None
+        if vis:
+            self._overlay = self._crear_mascota(); self._overlay.show(); self._overlay.raise_()
 
     def _toggle_historial(self):
         if self.stack.currentIndex() != 4:
@@ -1151,6 +1279,9 @@ class LuneCDWindow(QMainWindow):
         # Cambiar avatar pack si el personaje define uno
         pack = p.get("avatar_pack", "default")
         lune_face.set_active_pack(pack); self.config.set("avatar", "pack", pack)
+        ov = self._mascota_viva()
+        if ov is not None and hasattr(ov, "recargar_modelo"):
+            ov.recargar_modelo()                 # el personaje puede traer su propio .vrm
 
         # Refrescar marca, banco y bienvenida
         self.sidebar_t1.setText(self._marca_sidebar(nombre))

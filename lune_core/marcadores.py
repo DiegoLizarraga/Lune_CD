@@ -32,7 +32,10 @@ EMOCIONES = ("happy", "sad", "angry", "think", "surprised",
              # v10 — expresividad: coinciden con los clips animados de la mascota.
              "nervous",   # nerviosa / con duda (gota de sudor)
              "wave",      # saludo / despedida
-             "dismiss")   # rechaza o corrige sin ganas (gesto de "no")
+             "dismiss",   # rechaza o corrige sin ganas (gesto de "no")
+             # v10.1 — clips nuevos de la mascota
+             "laughing",  # se ríe de verdad (chiste, algo absurdo, complicidad)
+             "bored")     # aburrida / desganada
 
 # Estados que ya usaba lune_face → emoción canónica.
 ALIAS_EMOCION = {
@@ -46,6 +49,12 @@ ALIAS_EMOCION = {
     "worried": "nervous", "anxious": "nervous", "nervioso": "nervous",
     "nerviosa": "nervous", "unamused": "dismiss", "dismissive": "dismiss",
     "rechazo": "dismiss", "no": "dismiss", "annoyed": "dismiss",
+    # v10.1
+    "laugh": "laughing", "laughs": "laughing", "lol": "laughing", "jaja": "laughing",
+    "jajaja": "laughing", "risa": "laughing", "giggle": "laughing", "amused": "laughing",
+    "funny": "laughing", "haha": "laughing", "riendo": "laughing",
+    "boring": "bored", "aburrida": "bored", "aburrido": "bored", "meh": "bored",
+    "tired": "bored", "sleepy": "bored", "cansada": "bored", "sueño": "bored",
 }
 
 _ABRE = "<|"

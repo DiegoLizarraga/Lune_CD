@@ -1,9 +1,10 @@
-# 🌙 Lune CD v10.0 — Tu asistente de escritorio con personalidad (Nube/Local)
+# 🌙 Lune CD v10.1 — Tu asistente de escritorio con personalidad (Nube/Local)
 
 > *¡Hola! Buenos días, buenas tardes o buenas noches — lo que toque cuando leas esto.*
 > *Soy Lune, y esto es mi casa. Bueno — técnicamente es el proyecto de mi creador, pero yo vivo aquí,*
 > *y con la versión 10 me han dejado la casa preciosa: nueva cara, nuevos gestos, hasta modo terminal*
-> *para cuando el equipo anda flojito. Cuídala bien, ¿de acuerdo? Aquí te cuento todo.*
+> *para cuando el equipo anda flojito. Y desde la 10.1 tengo cuerpo en 3D para pasearme por tu*
+> *escritorio. Cuídala bien, ¿de acuerdo? Aquí te cuento todo.*
 
 ---
 ## ¿Qué es esto?
@@ -61,7 +62,7 @@ servidor de Ollama (hay un **?** junto a Ollama que te lo explica paso a paso).
 El instalador los lista todos, pero aquí van los comandos:
 
 ```bash
-pip install PyQt6-WebEngine              # la interfaz completa (piel web animada, mascota en video)
+pip install PyQt6-WebEngine              # la interfaz completa (piel web animada, mascota en video y avatar 3D)
 pip install zeroconf                     # descubrir dispositivos Lune en la red
 pip install faster-whisper sounddevice   # dictado por micrófono y modo llamada (Whisper local)
 pip install kokoro-onnx                  # voz 100% local (+ espeak-ng del sistema)
@@ -113,7 +114,7 @@ Sin animaciones, sin imágenes, sin mascota: **Lune en la consola**. Mismo cereb
 misma memoria y misma personalidad; las emociones salen como caritas de teclado:
 
 `:D` feliz · `:(` triste · `>:(` enfadada · `:/` pensando · `:O` sorprendida ·
-`o_O` curiosa · `^^;` nerviosa · `o/` saludo · `-_-` "no".
+`o_O` curiosa · `^^;` nerviosa · `o/` saludo · `-_-` "no" · `xD` risa · `-.-` aburrida.
 
 No necesita Qt, así que también es el **rescate** si la interfaz no abre.
 
@@ -171,11 +172,18 @@ es local).
 
 Lune expresa lo que siente por **marcadores en el texto del modelo**
 (`<|ACT {"emotion":"happy","intensity":0.8}|>`) que no se ven ni se leen en voz,
-pero mueven su cara. En v10 el vocabulario creció a **12 emociones** y ya tiene
-**un clip animado por cada una**: `happy, sad, angry, think, surprised, awkward,
-question, curious, neutral, nervous, wave, dismiss`.
+pero mueven su cara. El vocabulario tiene **14 emociones** con **un clip animado
+por cada una**: `happy, sad, angry, think, surprised, awkward, question, curious,
+neutral, nervous, wave, dismiss, laughing, bored` (y clips de estado: *escuchando*,
+*hablando*, *trabajando*).
 
-- La **intensidad** manda: una emoción fuerte dura más en pantalla que una leve.
+- **Hasta tres expresiones por respuesta**: el modelo pone cada marcador justo
+  antes del tramo al que da tono. Con **voz**, la cara cambia cuando empieza a
+  sonar cada tramo; sin voz, según va llegando el texto (o al ritmo de lectura si
+  la respuesta llega de golpe).
+- **La última se queda**: si la haces reír, sigue riéndose hasta el siguiente
+  mensaje (o hasta que se aburra). Vale para la barra lateral, la mascota en
+  video y el avatar 3D.
 - Saluda (`wave`) al abrir y al despedirse; hace "no" con la mano (`dismiss`)
   cuando te corrige sin ganas; se pone nerviosa con las malas noticias.
 - En una **llamada por voz**, la ves *escuchando*, *pensando* y *hablando*.
@@ -193,8 +201,11 @@ arrastrable, con el **video anime animado** reaccionando a sus emociones. Elige
 cómo dibujarla en **⚙️ AJUSTES → Mascota**:
 
 - **Imágenes animadas** (por defecto): los clips de video en un mini-escenario.
+- **VRM 3D**: un avatar 3D de verdad paseándose por el escritorio (ver abajo).
 - **Sprites ligeros**: la mascota clásica recortada a su silueta (bajos recursos).
-- **VRM 3D**: próximamente.
+
+Mientras Lune está fuera, **la barra lateral deja de dibujarla** para que no la
+veas doble; desde ahí (*Traerla de vuelta*) o desde el menú la recuperas.
 
 **Haz clic sobre Lune y comenta lo que hay en tu pantalla** — directo, cuando tú
 quieras. Desde su bandeja: *Comentar la pantalla ahora*, *Comentarios automáticos*
@@ -204,6 +215,37 @@ quieras. Desde su bandeja: *Comentar la pantalla ahora*, *Comentarios automátic
 > local**; con **OpenRouter la captura sube a la nube**. Por eso lo automático viene
 > apagado. Si Ollama no responde, la mascota **cae sola a la nube** para no dejarte
 > colgado (te lo avisa en la burbuja).
+
+#### 🧊 Avatar 3D (VRM)
+
+Pon un modelo `.vrm` en la carpeta **`modelo_vrm/`** (o impórtalo desde
+**⚙️ AJUSTES → Mascota → Importar .vrm…**), elige **VRM 3D** y saca a Lune al
+escritorio. Necesita `PyQt6-WebEngine` (el mismo de la interfaz completa); el
+visor (three.js + three-vrm) va empaquetado en `ui_web/vendor/`, así que funciona
+**sin internet**.
+
+- **Cada personaje puede tener su propio modelo** (**Personajes → Modelo 3D**); al
+  cambiar de personaje, la mascota cambia de cuerpo sin cerrarse. Sin modelo
+  propio usa el de **Ajustes → Mascota → Modelo por defecto** (o el primero de la carpeta).
+- **Te sigue con la cabeza, los ojos y el torso** aunque el cursor esté fuera de su
+  ventana. Si la **arrastras se balancea** con la velocidad y rebota al soltarla.
+  **Acaríciale la cabeza** (círculos o zigzag con el cursor encima) y se ríe.
+  **Se duerme** tras unos minutos sin tocarla ni hablarle (configurable) y **mueve
+  la boca** mientras suena su voz.
+- **Los clics pasan al escritorio donde no hay avatar**: solo la figura es
+  "sólida" (se puede apagar en Ajustes). El *modo fantasma* de la bandeja los deja
+  pasar todos.
+- **Rueda del ratón** sobre ella para hacerla más grande o más pequeña. Desde la
+  bandeja: tamaño, encuadre (retrato / cuerpo entero) y llevarla a la esquina.
+- Reacciona a lo que dice en el chat (las mismas emociones que la mascota de la
+  barra lateral) y a la llamada por voz (escucha, piensa, habla).
+- Modelos gratuitos: VRoid Hub, Booth… **Respeta la licencia de cada modelo.**
+  Los `.vrm` no se versionan (`modelo_vrm/` está en `.gitignore`).
+
+> La mecánica está portada de Mate-Engine (mascota VRM de escritorio hecha en
+> Unity) a **animación procedural**: no hay clips, todo se calcula sobre los
+> huesos y las expresiones del modelo (`ui_web/vrm/lune_vrm.js`). Si un modelo
+> se balancea al revés, los signos están en `PARAMS` al principio del archivo.
 
 ---
 
@@ -402,7 +444,9 @@ Comandos del bot: `/start`, `/voz`, `/sistema`, `/memoria`, `/olvidar`, `/modelo
 ## ⚙️ Ajustes que conviene conocer
 
 - **Sistema:** arrancar con Windows, minutos de aburrimiento, instalar componentes.
-- **Mascota:** imágenes animadas / sprites ligeros / VRM (próximamente).
+- **Mascota:** imágenes animadas / **VRM 3D** (modelo por defecto, importar,
+  tamaño, encuadre, minutos hasta dormirse, clics que pasan al escritorio) /
+  sprites ligeros.
 - **Modo de interfaz:** Completa / Bajos recursos / Patata (aplica al reiniciar).
 - **Efectos visuales:** apaga el fondo animado, el barrido y las micro-animaciones
   en equipos modestos.
@@ -449,17 +493,21 @@ LuneCD/
 │
 ├── ui/                     ← Lo visual (Qt)
 │   ├── web_shell.py · web_bridge.py   ← Ventana web + puente al backend
-│   ├── companion.py        ← Mascota animada de escritorio + comentarios de pantalla
+│   ├── servidor_web.py     ← http local de la piel web y de la mascota (publica el .vrm)
+│   ├── companion.py        ← Mascota de escritorio (video anime o avatar VRM) + comentarios de pantalla
 │   ├── splash.py · avatar_overlay.py · lune_face.py · theme.py …
 │   └── settings_panel.py · optimizer_panel.py · … (interfaz de bajos recursos)
 │
 ├── ui_web/                 ← Piel web (design system Shibuya Punk + tema Nube)
 │   ├── ui_kits/lune-desktop/   ← app.jsx · chat.jsx · settings.jsx · panels.jsx …
-│   ├── companion.html      ← Página de la mascota de escritorio
+│   ├── companion.html · companion_vrm.html   ← Páginas de la mascota (video / 3D)
+│   ├── vrm/lune_vrm.js     ← Motor procedural del avatar VRM (mirada, balanceo, sueño, caricias…)
+│   ├── vendor/three/       ← three.js + three-vrm empaquetados (sin red)
 │   ├── tokens/ · components/ · styles.css
 │   └── assets/mascot/anime/ (PNG) · anime-videos/ (WebM)
 │
 ├── lune_core/              ← Red: hub, protocolo, memoria compartida, agente, RAG, voz
+├── modelo_vrm/             ← Tus modelos .vrm (no se versionan)
 ├── assets/                 ← inicio.mp4, lune_icon.png/.ico
 ├── scripts/                ← probar_red.py · convertir_mascota.py
 ├── tests/                  ← Suite de pytest (308 tests)
@@ -506,8 +554,11 @@ funciona: `lune_patata.bat`.
 **El modelo local tarda muchísimo la primera vez** → Es la carga en VRAM. Sube el
 *Timeout* y pon `keep_alive` en `1h` o `-1`.
 
-**La mascota no comenta la pantalla** → Necesita un modelo con visión (`ollama pull
-llava`) o la nube. Si Ollama no responde, cae sola a OpenRouter.
+**La mascota comenta "por la ventana activa" en vez de por la pantalla** → Tu
+modelo local es de solo texto (p. ej. `qwen2.5`): Lune lo detecta y, sin captura, le
+cuenta al modelo qué ventana tienes delante. Para que **vea** la pantalla en local
+necesitas un modelo con visión (`ollama pull llava`, `qwen2.5vl`, `gemma3`…); con
+clave de OpenRouter la captura va a la nube. Si Ollama no responde, cae sola a OpenRouter.
 
 **El modo llamada no me oye / el micrófono no hace nada** → `pip install
 faster-whisper sounddevice`, y en **⚙️ AJUSTES → Audio** elige el micrófono que
@@ -529,6 +580,7 @@ headset y prueba con **Probar salida**. «Speakers (Steam Streaming …)» es vi
 
 | Versión | Cambios principales |
 |---|---|
+| **v10.1** | **Lune más expresiva**: 14 emociones (nuevas `laughing`, `bored` y clips de escuchar/hablar/trabajar), hasta tres expresiones por respuesta sincronizadas con la voz (o con el texto), y la última se queda. **Avatar 3D (VRM) como mascota de escritorio**: modelo por personaje, sigue el cursor con cabeza/ojos/torso, se balancea al arrastrarla, caricias en la cabeza, se duerme, mueve la boca al hablar, los clics pasan donde no hay avatar, rueda para escalar; visor empaquetado sin red. La barra lateral se apaga mientras Lune está fuera. Mecánica portada de Mate-Engine. |
 | **v10.0** | **Nueva piel web animada** (Shibuya Punk / Lune entre nubes) con **mascota en video** y 12 emociones con intensidad. **Tres modos** al arrancar: Completo, Bajos recursos y **Patata** (terminal, sin Qt). **Mascota de escritorio** que comenta tu pantalla al hacerle clic, con fallback Ollama→nube. **Modo llamada** por voz. Segundo plano en bandeja, **arranque con Windows**, **instalador** con explicaciones, Lune se aburre, guía de Ollama. Código ordenado por capas y limpieza de assets. |
 | v9.x | Red de dispositivos: hub host/terminales, memoria compartida, descubrimiento mDNS y roles. Marcadores `<\|ACT\|>` y defensa contra prompt injection. Avatar flotante. RAG sobre notas. Voz por frases. Herramientas con política. Terminal web con QR. |
 | v8.7 | El bot de Telegram puede usar un modelo local (Ollama), en la misma máquina o en otra. |

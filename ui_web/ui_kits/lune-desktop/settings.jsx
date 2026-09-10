@@ -48,6 +48,7 @@ const CFG_DEMO = {
   system_prompt:'Eres Lune. Directa, con personalidad y filo. Sin relleno, sin emoji.',
   voz:false, memoria:true, acciones_ia:true,
   mascota_render:'animado', interfaz_modo:'web',
+  vrm_webengine:false, vrm_modelos:[], vrm_archivo:'', vrm_tamano:'normal', vrm_encuadre:'retrato', vrm_fantasma_auto:true, dormir_min:10,
   autoinicio:false, aburrimiento_min:10,
   dispositivo_entrada:'', dispositivo_salida:'', modelo_whisper:'base', voz_idioma:'es',
 };
@@ -107,6 +108,72 @@ function AyudaOllama({ onClose }) {
   );
 }
 
+/* Opciones de la mascota 3D (VRM): modelo por defecto, tamaño, encuadre, sueño y clics. */
+function VrmOpciones({ c, set, setBl, setCfg }) {
+  const { Button, Switch, Input } = window.LUNE;
+  const modelos = c.vrm_modelos || [];
+  const importar = () => {
+    if (!window.lune) return;
+    window.lune.vrm_importar((j) => {
+      let r = {}; try { r = JSON.parse(j); } catch (e) {}
+      if (r.ok) setCfg((k) => ({ ...k, vrm_modelos: r.modelos || modelos, vrm_archivo: r.archivo || k.vrm_archivo }));
+    });
+  };
+  const nota = { margin:'6px 0 0', font:'var(--text-data)', fontSize:11, color:'var(--text-faint)' };
+  return (
+    <div style={{ marginTop: 14 }}>
+      {modelos.length === 0 && !c.vrm_archivo && (
+        <p style={{ ...nota, color:'var(--yellow-500)', margin:'0 0 10px' }}>
+          No hay ningún modelo: pon un archivo .vrm en la carpeta <b>modelo_vrm/</b> o impórtalo aquí.
+        </p>
+      )}
+      <div className="ln-settings-grid">
+        <div className="lune-field">
+          <label className="lune-field-label" htmlFor="f-vrm-archivo">Modelo por defecto</label>
+          <select id="f-vrm-archivo" className="lune-input" value={c.vrm_archivo || ''} onChange={set('vrm_archivo')}>
+            <option value="">El primero de modelo_vrm/</option>
+            {modelos.map((m) => <option key={m} value={m}>{m}</option>)}
+            {c.vrm_archivo && !modelos.includes(c.vrm_archivo) && <option value={c.vrm_archivo}>{c.vrm_archivo}</option>}
+          </select>
+          <span className="lune-field-hint">Cada personaje puede traer el suyo (Personajes → Modelo 3D).</span>
+        </div>
+        <div>
+          <div className="lune-overline" style={{ marginBottom: 6 }}>Añadir modelo</div>
+          <Button variant="ghost" size="sm" onClick={importar}>Importar .vrm…</Button>
+          <p style={nota}>Se copia a modelo_vrm/. Hay modelos gratuitos en VRoid Hub y Booth (respeta su licencia).</p>
+        </div>
+      </div>
+      <div style={{ height: 12 }} />
+      <div className="ln-settings-grid">
+        <div>
+          <div className="lune-overline" style={{ marginBottom: 6 }}>Tamaño</div>
+          <div className="ln-seg-row">
+            {[['pequeno','Pequeña'],['normal','Normal'],['grande','Grande']].map(([k, t]) => (
+              <Button key={k} variant={(c.vrm_tamano||'normal')===k?'primary':'ghost'} size="sm" onClick={()=>set('vrm_tamano')(k)}>{t}</Button>
+            ))}
+          </div>
+        </div>
+        <div>
+          <div className="lune-overline" style={{ marginBottom: 6 }}>Encuadre</div>
+          <div className="ln-seg-row">
+            {[['retrato','Retrato'],['cuerpo','Cuerpo entero']].map(([k, t]) => (
+              <Button key={k} variant={(c.vrm_encuadre||'retrato')===k?'primary':'ghost'} size="sm" onClick={()=>set('vrm_encuadre')(k)}>{t}</Button>
+            ))}
+          </div>
+        </div>
+      </div>
+      <div style={{ height: 12 }} />
+      <div className="ln-settings-grid">
+        <Input label="Se duerme tras (minutos sin tocarla ni hablarle)" type="number" min="0" value={c.dormir_min ?? 10}
+          onChange={set('dormir_min')} hint="0 = nunca. Se despierta al hacerle clic, arrastrarla o cuando Lune responde." />
+        <div className="ln-toggle-row" style={{ alignItems:'flex-end', paddingBottom: 22 }}>
+          <Switch label="Los clics pasan al escritorio donde no hay avatar" checked={c.vrm_fantasma_auto !== false} onChange={setBl('vrm_fantasma_auto')} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SettingsPanel({ voiceOn, onVoice, fx = { bg:true, sweep:true, micro:true }, setFxKey = () => () => {} }) {
   const { Card, Input, Switch, Button, Badge } = window.LUNE;
   const [cfg, setCfg] = React.useState(null);
@@ -123,7 +190,9 @@ function SettingsPanel({ voiceOn, onVoice, fx = { bg:true, sweep:true, micro:tru
   const guardar = () => {
     if (!cfg) return;
     if (!window.lune) { setMsg('Demo · sin backend'); setTimeout(()=>setMsg(''),2500); return; }
-    window.lune.guardar_config(JSON.stringify(cfg), (r) => {
+    // Solo lectura (o con su propio interruptor): no se mandan al guardar.
+    const { voz, vrm_modelos, vrm_webengine, mascota_fuera, ...payload } = cfg;
+    window.lune.guardar_config(JSON.stringify(payload), (r) => {
       let ok = true; try { ok = JSON.parse(r).ok; } catch(e){}
       setMsg(ok ? 'Guardado en datos.json' : 'Error al guardar'); setTimeout(()=>setMsg(''), 2800);
     });
@@ -270,13 +339,16 @@ function SettingsPanel({ voiceOn, onVoice, fx = { bg:true, sweep:true, micro:tru
 
         <Card eyebrow={<><window.IconMoon width={13} height={13}/> Escritorio</>} title="Mascota" tone="cyan">
           <p style={{margin:'0 0 12px', font:'var(--text-data)', fontSize:12, color:'var(--text-dim)'}}>
-            Cómo se dibuja Lune cuando la sacas al escritorio (menú → Mascota). Haz clic sobre ella para que comente tu pantalla.
+            Cómo se dibuja Lune cuando la sacas al escritorio (menú → Mascota). Mientras está fuera, la barra lateral no la dibuja. Haz clic sobre ella para que comente tu pantalla.
           </p>
           <div className="ln-seg-row">
             <Button variant={c.mascota_render==='animado'?'primary':'ghost'} size="sm" onClick={()=>set('mascota_render')('animado')}>Imágenes animadas</Button>
-            <Button variant="ghost" size="sm" disabled title="Avatar 3D — próximamente">VRM 3D · próximamente</Button>
+            <Button variant={c.mascota_render==='vrm'?'primary':'ghost'} size="sm" disabled={!c.vrm_webengine}
+              title={c.vrm_webengine ? 'Avatar 3D con un modelo VRM' : 'Necesita PyQt6-WebEngine (Sistema → Instalar componentes…)'}
+              onClick={()=>set('mascota_render')('vrm')}>VRM 3D</Button>
             <Button variant={c.mascota_render==='sprites'?'primary':'ghost'} size="sm" onClick={()=>set('mascota_render')('sprites')}>Sprites ligeros</Button>
           </div>
+          {c.mascota_render==='vrm' && <VrmOpciones c={c} set={set} setBl={setBl} setCfg={setCfg} />}
         </Card>
 
         <Card eyebrow={<><window.IconCpu width={13} height={13}/> Rendimiento</>} title="Modo de interfaz" tone="yellow">

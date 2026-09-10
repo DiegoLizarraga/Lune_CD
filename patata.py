@@ -36,6 +36,7 @@ CARITAS = {
     "happy": ":D", "sad": ":(", "angry": ">:(", "think": ":/", "surprised": ":O",
     "awkward": "^^'", "question": ":?", "curious": "o_O", "neutral": ":|",
     "nervous": "^^;", "wave": "o/", "dismiss": "-_-",
+    "laughing": "xD", "bored": "-.-",
 }
 
 # Colores ANSI (Windows 10+ los soporta al activar VT). Con --sin-color van vacíos.

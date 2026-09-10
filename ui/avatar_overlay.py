@@ -1,18 +1,18 @@
 """
-avatar_overlay.py — Lune como mascota flotante sobre el escritorio.
+avatar_overlay.py — Lune como mascota flotante ligera (sprites 2D) sobre el escritorio.
 
-Ventana sin bordes, transparente, siempre encima y arrastrable que muestra a Lune
-y reacciona a las emociones del modelo (<|ACT|>, ver lune_core/marcadores). Dos
-formas de dibujarla, según config avatar.render:
+Ventana sin bordes, transparente, siempre encima y arrastrable que muestra los
+PNG/MP4 de lune_face y reacciona a las emociones del modelo (<|ACT|>, ver
+lune_core/marcadores). Se recorta a la SILUETA del personaje con una máscara por
+chroma-key (el fondo oscuro del sprite se vuelve transparente y deja pasar los
+clics fuera de la figura). Es la mascota de "bajos recursos": sin Chromium.
 
-    "sprites"  los PNG/MP4 de lune_face (2D). Se recorta a la SILUETA del personaje
-               con una máscara por chroma-key (el fondo oscuro del sprite se vuelve
-               transparente y deja pasar los clics fuera de la figura).
-    "vrm"      un avatar 3D VRM renderizado con three-vrm dentro de una QWebEngineView
-               (necesita PyQt6-WebEngine). El .vrm se sirve por un http local.
+El avatar 3D (VRM) vive en ui/companion.py (render="vrm"): mismas llamadas
+(set_estado / set_emocion / set_act / set_hablando / set_click_through, señal
+`visibilidad`, atributo `cerrado`), así que quien las use no distingue una de otra.
 
 Además hay un "modo fantasma" (click-through total): la ventana deja pasar TODOS
-los clics, útil sobre todo en modo VRM. En Windows se hace con WS_EX_TRANSPARENT.
+los clics. En Windows se hace con WS_EX_TRANSPARENT.
 
 Mecánica de ventana portada de la mascota Electron de AIRI a Qt:
     FramelessWindowHint | WindowStaysOnTopHint | Tool  ≈ frameless/always-on-top/panel
@@ -24,129 +24,29 @@ from __future__ import annotations
 
 import os
 import sys
-import threading
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
-from typing import Optional
 
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QMenu, QSystemTrayIcon, QApplication,
 )
-from PyQt6.QtCore import Qt, QPoint, QTimer, QUrl, QEvent
+from PyQt6.QtCore import Qt, QPoint, QTimer, pyqtSignal
 from PyQt6.QtGui import QAction, QIcon, QRegion, QImage
 
-from ui import lune_face
-
 from ui.lune_face import LuneFaceWidget, estado_desde_emocion
-
-# QWebEngineView es opcional: si PyQt6-WebEngine no está, el modo VRM cae a sprites.
-try:
-    from PyQt6.QtWebEngineWidgets import QWebEngineView
-    from PyQt6.QtWebEngineCore import QWebEngineSettings
-    _WEBENGINE_OK = True
-except Exception:
-    _WEBENGINE_OK = False
-
-
-# Emoción canónica del protocolo <|ACT|> → expresión del avatar VRM (vrm.html).
-EMOCION_A_VRM = {
-    "happy": "happy", "sad": "sad", "angry": "angry", "surprised": "surprised",
-    "think": "think", "question": "question", "curious": "curious",
-    "awkward": "awkward", "neutral": "neutral",
-    # v10: emociones nuevas del vocabulario (el VRM no tiene gesto propio; se aproximan).
-    "nervous": "awkward", "wave": "happy", "dismiss": "angry",
-}
-# Estado visual de sprite (lune_face) → expresión VRM (para set_estado).
-ESTADO_A_VRM = {
-    "normal": "neutral", "happy": "happy", "sad": "sad", "error": "angry",
-    "thinking": "think", "typing": "neutral", "reading": "curious", "confused": "awkward",
-}
 
 # Suma R+G+B por debajo de la cual un píxel del sprite se considera "fondo" (negro).
 UMBRAL_FONDO = 45
 
 
-def ruta_vrm(config=None) -> Optional[Path]:
-    """El .vrm a usar: config avatar.vrm_archivo, o el primero de modelo_vrm/."""
-    if config is not None:
-        elegido = str(config.get("avatar", "vrm_archivo", "") or "").strip()
-        if elegido and Path(elegido).exists():
-            return Path(elegido)
-    carpeta = Path("modelo_vrm")
-    if carpeta.exists():
-        vrms = sorted(carpeta.glob("*.vrm"))
-        if vrms:
-            return vrms[0]
-    return None
-
-
-class ServidorVRM:
-    """http local mínimo que sirve vrm.html y el .vrm a la QWebEngineView."""
-
-    def __init__(self, ruta_modelo: Path, host: str = "127.0.0.1"):
-        self.ruta_modelo = Path(ruta_modelo)
-        self.host = host
-        self.puerto = 0
-        self._httpd = None
-        self._hilo = None
-
-    def iniciar(self) -> bool:
-        web_dir = Path(__file__).parent.parent / "lune_core" / "web"
-        modelo = self.ruta_modelo
-
-        class Handler(BaseHTTPRequestHandler):
-            def do_GET(self):
-                ruta = self.path.split("?", 1)[0]
-                if ruta in ("/", "/vrm.html"):
-                    self._enviar(web_dir / "vrm.html", "text/html; charset=utf-8")
-                elif ruta in ("/model.vrm", "/modelo.vrm"):
-                    self._enviar(modelo, "application/octet-stream")
-                else:
-                    self.send_error(404)
-
-            def _enviar(self, p, ctype):
-                try:
-                    data = Path(p).read_bytes()
-                except OSError:
-                    self.send_error(404); return
-                self.send_response(200)
-                self.send_header("Content-Type", ctype)
-                self.send_header("Content-Length", str(len(data)))
-                self.send_header("Access-Control-Allow-Origin", "*")
-                self.end_headers()
-                self.wfile.write(data)
-
-            def log_message(self, *a):
-                pass
-
-        try:
-            self._httpd = ThreadingHTTPServer((self.host, 0), Handler)
-        except OSError:
-            return False
-        self.puerto = self._httpd.server_address[1]
-        self._hilo = threading.Thread(target=self._httpd.serve_forever,
-                                      name="lune-vrm", daemon=True)
-        self._hilo.start()
-        return True
-
-    def url(self) -> str:
-        return f"http://{self.host}:{self.puerto}/vrm.html?src=model.vrm"
-
-    def detener(self):
-        if self._httpd:
-            try:
-                self._httpd.shutdown(); self._httpd.server_close()
-            except Exception:
-                pass
-            self._httpd = None
-
-
 class AvatarOverlay(QMainWindow):
-    """Mascota flotante. `config` persiste su posición y el modo de render."""
+    """Mascota flotante de sprites. `config` persiste su posición y el modo fantasma."""
+
+    visibilidad = pyqtSignal(bool)       # se muestra / se oculta o cierra
 
     def __init__(self, config=None, parent=None):
         super().__init__(parent)
         self.config = config
+        self.cerrado = False
+        self.render = "sprites"
 
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
@@ -161,20 +61,13 @@ class AvatarOverlay(QMainWindow):
         lay = QVBoxLayout(central)
         lay.setContentsMargins(0, 0, 0, 0)
 
-        self.cara = None                 # LuneFaceWidget (modo sprites)
-        self.web = None                  # QWebEngineView (modo VRM)
-        self._servidor_vrm = None
-        self._vrm_listo = False
-        self._modo = self._modo_render()
+        self.cara = LuneFaceWidget()
+        # En el overlay el "escenario" es transparente, sin el marco neón.
+        self.cara.setStyleSheet("LuneFaceWidget{background:transparent;border:none;}")
+        self.cara.estado_cambiado.connect(self._actualizar_mascara)
+        lay.addWidget(self.cara)
 
-        if self._modo == "vrm":
-            self._construir_vrm(lay)
-        if self.web is None:             # sprites, o VRM no disponible
-            self._modo = "sprites"
-            self._construir_sprites(lay)
-
-        tam = (320, 440) if self._modo == "vrm" else (210, 280)
-        self.resize(*tam)
+        self.resize(210, 280)
         self._restaurar_posicion()
         self._construir_bandeja()
 
@@ -184,103 +77,28 @@ class AvatarOverlay(QMainWindow):
         if self.config and self.config.get("avatar", "click_through", False):
             QTimer.singleShot(300, lambda: self.set_click_through(True))
 
-    # ── Construcción según modo ─────────────────────────────────────────────────
-    def _modo_render(self) -> str:
-        modo = "sprites"
-        if self.config:
-            modo = str(self.config.get("avatar", "render", "sprites") or "sprites")
-        return "vrm" if modo == "vrm" else "sprites"
-
-    def _construir_sprites(self, lay):
-        self.cara = LuneFaceWidget()
-        # En el overlay el "escenario" es transparente, sin el marco neón.
-        self.cara.setStyleSheet("LuneFaceWidget{background:transparent;border:none;}")
-        self.cara.estado_cambiado.connect(self._actualizar_mascara)
-        lay.addWidget(self.cara)
-
-    def _construir_vrm(self, lay):
-        if not _WEBENGINE_OK:
-            from nucleo.utils import log_info
-            log_info("[overlay] modo VRM pedido pero PyQt6-WebEngine no está: uso sprites")
-            return
-        modelo = ruta_vrm(self.config)
-        if modelo is None:
-            from nucleo.utils import log_info
-            log_info("[overlay] modo VRM pedido pero no hay .vrm en modelo_vrm/: uso sprites")
-            return
-        self._servidor_vrm = ServidorVRM(modelo)
-        if not self._servidor_vrm.iniciar():
-            self._servidor_vrm = None
-            return
-        self.web = QWebEngineView()
-        self.web.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        try:
-            from PyQt6.QtGui import QColor
-            self.web.page().setBackgroundColor(QColor(0, 0, 0, 0))
-            s = self.web.settings()
-            s.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, True)
-            s.setAttribute(QWebEngineSettings.WebAttribute.ShowScrollBars, False)
-        except Exception:
-            pass
-        self.web.loadFinished.connect(self._on_vrm_cargado)
-        self.web.setUrl(QUrl(self._servidor_vrm.url()))
-        lay.addWidget(self.web)
-
-    def _on_vrm_cargado(self, ok):
-        self._vrm_listo = bool(ok)
-        # Permitir arrastrar la ventana pinchando sobre el avatar 3D.
-        try:
-            fp = self.web.focusProxy()
-            if fp is not None:
-                fp.installEventFilter(self)
-        except Exception:
-            pass
-
     # ── Emoción ────────────────────────────────────────────────────────────────
     def set_emocion(self, emocion: str, ms: int = 6000):
         """Recibe una emoción canónica (<|ACT|>) y la muestra."""
-        if self._modo == "vrm":
-            self._vrm_emocion(EMOCION_A_VRM.get((emocion or "").lower(), "neutral"))
-        elif self.cara:
-            self.cara.set_state(estado_desde_emocion(emocion), auto_revert_ms=ms)
+        self.cara.set_state(estado_desde_emocion(emocion), auto_revert_ms=ms)
 
     def set_estado(self, estado: str, ms: int = 0):
         """Recibe un estado directo de lune_face (thinking, typing…)."""
-        if self._modo == "vrm":
-            self._vrm_emocion(ESTADO_A_VRM.get(estado, "neutral"))
-        elif self.cara:
-            self.cara.set_state(estado, auto_revert_ms=ms)
+        self.cara.set_state(estado, auto_revert_ms=ms)
 
     def set_act(self, act: dict, ms: int = 6000):
         """Recibe el ACT completo {emotion, intensity, motion} del modelo."""
         if not isinstance(act, dict):
             return
-        emocion = str(act.get("emotion", "neutral"))
-        intensidad = float(act.get("intensity", 1.0) or 1.0)
-        if self._modo == "vrm":
-            self._vrm_emocion(EMOCION_A_VRM.get(emocion.lower(), "neutral"), intensidad)
-        elif self.cara:
-            self.cara.set_state(estado_desde_emocion(emocion), auto_revert_ms=ms)
+        self.cara.set_state(estado_desde_emocion(str(act.get("emotion", "neutral"))), auto_revert_ms=ms)
 
     def set_hablando(self, hablando: bool):
-        """Mueve la boca del avatar VRM mientras Lune habla (no-op en sprites)."""
-        if self._modo == "vrm" and self.web is not None:
-            self._js(f"window.luneSpeak && window.luneSpeak({'true' if hablando else 'false'})")
+        """Los sprites no tienen boca animada: no-op (misma interfaz que el VRM)."""
 
-    def _vrm_emocion(self, nombre: str, intensidad: float = 1.0):
-        self._js(f"window.luneSetEmotion && window.luneSetEmotion({nombre!r}, {float(intensidad):.3f})")
-
-    def _js(self, codigo: str):
-        if self.web is not None:
-            try:
-                self.web.page().runJavaScript(codigo)
-            except Exception:
-                pass
-
-    # ── Máscara de silueta (modo sprites) ───────────────────────────────────────
+    # ── Máscara de silueta ─────────────────────────────────────────────────────
     def _actualizar_mascara(self, *args):
         """Recorta la ventana a la silueta del personaje (deja pasar clics fuera)."""
-        if self._modo != "sprites" or self.cara is None:
+        if self.cara is None:
             return
         region = QRegion()
         # La etiqueta de estado (caja opaca) se mantiene clicable/arrastrable.
@@ -336,12 +154,17 @@ class AvatarOverlay(QMainWindow):
     def showEvent(self, ev):
         super().showEvent(ev)
         QTimer.singleShot(0, self._actualizar_mascara)
+        self.visibilidad.emit(True)
+
+    def hideEvent(self, ev):
+        super().hideEvent(ev)
+        self.visibilidad.emit(False)
 
     def resizeEvent(self, ev):
         super().resizeEvent(ev)
         self._actualizar_mascara()
 
-    # ── Modo fantasma (click-through total, sobre todo para VRM) ─────────────────
+    # ── Modo fantasma (click-through total) ──────────────────────────────────────
     def set_click_through(self, activo: bool):
         self._click_through = bool(activo)
         if sys.platform == "win32":
@@ -365,19 +188,6 @@ class AvatarOverlay(QMainWindow):
         self.set_click_through(checked)
 
     # ── Arrastre (nativo) ──────────────────────────────────────────────────────
-    def eventFilter(self, obj, ev):
-        # En modo VRM el render 3D se come los clics: arrastramos desde su superficie.
-        if (self.web is not None and not self._click_through
-                and ev.type() == QEvent.Type.MouseButtonPress):
-            try:
-                if ev.button() == Qt.MouseButton.LeftButton:
-                    wh = self.windowHandle()
-                    if wh is not None and hasattr(wh, "startSystemMove"):
-                        wh.startSystemMove()
-            except Exception:
-                pass
-        return super().eventFilter(obj, ev)
-
     def mousePressEvent(self, ev):
         if ev.button() == Qt.MouseButton.LeftButton:
             wh = self.windowHandle()
@@ -461,11 +271,10 @@ class AvatarOverlay(QMainWindow):
         self.hide() if self.isVisible() else (self.showNormal(), self.raise_())
 
     def closeEvent(self, ev):
+        self.cerrado = True
         self._guardar_posicion()
         if getattr(self, "tray", None):
             self.tray.hide()
         if self.cara is not None and getattr(self.cara, "_player", None):
             self.cara._player.stop()
-        if self._servidor_vrm is not None:
-            self._servidor_vrm.detener()
         ev.accept()

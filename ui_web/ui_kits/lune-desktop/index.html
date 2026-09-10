@@ -78,6 +78,20 @@
   .ln-mascot-stage::after{ content:""; position:absolute; inset:0; background:var(--tex-scanline); pointer-events:none; }
   .ln-mascot-stage img, .ln-mascot-stage video{ height:100%; width:100%; object-fit:cover; object-position:center bottom; }
   .ln-mascot-tag{ display:none; }
+  /* Lune fuera (mascota de escritorio): el escenario no la dibuja dos veces */
+  .ln-mascot-stage.is-out{ align-items:center; border-style:dashed; background:
+      repeating-linear-gradient(135deg, rgba(0,229,255,.05) 0 10px, transparent 10px 22px), var(--ink-950); }
+  .ln-mascot-out{ display:flex; flex-direction:column; align-items:center; gap:8px; padding:18px 14px; text-align:center; }
+  .ln-mascot-out-jp{ font-size:38px; color:var(--yellow-500); opacity:.85; filter:drop-shadow(0 0 10px rgba(255,224,0,.35)); }
+  .ln-mascot-out-t{ font-family:var(--font-display); font-weight:700; font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--text-strong); }
+  .ln-mascot-out-d{ font-family:var(--font-mono); font-size:10px; line-height:1.45; color:var(--text-dim); }
+  .ln-mascot-out-btn{ margin-top:6px; cursor:pointer; border:var(--bw) solid var(--cyan-700); background:var(--ink-800); color:var(--cyan-400);
+      font-family:var(--font-display); font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.06em; padding:8px 12px; clip-path:var(--clip-tr);
+      transition:background var(--dur-fast), color var(--dur-fast); }
+  .ln-mascot-out-btn:hover{ background:var(--cyan-700); color:var(--ink-950); }
+  /* Selector de modelo 3D por personaje (panel Personajes) */
+  .ln-vrm-pick{ display:flex; flex-direction:column; gap:5px; min-width:220px; }
+  .ln-vrm-pick .lune-input{ height:36px; padding:6px 10px; font-size:12px; }
 
   .ln-telegram{
     display:flex; align-items:center; gap:9px; width:100%; cursor:pointer;

@@ -108,17 +108,23 @@ def test_modo_fantasma_persiste_en_config(qapp, tmp_path):
     ov.close()
 
 
-# ── Mapas de emoción para el avatar VRM ─────────────────────────────────────────
+# ── Misma interfaz que la mascota 3D (ui/companion.py) ───────────────────────────
 
-def test_mapas_vrm_cubren_el_vocabulario():
-    from ui.avatar_overlay import EMOCION_A_VRM, ESTADO_A_VRM
-    from lune_core.marcadores import EMOCIONES
-    # cada emoción canónica tiene expresión VRM
-    for e in EMOCIONES:
-        assert e in EMOCION_A_VRM
-    # los estados de sprite también
-    for estado in ["normal", "happy", "sad", "error", "thinking", "typing", "reading", "confused"]:
-        assert estado in ESTADO_A_VRM
+def test_interfaz_comun_con_el_companion(overlay):
+    """El puente y main.py no distinguen sprites de VRM: mismas llamadas y señal."""
+    for metodo in ("set_estado", "set_emocion", "set_act", "set_hablando", "set_click_through"):
+        assert callable(getattr(overlay, metodo))
+    assert hasattr(overlay, "visibilidad") and overlay.cerrado is False
+    overlay.set_hablando(True)          # no-op en sprites, pero no revienta
+
+
+def test_visibilidad_y_cierre(overlay):
+    vistos = []
+    overlay.visibilidad.connect(vistos.append)
+    overlay.show(); overlay.hide()
+    assert vistos[:2] == [True, False]
+    overlay.close()
+    assert overlay.cerrado is True
 
 
 def test_set_act_no_rompe_en_sprites(overlay):

@@ -12,10 +12,6 @@ Ejecutar en solitario para probar la Fase 1 (shell animado + chat real):
 from __future__ import annotations
 
 import sys
-import threading
-from functools import partial
-from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
 
 from PyQt6.QtCore import Qt, QUrl
 from PyQt6.QtWidgets import QApplication, QMainWindow, QSystemTrayIcon, QMenu
@@ -24,96 +20,11 @@ from PyQt6.QtWebEngineCore import QWebEngineSettings
 from PyQt6.QtWebChannel import QWebChannel
 from PyQt6.QtGui import QIcon, QAction
 
-RAIZ = Path(__file__).resolve().parent.parent
-DIR_WEB = RAIZ / "ui_web"
+# El servidor http vive en ui/servidor_web.py (sin WebEngine) para que la
+# mascota lo comparta; aquí se conservan los nombres antiguos por compatibilidad.
+from ui.servidor_web import RAIZ, DIR_WEB, ServidorEstatico as _ServidorEstatico, HandlerSilencioso as _HandlerSilencioso  # noqa: F401
+
 PAGINA = "ui_kits/lune-desktop/index.html"
-
-
-class _ServidorEstatico:
-    """Sirve ui_web/ en 127.0.0.1 (puerto aleatorio) en un hilo daemon."""
-
-    def __init__(self, directorio: Path):
-        self.directorio = str(directorio)
-        self.puerto = 0
-        self._httpd = None
-
-    def iniciar(self) -> bool:
-        try:
-            self._httpd = ThreadingHTTPServer(
-                ("127.0.0.1", 0),
-                partial(_HandlerSilencioso, directory=self.directorio))
-        except OSError:
-            return False
-        self.puerto = self._httpd.server_address[1]
-        threading.Thread(target=self._httpd.serve_forever, name="lune-web-ui", daemon=True).start()
-        return True
-
-    def url(self) -> str:
-        return f"http://127.0.0.1:{self.puerto}/{PAGINA}"
-
-    def detener(self):
-        if self._httpd:
-            try:
-                self._httpd.shutdown(); self._httpd.server_close()
-            except Exception:
-                pass
-            self._httpd = None
-
-
-class _HandlerSilencioso(SimpleHTTPRequestHandler):
-    # Tipos MIME correctos para los assets de la UI (mp4 para la mascota animada).
-    extensions_map = {
-        **SimpleHTTPRequestHandler.extensions_map,
-        ".mp4": "video/mp4", ".webm": "video/webm",
-        ".jsx": "text/plain", ".js": "text/javascript",
-        ".css": "text/css", ".html": "text/html",
-    }
-
-    def log_message(self, *a):
-        pass
-
-    def do_GET(self):
-        # Soporta HTTP Range (206) para que los <video> grandes (mascota) reproduzcan
-        # y loopeen sin cortes; el resto se sirve normal (200).
-        import os
-        import re
-        rango = self.headers.get("Range")
-        if not rango:
-            return super().do_GET()
-        ruta = self.translate_path(self.path.split("?", 1)[0])
-        if not os.path.isfile(ruta):
-            return super().do_GET()
-        try:
-            f = open(ruta, "rb")
-        except OSError:
-            self.send_error(404); return
-        tam = os.fstat(f.fileno()).st_size
-        m = re.match(r"bytes=(\d*)-(\d*)", rango)
-        ini = int(m.group(1)) if m and m.group(1) else 0
-        fin = int(m.group(2)) if m and m.group(2) else tam - 1
-        fin = min(fin, tam - 1)
-        if ini > fin or ini >= tam:
-            self.send_response(416)
-            self.send_header("Content-Range", f"bytes */{tam}")
-            self.end_headers(); f.close(); return
-        self.send_response(206)
-        self.send_header("Content-Type", self.guess_type(ruta))
-        self.send_header("Accept-Ranges", "bytes")
-        self.send_header("Content-Range", f"bytes {ini}-{fin}/{tam}")
-        self.send_header("Content-Length", str(fin - ini + 1))
-        self.end_headers()
-        f.seek(ini)
-        restante = fin - ini + 1
-        while restante > 0:
-            chunk = f.read(min(65536, restante))
-            if not chunk:
-                break
-            try:
-                self.wfile.write(chunk)
-            except (BrokenPipeError, ConnectionResetError):
-                break
-            restante -= len(chunk)
-        f.close()
 
 
 class VentanaWeb(QMainWindow):
@@ -148,7 +59,7 @@ class VentanaWeb(QMainWindow):
         s.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, True)
         s.setAttribute(QWebEngineSettings.WebAttribute.JavascriptEnabled, True)
         self.web.page().setWebChannel(self._canal)
-        self.web.setUrl(QUrl(self._servidor.url()))
+        self.web.setUrl(QUrl(self._servidor.url(PAGINA)))
         self.setCentralWidget(self.web)
 
         # Quedarse en segundo plano (como Discord): al cerrar, se oculta en la

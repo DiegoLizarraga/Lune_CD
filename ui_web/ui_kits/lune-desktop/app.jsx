@@ -102,6 +102,7 @@ function App() {
   const [voiceOn, setVoiceOn] = useState(false);
   const [telegramOn, setTelegramOn] = useState(false);
   const [mascot, setMascot] = useState('normal');
+  const [mascotaFuera, setMascotaFuera] = useState(false); // Lune está en el escritorio (mascota flotante)
   const [menuOpen, setMenuOpen] = useState(false);
   const [adjuntos, setAdjuntos] = useState([]);   // nombres de archivos adjuntos
   const [grabando, setGrabando] = useState(false); // micrófono grabando
@@ -134,7 +135,7 @@ function App() {
       const b = window.lune;
       if (!b) return;
       b.chunk.connect((acumulado) => {
-        setTyping(false); setMascot('typing');
+        setTyping(false);   // la cara la lleva `acto` (typing y los <|ACT|> según llegan)
         // El id se fija AQUÍ (síncrono), no dentro del updater: si no, 'done'
         // podría leer streamId aún vacío y crear una segunda burbuja.
         if (!streamId.current) streamId.current = uid();
@@ -146,18 +147,18 @@ function App() {
         });
       });
       b.acto.connect((estado) => setMascot(estado));
-      // Emoción final con intensidad: cuanto más intensa, más dura antes de volver al idle.
-      b.emocion.connect((estado, inten) => {
-        const i = Math.max(0, Math.min(1, Number(inten) || 0.6));
-        holdRef.current = 2500 + Math.round(i * 5000);   // 2.5 s (leve) … 7.5 s (fuerte)
-        if (estado) setMascot(estado);
-      });
+      // La expresión final llega por `done` (o, con voz, tramo a tramo por `acto`)
+      // y SE QUEDA: si la haces reír, sigue riéndose hasta el siguiente mensaje.
+      b.emocion.connect(() => {});
       b.voz_estado.connect((on) => setVoiceOn(!!on));
       b.telegram_estado.connect((run, detail) => { setTelegramOn(!!run); if (detail) mostrarToast(detail); });
       b.adjuntos_cambio.connect((j) => { try { setAdjuntos(JSON.parse(j) || []); } catch (e) { setAdjuntos([]); } });
       b.grabando.connect((on) => setGrabando(!!on));
       b.dictado.connect((texto) => { if (texto) setInput((v) => (v ? v + ' ' : '') + texto); });
       b.aviso.connect((msg) => mostrarToast(msg));
+      // Mascota de escritorio: mientras está fuera, la barra lateral no la dibuja.
+      b.mascota_estado.connect((v) => setMascotaFuera(!!v));
+      try { b.mascota_visible((v) => setMascotaFuera(!!v)); } catch (e) {}
       // Modo llamada: lo que dice el usuario entra como mensaje y se envía solo.
       b.usuario_dijo.connect((texto) => { if (texto && sendRef.current) sendRef.current(texto); });
       b.llamada_estado.connect((on, estado) => {
@@ -181,9 +182,7 @@ function App() {
           if (texto) return [...m, { id: uid(), role:'bot', provider: providerRef.current, text: texto, time: NOW() }];
           return m;
         });
-        setMascot(mascota || 'happy');
-        // Vuelve al idle tras un tiempo proporcional a la intensidad de la emoción.
-        const tr = setTimeout(() => setMascot('normal'), holdRef.current || 4000); timers.current.push(tr);
+        if (mascota) setMascot(mascota);   // vacío = la cara la va llevando la voz
       });
     }
     if (window.lune) wire();
@@ -293,7 +292,8 @@ function App() {
   return (
     <div className={`ln-app lune-backdrop${fx.bg?'':' fx-no-bg'}${fx.sweep?'':' fx-no-sweep'}${fx.micro?'':' fx-no-micro'}${provider==='cloud'?' tema-nube':''}`}>
       {fx.bg && <BgShards />}
-      <window.Sidebar provider={provider} onProvider={setProvider} mascotState={mascot} />
+      <window.Sidebar provider={provider} onProvider={setProvider} mascotState={mascot}
+        mascotaFuera={mascotaFuera} onTraer={toggleMascota} />
       <main className="ln-main">
         {provider==='cloud' && <BgNube />}
         <Topbar provider={provider} status={status} view={view} onView={setView} onMenu={() => setMenuOpen(true)} />
@@ -319,7 +319,7 @@ function App() {
         { label:'Tools', desc:'Herramientas de escritorio', onClick:()=>setView('tools') },
         { label:'Historial', desc:'Conversaciones previas', onClick:()=>setView('historial') },
         { label:'Optimizar', desc:'Rendimiento del modelo', onClick:()=>setView('optimizar') },
-        { label:'Mascota', desc:'Mascota flotante de escritorio', onClick:toggleMascota },
+        { label:`Mascota ${mascotaFuera?'ON':'OFF'}`, desc: mascotaFuera ? 'Traer a Lune de vuelta a la ventana' : 'Sacar a Lune al escritorio', on:mascotaFuera, onClick:toggleMascota },
         { label:`Voz ${voiceOn?'ON':'OFF'}`, desc:'edge-tts · es-MX', on:voiceOn, onClick:toggleVoz },
         { label:'Telegram', desc:'Bot sincronizado', on:telegramOn, onClick:toggleTelegram },
         { label:`Llamada ${llamadaOn?'ON':'OFF'}`, desc:'Conversación solo por voz', on:llamadaOn, onClick:toggleLlamada },

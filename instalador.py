@@ -33,7 +33,7 @@ _OPCIONALES_RESPALDO = {
     "Voz de entrada (dictado)": {"modulos": {"faster_whisper": "faster-whisper", "sounddevice": "sounddevice"},
         "nota": "Para hablarle por micrófono y para el modo llamada. 100% local; pesa bastante."},
     "Interfaz completa (piel web animada)": {"modulos": {"PyQt6.QtWebEngineWidgets": "PyQt6-WebEngine"},
-        "nota": "La interfaz animada y la mascota en video. Sin esto se usa la nativa ligera."},
+        "nota": "La interfaz animada, la mascota en video y el avatar 3D (VRM). Sin esto se usa la nativa ligera."},
     "Leer PDF": {"modulos": {"pypdf": "pypdf"}, "nota": "Para adjuntar PDF al chat."},
     "Leer Word (.docx)": {"modulos": {"docx": "python-docx"}, "nota": "Para adjuntar Word al chat."},
     "Optimizador del sistema": {"modulos": {"psutil": "psutil"}, "nota": "Monitor de CPU/RAM y limpieza."},

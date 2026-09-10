@@ -137,10 +137,79 @@ class VoiceEngine:
         except Exception: pass
         self._engine = None
 
+    @staticmethod
+    def _limpiar(text: str, tope: int = 400) -> str:
+        limpio = re.sub(r'[^\w\s,.!?áéíóúüñ¿¡]', '', text or '', flags=re.UNICODE).strip()
+        if len(limpio) > tope:                      # cortar en un espacio, no a media palabra
+            corte = limpio.rfind(" ", 0, tope)
+            limpio = limpio[:corte if corte > tope // 2 else tope].rstrip()
+        return limpio
+
     def speak(self, text: str):
         if not self._enabled or not self._engine: return
-        clean = re.sub(r'[^\w\s,.!?áéíóúüñ¿¡]', '', text, flags=re.UNICODE).strip()[:400]
+        clean = self._limpiar(text)
         if clean: threading.Thread(target=self._speak_blocking, args=(clean,), daemon=True).start()
+
+    # ── Varios tramos seguidos, cada uno con su expresión ─────────────────────
+    def speak_segmentos(self, segmentos, al_segmento=None, al_terminar=None, tope: int = 600) -> bool:
+        """
+        Habla `[(etiqueta, texto), …]` en orden. Los tramos se sintetizan en
+        paralelo y se reproducen uno tras otro; justo antes de que suene cada uno
+        se llama a `al_segmento(i, etiqueta)` (también para un tramo sin texto,
+        p. ej. un marcador final) y al acabar a `al_terminar()`. Los avisos llegan
+        desde el hilo de audio: quien los use debe marshalear al hilo de Qt.
+        `cancelar()` corta la lectura y los tramos pendientes. Devuelve False si
+        no hay voz o nada que decir (para que quien llama exprese de otra forma).
+        """
+        if not self._enabled or not self._engine:
+            return False
+        limpios = [(et, self._limpiar(t, tope)) for et, t in (segmentos or [])]
+        if not any(t for _, t in limpios):
+            return False
+        gen = self._gen_voz
+        threading.Thread(target=self._speak_segmentos_blocking,
+                         args=(limpios, al_segmento, al_terminar, gen), daemon=True).start()
+        return True
+
+    def cancelar(self):
+        """Corta lo que esté sonando y los tramos pendientes (mensaje nuevo, Detener)."""
+        self._gen_voz += 1
+        try:
+            import pygame
+            pygame.mixer.music.stop()
+        except Exception:
+            pass
+
+    def _speak_segmentos_blocking(self, segmentos, al_segmento, al_terminar, gen):
+        from concurrent.futures import ThreadPoolExecutor
+        with self._lock:
+            if gen != self._gen_voz:                # lo cancelaron mientras esperaba su turno
+                return
+            with ThreadPoolExecutor(max_workers=3) as pool:
+                futuros = [pool.submit(self._sintetizar_a_archivo, texto) if texto else None
+                           for _, texto in segmentos]
+                for i, ((etiqueta, _texto), fut) in enumerate(zip(segmentos, futuros)):
+                    ruta = None
+                    if fut is not None:
+                        try:
+                            ruta = fut.result()
+                        except Exception:
+                            ruta = None
+                    if gen != self._gen_voz:        # cancelado: ni suena ni avisa, solo limpia
+                        self._borrar(ruta)
+                        continue
+                    if al_segmento is not None:
+                        try:
+                            al_segmento(i, etiqueta)
+                        except Exception:
+                            pass
+                    if ruta:
+                        self._reproducir_archivo(ruta)
+            if al_terminar is not None and gen == self._gen_voz:
+                try:
+                    al_terminar()
+                except Exception:
+                    pass
 
     def _speak_blocking(self, text: str):
         with self._lock:
@@ -149,6 +218,21 @@ class VoiceEngine:
             elif self._engine == "kokoro":
                 ruta = self._sintetizar_a_archivo(text)
                 if ruta: self._reproducir_archivo(ruta)
+
+    # ── Aviso «está sonando» (la mascota 3D mueve la boca mientras Lune habla) ──
+    # `al_hablar(True/False)` se llama desde el hilo de audio: quien lo use debe
+    # marshalear al hilo de Qt (el puente lo hace con una señal).
+    al_hablar = None
+    _gen_voz = 0          # sube con cancelar(): las lecturas de una generación vieja se callan
+
+    def _sonando(self, activo: bool):
+        cb = self.al_hablar
+        if cb is None:
+            return
+        try:
+            cb(bool(activo))
+        except Exception:
+            pass
 
     def _speak_edge(self, text: str):
         try:
@@ -159,8 +243,13 @@ class VoiceEngine:
                 t.close(); await c.save(t.name); return t.name
             path = asyncio.run(_synth())
             pygame.mixer.music.load(path); pygame.mixer.music.play()
-            while pygame.mixer.music.get_busy(): threading.Event().wait(0.1)
-            os.unlink(path)
+            self._sonando(True)
+            try:
+                while pygame.mixer.music.get_busy(): threading.Event().wait(0.1)
+            finally:
+                self._sonando(False)
+                self._soltar_audio()
+            self._borrar(path)
         except Exception: pass
 
     def _speak_gtts(self, text: str):
@@ -169,7 +258,11 @@ class VoiceEngine:
             tts = gTTS(text, lang="es"); fp = io.BytesIO()
             tts.write_to_fp(fp); fp.seek(0)
             pygame.mixer.music.load(fp); pygame.mixer.music.play()
-            while pygame.mixer.music.get_busy(): threading.Event().wait(0.1)
+            self._sonando(True)
+            try:
+                while pygame.mixer.music.get_busy(): threading.Event().wait(0.1)
+            finally:
+                self._sonando(False)
         except Exception: pass
 
     def toggle(self) -> bool: self._enabled = not self._enabled; return self._enabled
@@ -200,8 +293,9 @@ class VoiceEngine:
                 return self._quizas_rvc(ruta) if ruta else None
             except Exception:
                 return None
+        import tempfile
+        t = None
         try:
-            import tempfile
             t = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False); t.close()
             if self._engine == "edge":
                 import asyncio, edge_tts
@@ -213,6 +307,8 @@ class VoiceEngine:
                 gTTS(clean, lang="es").save(t.name)
             return t.name
         except Exception:
+            if t is not None:
+                self._borrar(t.name)         # sin red: no dejar un .mp3 vacío por ahí
             return None
 
     def _quizas_rvc(self, ruta_wav):
@@ -240,10 +336,33 @@ class VoiceEngine:
         try:
             import pygame
             pygame.mixer.music.load(ruta); pygame.mixer.music.play()
-            while pygame.mixer.music.get_busy():
-                threading.Event().wait(0.05)
-            os.unlink(ruta)
+            self._sonando(True)
+            try:
+                while pygame.mixer.music.get_busy():
+                    threading.Event().wait(0.05)
+            finally:
+                self._sonando(False)
+                self._soltar_audio()
         except Exception:
+            pass
+        self._borrar(ruta)
+
+    @staticmethod
+    def _soltar_audio():
+        # SDL mantiene el archivo abierto hasta unload(): sin esto, en Windows el
+        # borrado falla (WinError 32) y los temporales se acumulan en %TEMP%.
+        try:
+            import pygame
+            pygame.mixer.music.unload()
+        except Exception:
+            pass
+
+    @staticmethod
+    def _borrar(ruta):
+        try:
+            if ruta:
+                os.unlink(ruta)
+        except OSError:
             pass
 
 

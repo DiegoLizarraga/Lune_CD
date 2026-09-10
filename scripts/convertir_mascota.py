@@ -9,11 +9,12 @@ Uso:
     pip install imageio-ffmpeg      # trae un ffmpeg estático (solo para convertir)
     python scripts/convertir_mascota.py
 
-Nombres esperados (los que lee la UI):
-    lune-composed · lune-happy · lune-angry · lune-surprised · lune-wave
-    lune-thinking · lune-nervous · lune-dismiss
-Así que cuando agregues Nervous/Dismiss/Thinking, guárdalos como
-`lune-nervous.mp4`, etc., y corre este script.
+Nombres esperados (los que lee la UI), uno por emoción o estado:
+    lune-composed · lune-happy · lune-sad · lune-angry · lune-surprised
+    lune-thinking · lune-curious · lune-nervous · lune-wave · lune-dismiss
+    lune-laughing · lune-bored · lune-listening · lune-talking · lune-working
+Guarda el clip nuevo como `lune-<estado>.mp4` y corre este script. Los espacios
+en el nombre se quitan solos (`lune-working .mp4` → `lune-working.webm`).
 """
 import subprocess
 from pathlib import Path
@@ -36,7 +37,8 @@ def main() -> int:
         print(f"No hay lune-*.mp4 que convertir en {DIR}")
         return 0
     for f in mp4s:
-        webm = f.with_suffix(".webm")
+        # Sin espacios ni mayúsculas: la UI busca exactamente `lune-<estado>.webm`.
+        webm = f.with_name(f.stem.replace(" ", "").lower() + ".webm")
         print(f"→ {f.name} → {webm.name}")
         r = subprocess.run(
             [ff, "-y", "-i", str(f), "-c:v", "libvpx-vp9", "-b:v", "0",

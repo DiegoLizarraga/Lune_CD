@@ -42,8 +42,13 @@ class Config:
         # Avatar/expresiones: permite cambiar el "modelo" visual de Lune.
         "avatar": {
             "pack": "default",                   # carpeta lune_face/ por defecto
-            "render": "animado",                 # animado (video anime) · vrm (3D, próximamente) · sprites (ligero, bajos recursos)
-            "vrm_archivo": "",                   # ruta a un .vrm; vacío = el 1º en modelo_vrm/
+            "render": "animado",                 # animado (video anime) · vrm (avatar 3D) · sprites (ligero, bajos recursos)
+            "vrm_archivo": "",                   # .vrm por defecto; vacío = el 1º en modelo_vrm/ (cada personaje puede traer el suyo)
+            "vrm_tamano": "normal",              # pequeno · normal · grande (tamaño de la mascota 3D)
+            "vrm_escala": 1.0,                   # ajuste fino con la rueda del ratón sobre la mascota (0.6–1.5)
+            "vrm_fantasma_auto": True,           # los clics pasan al escritorio donde no hay avatar
+            "vrm_encuadre": "retrato",           # retrato (cara y torso) · cuerpo (entera)
+            "dormir_min": 10,                    # la mascota 3D se duerme tras N min sin tocarla ni hablarle (0 = nunca)
             "click_through": False,              # mascota "fantasma": deja pasar los clics
             "comentarios_cada_min": 0,           # companion comenta la pantalla cada N min (0 = off)
             "overlay_x": None, "overlay_y": None,      # posición de la mascota clásica

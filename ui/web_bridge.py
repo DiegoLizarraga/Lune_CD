@@ -17,12 +17,12 @@ from PyQt6.QtCore import QObject, QThread, QTimer, pyqtSignal, pyqtSlot
 
 from nucleo.config import Config
 from nucleo.memoria import MemoriaManager
-from nucleo import datos, personajes
+from nucleo import datos, personajes, vrm
 from servicios.ai_manager import AIManager
 from servicios.ai_worker import AIWorker
 from servicios.tools import ToolManager
 from servicios.voice import VoiceEngine
-from lune_core import marcadores
+from lune_core import marcadores, expresiones
 
 # Emoción canónica del modelo → estado de mascota del set anime (assets/mascot/anime).
 EMOCION_A_MASCOTA = {
@@ -31,6 +31,8 @@ EMOCION_A_MASCOTA = {
     "curious": "curious", "neutral": "normal",
     # v10 — un estado por clip; si el clip aún no existe, el visor cae al idle.
     "nervous": "nervous", "wave": "wave", "dismiss": "dismiss",
+    # v10.1
+    "laughing": "laughing", "bored": "bored",
 }
 
 
@@ -59,6 +61,8 @@ class LuneBridge(QObject):
     llamada_estado = pyqtSignal(bool, str)  # modo llamada: (activa, estado/aviso)
     usuario_dijo = pyqtSignal(str)          # en llamada: lo que dijo el usuario → el JS lo envía
     mic_prueba = pyqtSignal(str)            # resultado json de «Probar micrófono»
+    _hablando = pyqtSignal(bool)            # interna: la voz suena (desde el hilo de audio)
+    _acto_voz = pyqtSignal(str)             # interna: empieza a sonar un tramo con esta expresión
 
     def __init__(self, config=None, ai_manager=None, memoria=None, tools=None,
                  voice=None, parent=None):
@@ -80,6 +84,20 @@ class LuneBridge(QObject):
         # En modo llamada, la respuesta final la habla el worker (bloqueando) y
         # luego vuelve a escuchar; por eso se engancha a `done`.
         self.done.connect(self._llamada_entregar)
+        # La voz avisa cuándo suena (hilo de audio) → señal → boca del avatar VRM.
+        self._hablando.connect(self._on_hablando)
+        try:
+            self.voice.al_hablar = self._hablando.emit
+        except Exception:
+            pass
+        # Expresiones: hasta tres por respuesta; con voz cambian al ritmo de la voz,
+        # sin voz según llega el texto (o al ritmo de lectura). La última se queda.
+        self._acto_voz.connect(self._expresar)
+        self._seguidor = None               # SeguidorActs del stream en curso
+        self._stream_iniciado = False
+        self._expresado_en_stream = False
+        self._timers_plan = []              # expresiones programadas (sin voz, sin stream)
+        self._gen = 0                       # generación del envío: ignora señales de workers viejos
         # Aburrimiento: si pasas N minutos sin escribirle, Lune se aburre y te dice
         # algo (una sola vez por racha; se rearma con tu siguiente mensaje).
         self._aburrida_t = QTimer(self)
@@ -96,6 +114,11 @@ class LuneBridge(QObject):
             return
         provider_id = _provider_id(provider)
         self._rearmar_aburrimiento()      # escribiste: Lune ya no está aburrida
+        self._cancelar_plan()             # expresiones pendientes de la respuesta anterior…
+        try:
+            self.voice.cancelar()         # …y su voz, si aún sonaba
+        except Exception:
+            pass
 
         # Con adjuntos, todo va al modelo (ni la memoria ni las herramientas los
         # entienden). Sin adjuntos, primero se prueban memoria y herramientas.
@@ -133,6 +156,18 @@ class LuneBridge(QObject):
 
         self.estado.emit("busy")
         self.acto.emit("thinking")
+        self._mascota_estado("thinking")
+        self._seguidor = expresiones.SeguidorActs()
+        self._stream_iniciado = False
+        self._expresado_en_stream = False
+        # Un Detener anterior deja cancel_flag levantado: si no se baja, el proveedor
+        # corta en el primer token y todo sale "Sin respuesta".
+        try:
+            self.ai.providers[provider_id].cancel_flag = False
+        except Exception:
+            pass
+        self._gen += 1
+        gen = self._gen
         self._worker = AIWorker(
             self.ai, texto or "Analiza lo que te adjunto.", provider_id,
             extra_context=contexto,
@@ -140,9 +175,11 @@ class LuneBridge(QObject):
             imagenes=imagenes,
             emociones=self.config.feature("emociones", True),
         )
-        self._worker.token_received.connect(self.chunk)      # texto acumulado
-        self._worker.response_ready.connect(self._on_done)
-        self._worker.error_occurred.connect(self._on_error)
+        # Las señales llevan la generación: tras Detener (o un envío nuevo) las del
+        # worker viejo se ignoran, en vez de pintar su respuesta parcial.
+        self._worker.token_received.connect(lambda t, g=gen: self._on_chunk(t, g))
+        self._worker.response_ready.connect(lambda r, g=gen: self._on_done(r, g))
+        self._worker.error_occurred.connect(lambda m, g=gen: self._on_error(m, g))
         self._worker.start()
 
     @pyqtSlot()
@@ -152,29 +189,89 @@ class LuneBridge(QObject):
                 p.cancel_flag = True
         except Exception:
             pass
+        self._gen += 1                      # lo que emita el worker en curso ya no cuenta
+        self._cancelar_plan()
+        try:
+            self.voice.cancelar()
+        except Exception:
+            pass
         self.done.emit("", "normal")
+        self._mascota_estado("normal")
         self.estado.emit("live")
 
+    # ── Expresiones ──────────────────────────────────────────────────────────────
+    def _voz_lee_al_final(self) -> bool:
+        """¿La voz va a leer la respuesta cuando termine? (entonces la cara sigue a la voz)."""
+        return bool(self._llamada is None and getattr(self.voice, "_enabled", False)
+                    and getattr(self.voice, "available", False))
+
+    def _expresar(self, estado: str):
+        """Cambia la cara de la barra lateral y de la mascota de escritorio (se queda)."""
+        if not estado:
+            return
+        self.acto.emit(estado)
+        self._mascota_estado(estado)
+
+    def _on_chunk(self, acumulado: str, gen=None):
+        if gen is not None and gen != self._gen:
+            return
+        if not self._stream_iniciado:
+            self._stream_iniciado = True
+            self._expresar("typing")
+        if self._seguidor is not None and not self._voz_lee_al_final():
+            for act in self._seguidor.nuevos(acumulado):
+                self._expresado_en_stream = True
+                self._expresar(EMOCION_A_MASCOTA.get(act.get("emotion"), "happy"))
+        self.chunk.emit(acumulado)
+
+    def _al_segmento_voz(self, _i: int, etiqueta: str, gen=None):
+        # Desde el hilo de audio: la señal lo lleva al hilo de Qt. Los avisos de una
+        # respuesta anterior (generación vieja) se ignoran.
+        if etiqueta and (gen is None or gen == self._gen):
+            self._acto_voz.emit(etiqueta)
+
+    def _al_terminar_voz(self, estado_final: str, gen=None):
+        # Al acabar de hablar, la cara se queda con la última expresión (aunque su
+        # tramo no tuviera texto que leer, o la respuesta no trajera marcadores).
+        if estado_final and (gen is None or gen == self._gen):
+            self._acto_voz.emit(estado_final)
+
+    def _cancelar_plan(self):
+        for t in self._timers_plan:
+            try: t.stop(); t.deleteLater()
+            except Exception: pass
+        self._timers_plan = []
+
+    def _programar_plan(self, plan):
+        """Sin voz y sin streaming: las expresiones al ritmo de lectura (la 1ª ya se puso)."""
+        self._cancelar_plan()
+        for t_s, emocion, _ in expresiones.horario(plan)[1:]:
+            tm = QTimer(self); tm.setSingleShot(True)
+            tm.timeout.connect(lambda e=emocion, t=tm: (self._expresar(EMOCION_A_MASCOTA.get(e, "happy")), t.deleteLater()))
+            tm.start(int(t_s * 1000))
+            self._timers_plan.append(tm)
+
     # ── Fin de la respuesta del modelo ───────────────────────────────────────────
-    def _on_done(self, respuesta: str):
+    def _on_done(self, respuesta: str, gen=None):
+        if gen is not None and gen != self._gen:
+            return                                   # respuesta (parcial) de un envío ya detenido
         # Herramientas que pidió el modelo (se ejecutan en este equipo).
         try:
             limpio, acciones = self.tools.parsear_respuesta_ia(respuesta)
         except Exception:
             limpio, acciones = respuesta, []
-        # Emociones: separar los marcadores <|ACT|> del texto hablable.
+        # Emociones: el plan de expresiones de la respuesta (hasta tres tramos con
+        # su texto). La última es con la que se queda.
         try:
-            hablable, control = marcadores.separar(limpio)
-            acts = [v for c, v in control if c == "act"]
+            plan = expresiones.planificar(limpio)
         except Exception:
-            hablable, acts = limpio, []
-        mascota = EMOCION_A_MASCOTA.get(acts[-1].get("emotion"), "happy") if acts else "happy"
+            plan = [expresiones.Tramo("", 1.0, limpio)]
+        hablable = expresiones.hablable(plan)
+        mascota = EMOCION_A_MASCOTA.get(expresiones.final(plan), "happy")
         try:
-            intensidad = float(acts[-1].get("intensity", 0.8)) if acts else 0.6
+            intensidad = max(0.0, min(1.0, float(plan[-1].intensidad)))
         except (TypeError, ValueError):
             intensidad = 0.8
-        intensidad = max(0.0, min(1.0, intensidad))
-        # La intensidad decide cuánto dura la expresión antes de volver al idle.
         self.emocion.emit(mascota, intensidad)
 
         if self.config.feature("acciones_ia", True):
@@ -192,21 +289,65 @@ class LuneBridge(QObject):
         except Exception:
             pass
 
-        # Voz: si está activa, Lune lee la respuesta en alto. En modo llamada NO:
-        # ahí la habla el worker (bloqueando) para luego volver a escuchar.
+        # Voz: si está activa, Lune lee la respuesta por tramos y la cara cambia
+        # cuando empieza a sonar cada uno. En modo llamada NO: ahí la habla el
+        # worker (bloqueando) para luego volver a escuchar.
+        con_voz = False
+        con_emociones = bool(expresiones.emociones(plan))
         try:
             if (self._llamada is None and getattr(self.voice, "_enabled", False)
                     and hablable.strip()):
-                self.voice.speak(hablable)
+                # Sin marcadores, el tramo va como "talking"; al acabar, la cara final.
+                segs = expresiones.segmentos_voz(plan, lambda e: EMOCION_A_MASCOTA.get(e, "happy"))
+                segs = [(et or "talking", tx) for et, tx in segs]
+                con_voz = bool(self.voice.speak_segmentos(
+                    segs,
+                    al_segmento=lambda i, e, g=gen: self._al_segmento_voz(i, e, g),
+                    al_terminar=lambda g=gen, est=mascota: self._al_terminar_voz(est, g)))
+        except Exception:
+            con_voz = False
+
+        self.estado.emit("live")
+        if con_voz:
+            self.done.emit(hablable, "")              # la cara la lleva la voz, tramo a tramo
+        elif self._expresado_en_stream or self._llamada is not None or not con_emociones:
+            # Ya cambió con el texto (o en llamada la lleva el worker, o no hay
+            # marcadores): se queda con la última.
+            self.done.emit(hablable, mascota)
+            self._mascota_estado(mascota)
+        else:
+            # Llegó de golpe: la 1ª ya, las demás al ritmo de lectura.
+            primera = EMOCION_A_MASCOTA.get(plan[0].emocion, mascota)
+            self.done.emit(hablable, primera)
+            self._mascota_estado(primera)
+            self._programar_plan(plan)
+
+    def _on_error(self, msg: str, gen=None):
+        if gen is not None and gen != self._gen:
+            return
+        self.estado.emit("error")
+        self.done.emit(f"Error: {msg}", "error")
+        self._mascota_estado("nervous", 6000)
+
+    # ── Mascota de escritorio: recibe lo mismo que la mascota de la barra lateral ──
+    def _mascota_estado(self, estado: str, ms: int = 0):
+        ov = self._overlay
+        if ov is None or getattr(ov, "cerrado", False) or not ov.isVisible():
+            return
+        try:
+            ov.set_estado(estado, ms)
         except Exception:
             pass
 
-        self.estado.emit("live")
-        self.done.emit(hablable, mascota)
-
-    def _on_error(self, msg: str):
-        self.estado.emit("error")
-        self.done.emit(f"Error: {msg}", "error")
+    def _on_hablando(self, activo: bool):
+        ov = self._overlay
+        if ov is None or getattr(ov, "cerrado", False) or not ov.isVisible():
+            return
+        try:
+            if hasattr(ov, "set_hablando"):
+                ov.set_hablando(bool(activo))
+        except Exception:
+            pass
 
     # ── Configuración (Ajustes) ──────────────────────────────────────────────────
     @pyqtSlot(result=str)
@@ -225,6 +366,15 @@ class LuneBridge(QObject):
             "acciones_ia": self.config.feature("acciones_ia", True),
             "mascota_render": str(self.config.get("avatar", "render", "animado") or "animado"),
             "interfaz_modo": str(self.config.get("interfaz", "modo", "web") or "web"),
+            # Mascota 3D (VRM): qué hay instalado y cómo se muestra
+            "vrm_webengine": vrm.webengine_disponible(),
+            "vrm_modelos": vrm.listar_modelos(),
+            "vrm_archivo": str(self.config.get("avatar", "vrm_archivo", "") or ""),
+            "vrm_tamano": str(self.config.get("avatar", "vrm_tamano", "normal") or "normal"),
+            "vrm_encuadre": str(self.config.get("avatar", "vrm_encuadre", "retrato") or "retrato"),
+            "vrm_fantasma_auto": bool(self.config.get("avatar", "vrm_fantasma_auto", True)),
+            "dormir_min": int(self.config.get("avatar", "dormir_min", 10) or 0),
+            "mascota_fuera": self.mascota_visible(),
             "autoinicio": self.autoinicio_get(),
             "aburrimiento_min": int(self.config.get("chat", "aburrimiento_min", 10) or 0),
             # Audio: micrófono, salida y modelo de Whisper (nombres; "" = sistema)
@@ -267,18 +417,47 @@ class LuneBridge(QObject):
             if "acciones_ia" in c: self.config.set_feature("acciones_ia", bool(c["acciones_ia"]))
             if "voz" in c and getattr(self.voice, "_enabled", False) != bool(c["voz"]):
                 self.voice._enabled = bool(c["voz"]); self.voz_estado.emit(bool(c["voz"]))
-            # Mascota: animado · vrm (próximamente) · sprites (bajos recursos)
+            # Mascota: animado · vrm (avatar 3D) · sprites (bajos recursos), y las
+            # opciones del VRM. Si cambia algo que la página no aplica en caliente,
+            # se recrea la mascota con lo nuevo (solo si estaba abierta).
+            recrear = False
+            ov = self._overlay if (self._overlay is not None and not getattr(self._overlay, "cerrado", False)) else None
             if c.get("mascota_render") in ("animado", "vrm", "sprites"):
                 nuevo = c["mascota_render"]
                 if nuevo != self.config.get("avatar", "render", "animado"):
-                    self.config.set("avatar", "render", nuevo)
-                    if self._overlay is not None:          # recrear con el render nuevo
-                        vis = self._overlay.isVisible()
-                        try: self._overlay.close()
-                        except Exception: pass
-                        self._overlay = None
-                        if vis:
-                            self._overlay = self._crear_mascota(); self._overlay.show()
+                    self.config.set("avatar", "render", nuevo); recrear = True
+            if "vrm_archivo" in c:
+                v = str(c["vrm_archivo"] or "").strip()
+                if v and vrm.resolver(v) is None:
+                    self.aviso.emit(f"No encuentro el modelo «{v}»; sigo con el anterior.")
+                elif v != str(self.config.get("avatar", "vrm_archivo", "") or ""):
+                    self.config.set("avatar", "vrm_archivo", v)
+                    # el modelo por defecto solo cuenta si el personaje no trae el suyo
+                    if ov is not None and hasattr(ov, "recargar_modelo"):
+                        ov.recargar_modelo()
+            # Tamaño y encuadre se aplican en caliente (la ventana ya sabe hacerlo).
+            for clave, valido, aplicar in (("vrm_tamano", ("pequeno", "normal", "grande"), "aplicar_tamano"),
+                                           ("vrm_encuadre", ("retrato", "cuerpo"), "aplicar_encuadre")):
+                if clave in c:
+                    v = str(c[clave] or "").strip()
+                    if v not in valido or v == str(self.config.get("avatar", clave, "") or ""):
+                        continue
+                    if ov is not None and getattr(ov, "render", "") == "vrm" and hasattr(ov, aplicar):
+                        getattr(ov, aplicar)(v)           # también guarda la clave
+                    else:
+                        self.config.set("avatar", clave, v)
+            if "vrm_fantasma_auto" in c:
+                self.config.set("avatar", "vrm_fantasma_auto", bool(c["vrm_fantasma_auto"]))
+            if "dormir_min" in c:
+                try:
+                    self.config.set("avatar", "dormir_min", max(0, int(c["dormir_min"])))
+                except (TypeError, ValueError):
+                    pass
+            if ov is not None and hasattr(ov, "aplicar_opciones"):
+                try: ov.aplicar_opciones()
+                except Exception: pass
+            if recrear and self._overlay is not None:
+                self._mascota_recrear()
             # Interfaz: web (completa) · nativo (bajos recursos). Aplica al reiniciar.
             if c.get("interfaz_modo") in ("web", "nativo", "patata"):
                 self.config.set("interfaz", "modo", c["interfaz_modo"])
@@ -348,31 +527,64 @@ class LuneBridge(QObject):
 
     def _crear_mascota(self):
         """Mascota según config avatar.render: animado (video anime) · vrm
-        (próximamente: cae a animado) · sprites (ligera, para bajos recursos)."""
+        (avatar 3D; si no hay .vrm cae a animado) · sprites (ligera, bajos recursos).
+        Su señal `visibilidad` es la que le dice a la UI que Lune está fuera (y
+        entonces la barra lateral deja de dibujarla, para no verla doble)."""
         render = str(self.config.get("avatar", "render", "animado") or "animado")
         if render == "sprites":
             from ui.avatar_overlay import AvatarOverlay
-            return AvatarOverlay(self.config)
-        from ui.companion import CompanionFlotante
-        return CompanionFlotante(self.config, ai_manager=self.ai)
+            ov = AvatarOverlay(self.config)
+        else:
+            from ui.companion import CompanionFlotante
+            ov = CompanionFlotante(self.config, ai_manager=self.ai, render=render)
+        try:
+            ov.visibilidad.connect(self.mascota_estado)
+        except Exception:
+            pass
+        try:
+            ov.recrear.connect(self._mascota_recrear)     # arrancó en vídeo y ya hay .vrm
+        except Exception:
+            pass
+        return ov
+
+    def _mascota_recrear(self):
+        """Cierra la mascota y la vuelve a crear con la config actual (si estaba a la vista)."""
+        ov = self._overlay
+        vis = ov is not None and not getattr(ov, "cerrado", False) and ov.isVisible()
+        if ov is not None:
+            try: ov.close()
+            except Exception: pass
+        self._overlay = None
+        if vis:
+            self._overlay = self._crear_mascota(); self._overlay.show()
+            self.mascota_estado.emit(True)
+
+    def _mascota(self):
+        """La mascota viva, creándola si no existe o si el usuario la cerró."""
+        if self._overlay is None or getattr(self._overlay, "cerrado", False):
+            self._overlay = self._crear_mascota()
+        return self._overlay
+
+    @pyqtSlot(result=bool)
+    def mascota_visible(self) -> bool:
+        ov = self._overlay
+        return bool(ov is not None and not getattr(ov, "cerrado", False) and ov.isVisible())
 
     @pyqtSlot(result=bool)
     def mascota_toggle(self) -> bool:
-        # Mascota flotante con el nuevo estilo anime animado + comentarios de pantalla.
-        if self._overlay is None:
-            self._overlay = self._crear_mascota()
-        if self._overlay.isVisible():
-            self._overlay.hide(); vis = False
+        # Mascota flotante (video anime o avatar VRM) + comentarios de pantalla.
+        ov = self._mascota()
+        if ov.isVisible():
+            ov.hide(); vis = False
         else:
-            self._overlay.show(); self._overlay.raise_(); vis = True
+            ov.show(); ov.raise_(); vis = True
         self.mascota_estado.emit(vis)
         return vis
 
     @pyqtSlot(result=bool)
     def comentar_pantalla(self) -> bool:
         """Abre la mascota (si hace falta) y le pide comentar la pantalla ahora."""
-        if self._overlay is None:
-            self._overlay = self._crear_mascota()
+        self._mascota()
         if not self._overlay.isVisible():
             self._overlay.show(); self._overlay.raise_()
             self.mascota_estado.emit(True)
@@ -391,7 +603,8 @@ class LuneBridge(QObject):
         activo = (personajes.activo_nombre() or "").lower()
         return json.dumps([
             {"nombre": p.get("nombre", ""), "activo": p.get("nombre", "").lower() == activo,
-             "descripcion": (p.get("systemPrompt", "") or "")[:120]}
+             "descripcion": (p.get("systemPrompt", "") or "")[:120],
+             "vrm": str(p.get("vrm", "") or "")}
             for p in personajes.listar()
         ], ensure_ascii=False)
 
@@ -399,10 +612,56 @@ class LuneBridge(QObject):
     def personaje_activar(self, nombre: str) -> bool:
         try:
             personajes.set_activo(nombre)
+            datos.invalidar()
             self.aviso.emit(f"Personaje activo: {nombre}")
+            self._mascota_recargar_modelo()
             return True
         except Exception:
             return False
+
+    def _mascota_recargar_modelo(self):
+        """Si la mascota 3D está abierta y el personaje activo tiene otro .vrm, cámbialo."""
+        ov = self._overlay
+        if ov is not None and not getattr(ov, "cerrado", False) and hasattr(ov, "recargar_modelo"):
+            try:
+                ov.recargar_modelo()
+            except Exception:
+                pass
+
+    # ── Modelos 3D (VRM) ─────────────────────────────────────────────────────────
+    @pyqtSlot(result=str)
+    def vrm_modelos(self) -> str:
+        return json.dumps({"webengine": vrm.webengine_disponible(), "modelos": vrm.listar_modelos(),
+                           "carpeta": str(vrm.CARPETA)}, ensure_ascii=False)
+
+    @pyqtSlot(result=str)
+    def vrm_importar(self) -> str:
+        """Elige un .vrm con el diálogo del sistema y lo copia a modelo_vrm/."""
+        try:
+            from PyQt6.QtWidgets import QFileDialog
+            ruta, _ = QFileDialog.getOpenFileName(None, "Elegir un modelo VRM", "",
+                                                  "Modelos VRM (*.vrm);;Todos (*.*)")
+            if not ruta:
+                return json.dumps({"ok": False, "cancelado": True})
+            nombre = vrm.importar_modelo(ruta)
+            self.aviso.emit(f"Modelo «{nombre}» listo en modelo_vrm/")
+            self._mascota_recargar_modelo()
+            return json.dumps({"ok": True, "archivo": nombre, "modelos": vrm.listar_modelos()}, ensure_ascii=False)
+        except Exception as e:
+            self.aviso.emit(f"No pude importar el modelo: {e}")
+            return json.dumps({"ok": False, "error": str(e)}, ensure_ascii=False)
+
+    @pyqtSlot(str, str, result=str)
+    def personaje_vrm(self, nombre: str, archivo: str) -> str:
+        """Asigna (o quita, con archivo vacío) el modelo 3D de un personaje."""
+        try:
+            vrm.asignar_a_personaje(nombre, archivo)
+        except Exception as e:
+            self.aviso.emit(f"No pude asignar el modelo: {e}")
+            return json.dumps({"ok": False, "error": str(e)}, ensure_ascii=False)
+        if (personajes.activo_nombre() or "").lower() == (nombre or "").lower():
+            self._mascota_recargar_modelo()
+        return json.dumps({"ok": True})
 
     # ── Memoria ──────────────────────────────────────────────────────────────────
     @pyqtSlot(result=str)
@@ -785,6 +1044,7 @@ class LuneBridge(QObject):
         linea = random.choice(self._ABURRIDA)
         self.emocion.emit("bored", 1.0)
         self.done.emit(linea, "bored")                # el JS la pinta como burbuja de Lune
+        self._mascota_estado("bored")                 # y se queda aburrida hasta que le escribas
         try:
             if getattr(self.voice, "_enabled", False) and self._llamada is None:
                 self.voice.speak(linea)

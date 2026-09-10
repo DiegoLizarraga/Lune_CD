@@ -228,7 +228,9 @@ class SettingsPanel(QFrame):
         lbl_r.setFont(QFont("Segoe UI", 10)); lbl_r.setStyleSheet(f"color:{COLORS['text']};border:none;padding-top:6px;")
         self.render_combo = QComboBox()
         self.render_combo.addItem("Sprites 2D (los packs de arriba)", "sprites")
-        self.render_combo.addItem("Avatar VRM 3D (modelo_vrm/)", "vrm")
+        self.render_combo.addItem("Avatar VRM 3D (modelo_vrm/, necesita WebEngine)", "vrm")
+        # La interfaz completa usa "animado" (video); se conserva para no pisarlo desde aquí.
+        self.render_combo.addItem("Imágenes animadas (interfaz completa)", "animado")
         idx_r = self.render_combo.findData(self.config.get("avatar", "render", "sprites"))
         self.render_combo.setCurrentIndex(idx_r if idx_r >= 0 else 0)
         self.render_combo.setStyleSheet(self._estilo_combo())
@@ -864,7 +866,8 @@ class SettingsPanel(QFrame):
         from pathlib import Path
         hay_vrm = Path("modelo_vrm").exists() and any(Path("modelo_vrm").glob("*.vrm"))
         if webengine and hay_vrm:
-            lbl = QLabel("Avatar 3D listo: pon un .vrm en modelo_vrm/ y elige «Avatar VRM 3D».")
+            lbl = QLabel("Avatar 3D listo: elige «Avatar VRM 3D» y saca a Lune con el tile MASCOTA. "
+                         "Cada personaje puede traer su propio .vrm (campo «vrm» en datos.json).")
             lbl.setStyleSheet(f"color:{COLORS['success']};border:none;")
         elif not webengine:
             lbl = QLabel("El avatar 3D (VRM) necesita:\n    pip install PyQt6-WebEngine\n"

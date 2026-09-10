@@ -10,7 +10,8 @@ Para exponer Ollama en la red, en el equipo servidor:
     export OLLAMA_HOST=0.0.0.0:11434    (Linux/macOS)
 y en la app pon http://<ip-del-servidor>:11434
 """
-from typing import List, Tuple
+import time
+from typing import Dict, List, Optional, Tuple
 
 import requests
 
@@ -20,6 +21,62 @@ _session = requests.Session()
 _session.headers.update({"User-Agent": "LuneCD/ollama-probe"})
 
 TIMEOUT_SONDEO = 6
+
+# (url, modelo) → (soporta_vision, cuándo se consultó). Se recuerda 5 min: la
+# mascota pregunta antes de cada comentario de pantalla y /api/show no es gratis.
+_cache_vision: Dict[Tuple[str, str], Tuple[Optional[bool], float]] = {}
+_CACHE_VISION_S = 300
+# Familias con proyector de imagen en versiones de Ollama sin "capabilities".
+_FAMILIAS_VISION = ("clip", "mllama", "llava", "qwen2vl", "qwen25vl", "gemma3", "mistral3", "minicpm-v", "moondream")
+
+
+def soporta_vision(url: str, modelo: str, timeout: int = TIMEOUT_SONDEO) -> Optional[bool]:
+    """
+    ¿El modelo puede ver imágenes? True / False, o None si no se pudo saber.
+    Ollama recientes devuelven "capabilities" en /api/show (con "vision" si
+    procede); en los viejos se mira si el modelo trae proyector/CLIP.
+    Un modelo de solo texto rechaza las imágenes con un 400: mejor saberlo antes.
+    """
+    modelo = (modelo or "").strip()
+    if not modelo:
+        return None
+    url = normalizar_url(url)
+    clave = (url, modelo)
+    ahora = time.monotonic()
+    guardado = _cache_vision.get(clave)
+    if guardado is not None and ahora - guardado[1] < _CACHE_VISION_S:
+        return guardado[0]
+    try:
+        r = _session.post(f"{url}/api/show", json={"model": modelo, "name": modelo}, timeout=timeout)
+        r.raise_for_status()
+        d = r.json() or {}
+    except Exception:
+        return None
+    res: Optional[bool] = None
+    caps = d.get("capabilities")
+    if isinstance(caps, list):
+        res = "vision" in [str(c).lower() for c in caps]
+    else:
+        det = d.get("details") or {}
+        fams = [str(f).lower() for f in (det.get("families") or [])] + [str(det.get("family") or "").lower()]
+        info = d.get("model_info") or {}
+        claves_info = [str(k).lower() for k in info] if isinstance(info, dict) else []
+        if any(f in _FAMILIAS_VISION for f in fams if f) or any("projector" in k or "vision" in k for k in claves_info):
+            res = True
+        elif any(fams):
+            res = False
+    _cache_vision[clave] = (res, ahora)
+    return res
+
+
+def marcar_sin_vision(url: str, modelo: str):
+    """Ollama rechazó una imagen: recordar que este modelo no ve (sin volver a preguntar)."""
+    if modelo:
+        _cache_vision[(normalizar_url(url), modelo.strip())] = (False, time.monotonic())
+
+
+def olvidar_vision():
+    _cache_vision.clear()
 
 
 def normalizar_url(url: str) -> str:

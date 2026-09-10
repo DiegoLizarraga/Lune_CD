@@ -20,7 +20,8 @@ Estructura de un personaje (en datos.json -> "personajes"):
   "personalidad": "...",      # opcional (de la card: personality)
   "escenario": "...",         # opcional (scenario)
   "ejemplos": "...",          # opcional (mes_example)
-  "avatar_pack": "default"    # opcional: pack de lune_face/packs
+  "avatar_pack": "default",   # opcional: pack de lune_face/packs
+  "vrm": "nombre.vrm"         # opcional: su modelo 3D (en modelo_vrm/ o ruta absoluta; ver nucleo/vrm.py)
 }
 """
 import json

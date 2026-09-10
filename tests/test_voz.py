@@ -230,3 +230,75 @@ def test_voiceengine_pide_kokoro_pero_cae_a_edge_si_no_esta():
     # No hay pesos de Kokoro en el entorno de test → motor real distinto de kokoro.
     assert ve._engine in ("edge", "gtts", None)
     assert ve._engine != "kokoro"
+
+
+# ── Hablar por tramos con expresión (speak_segmentos) ───────────────────────────
+
+def _motor_falso(monkeypatch, enabled=True):
+    import threading
+    from servicios import voice
+    v = voice.VoiceEngine.__new__(voice.VoiceEngine)
+    v._enabled, v._engine, v._lock, v.al_hablar = enabled, "edge", threading.Lock(), None
+    eventos = []
+    monkeypatch.setattr(v, "_sintetizar_a_archivo", lambda t: (eventos.append(("sint", t)), f"audio::{t}")[1])
+    monkeypatch.setattr(v, "_reproducir_archivo", lambda r: eventos.append(("play", r.replace("audio::", ""))))
+    return v, eventos
+
+
+def test_speak_segmentos_reproduce_en_orden_y_avisa_antes_de_cada_tramo(monkeypatch):
+    v, eventos = _motor_falso(monkeypatch)
+    avisos = []
+    fin = []
+    v._speak_segmentos_blocking([("happy", "Hola."), ("laughing", "jaja."), ("sad", "adiós.")],
+                                lambda i, e: avisos.append((i, e)), lambda: fin.append(1), v._gen_voz)
+    plays = [t for k, t in eventos if k == "play"]
+    assert plays == ["Hola.", "jaja.", "adiós."]
+    assert avisos == [(0, "happy"), (1, "laughing"), (2, "sad")]
+    assert fin == [1]                                   # al acabar avisa (la cara final se queda)
+    # un tramo sin texto (marcador final) también avisa, aunque no suene
+    avisos.clear(); eventos.clear()
+    v._speak_segmentos_blocking([("happy", "Hola."), ("laughing", "")], lambda i, e: avisos.append(e), None, v._gen_voz)
+    assert avisos == ["happy", "laughing"] and [t for k, t in eventos if k == "play"] == ["Hola."]
+
+
+def test_speak_segmentos_limpia_y_devuelve_false_si_no_hay_voz(monkeypatch):
+    v, _ = _motor_falso(monkeypatch, enabled=False)
+    assert v.speak_segmentos([("happy", "Hola")]) is False
+    v2, _ = _motor_falso(monkeypatch)
+    assert v2.speak_segmentos([("happy", "   "), ("sad", "***")]) is False    # nada hablable
+    assert v2._limpiar("¡Hola! <b>*x*</b>") == "¡Hola! bxb"
+    # el tope corta en un espacio, no a media palabra
+    largo = " ".join(["palabra"] * 100)
+    corto = v2._limpiar(largo, tope=50)
+    assert len(corto) <= 50 and not corto.endswith("pala") and corto.endswith("palabra")
+
+
+def test_cancelar_calla_los_tramos_pendientes(monkeypatch):
+    v, eventos = _motor_falso(monkeypatch)
+    avisos = []
+    def aviso(i, e):
+        avisos.append(e)
+        if i == 0:
+            v.cancelar()                                  # llega otro mensaje a mitad
+    fin = []
+    v._speak_segmentos_blocking([("happy", "uno."), ("sad", "dos."), ("angry", "tres.")], aviso, lambda: fin.append(1), v._gen_voz)
+    assert avisos == ["happy"]                            # los siguientes ya no avisan
+    assert [t for k, t in eventos if k == "play"] == ["uno."]
+    assert fin == []                                      # ni se da por terminada
+    # una lectura de una generación vieja que aún esperaba el lock no arranca
+    eventos.clear()
+    v._speak_segmentos_blocking([("happy", "tarde.")], lambda i, e: avisos.append(e), None, v._gen_voz - 1)
+    assert [t for k, t in eventos if k == "play"] == []
+
+
+def test_speak_segmentos_sigue_si_un_tramo_falla(monkeypatch):
+    v, eventos = _motor_falso(monkeypatch)
+    def sint(t):
+        if "mal" in t:
+            raise RuntimeError("tts caído")
+        return f"audio::{t}"
+    monkeypatch.setattr(v, "_sintetizar_a_archivo", sint)
+    avisos = []
+    v._speak_segmentos_blocking([("happy", "bien."), ("angry", "mal."), ("sad", "fin.")], lambda i, e: avisos.append(e), None, v._gen_voz)
+    assert [t for k, t in eventos if k == "play"] == ["bien.", "fin."]
+    assert avisos == ["happy", "angry", "sad"]        # la cara cambia aunque no suene
