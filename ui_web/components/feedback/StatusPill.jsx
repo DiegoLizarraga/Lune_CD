@@ -12,7 +12,7 @@ const CSS = `
   width:9px; height:9px; flex:none; border-radius:50%;
   background:var(--gray-400); position:relative;
 }
-.lune-status.s-live .led{ background:var(--cyan-500); box-shadow:0 0 0 0 rgba(0,229,255,.6); animation:lune-pulse 1.8s var(--ease-out) infinite; }
+.lune-status.s-live .led{ background:var(--cyan-500); box-shadow:0 0 0 0 rgb(var(--cyan-500-rgb, 0 229 255) / .6); animation:lune-pulse 1.8s var(--ease-out) infinite; }
 .lune-status.s-busy .led{ background:var(--yellow-500); }
 .lune-status.s-error .led{ background:var(--red-500); }
 .lune-status.s-off .led{ background:var(--gray-500); }
@@ -20,9 +20,9 @@ const CSS = `
 .lune-status.s-busy{ color:var(--yellow-500); border-color:var(--yellow-600); }
 .lune-status.s-error{ color:var(--red-500); border-color:var(--red-600); }
 @keyframes lune-pulse{
-  0%{ box-shadow:0 0 0 0 rgba(0,229,255,.55); }
-  70%{ box-shadow:0 0 0 7px rgba(0,229,255,0); }
-  100%{ box-shadow:0 0 0 0 rgba(0,229,255,0); }
+  0%{ box-shadow:0 0 0 0 rgb(var(--cyan-500-rgb, 0 229 255) / .55); }
+  70%{ box-shadow:0 0 0 7px rgb(var(--cyan-500-rgb, 0 229 255) / 0); }
+  100%{ box-shadow:0 0 0 0 rgb(var(--cyan-500-rgb, 0 229 255) / 0); }
 }
 @media (prefers-reduced-motion: reduce){ .lune-status .led{ animation:none !important; } }
 `;

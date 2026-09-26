@@ -1,0 +1,40 @@
+/* ============================================================
+   ui_web/css/baile.css — notas ♪ ♫ del baile (LuneNotas de
+   ui_web/lune_ritmo.js, con baile.particulas) en las dos páginas.
+
+   Una capa fija que no recibe clics (#lune-notas) y cada nota sube
+   y se desvanece en --nota-dur con un giro --nota-giro, desde
+   --nota-x. Color del tema (cian por defecto), con respaldo.
+   ============================================================ */
+
+body .lune-notas {
+  position: fixed;
+  inset: 0;
+  z-index: 15;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+body .lune-nota {
+  position: absolute;
+  left: var(--nota-x, 50%);
+  bottom: 38%;
+  font: 700 20px/1 var(--font-display, var(--font-mono, monospace));
+  color: rgb(var(--cyan-400-rgb, 54 236 255));
+  text-shadow: 0 0 8px rgb(var(--cyan-500-rgb, 0 229 255) / .6);
+  opacity: 0;
+  pointer-events: none;
+  animation: lune-nota var(--nota-dur, 1.6s) ease-out forwards;
+}
+
+body.lune-grande .lune-nota { font-size: 34px; bottom: 30%; }
+
+@keyframes lune-nota {
+  0%   { opacity: 0; transform: translate(-50%, 0) rotate(0deg) scale(.7); }
+  15%  { opacity: .95; }
+  100% { opacity: 0; transform: translate(-50%, -90px) rotate(var(--nota-giro, 12deg)) scale(1.05); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body .lune-nota { animation-duration: .01s; }
+}

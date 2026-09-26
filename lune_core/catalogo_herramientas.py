@@ -53,7 +53,12 @@ _MASCOTA: FrozenSet[str] = frozenset({"mascota", "vrm"})
 
 ORIGEN_USUARIO = "usuario"
 ORIGEN_NO_CONFIABLE = "no_confiable"
-ORIGENES = (ORIGEN_USUARIO, ORIGEN_NO_CONFIABLE)
+# Orden que llegó desde Telegram (/pc) por el bot que lanzó Lune: las herramientas
+# del modo están disponibles como con 'usuario', pero TODA llamada (también las
+# de LECTURA y las `directa`) la aprueba un humano en el PC. En el historial
+# cuenta como no confiable (taint).
+ORIGEN_REMOTO = "remoto"
+ORIGENES = (ORIGEN_USUARIO, ORIGEN_NO_CONFIABLE, ORIGEN_REMOTO)
 
 # Argumentos que Politica revisa contra DENY_APPS.
 ARGS_VIGILADOS = ("nombre", "app")
@@ -165,7 +170,9 @@ _LISTA: List[Herramienta] = [
                     patron=r"(?:[01]?\d|2[0-3]):[0-5]\d", ayuda="HH:MM"),
         "dias": Arg("str", maxlen=7, patron=r"[lmxjvsd]*", defecto="",
                     ayuda="letras lmxjvsd"),
-        "texto": _TEXTO_CORTO},
+        "texto": _TEXTO_CORTO,
+        # Día concreto («mañana a las 7»); sin fecha, la próxima vez que lleguen esa hora.
+        "fecha": Arg("str", maxlen=10, patron=r"\d{4}-\d{2}-\d{2}", ayuda="AAAA-MM-DD")},
        handler="nucleo.alarmas.herramienta_alarma",
        resumen="Poner una alarma a las {hora} «{texto}»",
        ejemplo={"hora": "07:30", "dias": "lmxjv", "texto": "gimnasio"}),
@@ -181,10 +188,10 @@ _LISTA: List[Herramienta] = [
     _h("mascota_bailar", "Bailar", _E, False, 0, {"normal", "br", "mascota"},
        {"segundos": Arg("int", min=5, max=300, defecto=30),
         "cancion": Arg("str", maxlen=80, recortar=True)},
-       handler="nucleo.bailes.herramienta_bailar",
+       handler="nucleo.baile.herramienta_bailar",
        resumen="Bailar {segundos} s", ejemplo={"segundos": 30}),
     _h("parar_baile", "Dejar de bailar", _E, False, 0, {"normal", "br", "mascota"},
-       handler="nucleo.bailes.herramienta_parar", resumen="Dejar de bailar"),
+       handler="nucleo.baile.herramienta_parar", resumen="Dejar de bailar"),
     _h("mascota_dormir", "Echarte a dormir", _E, False, 0, _MASCOTA,
        handler="nucleo.sueno.herramienta_dormir", resumen="Echarse a dormir"),
     _h("mascota_despertar", "Despertarte", _E, False, 0, _MASCOTA,
@@ -327,12 +334,15 @@ def es_nube(ctx: Any) -> bool:
 def aprobacion_dinamica(nombre: str, ctx: Any = None, args: Optional[Mapping] = None) -> bool:
     """
     Aprobación que depende del contexto y no solo del descriptor:
+      · origen 'remoto' (orden desde Telegram): sí, siempre, sea cual sea la herramienta.
       · comentar_pantalla: sí si el proveedor es la nube (la captura sale del PC).
       · minecraft_bot: sí al conectar.
       · abrir_url / buscar_web: sí si el origen no es el usuario.
     """
     args = args or {}
     origen = str(valor_ctx(ctx, "origen", ORIGEN_USUARIO) or ORIGEN_USUARIO)
+    if origen.strip().lower() == ORIGEN_REMOTO or valor_ctx(ctx, "remoto") is True:
+        return True
     if nombre == "comentar_pantalla":
         return es_nube(ctx)
     if nombre == "minecraft_bot":

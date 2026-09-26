@@ -197,6 +197,15 @@ class ToolManager:
         "spotify": "https://open.spotify.com",
     }
 
+    # «baila», «¡a bailar!», «para de bailar»: el baile de la mascota sin IA (cortes 5/6).
+    # Solo la ORDEN sola (con relleno como «oye Lune» o «porfa»): nunca preguntas («¿baila?»,
+    # «¿sabes bailar?»), negaciones («no bailes») ni frases sobre bailar («bailas muy bien»,
+    # «mi hermana baila salsa»): eso lo decide el modelo con su herramienta.
+    _RELLENO_BAILE = r"(?:(?:oye|oiga|hey|ey|eh|venga|anda|vamos|porfa|porfis|por\s+favor|lune)[\s,!¡.…]+)*"
+    _FIN_BAILE = r"(?:[\s,]+(?:lune|porfa|porfis|por\s+favor))*[\s!¡.…]*"
+    _BAILA = re.compile(rf"[¡!\s]*{_RELLENO_BAILE}(?:baila|ponte\s+a\s+bailar|bailemos|a\s+bailar){_FIN_BAILE}")
+    _PARA_BAILE = re.compile(rf"[¡!\s]*{_RELLENO_BAILE}(?:ya\s+)?(?:para|deja)\s+de\s+bailar{_FIN_BAILE}")
+
     @classmethod
     def _detectar_pedido(cls, texto: str) -> Optional[Tuple[str, dict]]:
         """(herramienta, args) de un comando escrito por la persona, o None."""
@@ -204,6 +213,22 @@ class ToolManager:
         texto_lower = texto.lower()
         if not texto_lower:
             return None
+
+        # 0. Alarmas y temporizadores con hora o duración explícitas («avísame en 10
+        #    minutos», «pon una alarma a las 7»): nucleo/alarmas_nl. Sin hora ni duración
+        #    («recuerda que mañana tengo cita») sigue su camino (memoria, IA).
+        try:
+            from nucleo import alarmas_nl
+            p = alarmas_nl.detectar(texto)
+        except Exception:
+            p = None
+        if p:
+            return p
+        # 0b. Baile de la mascota.
+        if cls._BAILA.fullmatch(texto_lower):
+            return "mascota_bailar", {}
+        if cls._PARA_BAILE.fullmatch(texto_lower):
+            return "parar_baile", {}
 
         # 1. Búsqueda web (YouTube o Google), respetando mayúsculas de la consulta.
         if texto_lower.startswith(("busca ", "buscar ", "investiga ")):
@@ -245,7 +270,8 @@ class ToolManager:
     def detectar_llamadas(self, texto: str) -> list:
         """
         Lo que la persona pide con sus palabras («abre youtube», «lanza paint»,
-        «busca gatos», «estado del pc») como `lune_core.acciones.Llamada`s, SIN
+        «busca gatos», «estado del pc», «avísame en 10 minutos», «pon una alarma a
+        las 7», «baila») como `lune_core.acciones.Llamada`s, SIN
         ejecutar nada. Van al Ejecutor como cualquier otra acción (Política,
         denegación, presupuesto, aprobación de lanzar_app y auditoría):
 

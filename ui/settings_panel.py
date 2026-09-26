@@ -13,6 +13,15 @@ Modelos 3D (corte 3): con «Avatar VRM 3D» elegido aparece el panel de modelos
 VRM (ui/vrm_panel_nativo.py: importar, usar con el personaje, seguimiento del
 cursor por modelo). Su señal `cambiado` sale como `vrm_cambiado` para que
 main.py recargue la mascota 3D; al guardar se escribe lo pendiente del panel.
+
+Escritorio (corte 4): el panel ui/escritorio_panel_nativo.PanelEscritorioNativo (tema,
+modo juego, rendimiento, atajos globales y menú radial) guarda al momento y cada
+apartado se aplica en caliente con los servicios del corte 4 que da main.py
+(`servicios=`, o `usar_servicios` cuando se montan): ver aplicar_seccion_escritorio.
+
+Alarmas, pantalla grande y baile (cortes 5/6): ui/panel_ocio_nativo.PanelOcioNativo
+(`ocio_panel`) guarda al momento y aplica él mismo; recibe ServiciosCorte4.ocio con
+usar_servicios y el «Guardar» escribe lo que tuviera pendiente.
 """
 import re
 
@@ -171,14 +180,106 @@ class GitWorker(QThread):
             self.listo.emit({"ok": False, "mensaje": f"Algo falló: {e}"})
 
 
+def _cfg(config, seccion: str, clave: str, defecto=None):
+    try:
+        return config.get(seccion, clave, defecto) if config is not None else defecto
+    except Exception:
+        return defecto
+
+
+def aplicar_seccion_escritorio(seccion: str, servicios, config, claves=None) -> list:
+    """Aplica en caliente un apartado que el panel de escritorio (corte 4,
+    ui/escritorio_panel_nativo.py) acaba de escribir en config.json:
+
+      tema        → ControlTema.recargar() (mascota, bandeja y radial; la ventana
+                    nativa se recolorea al reiniciar)
+      juego       → ControlModoJuego.recargar_config()
+      atajos      → GestorAtajosQt.recargar() (activo, pausar en juegos, combos)
+      rendimiento → mascota.set_fps_max / set_encima, recorte periódico
+                    (juego.recargar_config) y la ventana en la barra de tareas
+      radial      → nada (se lee al abrirlo)
+
+    `servicios`: ServiciosCorte4 (o None: aún sin montar, no hay nada que aplicar).
+    `claves`: las (sección, clave) escritas; con ellas solo se toca lo que cambió
+    (quitar/poner la ventana de la barra de tareas la esconde y la vuelve a enseñar).
+    Devuelve los métodos llamados («recargar», «set_fps_max»…)."""
+    hechos: list = []
+    if servicios is None:
+        return hechos
+
+    def llamar(obj, metodo, *args) -> bool:
+        f = getattr(obj, metodo, None) if obj is not None else None
+        if not callable(f):
+            return False
+        try:
+            f(*args)
+        except Exception as e:
+            try:
+                from nucleo.utils import log_error
+                log_error(f"[ajustes] {metodo}: {e}")
+            except Exception:
+                pass
+            return False
+        hechos.append(metodo)
+        return True
+
+    def cambio(s: str, k: str) -> bool:
+        return claves is None or (s, k) in claves
+
+    if seccion == "tema":
+        llamar(getattr(servicios, "tema", None), "recargar")
+    elif seccion == "juego":
+        llamar(getattr(servicios, "juego", None), "recargar_config")
+    elif seccion == "atajos":
+        llamar(getattr(servicios, "atajos", None), "recargar")
+    elif seccion == "rendimiento":
+        esc = getattr(servicios, "escritorio", None)
+        m = getattr(esc, "mascota", None) if esc is not None else None
+        if m is None:
+            f = getattr(getattr(servicios, "anfitrion", None), "mascota", None)
+            try:
+                m = f() if callable(f) else None
+            except Exception:
+                m = None
+        if m is not None and getattr(m, "cerrado", False) is True:
+            m = None                                   # cerrada por el usuario: nada que tocar
+        if cambio("avatar", "fps_max"):
+            try:
+                fps = int(_cfg(config, "avatar", "fps_max", 60) or 60)
+            except (TypeError, ValueError):
+                fps = 60
+            if not llamar(m, "set_fps_max", fps):
+                llamar(m, "aplicar_opciones")
+        if cambio("avatar", "siempre_encima"):
+            llamar(m, "set_encima", bool(_cfg(config, "avatar", "siempre_encima", True)))
+        if cambio("sistema", "recorte_ram_auto"):
+            llamar(getattr(servicios, "juego", None), "recargar_config")
+        if cambio("interfaz", "en_barra_tareas"):
+            llamar(getattr(servicios, "anfitrion", None), "set_en_barra",
+                   bool(_cfg(config, "interfaz", "en_barra_tareas", True)))
+    return hechos
+
+
+def _liberar_memoria():
+    """«Liberar memoria ahora» del panel de escritorio: gc + recorte del working set
+    de los procesos de Lune (servicios/recorte_ram.py), en el hilo de Qt."""
+    from servicios.recorte_ram import recortar
+    return recortar()
+
+
 class SettingsPanel(QFrame):
     saved = pyqtSignal()
     vrm_cambiado = pyqtSignal()     # el panel VRM importó, asignó o guardó el seguimiento
+    escritorio_cambiado = pyqtSignal(str)   # un apartado del corte 4 se guardó (y se aplicó)
 
-    def __init__(self, config: Config = None, parent=None, voice=None):
+    def __init__(self, config: Config = None, parent=None, voice=None, servicios=None):
+        """`servicios`: los del corte 4 (ServiciosCorte4) o una función que los da (la
+        nativa los monta DESPUÉS de construir Ajustes, en iniciar_servicios); sirven
+        para aplicar al momento lo que guarda el panel de escritorio."""
         super().__init__(parent)
         self.config = config or Config()
         self.voice = voice              # VoiceEngine de la app, para «Probar voz»
+        self._servicios = servicios
         self.setStyleSheet("QFrame{background:transparent;}")
         self._sondeo = None
         self._prueba_compat = None
@@ -261,6 +362,18 @@ class SettingsPanel(QFrame):
                         apis.get("telegram_token", ""), True)
         self._add_input(fl_tg, "telegram_admin_id", "Tu ID de Telegram (comparte memoria con la app)",
                         str(apis.get("telegram_admin_id", "")), False)
+        # Órdenes desde Telegram (/pc): todo lo que se haga se aprueba en el PC.
+        self.ordenes_tg_check = QCheckBox("Órdenes desde Telegram (con aprobación en el PC)")
+        self.ordenes_tg_check.setChecked(bool(self.config.get("telegram", "ordenes_pc", False)))
+        self.ordenes_tg_check.setFont(QFont("Segoe UI", 10))
+        self.ordenes_tg_check.setStyleSheet(f"QCheckBox{{color:{COLORS['text']};border:none;spacing:8px;}}QCheckBox::indicator{{width:16px;height:16px;}}")
+        fl_tg.addWidget(self.ordenes_tg_check)
+        ayuda_tg = QLabel("Con /pc abre youtube desde tu Telegram, Lune lo hace aquí solo si lo apruebas "
+                          "en el PC. Requiere tu ID de Telegram (escríbele /id al bot) y reiniciar el bot "
+                          "para aplicarse.")
+        ayuda_tg.setWordWrap(True); ayuda_tg.setFont(QFont("Segoe UI", 9))
+        ayuda_tg.setStyleSheet(f"color:{COLORS['text_muted']};border:none;")
+        fl_tg.addWidget(ayuda_tg)
         layout.addWidget(frame_tg)
 
         # ── SECCIÓN 4: PERSONALIDAD ──
@@ -353,6 +466,30 @@ class SettingsPanel(QFrame):
         layout.addWidget(self.vrm_panel)
         self.render_combo.currentIndexChanged.connect(self._visibilidad_vrm)
         self._visibilidad_vrm()
+
+        # ── SECCIÓN 6a: ESCRITORIO (corte 4): tema, modo juego, rendimiento, atajos
+        # globales y menú radial. Guarda al momento (300 ms) y se aplica en caliente
+        # con los servicios del corte 4 (aplicar_seccion_escritorio).
+        layout.addWidget(self._create_section_title(
+            "Escritorio · tema, modo juego, rendimiento, atajos y menú radial"))
+        from ui.escritorio_panel_nativo import PanelEscritorioNativo
+        s = self.servicios_c4()
+        self.escritorio_panel = PanelEscritorioNativo(
+            self.config, self, atajos=getattr(s, "atajos", None),
+            liberar_memoria=_liberar_memoria)
+        self.escritorio_panel.cambiado.connect(self._escritorio_cambiado)
+        layout.addWidget(self.escritorio_panel)
+
+        # ── SECCIÓN 6a bis: ALARMAS, PANTALLA GRANDE Y BAILE (cortes 5/6). Guarda al
+        # momento (300 ms) y aplica él mismo (recargar_config del controlador); los
+        # controladores (ServiciosCorte4.ocio) llegan con usar_servicios.
+        layout.addWidget(self._create_section_title(
+            "Alarmas, pantalla grande, salvapantallas y baile"))
+        from ui.panel_ocio_nativo import PanelOcioNativo
+        self.ocio_panel = PanelOcioNativo(self.config, self)
+        if s is not None and getattr(s, "ocio", None) is not None:
+            self._enlazar_ocio(s)
+        layout.addWidget(self.ocio_panel)
 
         # ── SECCIÓN 6b: RED DE LUNE (host y terminales) ──
         layout.addWidget(self._create_section_title("Red de Lune · host y terminales"))
@@ -531,7 +668,9 @@ class SettingsPanel(QFrame):
 
         # ── Modo de interfaz: Completa (web) · Bajos recursos (esta nativa) ──
         # Desde aquí el usuario en bajos recursos puede volver a la interfaz completa.
-        lbl_ui = QLabel("Modo de interfaz (se aplica al reiniciar Lune)")
+        # Se aplica al instante AL GUARDAR (este panel es un formulario con un solo
+        # «Guardar»: así lo pendiente se guarda antes de que la ventana cambie).
+        lbl_ui = QLabel("Modo de interfaz (se aplica al instante al guardar)")
         lbl_ui.setFont(QFont("Segoe UI", 10)); lbl_ui.setStyleSheet(f"color:{COLORS['text']};border:none;padding:0;")
         self.interfaz_combo = QComboBox()
         self.interfaz_combo.addItem("Completa (piel web, animada)", "web")
@@ -1158,6 +1297,60 @@ class SettingsPanel(QFrame):
         if actual in modelos:
             self.ollama_combo.setCurrentText(actual)
 
+    # ── Escritorio (corte 4) ───────────────────────────────────────────────────
+    def servicios_c4(self):
+        """Los servicios del corte 4 ahora (None si aún no se montaron)."""
+        s = self._servicios
+        if callable(s) and not hasattr(s, "desmontar"):
+            try:
+                s = s()
+            except Exception:
+                s = None
+        return s
+
+    def usar_servicios(self, servicios) -> None:
+        """La nativa montó el corte 4 (tras construir Ajustes): el panel de escritorio
+        recibe el gestor de atajos («Detectar» los pausa; conflictos con otras apps)."""
+        if not callable(self._servicios) or hasattr(self._servicios, "desmontar"):
+            self._servicios = servicios
+        panel = getattr(self, "escritorio_panel", None)
+        if panel is not None:
+            panel.set_atajos(getattr(servicios, "atajos", None))
+        self._enlazar_ocio(servicios)
+
+    def _enlazar_ocio(self, servicios) -> None:
+        """Cortes 5/6: el panel de ocio recibe ServiciosCorte4.ocio (alarmas, pantalla
+        grande y baile) y lo suelta cuando esos servicios se desmontan."""
+        panel = getattr(self, "ocio_panel", None)
+        if panel is None:
+            return
+        ocio = getattr(servicios, "ocio", None) if servicios is not None else None
+        try:
+            panel.enlazar(ocio)
+        except Exception:
+            return
+        deshacer = getattr(servicios, "_deshacer", None) if ocio is not None else None
+        if isinstance(deshacer, list):
+            def soltar(ocio=ocio):
+                if getattr(panel, "alarmas", None) is getattr(ocio, "alarmas", None) \
+                        and getattr(panel, "baile", None) is getattr(ocio, "baile", None) \
+                        and getattr(panel, "grande", None) is getattr(ocio, "grande", None):
+                    try:
+                        panel.enlazar(None)
+                    except RuntimeError:
+                        pass
+            deshacer.append(soltar)
+
+    def _escritorio_cambiado(self, seccion: str) -> None:
+        panel = getattr(self, "escritorio_panel", None)
+        claves = None
+        if panel is not None:
+            ultimo = getattr(panel, "ultimo_guardado", None)
+            if isinstance(ultimo, dict) and seccion in ultimo:
+                claves = set(ultimo[seccion])
+        aplicar_seccion_escritorio(seccion, self.servicios_c4(), self.config, claves)
+        self.escritorio_cambiado.emit(seccion)
+
     # ── Helpers de UI ──────────────────────────────────────────────────────────
     def _visibilidad_vrm(self, *_):
         """El panel de modelos 3D solo con «Avatar VRM 3D» en el combo."""
@@ -1309,6 +1502,7 @@ class SettingsPanel(QFrame):
             ("cfg", "voz", "rvc_modelo"): f["rvc_modelo"].text().strip(),
             ("cfg", "voz", "rvc_transpose"): self._entero(f["rvc_transpose"].text(), 0),
             ("cfg", "interfaz", "modo"): self.interfaz_combo.currentData() or "web",
+            ("cfg", "telegram", "ordenes_pc"): self.ordenes_tg_check.isChecked(),
             ("autoinicio",): self.autoinicio_check.isChecked(),
         }
         for clave, chk in self.feature_checks.items():
@@ -1397,14 +1591,21 @@ class SettingsPanel(QFrame):
         datos.guardar(d)
         self.datos_data = d
 
-        # Seguimiento del cursor que el panel VRM aún no escribió (espera 250 ms).
-        panel = getattr(self, "vrm_panel", None)
-        if panel is not None:
-            try:
-                panel.guardar_ya()
-            except Exception:
-                pass
+        # Seguimiento del cursor que el panel VRM aún no escribió (espera 250 ms) y lo
+        # de los paneles de escritorio (corte 4) y de ocio (cortes 5/6, 300 ms):
+        # escrito ya y aplicado.
+        for nombre in ("vrm_panel", "escritorio_panel", "ocio_panel"):
+            panel = getattr(self, nombre, None)
+            if panel is not None:
+                try:
+                    panel.guardar_ya()
+                except Exception:
+                    pass
 
+        # Modo de interfaz: no se escribe aquí. Queda pedido y la ventana se lo pasa a
+        # GestorInterfaz (ui/cambio_interfaz.py) tras «saved»: él lo guarda y, si el
+        # cambio falla, vuelve el de antes (mostrar_modo_interfaz).
+        self.modo_interfaz_pedido = cambios.pop(("cfg", "interfaz", "modo"), None)
         # config.json: solo lo cambiado (features, avatar, voz de entrada, notas, red…)
         for clave, valor in cambios.items():
             if clave[0] == "cfg":
@@ -1429,3 +1630,18 @@ class SettingsPanel(QFrame):
         lune_face.set_active_pack(self.config.get("avatar", "pack", "default"))
 
         self.saved.emit()
+
+    def mostrar_modo_interfaz(self, modo: str) -> None:
+        """El combo vuelve a `modo` (p. ej. el cambio de interfaz falló) sin que cuente
+        como un cambio pendiente al guardar."""
+        combo = getattr(self, "interfaz_combo", None)
+        if combo is None:
+            return
+        idx = combo.findData(str(modo or ""))
+        if idx < 0:
+            return
+        combo.setCurrentIndex(idx)
+        inicial = getattr(self, "_inicial", None)
+        if isinstance(inicial, dict):
+            inicial[("cfg", "interfaz", "modo")] = combo.currentData()
+        self.modo_interfaz_pedido = None

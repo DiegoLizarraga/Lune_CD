@@ -106,3 +106,32 @@ def test_parseo_sin_acciones_no_toca_el_texto():
 def test_herramienta_desconocida_no_revienta():
     resultado = ToolManager().ejecutar("herramienta_que_no_existe", args="x")
     assert resultado.ok is False
+
+
+# ── Comandos directos: solo peticiones claras (revisión 4-5-6, MO1/RH1) ─────────
+
+@pytest.mark.parametrize("texto, esperado", [
+    ("baila", ("mascota_bailar", {})),
+    ("¡a bailar!", ("mascota_bailar", {})),
+    ("oye Lune, baila", ("mascota_bailar", {})),
+    ("bailemos, porfa", ("mascota_bailar", {})),
+    ("para de bailar", ("parar_baile", {})),
+    ("ya deja de bailar, Lune", ("parar_baile", {})),
+    ("avísame en 10 minutos", ("temporizador", {"segundos": 600, "texto": ""})),
+])
+def test_ordenes_claras_se_detectan(texto, esperado):
+    assert ToolManager._detectar_pedido(texto) == esperado
+
+
+@pytest.mark.parametrize("texto", [
+    "¿baila?", "baila?", "no bailes", "baila conmigo", "bailas muy bien", "¿sabes bailar?",
+    "mi hermana baila salsa", "¿por qué no bailas?", "ya no bailes", "¿para de bailar?",
+    "¿cómo se baila la macarena?", "no pares de bailar",
+    "cancela el temporizador de 10 minutos", "¿cuánto le queda al temporizador de 10 minutos?",
+    "¿puedes explicarme cómo funciona un temporizador de 10 minutos?",
+    "cómo hago un temporizador de 5 minutos en python", "alarma a las 7 no funciona en mi móvil",
+    "el temporizador de 10 minutos ya sonó",
+])
+def test_lo_que_no_es_una_orden_sigue_al_modelo(texto):
+    assert ToolManager._detectar_pedido(texto) is None
+    assert ToolManager().detectar_llamadas(texto) == []

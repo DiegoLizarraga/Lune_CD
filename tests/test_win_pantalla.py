@@ -255,6 +255,111 @@ def test_hijos_que_fallan_no_rompen():
     assert PidsLune(Rota(), reloj=lambda: 0.0).contiene(1001) is False
 
 
+class _ProcPs:
+    def __init__(self, pid, nombre, hijos=()):
+        self.pid, self._nombre, self._hijos = pid, nombre, list(hijos)
+    def name(self): return self._nombre
+    def children(self, recursive=False): return list(self._hijos)
+
+
+class _Psutil:
+    """psutil falso: 1000 (Lune) con hijos 1001 (WebEngine) y 1002 (un juego lanzado)."""
+    def __init__(self):
+        self.pedidos = []
+        web, juego = _ProcPs(1001, "QtWebEngineProcess.exe"), _ProcPs(1002, "juego.exe")
+        self.procs = {1000: _ProcPs(1000, "python.exe", [web, juego])}
+    def Process(self, pid):
+        self.pedidos.append(pid)
+        if pid not in self.procs:
+            raise ProcessLookupError(pid)
+        return self.procs[pid]
+
+
+def test_pids_propios_solo_lune_y_sus_webengine():
+    api = ApiFalsa(pid_propio=1000, hijos=[(1001, "QtWebEngineProcess.exe"), (1002, "juego.exe")])
+    assert P.pids_propios(PidsLune(api, reloj=lambda: 0.0), _Psutil()) == [1000, 1001]
+
+
+def test_pids_propios_rechaza_lo_que_no_es_hijo_webengine():
+    class Trampa:                                      # dice que un pid ajeno y el juego son de Lune
+        api = ApiFalsa(pid_propio=1000)
+        def pids(self): return {1000, 1002, 4321}
+    ps = _Psutil()
+    assert P.pids_propios(Trampa(), ps) == [1000]
+    assert 4321 not in ps.pedidos and 1002 not in ps.pedidos
+    assert P.pids_propios({4321}, _Psutil()) == []    # un conjunto suelto sin el propio: nada
+    assert P.pids_propios({os.getpid()}, _Psutil()) == [os.getpid()]
+
+
+def test_pids_propios_sin_psutil_se_queda_con_el_propio():
+    class PsRoto:
+        def Process(self, pid): raise RuntimeError("psutil")
+    api = ApiFalsa(pid_propio=1000, hijos=[(1001, "QtWebEngineProcess.exe")])
+    assert P.pids_propios(PidsLune(api, reloj=lambda: 0.0), PsRoto()) == [1000]
+
+
+# ── Ventanas visibles ─────────────────────────────────────────────────────────
+
+def test_ventanas_visibles_de_la_api_y_tolerante():
+    class ConVentanas(ApiFalsa):
+        def ventanas_visibles(self):
+            return [(10, 55, "Juego"), ("basura",), (11, None, None)]
+    assert P.ventanas_visibles(ConVentanas()) == [P.VentanaVisible(10, 55, "Juego"),
+                                                  P.VentanaVisible(11, 0, "")]
+
+    class Rota(ApiFalsa):
+        def ventanas_visibles(self): raise OSError("x")
+    assert P.ventanas_visibles(Rota()) == []
+    assert P.ventanas_visibles(ApiFalsa()) == []           # API sin el método (vieja): vacío
+    assert ApiPantallaNula().ventanas_visibles() == []
+
+
+def test_api_win32_ventanas_visibles_filtra_con_dlls_falsas():
+    user32, shell32 = _Dll(), _Dll()
+    ventanas = {
+        1: dict(visible=True, ex=0, titulo="Juego", pid=55),
+        2: dict(visible=False, ex=0, titulo="Oculta", pid=56),
+        3: dict(visible=True, ex=P.WS_EX_TOOLWINDOW, titulo="Herramienta", pid=57),
+        4: dict(visible=True, ex=0, titulo="", pid=58),
+        5: dict(visible=True, ex=-2147483648, titulo="Bit alto", pid=59),   # 0x80000000 con signo
+    }
+
+    def enum_windows(callback, lparam):
+        for h in ventanas:
+            if not callback(h, lparam):
+                break
+        return 1
+
+    def get_long(h, idx):
+        return ventanas[h]["ex"] if idx == P.GWL_EXSTYLE else 0
+
+    def get_text_len(h):
+        return len(ventanas[h]["titulo"])
+
+    def get_text(h, buf, n):
+        buf.value = ventanas[h]["titulo"][: n - 1]
+        return len(buf.value)
+
+    def get_pid(h, ref):
+        ref._obj.value = ventanas[h]["pid"]
+        return 1
+
+    for nombre in ("GetForegroundWindow", "GetClassNameW", "GetWindowRect", "MonitorFromWindow",
+                   "GetMonitorInfoW", "EnumDisplayMonitors", "FindWindowExW"):
+        setattr(user32, nombre, _fn(lambda *a: 0))
+    shell32.SHQueryUserNotificationState = _fn(lambda ref: 0)
+    shell32.SHAppBarMessage = _fn(lambda msg, ref: 0)
+    user32.EnumWindows = _fn(enum_windows)
+    user32.IsWindowVisible = _fn(lambda h: ventanas[h]["visible"])
+    user32.GetWindowLongW = _fn(get_long)
+    user32.GetWindowTextLengthW = _fn(get_text_len)
+    user32.GetWindowTextW = _fn(get_text)
+    user32.GetWindowThreadProcessId = _fn(get_pid)
+
+    api = ApiPantallaWin32(user32=user32, shell32=shell32)
+    assert api.ventanas_visibles() == [(1, 55, "Juego"), (5, 59, "Bit alto")]
+
+
 # ── Monitores ─────────────────────────────────────────────────────────────────
 
 def test_monitores_en_orden_y_principal():

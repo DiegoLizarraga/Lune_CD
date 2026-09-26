@@ -7,6 +7,10 @@
 <link rel="stylesheet" href="styles.css" />
 <link rel="stylesheet" href="css/burbuja.css" />
 <link rel="stylesheet" href="css/mascota_anim.css" />
+<!-- Cortes 5 y 6: pantalla grande y salvapantallas, burbuja de alarma y notas del baile -->
+<link rel="stylesheet" href="css/grande.css" />
+<link rel="stylesheet" href="css/alarma.css" />
+<link rel="stylesheet" href="css/baile.css" />
 <style>
   html, body { margin:0; height:100%; background:transparent; overflow:hidden;
     font-family:var(--font-body, system-ui, sans-serif); }
@@ -25,7 +29,7 @@
 
   /* Mini-stage con la mascota animada */
   #stage { position:relative; width:210px; height:290px; overflow:hidden;
-    background:radial-gradient(circle at 50% 30%, rgba(0,229,255,.16), transparent 62%), var(--ink-950,#080B16);
+    background:radial-gradient(circle at 50% 30%, rgb(var(--cyan-500-rgb, 0 229 255) / .16), transparent 62%), var(--ink-950,#05070F);
     border:2px solid var(--ink-500,#232F52); border-radius:7px;
     display:flex; align-items:flex-end; justify-content:center; }
   #stage video { height:97%; width:100%; object-fit:contain; object-position:bottom center; }
@@ -33,7 +37,7 @@
     opacity:.45; pointer-events:none; }
 </style>
 </head>
-<body>
+<body class="lune-animada">
 <div id="wrap">
   <div id="bubble"><span class="who"><span class="jp">月</span> Lune</span><span id="btxt"></span></div>
   <div id="stage"><video id="v" autoplay loop muted playsinline></video></div>
@@ -42,11 +46,19 @@
      Python (luneEventos), efectos de sonido (luneSfx), packs de sonidos de reacción
      (luneSonidos; ui/companion.py le carga el pack al terminar la página) y la burbuja
      con máquina de escribir (comentarTipeado, burbujaTexto, burbujaFin, luneLado;
-     también define comentar, pensando y ocultarBurbuja con un temporizador compartido). -->
+     también define comentar, pensando y ocultarBurbuja con un temporizador compartido).
+     tema.js: window.luneTema(mapa|null), el tema de color (ui/companion.py → aplicar_tema). -->
 <script src="lune_eventos.js"></script>
 <script src="lune_sfx.js"></script>
 <script src="lune_packs.js"></script>
 <script src="lune_burbuja.js"></script>
+<script src="tema.js"></script>
+<!-- Cortes 5 y 6 (scripts clásicos, también en companion_vrm.html): reloj del pulso y
+     notas ♪ (LuneRitmo, LuneNotas), burbuja de alarma (LuneAlarma) y salvapantallas /
+     clase de pantalla grande (LunePantalla). -->
+<script src="lune_ritmo.js"></script>
+<script src="lune_alarma.js"></script>
+<script src="lune_pantalla.js"></script>
 <script>
   var V = 'assets/mascot/anime-videos/';
   // v10 — un estado por clip; los que aún no tienen video caen al idle.
@@ -97,6 +109,59 @@
   // Cola de eventos y sonidos: respaldo mudo si sus scripts no cargaron.
   if (typeof window.luneEventos !== 'function') window.luneEventos = function () { return '[]'; };
   if (typeof window.luneSfx !== 'function') window.luneSfx = function () { return Promise.resolve(null); };
+  // Tema de color (tema.js); sin el script, no cambia nada pero no rompe.
+  if (typeof window.luneTema !== 'function') window.luneTema = function () { return 0; };
+
+  // Dónde está la cabeza, en px de la página → JSON {x, y, r} (o "null"): el menú
+  // radial se ancla ahí (ui/companion.py → ancla_menu). La animada no tiene huesos:
+  // se calcula con la geometría del vídeo (720×1280, object-fit: contain pegado
+  // abajo), con la cabeza medida en los clips: su base (el hueso Head de un VRM)
+  // al 36 % del alto y centrada. `offsetY` son metros hacia arriba como en el VRM
+  // (1 m ≈ 1.29 altos del vídeo; 0.1 → a la altura de la frente) y el radio es el
+  // de la mascota 3D, 0.1732 m.
+  window.luneCabeza = function (offsetY) {
+    try {
+      var oy = Number(offsetY === undefined ? 0.1 : offsetY);
+      if (!isFinite(oy)) oy = 0.1;
+      var el = document.getElementById('v');
+      if (!el || typeof el.getBoundingClientRect !== 'function') return 'null';
+      var r = el.getBoundingClientRect();
+      if (!(r.width > 0 && r.height > 0)) return 'null';
+      var vw = el.videoWidth > 0 ? el.videoWidth : 720, vh = el.videoHeight > 0 ? el.videoHeight : 1280;
+      var s = Math.min(r.width / vw, r.height / vh);
+      var cw = vw * s, ch = vh * s;
+      var izq = r.left + (r.width - cw) / 2, arriba = r.top + (r.height - ch);   // contain, abajo al centro
+      var M = 1.29;                                                              // altos del vídeo por metro
+      var x = izq + 0.505 * cw, y = arriba + (0.36 - oy * M) * ch, radio = 0.1732 * M * ch;
+      return JSON.stringify({ x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10, r: Math.round(radio * 10) / 10 });
+    } catch (e) { return 'null'; }
+  };
+
+  // Cortes 5 y 6 (ui/companion.py: set_salvapantallas, mostrar_alarma, grande_fase,
+  // bailar, pulso). Salvapantallas y alarma son del DOM y van ya; pantalla grande y
+  // baile son módulos del registro que pone el módulo de abajo: hasta entonces se
+  // guarda la última llamada de cada una y el módulo la repite. luneHold (sujetar el
+  // pelo) es solo del VRM: aquí no hace nada.
+  window.__lunePantalla = window.LunePantalla ? window.LunePantalla.crear({ doc: document }) : null;
+  window.__luneAlarmaUI = window.LuneAlarma ? window.LuneAlarma.crear({ doc: document }) : null;
+  window.luneSalvapantallas = function (on, o) {
+    var p = window.__lunePantalla;
+    return p ? p.salvapantallas(!!on, o || {}) : false;
+  };
+  window.luneAlarma = function (texto, o) {
+    var a = window.__luneAlarmaUI;
+    if (!a) return false;
+    return texto == null ? a.ocultar() : a.mostrar(String(texto), o || {});
+  };
+  window.__luneOcioPendiente = {};
+  window.luneGrande = function (fase, o) {
+    if (window.__lunePantalla) window.__lunePantalla.fase(fase);
+    window.__luneOcioPendiente.grande = [fase, o];
+    return false;
+  };
+  window.luneHold = function () { return false; };
+  window.luneBailar = function (on, o) { window.__luneOcioPendiente.bailar = [on, o]; return false; };
+  window.lunePulso = function (b, f, e) { window.__luneOcioPendiente.pulso = [b, f, e]; return false; };
 
   window.setEmocion('wave');   // saluda al aparecer
 </script>
@@ -143,6 +208,51 @@ window.luneSetFPS = (n) => {
   if (!visible) reg.detener();
   else if (reg.lista().length && !reg.corriendo()) reg.iniciar();
 };
+
+// ── Cortes 5 y 6: pantalla grande (anim/lune_anim_grande.js) y baile (anim/lune_anim_baile.js) ──
+// Opcionales: si uno da 404 o no compila, esa función no hace nada. Se registran la
+// primera vez que se usan (sin baile ni pantalla grande el registro sigue igual).
+const sinModulo = (nombre) => (e) => {
+  try { console.warn(`[companion] sigo sin ${nombre}:`, (e && e.message) || e); } catch (_) { /* sin consola */ }
+  return null;
+};
+const [modGrande, modBaile] = await Promise.all([
+  import('./anim/lune_anim_grande.js').catch(sinModulo('lune_anim_grande.js')),
+  import('./anim/lune_anim_baile.js').catch(sinModulo('lune_anim_baile.js')),
+]);
+const pantalla = window.__lunePantalla || null;
+const notas = window.LuneNotas ? window.LuneNotas.crear({ doc: document }) : null;
+let modG = null, modB = null;
+function moduloGrande() {
+  if (!modG && modGrande && typeof modGrande.instalar === 'function') modG = reg.registrar(modGrande.instalar);
+  return modG;
+}
+function moduloBaile() {
+  if (!modB && modBaile && typeof modBaile.instalar === 'function') {
+    modB = reg.registrar((ctx) => modBaile.instalar(ctx, { alGolpe: (e) => { if (notas) notas.golpe(e); } }));
+  }
+  return modB;
+}
+// fase: glide · entrar · salir · volver · fin (la ventana la mueve Python; el #stage
+// crece por CSS con body.lune-grande)
+window.luneGrande = (fase, opts) => {
+  if (pantalla) pantalla.fase(fase);
+  const m = moduloGrande();
+  return m ? !!m.api.fase(fase, opts) : false;
+};
+// Baile: clip happy (capa 'baile') y movimiento al pulso sobre el #stage
+window.luneBailar = (on, opts) => {
+  if (!on && notas) notas.limpiar();
+  const m = on ? moduloBaile() : modB;
+  return m ? !!m.api.bailar(!!on, opts || {}) : false;
+};
+window.lunePulso = (bpm, fase, energia) => (modB ? !!modB.api.pulso(bpm, fase, energia) : false);
+// Lo que Python pidió mientras cargaba este módulo
+const ocioPendiente = window.__luneOcioPendiente || {};
+window.__luneOcioPendiente = null;
+if (ocioPendiente.grande) window.luneGrande(...ocioPendiente.grande);
+if (ocioPendiente.bailar) window.luneBailar(...ocioPendiente.bailar);
+if (ocioPendiente.pulso) window.lunePulso(...ocioPendiente.pulso);
 </script>
 </body>
 </html>

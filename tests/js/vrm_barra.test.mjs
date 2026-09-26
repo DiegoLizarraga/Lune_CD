@@ -75,7 +75,7 @@ function extFalsa(lienzo) {
 }
 
 // Motor falso con la API de lune_vrm.js que usa vrm_barra.js.
-function motorFalso(lienzo, { conDestruir = false, conLuneParams = false, sobre = false } = {}) {
+function motorFalso(lienzo, { conDestruir = false, conLuneParams = false, sobre = false, conBus = false } = {}) {
   const reg = { llamadas: [], creadas: 0, opciones: null, sobre, disposed: 0, perdidas: 0 };
   const ext = extFalsa(lienzo);
   const gl = { isContextLost: () => ext.perdido, getExtension: (n) => (n === 'WEBGL_lose_context' && !ext.perdido ? ext : null) };
@@ -108,6 +108,11 @@ function motorFalso(lienzo, { conDestruir = false, conLuneParams = false, sobre 
     };
     if (conDestruir) m.destruir = () => log('destruir');
     if (conLuneParams) m.luneParams = (j) => { log('luneParams', j); return 'motor'; };
+    if (conBus) {
+      // Como lune_modulos.js: registrar(instalar) llama a instalar(ctx) y devuelve el módulo.
+      m.registrar = (inst) => { const mod = typeof inst === 'function' ? inst(m.ctx) : inst; reg.ultimoModulo = mod; log('registrar', mod && mod.nombre); return mod; };
+      m.mod = (nombre, metodo, ...args) => { log('mod', nombre, metodo, ...args); return `${nombre}.${metodo}`; };
+    }
     reg.m = m;
     return m;
   };
@@ -663,6 +668,119 @@ test('params(json) global: a los vivos y a los que se crean después', async () 
   assert.equal(b.motor.PARAMS.swayGanH, 0.05);
   a.h.destruir(); b.h.destruir();
   params(null);
+});
+
+// ── Bus de módulos: registrar y mod (cortes 5/6: baile en la barra) ─────────────
+
+const instalarBaile = (ctx, opciones) => ({ nombre: 'baileProc', orden: 40, ctxRecibido: ctx, opciones, api: {} });
+
+test('registrar y mod antes del motor: se encolan y, al crearlo, primero los registros y luego las llamadas', async () => {
+  const { h, motor } = montar({}, { conBus: true });
+  assert.equal(h.registrar(instalarBaile), null, 'sin motor: pendiente');
+  assert.equal(h.registrar(instalarBaile), null);
+  assert.equal(h.mod('baileProc', 'bailar', true, { estilo: 'rebote' }), undefined);
+  h.mod('baileProc', 'pulso', 124, 0.25, 0.8);
+  assert.equal(motor.creadas, 0);
+  await microtareas();
+  assert.equal(motor.creadas, 1);
+  const orden = motor.llamadas.filter((c) => c[0] === 'registrar' || c[0] === 'mod').map((c) => c.slice(0, 3));
+  assert.deepEqual(orden, [['registrar', 'baileProc'], ['mod', 'baileProc', 'bailar'], ['mod', 'baileProc', 'pulso']],
+    'el mismo instalador no se registra dos veces');
+  assert.deepEqual(motor.ultima('mod'), ['mod', 'baileProc', 'pulso', 124, 0.25, 0.8]);
+  assert.equal(motor.ultima('mod').length, 6);
+  // Con motor: directo, y devuelve lo del bus
+  const r = h.registrar(instalarBaile);
+  assert.equal(r.nombre, 'baileProc');
+  assert.equal(r.ctxRecibido, motor.m.ctx, 'instalar recibe el ctx del motor');
+  assert.equal(h.mod('baileProc', 'estado'), 'baileProc.estado');
+  h.destruir();
+  assert.equal(h.mod('baileProc', 'estado'), undefined, 'destruido: nada');
+  assert.equal(h.registrar(instalarBaile), null);
+});
+
+test('mod: la cola guarda solo las 32 últimas; un motor sin bus no rompe', async () => {
+  const a = montar({}, { conBus: true });
+  for (let i = 0; i < 40; i++) a.h.mod('baileProc', 'pulso', 100 + i, 0, 1);
+  await microtareas();
+  const pulsos = a.motor.de('mod').map((c) => c[3]);
+  assert.equal(pulsos.length, 32);
+  assert.deepEqual([pulsos[0], pulsos[31]], [108, 139]);
+  a.h.destruir();
+  const b = montar();                          // motor viejo: sin registrar ni mod
+  b.h.registrar(instalarBaile);
+  b.h.mod('baileProc', 'bailar', true);
+  await microtareas();
+  assert.equal(b.motor.creadas, 1);
+  assert.equal(b.h.mod('baileProc', 'bailar', false), undefined);
+  assert.equal(b.h.registrar(instalarBaile), null);
+  assert.deepEqual(b.errores, []);
+  b.h.destruir();
+});
+
+test('destruir antes del motor vacía las colas: no se registra nada', async () => {
+  const { h, motor } = montar({}, { conBus: true });
+  h.registrar(instalarBaile);
+  h.mod('baileProc', 'bailar', true);
+  h.destruir();
+  await microtareas();
+  assert.equal(motor.creadas, 0);
+  assert.equal(motor.de('registrar').length + motor.de('mod').length, 0);
+});
+
+test('cargarModulo y usarModulo: import perezoso por nombre, en caché, una vez por avatar; un fallo se reintenta', async () => {
+  const pedidas = [];
+  let falla = true;
+  const importar = async (ruta) => {
+    pedidas.push(ruta);
+    if (falla) throw new Error('404');
+    return { instalar: instalarBaile };
+  };
+  assert.equal(await LuneVRMBarra.cargarModulo('noExiste', importar), null);
+  assert.equal(LuneVRMBarra.RUTAS_MODULOS.baileProc, '../../vrm/lune_baile_proc.js');
+  const { h, motor } = montar({}, { conBus: true });
+  await microtareas();
+  assert.equal(await h.usarModulo('baileProc', { importar }), false, 'el import falla');
+  assert.equal(motor.de('registrar').length, 0);
+  falla = false;
+  assert.equal(await h.usarModulo('baileProc', { importar }), true, 'se reintenta');
+  assert.equal(await h.usarModulo('baileProc', { importar }), true);
+  assert.deepEqual(motor.de('registrar').map((c) => c[1]), ['baileProc'], 'registrado una sola vez');
+  const registrado = motor.m.registrar((ctx) => ({ nombre: 'sonda', ctx }));
+  assert.equal(registrado.ctx, motor.m.ctx);
+  // La barra instala baileProc con {encuadrar: false} (OPCIONES_MODULOS); se puede pedir otra cosa
+  assert.deepEqual(motor.m.registrar === undefined ? null : motor.ultimoModulo.nombre, 'sonda');
+  const d = montar({}, { conBus: true });
+  await microtareas();
+  await d.h.usarModulo('baileProc', { importar });                  // en caché: instalarBaile
+  assert.deepEqual(d.motor.ultimoModulo.opciones, { encuadrar: false });
+  assert.equal(d.motor.ultimoModulo.ctxRecibido, d.motor.m.ctx);
+  const e = montar({}, { conBus: true });
+  await microtareas();
+  await e.h.usarModulo('baileProc', { importar, opciones: { encuadrar: true, x: 1 } });
+  assert.deepEqual(e.motor.ultimoModulo.opciones, { encuadrar: true, x: 1 });
+  e.h.destruir();
+  assert.deepEqual(LuneVRMBarra.OPCIONES_MODULOS.baileProc, { encuadrar: false });
+  d.h.destruir();
+  assert.deepEqual(pedidas, ['../../vrm/lune_baile_proc.js', '../../vrm/lune_baile_proc.js'], 'en caché tras cargar');
+  // Otro avatar lo registra en SU motor sin volver a importarlo
+  const b = montar({}, { conBus: true });
+  await microtareas();
+  assert.equal(await b.h.usarModulo('baileProc', { importar }), true);
+  assert.equal(b.motor.de('registrar').length, 1);
+  assert.equal(pedidas.length, 2);
+  h.destruir(); b.h.destruir();
+  assert.equal(await b.h.usarModulo('baileProc', { importar }), false, 'destruido: nada');
+  // Destruido mientras se cargaba (aunque esté en caché, resuelve en una microtarea): no registra
+  const c = montar({}, { conBus: true });
+  await microtareas();
+  const p = c.h.usarModulo('baileProc', { importar });
+  c.h.destruir();
+  assert.equal(await p, false);
+  assert.equal(c.motor.de('registrar').length, 0);
+  assert.equal(pedidas.length, 2, 'en caché: no vuelve a importar');
+  // La ruta existe relativa al módulo cuando el agente de la mascota la haya creado
+  const ruta = fileURLToPath(new URL(LuneVRMBarra.RUTAS_MODULOS.baileProc, URL_MODULO));
+  assert.match(ruta.replace(/\\/g, '/'), /ui_web\/vrm\/lune_baile_proc\.js$/);
 });
 
 // ── Publicación y rutas ─────────────────────────────────────────────────────────

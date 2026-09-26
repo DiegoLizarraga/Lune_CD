@@ -628,7 +628,9 @@
     if (!p) return null;
     const pct = Math.max(0, Math.min(100, (restante / total) * 100));
     const args = formatearArgs(p.args);
-    const terceros = !!p.origen && p.origen !== 'usuario';
+    // Orden que llegó desde Telegram (/pc): todo pide permiso y se dice de dónde vino.
+    const remota = p.origen === 'remoto';
+    const terceros = !!p.origen && p.origen !== 'usuario' && !remota;
     return (
       <div className="ln-modal-bg" role="presentation">
         <div className="ln-modal ln-x-aprob" role="alertdialog" aria-modal="true"
@@ -639,6 +641,7 @@
             <span className="ln-x-aprob-tool">{p.herramienta}</span>
             {p.riesgo && <Badge variant={varianteRiesgo(p.riesgo)} outline>{p.riesgo.toLowerCase()}</Badge>}
             {terceros && <Badge variant="danger" outline>{p.origen === 'no_confiable' ? 'texto de terceros' : `origen: ${p.origen}`}</Badge>}
+            {remota && <Badge variant="yellow" outline>Pedido desde Telegram</Badge>}
             {enCola > 0 && <Badge variant="ink" outline>+{enCola} en cola</Badge>}
           </div>
           <div className="ln-modal-body" id="ln-x-aprob-resumen">
@@ -648,6 +651,11 @@
             {terceros && (
               <span className="ln-modal-nota" style={{ color: 'var(--yellow-500)' }}>
                 La pidió una respuesta que leyó texto de fuera (una ventana, la pantalla, un chat…). Si no se lo pediste tú, di que no.
+              </span>
+            )}
+            {remota && (
+              <span className="ln-modal-nota" style={{ color: 'var(--yellow-500)' }}>
+                Pedido desde Telegram: llegó por tu bot, no se escribió en este PC. Si no fuiste tú, di que no.
               </span>
             )}
             <span className="ln-modal-nota">Solo tú puedes aprobarla. Si no respondes, se cancela sola.</span>

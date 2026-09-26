@@ -24,6 +24,11 @@ QUÉ LEE Y QUÉ NO
 - `mando_activo()`: `XInputGetState` de `xinput1_4.dll` (opcional). Los mandos
   no actualizan `GetLastInputInfo`; sin esto el salvapantallas saltaría en
   mitad de una partida con mando. Si la DLL no está, devuelve False.
+- `pantalla_requerida()`: ¿alguien le pide a Windows la pantalla encendida (un
+  vídeo, una presentación)? `CallNtPowerInformation(SystemExecutionState)` de
+  powrprof y el bit `ES_DISPLAY_REQUIRED`. Solo lectura del estado de energía:
+  no cambia nada ni mira a otros procesos. Puede no ver las peticiones que los
+  navegadores hacen con PowerSetRequest; si no las ve, simplemente no bloquea.
 
 Todo recibe un objeto `api` inyectable (ver `ApiEntradaWin32`) para probarlo
 en seco: los tests pasan una API falsa o DLLs falsas, sin pantalla ni hardware.
@@ -41,6 +46,13 @@ VK_LBUTTON = 0x01
 ERROR_SUCCESS = 0
 ERROR_DEVICE_NOT_CONNECTED = 1167
 MAX_MANDOS = 4
+
+# powrprof: nivel POWER_INFORMATION_LEVEL.SystemExecutionState y los bits de
+# EXECUTION_STATE (SetThreadExecutionState).
+SYSTEM_EXECUTION_STATE = 16
+STATUS_SUCCESS = 0
+ES_SYSTEM_REQUIRED = 0x00000001
+ES_DISPLAY_REQUIRED = 0x00000002
 
 # Zonas muertas recomendadas por Microsoft para XInput.
 ZONA_MUERTA_IZQ = 7849
@@ -106,21 +118,25 @@ class ApiEntradaNula:
     def estado_mando(self, indice: int) -> Optional[EstadoMando]:
         return None
 
+    def estado_ejecucion(self) -> Optional[int]:
+        return None
+
 
 _SIN_CARGAR = object()
 
 
 class ApiEntradaWin32:
     """
-    Envoltorio mínimo de user32/kernel32/xinput. Las DLL se pueden inyectar
-    (objetos con las mismas funciones) para probar el marshalling sin Windows.
-    Solo expone el botón izquierdo: no hay forma de pedirle otra tecla.
+    Envoltorio mínimo de user32/kernel32/xinput/powrprof. Las DLL se pueden
+    inyectar (objetos con las mismas funciones) para probar el marshalling sin
+    Windows. Solo expone el botón izquierdo: no hay forma de pedirle otra tecla.
     """
 
-    def __init__(self, user32=None, kernel32=None, xinput=_SIN_CARGAR):
+    def __init__(self, user32=None, kernel32=None, xinput=_SIN_CARGAR, powrprof=_SIN_CARGAR):
         self._u = user32 if user32 is not None else ctypes.WinDLL("user32", use_last_error=True)
         self._k = kernel32 if kernel32 is not None else ctypes.WinDLL("kernel32", use_last_error=True)
         self._x = xinput if xinput is _SIN_CARGAR else self._firmar_xinput(xinput)
+        self._p = powrprof if powrprof is _SIN_CARGAR else self._firmar_powrprof(powrprof)
         self._firmar()
 
     def _firmar(self):
@@ -144,6 +160,28 @@ class ApiEntradaWin32:
             return dll
         except AttributeError:
             return None
+
+    @staticmethod
+    def _firmar_powrprof(dll):
+        if dll is None:
+            return None
+        try:
+            dll.CallNtPowerInformation.argtypes = [ctypes.c_int, ctypes.c_void_p, wintypes.ULONG,
+                                                   ctypes.POINTER(wintypes.ULONG), wintypes.ULONG]
+            dll.CallNtPowerInformation.restype = ctypes.c_long        # NTSTATUS
+            return dll
+        except AttributeError:
+            return None
+
+    def _powrprof(self):
+        """powrprof.dll la primera vez que hace falta; None si no está."""
+        if self._p is _SIN_CARGAR:
+            try:
+                dll = ctypes.WinDLL("powrprof")
+            except (OSError, AttributeError):             # AttributeError: no es Windows
+                dll = None
+            self._p = self._firmar_powrprof(dll)
+        return self._p
 
     def _xinput(self):
         """xinput1_4 (Windows 8+) con xinput9_1_0 de respaldo; None si no hay ninguna.
@@ -197,6 +235,21 @@ class ApiEntradaWin32:
                            int(g.bRightTrigger), int(g.sThumbLX), int(g.sThumbLY),
                            int(g.sThumbRX), int(g.sThumbRY))
 
+    def estado_ejecucion(self) -> Optional[int]:
+        """EXECUTION_STATE del sistema (bits ES_*), o None si no se puede leer."""
+        p = self._powrprof()
+        if p is None:
+            return None
+        valor = wintypes.ULONG(0)
+        try:
+            r = int(p.CallNtPowerInformation(SYSTEM_EXECUTION_STATE, None, 0,
+                                             ctypes.byref(valor), ctypes.sizeof(valor)))
+        except Exception:
+            return None
+        if r != STATUS_SUCCESS:
+            return None
+        return int(valor.value) & _MASCARA_32
+
 
 _api_defecto = None
 
@@ -234,6 +287,23 @@ def segundos_inactivo(api=None) -> float:
         return ms_desde(api.tick(), ultima) / 1000.0
     except Exception:
         return 0.0
+
+
+# ── Pantalla pedida (vídeo, presentación) ────────────────────────────────────
+
+def pantalla_requerida(api=None) -> bool:
+    """True si el sistema tiene pedida la pantalla encendida (ES_DISPLAY_REQUIRED:
+    un reproductor de vídeo, una presentación…). El salvapantallas no salta
+    entonces. False si no se sabe (otra API, sin powrprof, fuera de Windows)."""
+    api = api or api_defecto()
+    leer = getattr(api, "estado_ejecucion", None)
+    if not callable(leer):
+        return False
+    try:
+        est = leer()
+        return bool(est is not None and int(est) & ES_DISPLAY_REQUIRED)
+    except Exception:
+        return False
 
 
 # ── Mando (XInput) ────────────────────────────────────────────────────────────

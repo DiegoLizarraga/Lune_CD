@@ -82,6 +82,17 @@ function BgNube() {
 }
 window.NubeSvg = NubeSvg;
 
+// Vistas a las que se puede ir con el evento de window 'lune-vista' (extra/alarmas.jsx: «Abrir alarmas»).
+const VISTAS_APP = ['chat', 'settings', 'personajes', 'memoria', 'historial', 'optimizar', 'tools', 'alarmas'];
+
+/** Baile (extra/baile.jsx): estado y pulso para la barra lateral y el CommandMenu. null si ese archivo
+ *  no cargó. window.LuneBaileWeb no aparece ni desaparece en la vida de la página: el orden de los
+ *  hooks es estable. */
+function useBaileApp() {
+  const B = window.LuneBaileWeb;
+  return B && typeof B.useBaile === 'function' ? B.useBaile() : null;
+}
+
 function BgShards() {
   return (
     <div className="p3-bg" aria-hidden="true">
@@ -112,14 +123,22 @@ function App() {
   const [llamadaOn, setLlamadaOn] = useState(false); // modo llamada por voz
   const [toast, setToast] = useState('');          // aviso breve del backend
   const [compat, setCompat] = useState(COMPAT_OFF); // API compatible configurada (tercer proveedor)
+  const [modoJuego, setModoJuego] = useState(false); // hay un juego delante (señal juego_estado, corte 4)
+  const baile = useBaileApp();                       // cortes 5/6: la mascota de la barra baila
   const toastT = useRef(null);
   const sendRef = useRef(null);                    // send() actual, para las señales
+  // Efectos: manda la config (efectos.*, por window.luneEscritorio); localStorage es solo el respaldo
+  // sin backend (su origen cambia en cada arranque: el puerto del servidor local es otro).
   const [fx, setFx] = useState(() => {
     try { return JSON.parse(localStorage.getItem('lune-fx')) || { bg:true, sweep:true, micro:true }; }
     catch(e){ return { bg:true, sweep:true, micro:true }; }
   });
-  React.useEffect(() => { localStorage.setItem('lune-fx', JSON.stringify(fx)); }, [fx]);
-  const setFxKey = (k) => (e) => setFx((f) => ({ ...f, [k]: e.target.checked }));
+  React.useEffect(() => { try { localStorage.setItem('lune-fx', JSON.stringify(fx)); } catch (e) {} }, [fx]);
+  const setFxKey = (k) => (e) => {
+    const v = !!e.target.checked;
+    setFx((f) => ({ ...f, [k]: v }));
+    if (window.LuneApariencia) window.LuneApariencia.guardarEfecto(k, v);
+  };
   const timers = useRef([]);
   const providerRef = useRef(provider); providerRef.current = provider;
   const streamId = useRef(null);   // id del mensaje del bot que se está llenando
@@ -139,8 +158,11 @@ function App() {
       const b = window.lune;
       if (!b) return;
       // El efecto de `provider` pudo correr antes de que existiera window.lune (al
-      // recargar la página): el puente se quedaría con el proveedor de antes.
-      try { if (typeof b.proveedor_elegido === 'function') b.proveedor_elegido(providerRef.current); } catch (e) {}
+      // recargar la página): el puente se quedaría con el proveedor de antes. Se le
+      // dice (o se toma el suyo con estado_inicial) al final de wire(), tras proveedores().
+      const resincronizar = () => {
+        try { if (typeof b.proveedor_elegido === 'function') b.proveedor_elegido(providerRef.current); } catch (e) {}
+      };
       b.chunk.connect((acumulado) => {
         setTyping(false);   // la cara la lleva `acto` (typing y los <|ACT|> según llegan)
         // El id se fija AQUÍ (síncrono), no dentro del updater: si no, 'done'
@@ -208,9 +230,58 @@ function App() {
       };
       try { b.proveedores(leerCompat); } catch (e) {}
       try { b.proveedores_cambio.connect(leerCompat); } catch (e) {}
+      // Estado inicial del puente (p. ej. tras cambiar de interfaz en caliente): proveedor, voz,
+      // bot, mascota y la conversación en curso {proveedor, voz, telegram, mascota_fuera,
+      // mensajes:[{role, text}]}. Va DESPUÉS de proveedores(): con «compat» la pestaña ya existe
+      // y no se cae a «local». Sin estado_inicial (backend viejo): se resincroniza como antes.
+      if (typeof b.estado_inicial === 'function') {
+        try {
+          b.estado_inicial((j) => {
+            let r = {};
+            try { r = (typeof j === 'string' ? JSON.parse(j) : j) || {}; } catch (e) {}
+            const prov = PROVIDERS[r.proveedor] ? r.proveedor : '';
+            if (prov) setProvider(prov); else resincronizar();
+            setVoiceOn(!!r.voz); setTelegramOn(!!r.telegram); setMascotaFuera(!!r.mascota_fuera);
+            if (Array.isArray(r.mensajes) && r.mensajes.length) {
+              setMessages(r.mensajes.filter((m) => m && m.text).map((m) => ({ id: uid(), role: m.role === 'user' ? 'user' : 'bot',
+                provider: prov || providerRef.current, text: String(m.text), time: '' })));
+            }
+          });
+        } catch (e) { resincronizar(); }
+      } else resincronizar();
     }
     if (window.lune) wire();
     else window.addEventListener('lune-ready', wire, { once:true });
+  }, []);
+
+  // Corte 4 (window.luneEscritorio): efectos desde la config, tema (window.luneTema) al arrancar y en
+  // tema_cambio, modo juego y navegar → vista. La lógica vive en extra/apariencia.jsx.
+  React.useEffect(() => {
+    const A = window.LuneApariencia;
+    return A && typeof A.conectarApp === 'function' ? A.conectarApp({ setFx, setModoJuego, setView }) : undefined;
+  }, []);
+  React.useEffect(() => { try { document.body.classList.toggle('modo-juego', modoJuego); } catch (e) {} }, [modoJuego]);
+  // Cortes 5/6: 'lune-vista' ({detail: vista}) desde las tarjetas («Abrir alarmas»). Solo vistas conocidas.
+  React.useEffect(() => {
+    const alVista = (e) => { const v = String((e && e.detail) || ''); if (VISTAS_APP.includes(v)) setView(v); };
+    window.addEventListener('lune-vista', alVista);
+    return () => window.removeEventListener('lune-vista', alVista);
+  }, []);
+  // F1 → menú radial (SVG) sobre la mascota de la barra.
+  React.useEffect(() => {
+    const onKey = (e) => {
+      if (e.key !== 'F1' || e.repeat) return;
+      e.preventDefault();
+      if (window.LuneRadial) window.LuneRadial.abrir();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+  // Expresión elegida en el radial con Lune en la barra: la pone la barra 4 s.
+  const expresionRadial = useCallback((x) => {
+    setMascot(x);
+    const t = setTimeout(() => setMascot((m) => (m === x ? 'normal' : m)), 4000);
+    timers.current.push(t);
   }, []);
 
   // Si la API compatible deja de estar configurada, se vuelve al modelo local.
@@ -322,6 +393,16 @@ function App() {
     else mostrarToast('El modo llamada necesita la app (Whisper + voz).');
   }, [mostrarToast]);
   sendRef.current = send;   // las señales del puente usan siempre el send() vigente
+  // Acciones del despachador del corte 4 (luneEscritorio.accion_menu): pantalla grande, bailar,
+  // temporizador rápido… Sin backend o sin handler en este modo, un aviso.
+  const accionEscritorio = useCallback((id, arg = '', okTexto = '') => {
+    const e = window.luneEscritorio;
+    if (!e || typeof e.accion_menu !== 'function') { mostrarToast('Esto necesita la app.'); return; }
+    try {
+      e.accion_menu(id, arg, (ok) => { if (!ok) mostrarToast('Ahora no está disponible.'); else if (okTexto) mostrarToast(okTexto); });
+    } catch (err) { mostrarToast('No pude hacerlo.'); }
+  }, [mostrarToast]);
+  const bailando = !!(baile && baile.estado && baile.estado.bailando);
   const cargarHistorial = useCallback((msgs) => {
     clearTimers();
     setMessages((msgs || []).map((m) => ({ id: uid(), role: m.role, provider: providerRef.current, text: m.text, time: '' })));
@@ -332,7 +413,7 @@ function App() {
     <div className={`ln-app lune-backdrop${fx.bg?'':' fx-no-bg'}${fx.sweep?'':' fx-no-sweep'}${fx.micro?'':' fx-no-micro'}${provider==='cloud'?' tema-nube':''}`}>
       {fx.bg && <BgShards />}
       <window.Sidebar provider={provider} onProvider={setProvider} mascotState={mascot}
-        mascotaFuera={mascotaFuera} onTraer={toggleMascota} compat={compat} />
+        mascotaFuera={mascotaFuera} onTraer={toggleMascota} compat={compat} modoJuego={modoJuego} baile={baile} />
       <main className="ln-main">
         {provider==='cloud' && <BgNube />}
         <Topbar provider={provider} status={status} view={view} onView={setView} onMenu={() => setMenuOpen(true)} />
@@ -343,6 +424,7 @@ function App() {
            : view === 'historial' ? <window.HistorialPanel onCargar={cargarHistorial} />
            : view === 'optimizar' ? <window.OptimizarPanel />
            : view === 'tools' ? <window.ToolsPanel />
+           : view === 'alarmas' && window.AlarmasPanel ? <window.AlarmasPanel />
            : <window.SettingsPanel voiceOn={voiceOn} onVoice={toggleVoz} fx={fx} setFxKey={setFxKey} />}
         </div>
         {view === 'chat' && (
@@ -358,6 +440,11 @@ function App() {
         { label:'Tools', desc:'Herramientas de escritorio', onClick:()=>setView('tools') },
         { label:'Historial', desc:'Conversaciones previas', onClick:()=>setView('historial') },
         { label:'Optimizar', desc:'Rendimiento del modelo', onClick:()=>setView('optimizar') },
+        ...(window.AlarmasPanel ? [{ label:'Alarmas', desc:'Alarmas y temporizadores', onClick:()=>setView('alarmas') }] : []),
+        { label:'Temporizador rápido', desc:'Un temporizador de 5 minutos', onClick:()=>accionEscritorio('temporizador_rapido', '5') },
+        { label:'Pantalla grande', desc:'Lune llena la pantalla (otra vez para salir)', onClick:()=>accionEscritorio('pantalla_grande') },
+        { label: bailando ? 'Parar el baile' : 'Bailar', desc:'Lune baila (con música, al ritmo)', on: baile ? bailando : undefined,
+          onClick:()=>accionEscritorio('bailar') },
         { label:`Mascota ${mascotaFuera?'ON':'OFF'}`, desc: mascotaFuera ? 'Traer a Lune de vuelta a la ventana' : 'Sacar a Lune al escritorio', on:mascotaFuera, onClick:toggleMascota },
         { label:`Voz ${voiceOn?'ON':'OFF'}`, desc:'Lune lee sus respuestas (la voz se elige en Ajustes)', on:voiceOn, onClick:toggleVoz },
         { label:'Telegram', desc:'Bot sincronizado', on:telegramOn, onClick:toggleTelegram },
@@ -365,9 +452,14 @@ function App() {
         { label:'Limpiar chat', desc:'Borra la conversación actual', danger:true, onClick:clear },
       ]} />
       {toast && <div className="ln-toast" role="status">{toast}</div>}
+      {/* Cortes 5/6: la alarma que está sonando, con «Apagar» (bloqueado los primeros segundos) y «Posponer». */}
+      {window.AlarmaBanner && <window.AlarmaBanner />}
       {/* Acciones del modelo que piden permiso (señal aprobacion_pedida): modal global
           con cuenta atrás de 60 s; «Sí, hazlo» / «No» → window.lune.resolver_aprobacion. */}
       {window.AprobacionHost && <window.AprobacionHost />}
+      {/* Menú radial SVG (extra/apariencia.jsx): F1 o clic derecho sobre la mascota de la barra. */}
+      {window.RadialHost && <window.RadialHost onNavegar={setView} onExpresion={expresionRadial}
+        onAviso={mostrarToast} mascotaFuera={mascotaFuera} />}
     </div>
   );
 }

@@ -320,6 +320,59 @@ def test_api_win32_lee_xinput():
     assert LectorMando(api, reloj=lambda: 0.0).activo() is True
 
 
+# ── pantalla_requerida (powrprof falso) ──────────────────────────────────────
+
+def _powrprof(estado=0, status=0, llamadas=None):
+    llamadas = llamadas if llamadas is not None else []
+    dll = _Dll()
+
+    def call_nt(nivel, entrada, tam_entrada, salida, tam_salida):
+        llamadas.append((nivel, entrada, tam_entrada, tam_salida))
+        salida._obj.value = estado
+        return status
+
+    dll.CallNtPowerInformation = _fn(call_nt)
+    return dll, llamadas
+
+
+def test_pantalla_requerida_lee_es_display_required():
+    dll, llamadas = _powrprof(estado=W.ES_DISPLAY_REQUIRED | W.ES_SYSTEM_REQUIRED)
+    api, _ = _dlls()
+    api = ApiEntradaWin32(user32=api._u, kernel32=api._k, xinput=None, powrprof=dll)
+    assert api.estado_ejecucion() == 3
+    assert W.pantalla_requerida(api) is True
+    # Nivel SystemExecutionState, sin búfer de entrada y un ULONG de salida.
+    assert llamadas[0] == (W.SYSTEM_EXECUTION_STATE, None, 0, ctypes.sizeof(ctypes.c_ulong))
+
+
+def test_pantalla_requerida_solo_el_sistema_no_cuenta():
+    dll, _ = _powrprof(estado=W.ES_SYSTEM_REQUIRED)       # descargando algo: el PC despierto, la pantalla no
+    base, _ = _dlls()
+    api = ApiEntradaWin32(user32=base._u, kernel32=base._k, xinput=None, powrprof=dll)
+    assert W.pantalla_requerida(api) is False
+
+
+def test_pantalla_requerida_con_error_o_sin_dll_es_false():
+    dll, _ = _powrprof(estado=W.ES_DISPLAY_REQUIRED, status=-1073741811)   # STATUS_INVALID_PARAMETER
+    base, _ = _dlls()
+    api = ApiEntradaWin32(user32=base._u, kernel32=base._k, xinput=None, powrprof=dll)
+    assert api.estado_ejecucion() is None
+    assert W.pantalla_requerida(api) is False
+    sin = ApiEntradaWin32(user32=base._u, kernel32=base._k, xinput=None, powrprof=None)
+    assert sin.estado_ejecucion() is None
+    assert W.pantalla_requerida(sin) is False
+
+
+def test_pantalla_requerida_con_apis_sin_el_metodo_o_que_fallan():
+    assert W.pantalla_requerida(ApiFalsa()) is False          # API sin estado_ejecucion
+    assert W.pantalla_requerida(ApiEntradaNula()) is False
+
+    class Rota:
+        def estado_ejecucion(self):
+            raise OSError("roto")
+    assert W.pantalla_requerida(Rota()) is False
+
+
 # ── Anticheat: el módulo no puede parecer un keylogger ───────────────────────
 
 def test_el_modulo_no_recorre_teclas_ni_usa_ganchos():
@@ -344,3 +397,4 @@ def test_en_windows_real_no_falla():
     assert d.poll() is False
     assert isinstance(d.poll(), bool)
     assert isinstance(W.mando_activo(), bool)
+    assert isinstance(W.pantalla_requerida(), bool)

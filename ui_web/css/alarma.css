@@ -1,0 +1,71 @@
+/* ============================================================
+   ui_web/css/alarma.css — burbuja de alarma de la mascota
+   (ui_web/lune_alarma.js, en companion.html y companion_vrm.html).
+
+   Rojo #FF4826 de Mate-Engine como --lune-alarma, texto blanco de
+   16 px y como mucho 600 px de ancho… o el 92 % de la ventana si es
+   la pequeña (crítica c.6). Arriba en la ventana pequeña; abajo,
+   como un subtítulo, en pantalla grande (la cara ocupa el centro).
+   Canales del tema siempre con respaldo: rgb(var(--x-rgb, r g b) / a).
+   ============================================================ */
+
+:root {
+  --lune-alarma: #FF4826;
+  --lune-alarma-rgb: 255 72 38;
+}
+
+body .lune-alarma {
+  position: fixed;
+  left: 50%;
+  top: 8px;
+  z-index: 40;
+  box-sizing: border-box;
+  width: max-content;
+  max-width: min(600px, 92vw);
+  padding: 10px 14px 11px;
+  background: var(--lune-alarma, #FF4826);
+  color: #fff;
+  font: 600 16px/1.35 var(--font-body, var(--font-sans, system-ui, sans-serif));
+  border-radius: 4px;
+  box-shadow: 0 8px 26px rgb(0 0 0 / .55),
+              0 0 22px rgb(var(--lune-alarma-rgb, 255 72 38) / .45);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, 8px);
+  transition: opacity .25s ease, transform .25s ease;
+}
+
+body .lune-alarma.on {
+  opacity: 1;
+  transform: translate(-50%, 0);
+  animation: lune-alarma-latido 1.2s ease-in-out infinite;
+}
+
+body .lune-alarma .quien {
+  display: block;
+  margin-bottom: 3px;
+  font: 700 10px/1.2 var(--font-mono, monospace);
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  opacity: .85;
+}
+
+body .lune-alarma .txt { display: block; min-height: 1.35em; }
+
+/* En pantalla grande, abajo y un poco más grande */
+body.lune-grande .lune-alarma {
+  top: auto;
+  bottom: 8vh;
+  font-size: 18px;
+}
+
+@keyframes lune-alarma-latido {
+  0%, 100% { box-shadow: 0 8px 26px rgb(0 0 0 / .55), 0 0 14px rgb(var(--lune-alarma-rgb, 255 72 38) / .35); }
+  50%      { box-shadow: 0 8px 26px rgb(0 0 0 / .55), 0 0 30px rgb(var(--lune-alarma-rgb, 255 72 38) / .7); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body .lune-alarma, body .lune-alarma.on { animation: none; transition: none; }
+}

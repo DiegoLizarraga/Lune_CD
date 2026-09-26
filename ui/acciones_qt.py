@@ -43,12 +43,28 @@ from typing import Any, Callable, Dict, List, Optional
 from PyQt6.QtCore import QObject, Qt, pyqtSignal
 from PyQt6.QtWidgets import QMessageBox, QWidget
 
-from lune_core.acciones import (AVISO_CONTAMINADO, NO_CONFIABLE, USUARIO, Llamada,
-                                ResultadoAccion, limpiar_texto)
+from lune_core.acciones import (AVISO_CONTAMINADO, AVISO_LLAMADA, AVISO_REMOTO, NO_CONFIABLE, REMOTO,
+                                USUARIO, Llamada, ResultadoAccion, limpiar_texto)
 
 _log = logging.getLogger(__name__)
 
 TITULO_PREGUNTA = "Lune pide permiso"
+# Delante de la pregunta cuando la orden llegó desde Telegram (origen 'remoto').
+PREFIJO_REMOTO = "Pedido desde Telegram"
+# Delante de la pregunta cuando se oyó en el modo llamada (pendiente["llamada"]).
+PREFIJO_LLAMADA = "Lo oí en la llamada"
+
+
+def _prefijo(pendiente: dict) -> str:
+    """De dónde vino lo que se pregunta, para ponerlo delante ("" si de ti, aquí)."""
+    if es_remota(pendiente):
+        return PREFIJO_REMOTO
+    return PREFIJO_LLAMADA if pendiente.get("llamada") else ""
+
+
+def es_remota(pendiente: dict) -> bool:
+    """¿La pregunta es de una orden que llegó desde Telegram?"""
+    return bool(pendiente.get("remoto")) or str(pendiente.get("origen") or "") == REMOTO
 
 
 def texto_pregunta(pendiente: dict) -> str:
@@ -60,12 +76,19 @@ def texto_pregunta(pendiente: dict) -> str:
         segundos = int(float(pendiente.get("timeout") or 60))
     except (TypeError, ValueError):
         segundos = 60
-    partes = [f"{resumen}", f"Herramienta: {limpiar(herramienta, 60)}"]
+    remota = es_remota(pendiente)
+    prefijo = _prefijo(pendiente)
+    partes = [f"{prefijo}: {resumen}" if prefijo else f"{resumen}",
+              f"Herramienta: {limpiar(herramienta, 60)}"]
     args = formatear_args(pendiente.get("args"))
     if args:
         partes.append(args)
-    if pendiente.get("origen") and pendiente.get("origen") != USUARIO:
+    if remota:
+        partes.append("Ojo: " + AVISO_REMOTO)
+    elif pendiente.get("origen") and pendiente.get("origen") != USUARIO:
         partes.append("Ojo: la petición salió de un texto externo, no de ti.")
+    if pendiente.get("llamada"):
+        partes.append("Ojo: " + AVISO_LLAMADA)
     if pendiente.get("contaminado"):
         partes.append("Ojo: " + AVISO_CONTAMINADO)
     partes.append(f"¿Lo hago? Si no contestas en {segundos} s, no lo hago.")
@@ -237,9 +260,14 @@ class AccionesQt(QObject):
         except (TypeError, ValueError):
             segundos = 60
         resumen = str(pendiente.get("resumen") or "")
+        # El diálogo pequeño solo enseña el resumen: los avisos van delante y, antes,
+        # de dónde vino (Telegram, la llamada). Pueden ir los dos (orden remota en una
+        # conversación con contenido externo).
         if pendiente.get("contaminado"):
-            # El diálogo pequeño solo enseña el resumen: el aviso va delante.
             resumen = "Ojo: la conversación contiene contenido externo. " + resumen
+        prefijo = _prefijo(pendiente)
+        if prefijo:
+            resumen = f"{prefijo}: {resumen}"
         dlg = DialogoAprobacion(str(pendiente.get("herramienta") or ""),
                                 resumen, pendiente.get("args"),
                                 riesgo=str(pendiente.get("riesgo") or ""), segundos=segundos,

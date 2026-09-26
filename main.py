@@ -8,9 +8,25 @@ Mascota (corte 3): herramientas del modelo `mascota_dormir`, `mascota_despertar`
 y `mascota_tamano` con la mascota flotante a la vista (solo se ofrecen con ella
 fuera: el modo del turno pasa a "mascota"/"vrm"), y el panel de modelos VRM de
 Configuración recarga la mascota 3D y le aplica la calibración.
+
+Corte 4 (modo juego, bandeja única, menú radial, atajos globales y tema): el tema se
+aplica a COLORS antes de construir la interfaz (ui.theme.aplicar_tema); `_build_tray`
+monta los servicios (ui/montaje_escritorio.montar_escritorio con
+ui/anfitrion_nativo.AnfitrionNativo) en iniciar_servicios: UN icono de bandeja siempre
+(features.minimizar_a_bandeja solo decide si cerrar oculta la ventana), la mascota sin
+icono propio y el panel de Ajustes con sus apartados de escritorio
+(ui/escritorio_panel_nativo.py). cerrar_para_cambio y salir los desmontan una vez.
+
+Cortes 5 y 6 (alarmas y temporizadores, pantalla grande y salvapantallas, baile): van
+dentro del montaje del corte 4 (ServiciosCorte4.ocio, ui/montaje_ocio.py). Aquí solo:
+el tile ALARMAS (despachador «alarma» → el editor de alarmas), el panel de Ajustes
+(PanelOcioNativo, vía usar_servicios), la carita contenta y «♪ BAILANDO» mientras
+baila (_on_baile) y «avísame en 10 minutos» escrito en el chat → Ejecutor antes que
+la memoria.
 """
 import sys
 import os
+import json
 import threading
 from collections.abc import Mapping
 from datetime import datetime
@@ -55,14 +71,17 @@ from lune_core import marcadores, expresiones
 from servicios.notas_service import NotasService
 from servicios.red_service import RedService
 from ui.avatar_overlay import AvatarOverlay
-from ui.escritorio import ServiciosEscritorio
+from ui.escritorio import ServiciosEscritorio, crear_mascota
 from ui.lune_face import LuneFaceWidget, detect_emotion
 from ui.icons import icon, icon_pixmap
 from ui.effects import apply_glow, clear_glow
 from servicios.voice import VoiceEngine, VozStreaming
-from servicios.telegram_worker import TelegramBotWorker
+from servicios.telegram_worker import (TelegramBotWorker, ordenes_activas, PREFIJO_TELEGRAM, PREFIJO_IA,
+                                       AVISO_TG_DESACTIVADAS, AVISO_TG_OCUPADA, AVISO_TG_DETENIDA,
+                                       SIN_TEXTO)
 from ui.chat_widgets import ProviderTab, MessageBubble, TypingIndicator
-from servicios.ai_worker import AIWorker, ORIGEN_NO_CONFIABLE, ORIGEN_USUARIO, meta_proveedor
+from servicios.ai_worker import (AIWorker, ORIGEN_NO_CONFIABLE, ORIGEN_REMOTO, ORIGEN_USUARIO,
+                                 meta_proveedor)
 from ui.acciones_qt import AccionesQt
 from lune_core.acciones import limpiar_texto
 from ui.settings_panel import SettingsPanel
@@ -72,6 +91,10 @@ from nucleo import personajes
 from nucleo import sueno, vrm
 
 from ui.splash import PantallaInicio
+from ui.cambio_interfaz import (GestorInterfaz, callar_voz, cerrar_mascota, desmontar_servicios_c4,
+                                detener_bot, detener_hilo_ia, hilo_vivo, instantanea_sesion,
+                                ordenes_cortadas, parar_temporizadores, quitar_bandeja,
+                                retomar_sesion, soltar_hilos)
 
 logger = Logger()
 
@@ -111,6 +134,56 @@ class SondeoProveedoresWorker(QThread):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+#  ÓRDENES DE TELEGRAM SIN RESPUESTA Y MODO JUEGO EN EL RELEVO
+#  (funciones sueltas: sirven con la ventana de verdad y con sus dobles de test)
+# ─────────────────────────────────────────────────────────────────────────────
+def olvidar_ordenes_avisadas(ventana, ids) -> None:
+    """Tras mandar «Se detuvo…» a Telegram, la marca del turno remoto y la última
+    orden aceptada se limpian: ninguna vuelve a avisarse (un aviso por orden, el
+    mismo criterio que la web). La respuesta que aún llegue ya no va a Telegram."""
+    ids = {str(i) for i in (ids or ()) if i}
+    if not ids:
+        return
+    turno = getattr(ventana, "_turno", None)
+    if isinstance(turno, dict) and str(turno.get("remoto") or "") in ids:
+        turno.pop("remoto", None)
+    if str(getattr(ventana, "_ultima_orden_tg", "") or "") in ids:
+        ventana._ultima_orden_tg = ""
+
+
+def avisar_ordenes_cortadas(ventana) -> list:
+    """La ventana se cierra (salir, patata, cambio de interfaz) o se para el bot con
+    una orden de Telegram sin respuesta: la que se está respondiendo y la que espera
+    tu permiso reciben «Se detuvo…» UNA vez. Antes de cerrar las preguntas y de parar
+    el bot. Devuelve los ids avisados."""
+    try:
+        pend = ventana.acciones.pendientes()
+    except Exception:
+        pend = []
+    try:
+        vivo = bool(ventana._worker_vivo())
+    except Exception:
+        vivo = False
+    ids = ordenes_cortadas(getattr(ventana, "_turno", None), vivo, pend,
+                           getattr(ventana, "_ultima_orden_tg", ""))
+    for oid in ids:
+        ventana._responder_telegram(oid, AVISO_TG_DETENIDA)
+    olvidar_ordenes_avisadas(ventana, ids)
+    return ids
+
+
+def juego_forzado_de(servicios):
+    """El modo juego forzado a mano de los servicios del corte 4: None (detectar),
+    True o False. Viaja en el cambio de interfaz (estado_para_cambio)."""
+    juego = getattr(servicios, "juego", None) if servicios is not None else None
+    try:
+        f = getattr(juego, "forzado", None) if juego is not None else None
+    except Exception:
+        return None
+    return f if isinstance(f, bool) else None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 #  MAIN WINDOW
 # ─────────────────────────────────────────────────────────────────────────────
 class LuneCDWindow(QMainWindow):
@@ -121,14 +194,31 @@ class LuneCDWindow(QMainWindow):
     # (ResultadoAccion, {mascota, directo}): resultado de una acción con destino propio
     # (chat de la mascota o pedida por la persona); llega de cualquier hilo.
     _resultado_turno = pyqtSignal(object, object)
+    # Ajustes pidió otro modo de interfaz (lo hace GestorInterfaz, ui/cambio_interfaz.py).
+    cambio_interfaz_pedido = pyqtSignal(str)
+    MODO_INTERFAZ = "nativo"         # «Bajos recursos» en Ajustes
     MODO_ACCIONES = "normal"         # modo del catálogo de herramientas en la nativa
     ESPERA_UI_S = 5.0                # herramientas de la mascota: espera máxima al hilo de Qt
-    def __init__(self):
+    FABRICAS_C4 = None               # fábricas de montar_escritorio (tests); None = las de verdad
+    def __init__(self, *, diferir_servicios: bool = False):
+        """`diferir_servicios`: la construye GestorInterfaz con la ventana anterior aún
+        viva; la bandeja y los servicios de escritorio (atajos globales…) arrancan
+        después, en iniciar_servicios(). Ver «Cambio de modo en caliente» abajo."""
         super().__init__()
+        self._relevada = False           # cerrada por un cambio de modo: sin bandeja ni quit
+        self._servicios_listos = False   # bandeja y servicios de escritorio arrancados
+        # Corte 4 (bandeja única, atajos, radial, modo juego, tema): lo monta _build_tray
+        # en iniciar_servicios (ui/montaje_escritorio.montar_escritorio).
+        self._servicios_c4 = None
+        self._ultima_orden_tg = ""       # id de la última orden de Telegram aceptada
         self._hilo_qt = threading.get_ident()
         self._en_ui_senal.connect(self._correr_en_ui)
         # Config visual/features (config.json) + APIs/personalidad (datos.json)
         self.config           = Config()
+        # Tema de color (sección tema, nucleo/tema.py) en COLORS ANTES de construir la
+        # interfaz: los widgets nativos toman el color al crearse.
+        from ui.theme import aplicar_tema
+        aplicar_tema(self.config)
         self.ai_manager       = AIManager()
         self.voice = VoiceEngine(self.config)
         # La voz avisa cuándo suena (hilo de audio) → señal → boca del avatar 3D.
@@ -143,7 +233,6 @@ class LuneCDWindow(QMainWindow):
         # mascota flotante en _crear_mascota y se cierra en closeEvent.
         self.escritorio = ServiciosEscritorio(self.config, voice=self.voice,
                                               ai=self.ai_manager, parent=self)
-        self.escritorio.iniciar()
         self._seguidor = None            # <|ACT|> vistos en el stream en curso
         self._expresado_en_stream = False
         self._timers_plan = []
@@ -191,13 +280,15 @@ class LuneCDWindow(QMainWindow):
         )
 
         # Notas + RAG (memoria larga). Perezoso: solo indexa si está activo.
+        # Los arranques diferidos van por métodos de la ventana: si se cierra antes
+        # (cambio de interfaz), ni se reabre el índice ni se anuncia una red ya parada.
         self.notas = NotasService(self.config)
         if self.notas.activo:
-            QTimer.singleShot(1500, self.notas.reindexar)
+            QTimer.singleShot(1500, self._reindexar_notas)
 
         # Presencia en la red local: anunciarse para que otros Lune lo descubran.
         self.red = RedService(self.config)
-        QTimer.singleShot(1200, self.red.anunciar)
+        QTimer.singleShot(1200, self._anunciar_red)
 
         # Banco de respuestas instantáneas con la personalidad de Lune
         nombre_bot = datos.get_personaje(datos.get_bot().get("personaje_default", "Lune")).get("nombre", "Lune")
@@ -211,7 +302,8 @@ class LuneCDWindow(QMainWindow):
             self.voice.toggle()
 
         self._init_ui()
-        self._build_tray()
+        if not diferir_servicios:
+            self.iniciar_servicios()         # bandeja y servicios de escritorio
         self._restaurar_o_iniciar_sesion()
 
         # Punto de estado de cada proveedor: se sondea al arrancar y cada 60 s,
@@ -225,6 +317,18 @@ class LuneCDWindow(QMainWindow):
             QTimer.singleShot(4000, self._comprobar_updates_silencioso)
 
         log_info(f"Lune CD v{APP_VERSION} iniciado")
+
+    def _cerrandose(self) -> bool:
+        """¿Relevada por un cambio de interfaz o saliendo? (notas y red ya cerradas)."""
+        return bool(getattr(self, "_relevada", False) or getattr(self, "_quit_real", False))
+
+    def _reindexar_notas(self):
+        if not self._cerrandose():
+            self.notas.reindexar()
+
+    def _anunciar_red(self):
+        if not self._cerrandose():
+            self.red.anunciar()
 
     # ── Actualizaciones ───────────────────────────────────────────────────────
     def _comprobar_updates_silencioso(self):
@@ -349,13 +453,16 @@ class LuneCDWindow(QMainWindow):
         self._scroll_bottom()
 
     def _nueva_conversacion(self):
+        avisada = (self._turno or {}).get("remoto") if self._worker_vivo() else ""
         self._cortar_respuesta()                 # si la IA estaba escribiendo, eso ya no cuenta
         self.chats.nueva_sesion(
             proveedor=self.current_provider,
             personaje=datos.get_bot().get("personaje_default", "Lune"),
         )
         self.ai_manager.clear_history()
-        # Presupuesto de acciones repuesto y fuera las preguntas pendientes.
+        # Presupuesto de acciones repuesto y fuera las preguntas pendientes (una orden
+        # de Telegram que esperaba tu permiso recibe «Se detuvo…»).
+        self._avisar_ordenes_pendientes(avisada)
         self.acciones.nueva_conversacion()
         while self.messages_layout.count() > 1:
             item = self.messages_layout.takeAt(0)
@@ -371,7 +478,9 @@ class LuneCDWindow(QMainWindow):
         sesion = self.chats.cargar(sesion_id)
         if not sesion:
             QMessageBox.warning(self, "No pude abrirla", "Esa conversación ya no está."); return
+        avisada = (self._turno or {}).get("remoto") if self._worker_vivo() else ""
         self._cortar_respuesta()                 # la respuesta en curso era de la otra
+        self._avisar_ordenes_pendientes(avisada)
         self.acciones.nueva_conversacion()       # otra conversación: presupuesto propio
         self._pintar_sesion(sesion)
         self.stack.setCurrentIndex(0)
@@ -479,6 +588,8 @@ class LuneCDWindow(QMainWindow):
         tools_btn= self._tile_btn("TOOLS", "tool");      tools_btn.clicked.connect(self._show_tools)
         hist_btn = self._tile_btn("HISTORIAL", "history"); hist_btn.clicked.connect(self._toggle_historial)
         masc_btn = self._tile_btn("MASCOTA", "user"); masc_btn.clicked.connect(self._toggle_overlay)
+        # Cortes 5/6: alarmas y temporizadores (el editor, por el despachador «alarma»).
+        alarm_btn = self._tile_btn("ALARMAS", "alarm"); alarm_btn.clicked.connect(self._abrir_alarmas)
         # El tile de Telegram era relleno visual sin acción y solo aparecía si
         # había voz. Ahora es el que enciende y apaga el bot, en lugar del botón
         # ancho que se salía de la barra lateral.
@@ -489,7 +600,7 @@ class LuneCDWindow(QMainWindow):
         grid.addWidget(self._keys_btn, 0, 0); grid.addWidget(pers_btn, 0, 1)
         grid.addWidget(opt_btn, 1, 0); grid.addWidget(mem_btn, 1, 1)
         grid.addWidget(tools_btn, 2, 0); grid.addWidget(hist_btn, 2, 1)
-        grid.addWidget(masc_btn, 4, 0)
+        grid.addWidget(masc_btn, 4, 0); grid.addWidget(alarm_btn, 4, 1)
         if self.voice.available:
             self._voice_btn = self._tile_btn("VOZ: OFF", "volume_off")
             self._voice_btn.clicked.connect(self._toggle_voice)
@@ -561,6 +672,39 @@ class LuneCDWindow(QMainWindow):
         self.messages_layout.insertWidget(self.messages_layout.count()-1, bubble)
         self.lune_face.set_state("reading", auto_revert_ms=5000); self._scroll_bottom()
 
+    def _abrir_alarmas(self):
+        """Tile ALARMAS: el editor de alarmas y temporizadores (ControlAlarmasQt, por la
+        acción «alarma» del despachador). Sin los servicios de ocio, un aviso."""
+        desp = getattr(getattr(self, "_servicios_c4", None), "despachador", None)
+        try:
+            if desp is not None and desp.tiene("alarma") and desp.ejecutar("alarma"):
+                return
+        except Exception as e:
+            log_error(f"[alarmas] no pude abrir el editor: {e}")
+        QMessageBox.information(self, "Alarmas", "Las alarmas no están disponibles ahora mismo.")
+
+    def _on_baile(self, js: str):
+        """ControlBaile.estado_cambio (cortes 5/6): mientras baila, la carita contenta y
+        «♪ BAILANDO» en la barra de estado; al parar, lo de antes (si nadie lo cambió)."""
+        try:
+            e = json.loads(js) if isinstance(js, str) else {}
+        except (TypeError, ValueError):
+            return
+        bailando = bool(isinstance(e, dict) and e.get("bailando"))
+        try:                                         # slot de una señal: nunca lanza
+            if bailando:
+                app = str(e.get("app") or "")[:24]
+                self._bailando_ui = True
+                self._set_status("♪ BAILANDO" + (f" · {app.upper()}" if app else ""), COLORS["accent"])
+                self.lune_face.set_state("happy")
+            elif getattr(self, "_bailando_ui", False):
+                self._bailando_ui = False
+                if str(self.status_label.text()).startswith("♪ BAILANDO"):
+                    self._set_status("LISTO", COLORS["success"])
+                    self.lune_face.set_state("normal")
+        except Exception as ex:
+            log_error(f"[baile] no pude pintar el estado del baile: {ex}")
+
     def _show_tools(self):
         texto = self.tools.listar_disponibles()
         bubble = MessageBubble(texto, is_user=False, provider_id=self.current_provider)
@@ -570,13 +714,17 @@ class LuneCDWindow(QMainWindow):
     # ── TELEGRAM ──────────────────────────────────────────────────────────────
     def _toggle_telegram(self):
         if hasattr(self,"_tg_worker") and self._tg_worker and self._tg_worker.isRunning():
+            # Una /pc sin respuesta se entera antes de que el bot se vaya («Se detuvo…», una vez).
+            avisar_ordenes_cortadas(self)
             self._tg_worker.stop(); self._tg_worker.requestInterruption(); self._tg_worker.wait(3000); self._tg_worker = None
             self._set_telegram_btn_style(False); return
         if not datos.telegram_token() or "TU_TOKEN" in datos.telegram_token():
             QMessageBox.warning(self,"Token faltante","Configura tu token de Telegram en la Configuración General."); return
         if not TelegramBotWorker.BOT_DIR.exists():
             QMessageBox.warning(self,"Carpeta no encontrada",f"No encontré la carpeta del bot en:\n{TelegramBotWorker.BOT_DIR}"); return
-        self._tg_worker = TelegramBotWorker(); self._tg_worker.log_signal.connect(self._on_telegram_log); self._tg_worker.stopped.connect(self._on_telegram_stopped)
+        # Órdenes desde Telegram (/pc): el canal solo se abre si está activado y hay tu ID.
+        self._tg_worker = TelegramBotWorker(ordenes=ordenes_activas(self.config)); self._tg_worker.log_signal.connect(self._on_telegram_log); self._tg_worker.stopped.connect(self._on_telegram_stopped)
+        self._tg_worker.orden_recibida.connect(self._orden_remota, Qt.ConnectionType.QueuedConnection)
         self._tg_worker.start(); self._set_telegram_btn_style(True, "Iniciando el bot…")
 
     def _on_telegram_log(self, line):
@@ -641,7 +789,11 @@ class LuneCDWindow(QMainWindow):
     def _build_keys_page(self):
         page = QFrame(); page.setStyleSheet("QFrame{background:transparent;}")
         layout = QVBoxLayout(page); layout.setContentsMargins(10,10,10,10)
-        self.settings_panel = SettingsPanel(self.config, voice=self.voice); self.settings_panel.saved.connect(self._on_keys_saved); layout.addWidget(self.settings_panel)
+        # Servicios del corte 4 (atajos, modo juego, tema…): se montan después, en
+        # iniciar_servicios; el panel los lee cuando los necesita.
+        self.settings_panel = SettingsPanel(self.config, voice=self.voice,
+                                            servicios=lambda: getattr(self, "_servicios_c4", None))
+        self.settings_panel.saved.connect(self._on_keys_saved); layout.addWidget(self.settings_panel)
         # Panel de modelos VRM (importar, asignar, seguimiento) → la mascota 3D al día.
         senal_vrm = getattr(self.settings_panel, "vrm_cambiado", None)
         if senal_vrm is not None:
@@ -1010,6 +1162,9 @@ class LuneCDWindow(QMainWindow):
         self._gen += 1
         w = self.ai_worker
         vivo = self._worker_vivo()
+        remoto = (self._turno or {}).get("remoto")
+        if vivo and remoto:                      # orden de Telegram a medio responder
+            self._responder_telegram(remoto, AVISO_TG_DETENIDA)
         if vivo:
             self._cancelar_worker()
             for senal in (w.token_received, w.response_ready, w.error_occurred):
@@ -1036,6 +1191,12 @@ class LuneCDWindow(QMainWindow):
 
     def _stop_generation(self):
         if self._worker_vivo():
+            remoto = (self._turno or {}).get("remoto")
+            if remoto:                           # orden de Telegram: que allí no se quede esperando
+                self._responder_telegram(remoto, AVISO_TG_DETENIDA)
+                # Una sola vez: ni cerrar_para_cambio ni limpiar el chat (con el hilo aún
+                # cortando) vuelven a avisarla.
+                olvidar_ordenes_avisadas(self, [remoto])
             self._cancelar_worker()
 
             # El hilo tarda un momento en cortar y luego emite response_ready.
@@ -1060,12 +1221,19 @@ class LuneCDWindow(QMainWindow):
         self.messages_layout.insertWidget(self.messages_layout.count() - 1, b)
         return b
 
-    def _send_message(self, *_senal, texto=None, desde_mascota=False):
+    def _send_message(self, *_senal, texto=None, desde_mascota=False, remoto=""):
         """
         Envía lo escrito en la barra de la ventana o, con `texto`, lo que llega
         de fuera (el chat de la mascota): mismo flujo, mismo historial. Lo de
         fuera no se lleva los adjuntos pendientes ni borra lo que estés
         escribiendo. Con `desde_mascota`, la respuesta sale también en su burbuja.
+
+        Con `remoto` (id de una orden de Telegram, ver _orden_remota): burbuja
+        «📱 Telegram: …» guardada como no confiable; sin memoria, banco de
+        respuestas ni notas; primero el comando directo («abre youtube», sin IA) y
+        si no, turno de IA con origen 'remoto' y el motor local (en modo terminal
+        el host no aplicaría la política de esta orden). Todo pide permiso en el PC
+        y la respuesta y los ✓/✕ vuelven a Telegram.
         """
         de_fuera = texto is not None
         text = (texto if de_fuera else self.input_field.text()).strip()
@@ -1083,8 +1251,10 @@ class LuneCDWindow(QMainWindow):
             self._esperando_corte = True
             self._set_status("ESPERA · CORTANDO LO ANTERIOR", COLORS["warning"])
             return
-        self._turno = {"origen": ORIGEN_USUARIO, "ctx": None, "mascota": bool(desde_mascota),
-                       "proveedor": self.current_provider}
+        self._turno = {"origen": ORIGEN_REMOTO if remoto else ORIGEN_USUARIO, "ctx": None,
+                       "mascota": bool(desde_mascota), "proveedor": self.current_provider}
+        if remoto:
+            self._turno["remoto"] = remoto
         self.stack.setCurrentIndex(0)
         # Lo pendiente de la respuesta anterior no debe pisar esta: expresiones
         # programadas, marcadores del stream viejo y voz por tramos.
@@ -1092,18 +1262,44 @@ class LuneCDWindow(QMainWindow):
         try: self.voice.cancelar()
         except Exception: pass
 
-        bubble = MessageBubble(text, is_user=True, provider_id=self.current_provider,
+        visible = PREFIJO_TELEGRAM + text if remoto else text
+        bubble = MessageBubble(visible, is_user=True, provider_id=self.current_provider,
                                markdown=False, adjuntos=adjuntos_envio)
         self.messages_layout.insertWidget(self.messages_layout.count()-1, bubble)
         if not de_fuera:
             self.input_field.clear()
             self._adjuntos = []
             self._refrescar_adjuntos()
-        self._guardar_turno("user", text, adjuntos=adjuntos_envio)
+        if remoto:
+            self._guardar_turno("user", visible, adjuntos=adjuntos_envio, no_confiable=True)
+        else:
+            self._guardar_turno("user", text, adjuntos=adjuntos_envio)
+
+        if not adjuntos_envio:
+            # Lo pidió la persona con sus palabras («abre youtube», «avísame en 10
+            # minutos»): sin IA, pero por el Ejecutor como cualquier acción (política,
+            # presupuesto, aprobación y auditoría). El ✓/✕ llega por _on_resultado_turno
+            # (ya o tras aprobar). Desde Telegram, con origen 'remoto': pide permiso aquí
+            # aunque sea directa. Antes que la memoria (cortes 5/6): «recuérdame que a
+            # las 5 tengo cita» es una alarma; sin hora ni duración sigue siendo un recuerdo.
+            try:
+                llamadas = self.tools.detectar_llamadas(text)
+            except Exception as e:
+                log_error(f"[acciones] detectar_llamadas: {e}")
+                llamadas = []
+            if llamadas:
+                ctx = ctx_acciones(self.ai_manager, self.current_provider, self._modo_acciones())
+                if remoto:
+                    ctx["origen"] = ORIGEN_REMOTO
+                self._turno["ctx"] = ctx
+                self._ejecutar_acciones(llamadas, ORIGEN_REMOTO if remoto else ORIGEN_USUARIO, ctx,
+                                        mascota=bool(desde_mascota), directo=True, remoto=remoto)
+                self._scroll_bottom(); return
 
         # Con archivos adjuntos siempre va a la IA: ni la memoria ni el banco
-        # de respuestas saben qué hacer con un PDF.
-        if not adjuntos_envio:
+        # de respuestas saben qué hacer con un PDF. Una orden de Telegram tampoco
+        # pasa por ellos: comando directo o IA.
+        if not adjuntos_envio and not remoto:
             respuesta_memoria = self.memoria.procesar_mensaje_usuario(text)
             if respuesta_memoria:
                 self._burbuja_bot(respuesta_memoria)
@@ -1121,21 +1317,6 @@ class LuneCDWindow(QMainWindow):
                     self._eco_mascota(rta_rapida, fin=True)
                     self.lune_face.set_state("happy", auto_revert_ms=4000)
                     self.voice.speak(rta_rapida); self._scroll_bottom(); return
-
-            # Lo pidió la persona con sus palabras («abre youtube»): sin IA, pero por el
-            # Ejecutor como cualquier acción (política, presupuesto, aprobación y
-            # auditoría). El ✓/✕ llega por _on_resultado_turno (ya o tras aprobar).
-            try:
-                llamadas = self.tools.detectar_llamadas(text)
-            except Exception as e:
-                log_error(f"[acciones] detectar_llamadas: {e}")
-                llamadas = []
-            if llamadas:
-                ctx = ctx_acciones(self.ai_manager, self.current_provider, self._modo_acciones())
-                self._turno["ctx"] = ctx
-                self._ejecutar_acciones(llamadas, ORIGEN_USUARIO, ctx,
-                                        mascota=bool(desde_mascota), directo=True)
-                self._scroll_bottom(); return
 
         self.input_field.setEnabled(False)
         self.send_btn.hide(); self.stop_btn.show()
@@ -1167,32 +1348,41 @@ class LuneCDWindow(QMainWindow):
         contexto_archivos = adj.bloque_para_prompt(adjuntos_envio)
         # Notas relevantes (RAG): se añaden como [Contexto] envuelto/no confiable.
         contexto_notas = ""
-        if self.notas.activo:
+        if self.notas.activo and not remoto:
             frags = self.notas.contexto_para(text)
             if frags:
                 from lune_core.prompt import bloque_contexto
                 contexto_notas = "\n\n" + bloque_contexto(frags)
         # En modo terminal (conectado al host), el chat va por el host: la app no
         # carga el modelo. Si el host no está, se usa el motor local de siempre.
-        if (self._modo_red == "terminal" and self._chat_remoto is not None
+        # Una orden de Telegram, siempre con el local (sus acciones las aprueba este PC).
+        if (not remoto and self._modo_red == "terminal" and self._chat_remoto is not None
                 and self._chat_remoto.conectado):
             self._motor_chat = self._chat_remoto
         else:
             self._motor_chat = self.ai_manager
         # Origen del turno (crítica d): con adjuntos o notas el prompt lleva texto
-        # de terceros → solo herramientas de LECTURA en esta respuesta.
-        origen = ORIGEN_NO_CONFIABLE if (adjuntos_envio or contexto_notas) else ORIGEN_USUARIO
+        # de terceros → solo herramientas de LECTURA en esta respuesta. Desde
+        # Telegram, 'remoto': todas, y todas con aprobación en el PC.
+        if remoto:
+            origen = ORIGEN_REMOTO
+        else:
+            origen = ORIGEN_NO_CONFIABLE if (adjuntos_envio or contexto_notas) else ORIGEN_USUARIO
         # Con la mascota fuera el modo es "mascota"/"vrm": también las suyas (dormir…).
         modo = self._modo_acciones()
         ctx = ctx_acciones(self.ai_manager, self.current_provider, modo)
+        if remoto:
+            ctx["origen"] = ORIGEN_REMOTO           # todas marcadas «(pide permiso)» en el prompt
         self._turno = {"origen": origen, "ctx": ctx, "mascota": bool(desde_mascota),
                        "proveedor": self.current_provider}
+        if remoto:
+            self._turno["remoto"] = remoto
         # Generación de este envío: las señales llevan la suya y, si ya no es la
         # vigente (conversación nueva, otro personaje…), se ignoran (G1/P1).
         self._gen += 1
         gen = self._gen
         self.ai_worker = AIWorker(
-            self._motor_chat, text, self.current_provider,
+            self._motor_chat, PREFIJO_IA + text if remoto else text, self.current_provider,
             extra_context=contexto_memoria + contexto_archivos + contexto_notas,
             permitir_acciones=self.config.feature("acciones_ia", True),
             imagenes=adj.imagenes_base64(adjuntos_envio),
@@ -1266,20 +1456,28 @@ class LuneCDWindow(QMainWindow):
         uso = (self._motor_chat or self.ai_manager).uso(proveedor)
         if uso and self.config.feature("contador_tokens", True):
             burbuja.set_pie(self._texto_uso(uso))
+        # Turno con texto de terceros (o una orden de Telegram): marcado al guardarlo.
         self._guardar_turno("assistant", respuesta_limpia, uso=uso,
-                            no_confiable=(origen == ORIGEN_NO_CONFIABLE))
+                            no_confiable=(origen != ORIGEN_USUARIO))
 
         self.stop_btn.hide(); self.send_btn.show()
         if not getattr(self, "_cancelado", False):
             self._set_status("LISTO", COLORS["success"])
         self.input_field.setEnabled(True); self.input_field.setFocus()
 
+        # Una orden de Telegram: la respuesta limpia vuelve a su chat (tras «Detener»
+        # ya se avisó allí de que se cortó).
+        remoto = turno.get("remoto") or ""
+        if remoto and not getattr(self, "_cancelado", False):
+            self._responder_telegram(remoto, self._texto_telegram(respuesta_limpia))
+
         # Las acciones que pide la IA solo se ejecutan si el usuario las tiene
         # permitidas en Configuración → Rendimiento, y nunca tras «Detener». Lo
         # que pide permiso pregunta (QMessageBox o junto a la mascota) y su
         # resultado llega después por _on_resultado_accion.
         if llamadas and not getattr(self, "_cancelado", False):
-            self._ejecutar_acciones(llamadas, origen, ctx, mascota=bool(turno.get("mascota")))
+            self._ejecutar_acciones(llamadas, origen, ctx, mascota=bool(turno.get("mascota")),
+                                    remoto=remoto)
 
         self.memoria.procesar_respuesta_lune(respuesta_limpia)
 
@@ -1374,6 +1572,9 @@ class LuneCDWindow(QMainWindow):
         self._set_status("ERROR", COLORS["error"]); self.input_field.setEnabled(True); self.input_field.setFocus()
         self.lune_face.set_state("error", auto_revert_ms=8000)
         self._eco_mascota(f"✕ {error}", fin=True)
+        remoto = (self._turno or {}).get("remoto")
+        if remoto:                               # p. ej. Ollama apagado: que se entienda allí
+            self._responder_telegram(remoto, f"✕ No pude responder: {error}")
         self._scroll_bottom()
 
     # ── ACCIONES DEL MODELO, VOZ Y CHAT DE LA MASCOTA ───────────────────────────
@@ -1393,20 +1594,25 @@ class LuneCDWindow(QMainWindow):
         return texto
 
     def _ejecutar_acciones(self, llamadas, origen, ctx, *, mascota: bool = False,
-                           directo: bool = False) -> None:
+                           directo: bool = False, remoto: str = "") -> None:
         """
-        Corre las acciones de un turno. Las del chat de la mascota y las que pidió la
-        persona con sus palabras llevan su destino con el resultado (llegue en línea,
-        tras aprobar o al caducar): el ✓/✕ sale también en la burbuja de la mascota
-        aunque entre tanto hayas escrito en la ventana, y el de lo pedido se guarda en
-        la conversación. El resto, por AccionesQt.resultado como siempre.
+        Corre las acciones de un turno. Las del chat de la mascota, las que pidió la
+        persona con sus palabras y las de una orden de Telegram (`remoto` = su id)
+        llevan su destino con el resultado (llegue en línea, tras aprobar o al
+        caducar): el ✓/✕ sale también en la burbuja de la mascota aunque entre
+        tanto hayas escrito en la ventana, el de lo pedido se guarda en la
+        conversación y el de una orden vuelve a Telegram. El resto, por
+        AccionesQt.resultado como siempre.
         """
         if not llamadas:
             return
-        if not (mascota or directo):
+        if not (mascota or directo or remoto):
             self.acciones.ejecutar(llamadas, origen, ctx)
             return
         info = {"mascota": bool(mascota), "directo": bool(directo)}
+        if remoto:
+            info["remoto"] = str(remoto)
+            origen = ORIGEN_REMOTO                   # todo con aprobación en el PC
         self.acciones.ejecutor.ejecutar_llamadas(
             llamadas, origen, ctx, lambda res, i=info: self._resultado_turno.emit(res, i))
 
@@ -1414,11 +1620,88 @@ class LuneCDWindow(QMainWindow):
         """Slot de _resultado_turno (hilo de Qt): el ✓/✕ en el chat y donde toque."""
         info = info if isinstance(info, dict) else {}
         texto = self._on_resultado_accion(res)
+        remoto = info.get("remoto")
         if info.get("directo"):
-            self._guardar_turno("assistant", texto)
+            if remoto:
+                self._guardar_turno("assistant", texto, no_confiable=True)
+            else:
+                self._guardar_turno("assistant", texto)
             self.lune_face.set_state("happy" if res.ok else "error", auto_revert_ms=5000)
         if info.get("mascota"):
             self._burbuja_mascota(texto, fin=True)
+        if remoto:
+            self._responder_telegram(remoto, texto)
+
+    # ── ÓRDENES DESDE TELEGRAM (/pc) ───────────────────────────────────────────
+    def _responder_telegram(self, oid, texto) -> bool:
+        """`texto` al chat de Telegram de la orden `oid` (por el stdin del bot)."""
+        fn = getattr(self._tg_worker, "responder_orden", None)
+        if not oid or not callable(fn):
+            return False
+        try:
+            return bool(fn(str(oid), str(texto or "")))
+        except Exception as e:
+            log_error(f"[telegram] no pude responder la orden: {e}")
+            return False
+
+    @staticmethod
+    def _texto_telegram(respuesta_limpia: str) -> str:
+        """Lo que se ve de la respuesta (sin <|ACT|> ni marcas) para mandarlo a Telegram."""
+        try:
+            texto = expresiones.hablable(expresiones.planificar(respuesta_limpia)).strip()
+        except Exception:
+            texto = ""
+        if not texto:
+            texto = marcadores.limpiar_para_mostrar(respuesta_limpia or "").strip()
+        return texto or SIN_TEXTO
+
+    def _avisar_ordenes_pendientes(self, ya_avisada: str = "") -> list:
+        """Conversación nueva (limpiar chat, abrir otra, otro personaje) con una orden
+        de Telegram esperando tu permiso: la pregunta se cierra sin hacer nada, así que
+        a Telegram le llega «Se detuvo…» (si no, se quedaría esperando). `ya_avisada`:
+        la que _cortar_respuesta ya contestó. Devuelve los ids avisados."""
+        try:
+            pend = self.acciones.pendientes()
+        except Exception:
+            pend = []
+        ids = [i for i in ordenes_cortadas(None, False, pend, self._ultima_orden_tg)
+               if i and i != str(ya_avisada or "")]
+        for oid in ids:
+            self._responder_telegram(oid, AVISO_TG_DETENIDA)
+        return ids
+
+    def _remota_en_curso(self) -> bool:
+        """¿Lune está respondiendo o espera que apruebes una orden de Telegram anterior?"""
+        if self._worker_vivo():
+            return True
+        try:
+            return any(p.get("remoto") for p in self.acciones.pendientes())
+        except Exception:
+            return False
+
+    def _orden_remota(self, oid, texto):
+        """
+        Orden de Telegram (/pc, TelegramBotWorker.orden_recibida, hilo de Qt). Con
+        la función apagada (o sin tu ID) se contesta que está desactivada; si Lune
+        está respondiendo, que está ocupada. Si no, entra por _send_message con
+        `remoto`: burbuja «📱 Telegram: …», comando directo sin IA o turno de IA
+        con origen 'remoto'. TODO se aprueba en el PC (QMessageBox con la ventana
+        delante o junto a la mascota), nunca desde Telegram.
+        """
+        oid, texto = str(oid or ""), str(texto or "").strip()
+        if not oid or not texto:
+            return
+        if not ordenes_activas(self.config):
+            self._responder_telegram(oid, AVISO_TG_DESACTIVADAS)
+            return
+        if self._remota_en_curso():
+            self._responder_telegram(oid, AVISO_TG_OCUPADA)
+            return
+        # Si la ventana se cierra con esta orden esperando tu permiso (cambio de modo),
+        # se le contesta «Se detuvo…» (cerrar_para_cambio).
+        self._ultima_orden_tg = oid
+        self._send_message(texto=texto, remoto=oid)
+        self._scroll_bottom()
 
     def _ventana_a_la_vista(self) -> bool:
         """¿Se verá un QMessageBox sobre la ventana? Solo si está visible, sin
@@ -1513,16 +1796,31 @@ class LuneCDWindow(QMainWindow):
         return "  ·  ".join(partes)
 
     def _scroll_bottom(self):
-        QTimer.singleShot(60, lambda: self.scroll.verticalScrollBar().setValue(self.scroll.verticalScrollBar().maximum()))
+        # Método de la ventana (no una lambda): si la ventana se borra antes de los
+        # 60 ms (cambio de interfaz), Qt descarta el aviso en vez de tocar un widget muerto.
+        QTimer.singleShot(60, self._al_fondo_del_chat)
+
+    def _al_fondo_del_chat(self):
+        barra = self.scroll.verticalScrollBar()
+        barra.setValue(barra.maximum())
 
     def _set_status(self, text, color):
         self.status_label.setText(text); self.status_dot.setStyleSheet(f"color:{color};background:transparent;")
 
     def _toggle_voice(self):
-        enabled = self.voice.toggle()
-        self._voice_btn.setText(f" VOZ: {'ON' if enabled else 'OFF'}")
+        self.voice.toggle()
+        self._pintar_voz()
+
+    def _pintar_voz(self):
+        """El tile de la voz según esté encendida (también si la encendió otro: el
+        cambio de modo trae la de la ventana anterior)."""
+        btn = getattr(self, "_voice_btn", None)
+        if btn is None:
+            return
+        enabled = bool(getattr(self.voice, "_enabled", False))
+        btn.setText(f" VOZ: {'ON' if enabled else 'OFF'}")
         col = COLORS["accent"] if enabled else COLORS["text_muted"]
-        self._voice_btn.setIcon(icon("volume" if enabled else "volume_off", col, 18))
+        btn.setIcon(icon("volume" if enabled else "volume_off", col, 18))
 
     def _toggle_keys_panel(self):
         self.stack.setCurrentIndex(1 if self.stack.currentIndex()!=1 else 0)
@@ -1551,15 +1849,17 @@ class LuneCDWindow(QMainWindow):
     def _crear_mascota(self):
         render = str(self.config.get("avatar", "render", "sprites") or "sprites")
         ov = None
+        # Sin icono propio en la bandeja: la bandeja es una sola (corte 4, ui/bandeja.py).
         if render == "vrm":
             try:
                 from ui.companion import CompanionFlotante
-                ov = CompanionFlotante(self.config, ai_manager=self.ai_manager, render="vrm")
+                ov = crear_mascota(CompanionFlotante, self.config, ai_manager=self.ai_manager,
+                                   render="vrm")
             except Exception as e:
                 log_error(f"[mascota] no pude abrir el avatar 3D ({e}); uso sprites")
                 ov = None
         if ov is None:
-            ov = AvatarOverlay(self.config)
+            ov = crear_mascota(AvatarOverlay, self.config)
         try:
             ov.visibilidad.connect(self._on_mascota_visible)
         except Exception:
@@ -1738,9 +2038,11 @@ class LuneCDWindow(QMainWindow):
             nombre = personajes.set_activo(nombre)      # solo uno que exista (con su nombre guardado)
         except ValueError as e:
             QMessageBox.warning(self, "Personaje", str(e)); return
+        avisada = (self._turno or {}).get("remoto") if self._worker_vivo() else ""
         self._cortar_respuesta()                 # la respuesta en curso era del anterior
         datos.invalidar()
         self.ai_manager.clear_history()
+        self._avisar_ordenes_pendientes(avisada)
         self.acciones.nueva_conversacion()
         self.voice.invalidar_params()            # cada personaje puede traer su voz
 
@@ -1800,6 +2102,15 @@ class LuneCDWindow(QMainWindow):
                 f"De vuelta, {nombre}. Dime qué necesitas." if nombre else "Lune en línea. Dime qué necesitas.")
             self.welcome_t2.setText(saludo)
 
+        # Otro modo de interfaz: se aplica al instante (GestorInterfaz). Sin cajas
+        # modales: el relevo es la confirmación (y la ventana nueva ya aplica el
+        # modo de red que se acaba de guardar).
+        modo = getattr(self.settings_panel, "modo_interfaz_pedido", None)
+        if modo:
+            self.settings_panel.modo_interfaz_pedido = None
+            if modo != self.MODO_INTERFAZ:
+                self.cambio_interfaz_pedido.emit(str(modo))
+                return
         if datos.hub_modo() != self._modo_red:
             QMessageBox.information(self, "Guardado",
                 "Configuración guardada. El modo de red cambió: reinicia Lune para aplicarlo.")
@@ -1817,9 +2128,85 @@ class LuneCDWindow(QMainWindow):
             self._nueva_conversacion()
 
     # ── BANDEJA DEL SISTEMA (hidden items) ────────────────────────────────────
+    @property
+    def tray(self):
+        """El icono de la bandeja: el de la bandeja única (corte 4, ui/bandeja.py) si
+        está montada y en marcha; si no, el de respaldo. Se lee cada vez: tras
+        detener/iniciar los servicios de escritorio el icono es otro."""
+        s = getattr(self, "_servicios_c4", None)
+        t = getattr(getattr(s, "bandeja", None), "icono_tray", None) if s is not None else None
+        return t if t is not None else getattr(self, "_tray_respaldo", None)
+
+    @tray.setter
+    def tray(self, valor):
+        self._tray_respaldo = valor
+
     def _build_tray(self):
-        if not self.config.feature("minimizar_a_bandeja", True):
+        """Corte 4: bandeja única (un icono SIEMPRE, con el menú de nucleo/acciones_ui),
+        atajos globales, menú radial, modo juego y tema, montados sobre
+        self.escritorio (arrancan con escritorio.iniciar()). features.minimizar_a_bandeja
+        ya no quita el icono: solo decide si cerrar la ventana la oculta. Si el montaje
+        falla, el icono de siempre como respaldo."""
+        if getattr(self, "_servicios_c4", None) is None:
+            self._montar_servicios_c4()
+        if getattr(getattr(self, "_servicios_c4", None), "bandeja", None) is not None:
             return
+        self._build_tray_respaldo()
+
+    def _montar_servicios_c4(self):
+        """montar_escritorio con AnfitrionNativo; los servicios van también al panel
+        de Ajustes (atajos para «Detectar»). Devuelve ServiciosCorte4 o None."""
+        try:
+            from ui.montaje_escritorio import montar_escritorio
+            from ui.anfitrion_nativo import AnfitrionNativo
+            s = montar_escritorio(self.escritorio, AnfitrionNativo(self), self.config,
+                                  voice=self.voice, icono=self.windowIcon(),
+                                  fabricas=self.FABRICAS_C4)
+        except Exception as e:
+            log_error(f"[corte4] no pude montar bandeja/atajos/radial/modo juego: {e}")
+            self._servicios_c4 = None
+            return None
+        self._servicios_c4 = s
+        panel = getattr(self, "settings_panel", None)
+        usar = getattr(panel, "usar_servicios", None)
+        if callable(usar):
+            try:
+                usar(s)                              # también el panel de ocio (cortes 5/6)
+            except Exception as e:
+                log_error(f"[corte4] el panel de Ajustes no tomó los servicios: {e}")
+        # Apartados de escritorio: el tema y las casillas que cambian la bandeja, el
+        # radial o un atajo se ven en Ajustes al momento (y no se pisan al guardar).
+        enlazar = getattr(getattr(panel, "escritorio_panel", None), "enlazar_servicios", None)
+        if callable(enlazar):
+            try:
+                enlazar(s)
+            except Exception as e:
+                log_error(f"[corte4] el panel de escritorio no tomó los servicios: {e}")
+        self._conectar_baile(s)
+        return s
+
+    def _conectar_baile(self, s):
+        """Cortes 5/6: estado del baile → carita y barra de estado (_on_baile); se
+        desconecta al desmontar los servicios (cambio de interfaz o salir)."""
+        baile = getattr(getattr(s, "ocio", None), "baile", None)
+        senal = getattr(baile, "estado_cambio", None)
+        if senal is None or not hasattr(senal, "connect"):
+            return
+        try:
+            senal.connect(self._on_baile)
+        except (TypeError, RuntimeError):
+            return
+
+        def soltar():
+            try:
+                senal.disconnect(self._on_baile)
+            except (TypeError, RuntimeError):
+                pass
+        deshacer = getattr(s, "_deshacer", None)
+        if isinstance(deshacer, list):
+            deshacer.append(soltar)
+
+    def _build_tray_respaldo(self):
         if not QSystemTrayIcon.isSystemTrayAvailable():
             return
         self.tray = QSystemTrayIcon(self)
@@ -1848,9 +2235,171 @@ class LuneCDWindow(QMainWindow):
         self._quit_real = True
         self.close()
 
+    def salir_de_verdad(self):
+        """«Salir» (bandeja o cambio a patata): cierra la app entera."""
+        self._quit_app()
+
+    # ── Cambio de modo en caliente (GestorInterfaz, ui/cambio_interfaz.py) ─────
+    def iniciar_servicios(self, estado=None):
+        """Bandeja y servicios de escritorio (atajos globales, controladores) y lo que
+        estaba en marcha en la ventana anterior: la mascota fuera (en su posición
+        guardada) y el bot de Telegram (con el modo de órdenes de la config). Una vez."""
+        if self._servicios_listos:
+            return
+        self._servicios_listos = True
+        estado = estado if isinstance(estado, dict) else {}
+        if self.tray is None:
+            self._build_tray()
+        try:
+            self.escritorio.iniciar()
+        except Exception as e:
+            log_error(f"[interfaz] servicios de escritorio: {e}")
+        if estado.get("mascota_fuera") and self._mascota_a_la_vista() is None:
+            try:
+                self._toggle_overlay()
+            except Exception as e:
+                log_error(f"[interfaz] no pude volver a sacar la mascota: {e}")
+        if estado.get("telegram") and not hilo_vivo(self._tg_worker):
+            try:
+                self._toggle_telegram()
+            except Exception as e:
+                log_error(f"[interfaz] no pude relanzar el bot de Telegram: {e}")
+        # El modo juego forzado a mano (bandeja, radial, atajo) sigue forzado. Al final:
+        # con la mascota ya fuera, el plan la esconde (si se sacara después, contaría
+        # como sacada a mano en plena partida).
+        forzado = estado.get("juego_forzado")
+        juego = getattr(getattr(self, "_servicios_c4", None), "juego", None)
+        if isinstance(forzado, bool) and callable(getattr(juego, "forzar", None)):
+            try:
+                juego.forzar(forzado)
+            except Exception as e:
+                log_error(f"[interfaz] no pude volver a forzar el modo juego: {e}")
+
+    def estado_para_cambio(self) -> dict:
+        """Lo que hereda la ventana del modo nuevo (la geometría la toma el gestor)."""
+        return {
+            "modo": self.MODO_INTERFAZ,
+            "proveedor": self.current_provider,
+            "voz": bool(getattr(self.voice, "_enabled", False)),
+            "sesion": instantanea_sesion(getattr(self, "chats", None)),
+            "mascota_fuera": self._mascota_a_la_vista() is not None,
+            "telegram": hilo_vivo(self._tg_worker),
+            "juego_forzado": juego_forzado_de(getattr(self, "_servicios_c4", None)),
+        }
+
+    def aplicar_estado(self, estado) -> None:
+        """Antes de enseñarse: proveedor, voz y la conversación de la ventana anterior
+        (misma id en chats/; el modelo la recuerda con su marca de terceros)."""
+        estado = estado if isinstance(estado, dict) else {}
+        prov = str(estado.get("proveedor") or "")
+        if prov and prov != self.current_provider and prov in self.provider_tabs:
+            self._switch_provider(prov)
+        if "voz" in estado:
+            quiere = bool(estado.get("voz")) and bool(getattr(self.voice, "available", False))
+            if bool(getattr(self.voice, "_enabled", False)) != quiere:
+                self.voice._enabled = quiere
+            self._pintar_voz()
+        sesion = estado.get("sesion")
+        if sesion and retomar_sesion(self.chats, sesion):
+            self._pintar_sesion(sesion)          # pinta y recarga el historial del modelo
+
+    def aviso_cambio(self, texto: str) -> None:
+        QMessageBox.warning(self, "Modo de interfaz", str(texto))
+
+    def cambio_fallido(self, modo: str, motivo: str) -> None:
+        """El cambio no se hizo: el combo de Ajustes vuelve al modo actual."""
+        panel = getattr(self, "settings_panel", None)
+        fn = getattr(panel, "mostrar_modo_interfaz", None)
+        if callable(fn):
+            fn(self.MODO_INTERFAZ)
+
+    def cerrar_para_cambio(self) -> dict:
+        """Cambio de modo: suelta todo lo que la ventana nueva vuelve a crear y se
+        cierra de verdad SIN salir de la app (sin bandeja ni QApplication.quit).
+        Devuelve lo que estaba en marcha (mascota fuera, bot) para relanzarlo."""
+        self._relevada = True
+        # Órdenes de Telegram sin respuesta (la que se está respondiendo y la que espera
+        # tu permiso): «Se detuvo…» una vez, antes de parar el bot. La marca se limpia:
+        # _cortar_respuesta ya no la repite (ni si «Detener» ya la avisó).
+        try:
+            avisar_ordenes_cortadas(self)
+        except Exception as e:
+            log_error(f"[interfaz] al avisar a Telegram: {e}")
+        # Corte 4 (bandeja única, atajos, detector de juego, radial, tema), una sola vez
+        # y antes que el resto: la ventana nueva monta los suyos en iniciar_servicios
+        # (dos a la vez no pueden: RegisterHotKey fallaría) y el modo juego devuelve lo
+        # que cambió (prioridad, voz y la mascota que escondió, que cuenta como «fuera»).
+        desmontar_servicios_c4(self)
+        # IA en curso: cortada (generación nueva, señales fuera: ni pinta ni ejecuta
+        # sus <|CALL|>), voz por frases y expresiones programadas fuera; el hilo se
+        # retiene hasta que acabe. Si algo de esto falla, el resto se suelta igual (si no,
+        # el bot, la mascota o el hub seguirían vivos y la ventana nueva los duplicaría).
+        w = self.ai_worker
+        try:
+            self._cortar_respuesta()
+        except Exception as e:
+            log_error(f"[interfaz] al cortar la respuesta: {e}")
+        detener_hilo_ia(w, getattr(getattr(self, "ai_manager", None), "providers", None))
+        self.ai_worker = None
+        try:
+            self.acciones.cerrar()               # «¿Lo hago?» abiertas: se cierran sin hacer nada
+        except Exception:
+            pass
+        if self._grabadora is not None:
+            try:
+                self._grabadora.cancelar()
+            except Exception:
+                pass
+            self._grabadora = None
+        soltar_hilos(self._transcriptor, self._sondeo_prov, getattr(self, "_git_check", None))
+        parar_temporizadores(getattr(self, "_timer_estado", None))
+        try:
+            self._cancelar_plan()
+        except Exception as e:
+            log_error(f"[interfaz] al parar las expresiones programadas: {e}")
+        if getattr(self.lune_face, "_player", None):
+            try:
+                self.lune_face._player.stop()
+            except Exception:
+                pass
+        callar_voz(self.voice)
+        # La conversación queda en chats/ (la nueva la retoma); notas y red, parados.
+        for fn in (self.chats.guardar, self.notas.cerrar, self.red.detener):
+            try:
+                fn()
+            except Exception as e:
+                log_error(f"[interfaz] al cerrar: {e}")
+        # Mascota y bot: la ventana nueva los relanza si estaban en marcha.
+        fuera = cerrar_mascota(self._mascota_viva())
+        self._overlay = None
+        telegram = detener_bot(self._tg_worker)
+        self._tg_worker = None
+        # Servicios de escritorio (atajos globales, controladores) y el hub.
+        try:
+            self.escritorio.cerrar()
+        except Exception:
+            pass
+        for hub in (self._hub_cliente, self._hub_en_hilo):
+            if hub is not None:
+                try:
+                    hub.detener()
+                except Exception as e:
+                    log_error(f"[interfaz] no pude parar el hub: {e}")
+        self._hub_cliente = self._hub_en_hilo = None
+        quitar_bandeja(self.tray)                # la de respaldo (la única se fue con el corte 4)
+        self.tray = None
+        self.hide()
+        self.close()
+        return {"mascota_fuera": fuera, "telegram": telegram}
+
     def closeEvent(self, event):
-        # Minimizar a la bandeja en vez de salir (si está activo y hay bandeja)
-        if self.tray is not None and not self._quit_real:
+        if getattr(self, "_relevada", False):
+            event.accept()                       # cambio de modo: ya soltó todo
+            return
+        # Minimizar a la bandeja en vez de salir (features.minimizar_a_bandeja y hay
+        # bandeja; el icono de la bandeja única está siempre).
+        if (self.tray is not None and not self._quit_real
+                and self.config.feature("minimizar_a_bandeja", True)):
             event.ignore()
             self.hide()
             self.tray.showMessage(
@@ -1858,6 +2407,13 @@ class LuneCDWindow(QMainWindow):
                 QSystemTrayIcon.MessageIcon.Information, 3000,
             )
             return
+
+        # Salir de verdad (bandeja, patata, cerrar sin bandeja) con una orden de Telegram
+        # sin respuesta: «Se detuvo…» una vez, antes de cerrar las preguntas y el bot.
+        try:
+            avisar_ordenes_cortadas(self)
+        except Exception as e:
+            log_error(f"[salir] al avisar a Telegram: {e}")
 
         if hasattr(self, "memoria"):
             stats = self.memoria.get_stats()
@@ -1875,6 +2431,9 @@ class LuneCDWindow(QMainWindow):
             self.red.detener()
         if hasattr(self, "acciones"):
             self.acciones.cerrar()               # ninguna pregunta «¿Lo hago?» colgada
+        # Corte 4 (bandeja única, atajos, detector de juego, radial, tema), una vez y
+        # antes que los servicios de escritorio: el modo juego devuelve lo que cambió.
+        desmontar_servicios_c4(self)
         if hasattr(self, "escritorio"):
             self.escritorio.cerrar()
         if self._overlay is not None:
@@ -1889,7 +2448,7 @@ class LuneCDWindow(QMainWindow):
         if hasattr(self,"lune_face") and self.lune_face._player: self.lune_face._player.stop()
         if hasattr(self,"_tg_worker") and self._tg_worker and self._tg_worker.isRunning():
             self._tg_worker.stop(); self._tg_worker.wait(3000)
-        if self.tray is not None:
+        if self.tray is not None:                # la de respaldo, si la hubo
             self.tray.hide()
         event.accept()
         QApplication.quit()
@@ -2009,6 +2568,30 @@ def _crear_ventana_principal():
     return LuneCDWindow()
 
 
+def _fabrica_ventana(modo: str):
+    """Fábrica de GestorInterfaz: la ventana de `modo` SIN sus servicios exclusivos
+    (bandeja, atajos…): la anterior aún los tiene; el gestor llama a
+    iniciar_servicios() cuando la anterior los suelta. Si falla, lanza (y el gestor
+    deja la anterior); aquí NO se cae a la nativa como al arrancar."""
+    if modo == "web":
+        from ui.web_shell import VentanaWeb
+        return VentanaWeb(diferir_servicios=True)
+    if modo == "nativo":
+        return LuneCDWindow(diferir_servicios=True)
+    raise ValueError(f"modo de interfaz desconocido: {modo}")
+
+
+def _crear_gestor_interfaz():
+    """GestorInterfaz de la app: cambio de modo en caliente (Ajustes → Modo de
+    interfaz). interfaz.fundido_ms en config.json (por defecto 180; 0 = sin fundido)."""
+    try:
+        from nucleo.config import Config
+        fundido = int(Config().get("interfaz", "fundido_ms", 180))
+    except Exception:
+        fundido = 180
+    return GestorInterfaz(_fabrica_ventana, lanzar_patata=_lanzar_patata, fundido_ms=fundido)
+
+
 def _instalar_red_de_excepciones():
     """
     Red de seguridad: con el sys.excepthook de serie, PyQt6 ABORTA el proceso ante
@@ -2077,28 +2660,29 @@ def main():
     palette.setColor(QPalette.ColorRole.Text,       QColor(COLORS["text"]))
     app.setPalette(palette)
 
-    # La ventana principal la crea y la conserva main(), no la pantalla de
-    # inicio: así nunca hay dos ventanas vivas a la vez y la referencia no
-    # depende de un objeto que se está destruyendo.
-    ventanas = {}
+    # La ventana principal la crea main(), no la pantalla de inicio: así nunca hay
+    # dos ventanas vivas a la vez y la referencia no depende de un objeto que se
+    # está destruyendo. La conserva el GestorInterfaz (ui/cambio_interfaz.py), que
+    # la cambia en caliente por la de otro modo (Ajustes → Modo de interfaz); aquí
+    # no se guarda otra referencia (retendría la vieja tras un cambio).
+    ventanas = {"gestor": _crear_gestor_interfaz()}
 
     def abrir_principal():
-        if "principal" in ventanas:
+        gestor = ventanas["gestor"]
+        if ventanas.get("abierta"):
             return
+        ventanas["abierta"] = True
         ventana = _crear_ventana_principal()
         if ventana is None:
             # Modo patata: Lune ya vive en la terminal; esta app Qt se retira.
             QApplication.instance().quit()
             return
-        ventanas["principal"] = ventana
+        gestor.adoptar(ventana)
         _mostrar_de_verdad(ventana)
 
-        # Si intentas abrir Lune otra vez, la que ya está se trae al frente.
-        servidor = globals().get("_servidor_instancia")
-        if servidor is not None:
-            servidor.newConnection.connect(
-                lambda: (ventana.showNormal(), ventana.raise_(), ventana.activateWindow())
-            )
+        # Si intentas abrir Lune otra vez, se trae al frente la ventana ACTUAL
+        # (también después de un cambio de modo).
+        gestor.conectar_servidor(globals().get("_servidor_instancia"))
 
     ventana_inicio = PantallaInicio(al_terminar=abrir_principal)
     ventanas["inicio"] = ventana_inicio

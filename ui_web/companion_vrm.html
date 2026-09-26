@@ -6,6 +6,10 @@
 <title>Lune VRM</title>
 <link rel="stylesheet" href="styles.css" />
 <link rel="stylesheet" href="css/burbuja.css" />
+<!-- Cortes 5 y 6: pantalla grande y salvapantallas, burbuja de alarma y notas del baile -->
+<link rel="stylesheet" href="css/grande.css" />
+<link rel="stylesheet" href="css/alarma.css" />
+<link rel="stylesheet" href="css/baile.css" />
 <style>
   html, body { margin:0; height:100%; background:transparent; overflow:hidden;
     font-family:var(--font-body, system-ui, sans-serif); }
@@ -29,7 +33,7 @@
   /* "z z z" mientras duerme */
   #zzz { position:absolute; top:6%; right:14%; pointer-events:none; opacity:0; transition:opacity .6s;
     font-family:var(--font-display, var(--font-mono, monospace)); font-weight:700; color:var(--cyan-400,#36ECFF);
-    text-shadow:0 0 10px rgba(54,236,255,.6); }
+    text-shadow:0 0 10px rgb(var(--cyan-400-rgb, 54 236 255) / .6); }
   #zzz.on { opacity:1; }
   #zzz span { position:absolute; right:0; animation:zzz 2.4s linear infinite; font-size:14px; }
   #zzz span:nth-child(2) { animation-delay:-.8s; font-size:18px; right:10px; }
@@ -37,7 +41,7 @@
   @keyframes zzz { 0%{ transform:translate(0,0) rotate(0); opacity:0; } 15%{ opacity:.9; } 100%{ transform:translate(14px,-46px) rotate(18deg); opacity:0; } }
 
   #aviso { position:absolute; inset:0; display:none; place-content:center; text-align:center;
-    font:12.5px/1.5 var(--font-body, system-ui, sans-serif); color:#eee; background:rgba(15,20,36,.86);
+    font:12.5px/1.5 var(--font-body, system-ui, sans-serif); color:#eee; background:rgb(var(--ink-800-rgb, 15 20 36) / .86);
     border:2px solid var(--cyan-700,#0091AB); padding:18px; box-sizing:border-box; }
   #aviso.on { display:grid; }
   #aviso code { color:#a5b4fc; word-break:break-all; }
@@ -57,15 +61,48 @@
      cola de eventos hacia Python (luneEventos), efectos de sonido (luneSfx), packs de
      sonidos de reacción (luneSonidos; ui/companion.py le carga el pack al terminar la
      página) y la burbuja con máquina de escribir (comentarTipeado, burbujaTexto,
-     burbujaFin, luneLado). -->
+     burbujaFin, luneLado). tema.js: window.luneTema(mapa|null), el tema de color
+     (ui/companion.py → aplicar_tema). -->
 <script src="lune_eventos.js"></script>
 <script src="lune_sfx.js"></script>
 <script src="lune_packs.js"></script>
 <script src="lune_burbuja.js"></script>
+<script src="tema.js"></script>
+<!-- Cortes 5 y 6 (scripts clásicos, también en companion.html): reloj del pulso y notas
+     ♪ (LuneRitmo, LuneNotas), burbuja de alarma (LuneAlarma) y salvapantallas / clase de
+     pantalla grande (LunePantalla). -->
+<script src="lune_ritmo.js"></script>
+<script src="lune_alarma.js"></script>
+<script src="lune_pantalla.js"></script>
 <script>
   // Calibración del modelo (luz, altura, pesos de seguimiento, invertir*): Python puede
   // llamarla antes de que cargue el módulo. Se guarda la última y el módulo la aplica.
   window.luneParams = function (j) { window.__luneParamsPendiente = j; return null; };
+
+  // Cortes 5 y 6 (ui/companion.py: set_salvapantallas, mostrar_alarma, grande_fase,
+  // bailar, pulso). Salvapantallas y alarma son del DOM y van ya; pantalla grande,
+  // sujetar el pelo y el baile son módulos del avatar que registra el módulo de abajo:
+  // hasta entonces se guarda la última llamada de cada una y el módulo la repite.
+  window.__lunePantalla = window.LunePantalla ? window.LunePantalla.crear({ doc: document }) : null;
+  window.__luneAlarmaUI = window.LuneAlarma ? window.LuneAlarma.crear({ doc: document }) : null;
+  window.luneSalvapantallas = function (on, o) {
+    var p = window.__lunePantalla;
+    return p ? p.salvapantallas(!!on, o || {}) : false;
+  };
+  window.luneAlarma = function (texto, o) {
+    var a = window.__luneAlarmaUI;
+    if (!a) return false;
+    return texto == null ? a.ocultar() : a.mostrar(String(texto), o || {});
+  };
+  window.__luneOcioPendiente = {};
+  window.luneGrande = function (fase, o) {
+    if (window.__lunePantalla) window.__lunePantalla.fase(fase);
+    window.__luneOcioPendiente.grande = [fase, o];
+    return false;
+  };
+  window.luneHold = function () { return false; };
+  window.luneBailar = function (on, o) { window.__luneOcioPendiente.bailar = [on, o]; return false; };
+  window.lunePulso = function (b, f, e) { window.__luneOcioPendiente.pulso = [b, f, e]; return false; };
 
   // Si el módulo principal no llega a ejecutarse (404 o error de sintaxis en lune_vrm.js,
   // lune_modulos.js o three), su propio aviso nunca se registra: este lo cubre. En captura
@@ -178,6 +215,35 @@ window.luneMascota = mascota;                                    // para registr
 if (typeof window.luneEventos !== 'function') window.luneEventos = () => '[]';
 // Efectos de sonido (lune_sfx.js); sin el script, no suena nada pero no rompe.
 if (typeof window.luneSfx !== 'function') window.luneSfx = () => Promise.resolve(null);
+// Tema de color (tema.js); sin el script, no cambia nada pero no rompe.
+if (typeof window.luneTema !== 'function') window.luneTema = () => 0;
+
+// Dónde está la cabeza, en px de la página → JSON {x, y, r} (o "null" sin modelo):
+// el menú radial se ancla ahí (ui/companion.py → ancla_menu → mapToGlobal). Como
+// la comida de Mate-Engine: hueso Head + (0, offsetY, 0) en SU espacio local (sigue
+// a la cabeza si se inclina) proyectado con la cámara; el radio es 0.1·|escala del
+// hueso| (0.1732 m con escala 1) medido sobre el eje derecho de la cámara.
+window.luneCabeza = (offsetY = 0.1) => {
+  try {
+    const ctx = mascota.ctx, T = ctx && ctx.THREE, cab = ctx && ctx.huesos && ctx.huesos.head;
+    if (!mascota.listo || !T || !cab || !ctx.camera || typeof ctx.proyectar !== 'function') return 'null';
+    let oy = Number(offsetY);
+    if (!Number.isFinite(oy)) oy = 0.1;
+    cab.updateWorldMatrix(true, false);
+    const centro = cab.localToWorld(new T.Vector3(0, oy, 0));
+    const escala = cab.getWorldScale(new T.Vector3()).length() || Math.sqrt(3);
+    ctx.camera.updateMatrixWorld();
+    const derecha = new T.Vector3().setFromMatrixColumn(ctx.camera.matrixWorld, 0).normalize();
+    const c = ctx.proyectar(centro.clone());
+    const b = ctx.proyectar(centro.clone().addScaledVector(derecha, 0.1 * escala));
+    const r = Math.hypot(b.x - c.x, b.y - c.y);
+    if (![c.x, c.y, r].every(Number.isFinite)) return 'null';
+    const d = (v) => Math.round(v * 10) / 10;
+    return JSON.stringify({ x: d(c.x), y: d(c.y), r: d(r) });
+  } catch (e) {
+    return 'null';
+  }
+};
 
 // Burbuja: la de lune_burbuja.js (temporizador compartido con comentarTipeado y el
 // streaming). Mismo comportamiento que antes: comentar(t, ms = 14 s), pensando() '…'.
@@ -186,6 +252,59 @@ if (burbuja) burbuja.onBoca = (on) => mascota.setHablando(!!on);   // la boca se
 window.comentar = (t, ms) => burbuja && burbuja.comentar(t, ms);
 window.pensando = () => burbuja && burbuja.pensando();
 window.ocultarBurbuja = () => burbuja && burbuja.ocultar();
+
+// ── Cortes 5 y 6: pantalla grande (vrm/lune_grande.js) y baile (vrm/lune_baile_proc.js) ──
+// Módulos opcionales del bus: si uno da 404 o no compila, esa función no hace nada.
+// Se registran la primera vez que se usan (sin baile ni pantalla grande no cuestan nada).
+const sinModulo = (nombre) => (e) => {
+  try { console.warn(`[companion_vrm] sigo sin ${nombre}:`, (e && e.message) || e); } catch (_) { /* sin consola */ }
+  return null;
+};
+// three-vrm también con import() tolerante (y como espacio de nombres): si no trae el
+// colisionador, la página sigue y solo «sujetar el pelo» no hace nada.
+const [modGrande, modBaile, VRMLib] = await Promise.all([
+  import('./vrm/lune_grande.js').catch(sinModulo('lune_grande.js')),
+  import('./vrm/lune_baile_proc.js').catch(sinModulo('lune_baile_proc.js')),
+  import('@pixiv/three-vrm').catch(() => ({})),
+]);
+const pantalla = window.__lunePantalla || null;
+const notas = window.LuneNotas ? window.LuneNotas.crear({ doc: document }) : null;
+let modG = null, modB = null;
+function moduloGrande() {
+  if (!modG && modGrande && typeof modGrande.instalar === 'function') {
+    modG = mascota.registrar((ctx) => modGrande.instalar(ctx, {
+      VRMSpringBoneCollider: VRMLib && VRMLib.VRMSpringBoneCollider,
+      VRMSpringBoneColliderShapeSphere: VRMLib && VRMLib.VRMSpringBoneColliderShapeSphere,
+    }));
+  }
+  return modG;
+}
+function moduloBaile() {
+  if (!modB && modBaile && typeof modBaile.instalar === 'function') {
+    modB = mascota.registrar((ctx) => modBaile.instalar(ctx, { alGolpe: (e) => { if (notas) notas.golpe(e); } }));
+  }
+  return modB;
+}
+// fase: glide · entrar · salir · volver · fin (la ventana la mueve Python)
+window.luneGrande = (fase, opts) => {
+  if (pantalla) pantalla.fase(fase);
+  const m = moduloGrande();
+  return m ? !!m.api.fase(fase, opts) : false;
+};
+// Clic izquierdo mantenido en pantalla grande: el pelo se aparta del ratón
+window.luneHold = (on, px, py) => (modG ? !!modG.api.hold(!!on, px, py) : false);
+window.luneBailar = (on, opts) => {
+  if (!on && notas) notas.limpiar();
+  const m = on ? moduloBaile() : modB;
+  return m ? !!m.api.bailar(!!on, opts || {}) : false;
+};
+window.lunePulso = (bpm, fase, energia) => (modB ? !!modB.api.pulso(bpm, fase, energia) : false);
+// Lo que Python pidió mientras cargaba este módulo
+const ocioPendiente = window.__luneOcioPendiente || {};
+window.__luneOcioPendiente = null;
+if (ocioPendiente.grande) window.luneGrande(...ocioPendiente.grande);
+if (ocioPendiente.bailar) window.luneBailar(...ocioPendiente.bailar);
+if (ocioPendiente.pulso) window.lunePulso(...ocioPendiente.pulso);
 </script>
 </body>
 </html>

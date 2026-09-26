@@ -44,7 +44,7 @@ function MoonField() {
 const CFG_DEMO = {
   openrouter_key:'', openrouter_model:'openrouter/auto',
   ollama_url:'http://localhost:11434', ollama_model:'',
-  telegram_token:'', nombre:'Lune',
+  telegram_token:'', telegram_admin_id:'', telegram_ordenes_pc:false, nombre:'Lune',
   system_prompt:'Eres Lune. Directa, con personalidad y filo. Sin relleno, sin emoji.',
   voz:false, memoria:true, acciones_ia:true,
   mascota_render:'animado', interfaz_modo:'web',
@@ -73,6 +73,24 @@ function CampoClaveAjustes(props) {
 }
 
 const AUDIO_DEMO = { entradas:[], salidas:[], faltan:[], modelos_whisper:['tiny','base','small','medium','large-v3'], modelos_descargados:[] };
+
+/* «Guardar configuración» manda SOLO lo que cambiaste en Ajustes: cada clave de `cfg` cuyo
+   valor no es el de la foto que dio get_config al abrir (o al último guardado). Así no se
+   revierte lo cambiado fuera con Ajustes abierto (tamaño o encuadre de la mascota desde el
+   radial o la bandeja, «Arrancar con Windows» desde la bandeja…). `fuera`: claves que no
+   se mandan nunca (solo lectura o con su propio interruptor). */
+const AJUSTES_SOLO_LECTURA = ['voz', 'vrm_modelos', 'vrm_webengine', 'mascota_fuera'];
+function cambiosAjustes(foto, cfg, fuera = AJUSTES_SOLO_LECTURA) {
+  const out = {};
+  const base = foto || {};
+  for (const k of Object.keys(cfg || {})) {
+    if (fuera.includes(k)) continue;
+    const tenia = Object.prototype.hasOwnProperty.call(base, k);
+    if (!tenia || JSON.stringify(base[k]) !== JSON.stringify(cfg[k])) out[k] = cfg[k];
+  }
+  return out;
+}
+window.cambiosAjustes = cambiosAjustes;
 
 /* Guía de Ollama: en este equipo o en otro de la red (el "?" junto a Ollama). */
 function AyudaOllama({ onClose }) {
@@ -199,22 +217,54 @@ function SettingsPanel({ voiceOn, onVoice, fx = { bg:true, sweep:true, micro:tru
   const [cfg, setCfg] = React.useState(null);
   const [msg, setMsg] = React.useState('');
   const [ayudaOllama, setAyudaOllama] = React.useState(false);
+  // La foto de get_config (y de lo ya guardado): lo que no cambiaste no se manda.
+  const foto = React.useRef(null);
 
   React.useEffect(() => {
-    if (window.lune) window.lune.get_config((j) => { try { setCfg(JSON.parse(j)); } catch(e){ setCfg({ ...CFG_DEMO }); } });
+    if (window.lune) window.lune.get_config((j) => {
+      try { const r = JSON.parse(j); foto.current = { ...r }; setCfg(r); } catch(e){ setCfg({ ...CFG_DEMO }); }
+    });
     else setCfg({ ...CFG_DEMO });
   }, []);
 
   const set   = (k) => (e) => setCfg((c) => ({ ...c, [k]: (e && e.target) ? e.target.value : e }));
   const setBl = (k) => (e) => setCfg((c) => ({ ...c, [k]: !!(e && e.target ? e.target.checked : e) }));
+  // Guarda lo cambiado (cambiosAjustes) y, si salió bien, la foto pasa a tenerlo.
+  const guardarCambios = (payload, alTerminar) => {
+    window.lune.guardar_config(JSON.stringify(payload), (r) => {
+      let ok = true; try { ok = JSON.parse(r).ok; } catch(e){}
+      if (ok) foto.current = { ...(foto.current || {}), ...payload };
+      alTerminar(ok);
+    });
+  };
   const guardar = () => {
     if (!cfg) return;
     if (!window.lune) { setMsg('Demo · sin backend'); setTimeout(()=>setMsg(''),2500); return; }
-    // Solo lectura (o con su propio interruptor): no se mandan al guardar.
-    const { voz, vrm_modelos, vrm_webengine, mascota_fuera, ...payload } = cfg;
-    window.lune.guardar_config(JSON.stringify(payload), (r) => {
-      let ok = true; try { ok = JSON.parse(r).ok; } catch(e){}
+    guardarCambios(cambiosAjustes(foto.current, cfg), (ok) => {
       setMsg(ok ? 'Guardado en datos.json' : 'Error al guardar'); setTimeout(()=>setMsg(''), 2800);
+    });
+  };
+  // Modo de interfaz: se aplica al instante. Primero se guarda lo pendiente de Ajustes
+  // (la ventana nueva lo lee de disco) y luego se pide el cambio; el modo lo escribe el
+  // gestor (si falla, se queda el de antes y sale un aviso). El actual no se «cambia».
+  const [cambiandoModo, setCambiandoModo] = React.useState(false);
+  const cambiarModo = (modo) => {
+    const actual = (cfg && cfg.interfaz_modo) || 'web';
+    if (!cfg || modo === actual || cambiandoModo) return;
+    if (!window.lune || typeof window.lune.cambiar_interfaz !== 'function') {
+      set('interfaz_modo')(modo); return;                    // demo: solo se marca
+    }
+    // Lo pendiente (solo lo cambiado; el modo lo escribe el gestor, no guardar_config).
+    const payload = cambiosAjustes(foto.current, cfg, [...AJUSTES_SOLO_LECTURA, 'interfaz_modo']);
+    setCambiandoModo(true); setMsg('Cambiando de interfaz…');
+    guardarCambios(payload, () => {
+      window.lune.cambiar_interfaz(modo, (r) => {
+        let x = {}; try { x = JSON.parse(r) || {}; } catch (e) {}
+        if (x.ok && x.reinicio) { setCfg((c0) => ({ ...c0, interfaz_modo: modo })); setMsg('Se aplicará al reiniciar Lune'); }
+        else if (!x.ok) setMsg(x.error || 'No pude cambiar de interfaz');
+        setCambiandoModo(false);
+        setTimeout(() => setMsg(''), 4000);
+      });
     });
   };
 
@@ -289,7 +339,20 @@ function SettingsPanel({ voiceOn, onVoice, fx = { bg:true, sweep:true, micro:tru
         {window.AvanzadoCard && <window.AvanzadoCard cfg={c} set={set} />}
 
         <Card eyebrow={<><window.IconTelegram width={13} height={13}/> Integración</>} title="Telegram" tone="blue">
-          <CampoClaveAjustes id="f-tg-token" label="Token del Bot" value={c.telegram_token||''} onChange={set('telegram_token')} hint="@BotFather → /newbot" />
+          <div className="ln-settings-grid">
+            <CampoClaveAjustes id="f-tg-token" label="Token del Bot" value={c.telegram_token||''} onChange={set('telegram_token')} hint="@BotFather → /newbot" />
+            <Input label="Tu ID de Telegram" value={c.telegram_admin_id||''} onChange={set('telegram_admin_id')}
+              inputMode="numeric" hint="Escríbele /id al bot. Solo números; con él, solo tú puedes usarlo." />
+          </div>
+          <div style={{height:14}} />
+          <div className="ln-toggle-row">
+            <Switch label="Órdenes desde Telegram (con aprobación en el PC)" checked={!!c.telegram_ordenes_pc}
+              onChange={setBl('telegram_ordenes_pc')} accent="blue" />
+          </div>
+          <p className="ln-modal-nota" style={{margin:'8px 0 0'}}>
+            Escribe <code>/pc abre youtube</code> en tu Telegram y Lune lo hace aquí solo si lo apruebas en el PC.
+            Requiere tu ID de Telegram y reiniciar el bot para aplicarse.
+          </p>
         </Card>
 
         <Card eyebrow={<><window.IconBrain width={13} height={13}/> Comportamiento</>} title="Personalidad">
@@ -395,14 +458,28 @@ function SettingsPanel({ voiceOn, onVoice, fx = { bg:true, sweep:true, micro:tru
         {/* Sonidos de reacción de la mascota y su volumen (extra/voz.jsx) */}
         {window.PackSonidosCard && <window.PackSonidosCard cfg={c} set={set} />}
 
+        {/* Corte 4 (extra/apariencia.jsx y extra/juego.jsx): guardan al momento por window.luneEscritorio. */}
+        {window.AparienciaCard && <window.AparienciaCard />}
+        {window.MenuRadialCard && <window.MenuRadialCard />}
+        {window.AtajosCard && <window.AtajosCard />}
+        {window.BandejaCard && <window.BandejaCard />}
+        {window.JuegoCard && <window.JuegoCard />}
+        {window.RendimientoCard && <window.RendimientoCard />}
+
+        {/* Cortes 5/6 (extra/alarmas.jsx y extra/baile.jsx): guardan al momento por window.luneAlarmas y
+            window.luneMusica. */}
+        {window.AlarmasCard && <window.AlarmasCard />}
+        {window.PantallaGrandeCard && <window.PantallaGrandeCard />}
+        {window.BaileCard && <window.BaileCard />}
+
         <Card eyebrow={<><window.IconCpu width={13} height={13}/> Rendimiento</>} title="Modo de interfaz" tone="yellow">
           <p style={{margin:'0 0 12px', font:'var(--text-data)', fontSize:12, color:'var(--text-dim)'}}>
-            <b>Bajos recursos</b> usa la interfaz nativa ligera (sin Chromium ni videos) para no consumir tanto en equipos modestos. Se aplica al reiniciar Lune.
+            <b>Bajos recursos</b> usa la interfaz nativa ligera (sin Chromium ni videos) para no consumir tanto en equipos modestos. Se aplica al instante: guarda lo pendiente y la conversación sigue en la nueva.
           </p>
           <div className="ln-seg-row">
-            <Button variant={(c.interfaz_modo||'web')==='web'?'primary':'ghost'} size="sm" onClick={()=>set('interfaz_modo')('web')}>Completa</Button>
-            <Button variant={c.interfaz_modo==='nativo'?'primary':'ghost'} size="sm" onClick={()=>set('interfaz_modo')('nativo')}>Bajos recursos</Button>
-            <Button variant={c.interfaz_modo==='patata'?'primary':'ghost'} size="sm" onClick={()=>set('interfaz_modo')('patata')} title="Solo terminal: texto y caritas :D — sin Qt, sin imágenes">Patata (terminal)</Button>
+            <Button variant={(c.interfaz_modo||'web')==='web'?'primary':'ghost'} size="sm" disabled={cambiandoModo} onClick={()=>cambiarModo('web')}>Completa</Button>
+            <Button variant={c.interfaz_modo==='nativo'?'primary':'ghost'} size="sm" disabled={cambiandoModo} onClick={()=>cambiarModo('nativo')}>Bajos recursos</Button>
+            <Button variant={c.interfaz_modo==='patata'?'primary':'ghost'} size="sm" disabled={cambiandoModo} onClick={()=>cambiarModo('patata')} title="Solo terminal: texto y caritas :D — sin Qt, sin imágenes">Patata (terminal)</Button>
           </div>
         </Card>
 

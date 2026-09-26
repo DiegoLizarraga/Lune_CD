@@ -23,8 +23,17 @@
  *           alcance (1), params (json inicial para luneParams), validarParams(json)
  *   h.setEstado(e) · h.setHablando(on) · h.pausar(on) · h.cargar(url, v)
  *   h.luneParams(json) · h.encuadrar(modo) · h.cursor(clientX, clientY) · h.destruir()
+ *   h.registrar(instalar) → módulo | null   módulo del bus de lune_vrm.js (lune_modulos.js);
+ *                           antes de que haya motor se encola y se registra al crearlo
+ *   h.mod(nombre, metodo, ...args)          API de un módulo (= window.luneMod en la mascota);
+ *                           sin motor se encola (las 32 últimas) y se llama tras los registros
+ *   h.usarModulo(nombre, {opciones, importar}) → Promise<bool>   import() perezoso de
+ *                           RUTAS_MODULOS[nombre] y registrar(ctx => mod.instalar(ctx, opciones)),
+ *                           una vez por avatar; opciones por defecto: OPCIONES_MODULOS[nombre]
+ *                           (baileProc: {encuadrar: false}, la barra se queda en 'retrato')
  *   LuneVRMBarra.destruir(h) · .params(json) (todos los vivos y los siguientes)
  *   LuneVRMBarra.recargar(url, v) (cambio de personaje) · .precargar() · .activos()
+ *   LuneVRMBarra.cargarModulo(nombre) → Promise<módulo | null> (en caché; un fallo se reintenta)
  *
  * Cursor: la mascota mira al ratón de la PÁGINA (mousemove de window). clientX/Y se
  * mapean a nx/ny como hace companion.py con el cursor global: respecto a la cara
@@ -254,6 +263,35 @@ export function precargar() {
   return cargarMotorPorDefecto().then(() => true, (e) => { aviso('precarga', e && e.message); return false; });
 }
 
+/** Módulos del bus de lune_vrm.js que la barra carga bajo demanda (rutas relativas a este archivo). */
+export const RUTAS_MODULOS = Object.freeze({
+  baileProc: '../../vrm/lune_baile_proc.js',     // baile procedural (cortes 5/6): api {bailar, pulso, estado}
+});
+/** Opciones con que la barra instala cada módulo (instalar(ctx, opciones)). */
+export const OPCIONES_MODULOS = Object.freeze({
+  baileProc: Object.freeze({ encuadrar: false }),   // sin encuadre 'cuerpo' temporal: la barra es pequeña
+});
+const MAX_COLA_MOD = 32;
+const modulosPromesa = new Map();
+const importarPorDefecto = (ruta) => import(ruta);
+
+/**
+ * import() perezoso de un módulo del bus por su nombre en RUTAS_MODULOS. → Promise<módulo | null>
+ * (null si el nombre no existe o el archivo no carga: 404, sintaxis). Se guarda en caché; un
+ * fallo no se guarda (se puede reintentar). `importar` es inyectable (tests).
+ */
+export function cargarModulo(nombre, importar = importarPorDefecto) {
+  const ruta = Object.prototype.hasOwnProperty.call(RUTAS_MODULOS, nombre) ? RUTAS_MODULOS[nombre] : null;
+  if (!ruta) return Promise.resolve(null);
+  if (!modulosPromesa.has(nombre)) {
+    const p = Promise.resolve()
+      .then(() => importar(ruta))
+      .then((mod) => mod || null, (e) => { modulosPromesa.delete(nombre); aviso('módulo', nombre, e && e.message); return null; });
+    modulosPromesa.set(nombre, p);
+  }
+  return modulosPromesa.get(nombre);
+}
+
 // ── Avatares vivos ──────────────────────────────────────────────────────────────
 
 const vivos = new Set();
@@ -283,6 +321,9 @@ export function crear(canvas, urlModelo, opts = {}) {
   let destruido = false, listo = false, arrancando = false;
   const paramsPend = [];
   if (opts.params) paramsPend.push(opts.params);
+  const instaladores = [];          // registrar() antes de que haya motor
+  const colaMod = [];               // mod() antes de que haya motor: [nombre, metodo, args]
+  const modulosUsados = new Map();  // usarModulo(): nombre → Promise<bool>, una vez por avatar
   let raton = null, fuera = false, ultimoMapa = null, sobreModelo = false;
   let rafCursor = 0, rafEncuadre = 0;
   let cara = null, caraT = -Infinity;
@@ -334,6 +375,9 @@ export function crear(canvas, urlModelo, opts = {}) {
       try { m.setFPS(cfg.fps); } catch (e) { /* sigue */ }
       if (paramsGlobales) aplicarParams(paramsGlobales);
       while (paramsPend.length) aplicarParams(paramsPend.shift());
+      // Módulos del bus y llamadas a su API que llegaron antes que el motor, en ese orden.
+      while (instaladores.length) registrarEnMotor(instaladores.shift());
+      while (colaMod.length) { const [n, met, args] = colaMod.shift(); llamarMod(n, met, args); }
       if (hablando) { try { m.setHablando(true); } catch (e) { /* sigue */ } }
       avisar('motor', true);
       enviarCursor();
@@ -497,6 +541,16 @@ export function crear(canvas, urlModelo, opts = {}) {
     return aplicados;
   }
 
+  // ── Bus de módulos del motor ──
+  function registrarEnMotor(instalar) {
+    if (!m || typeof m.registrar !== 'function') return null;
+    try { return m.registrar(instalar) || null; } catch (e) { aviso('registrar', e && e.message); return null; }
+  }
+  function llamarMod(nombre, metodo, args) {
+    if (!m || typeof m.mod !== 'function') return undefined;
+    try { return m.mod(nombre, metodo, ...args); } catch (e) { aviso('mod', nombre, metodo, e && e.message); return undefined; }
+  }
+
   // ── Listeners ──
   const opcPasivo = { passive: true };
   if (ventana && typeof ventana.addEventListener === 'function') {
@@ -595,12 +649,46 @@ export function crear(canvas, urlModelo, opts = {}) {
       enviarCursor();
       return sobreModelo;
     },
+    /** Registra un módulo en el bus del motor (instalar(ctx) | módulo). Sin motor todavía,
+     *  se encola (sin repetir) y se registra al crearlo. → el módulo registrado o null. */
+    registrar(instalar) {
+      if (destruido || !instalar) return null;
+      if (m) return registrarEnMotor(instalar);
+      if (!instaladores.includes(instalar)) instaladores.push(instalar);
+      return null;
+    },
+    /** API de un módulo del bus: h.mod('baileProc', 'bailar', true, opts). Sin motor, se
+     *  encola (las MAX_COLA_MOD últimas) y se llama después de los registros pendientes. */
+    mod(nombre, metodo, ...args) {
+      if (destruido) return undefined;
+      if (m) return llamarMod(nombre, metodo, args);
+      colaMod.push([nombre, metodo, args]);
+      if (colaMod.length > MAX_COLA_MOD) colaMod.shift();
+      return undefined;
+    },
+    /** Carga (import perezoso) y registra el módulo RUTAS_MODULOS[nombre] una vez, instalado con
+     *  `opciones` (por defecto OPCIONES_MODULOS[nombre]). → Promise<bool> */
+    usarModulo(nombre, { importar, opciones } = {}) {
+      if (destruido) return Promise.resolve(false);
+      if (modulosUsados.has(nombre)) return modulosUsados.get(nombre);
+      const opc = opciones !== undefined ? opciones : (OPCIONES_MODULOS[nombre] || null);
+      const p = cargarModulo(nombre, importar).then((mod) => {
+        const inst = mod && (typeof mod.instalar === 'function' ? mod.instalar
+          : (mod.default && typeof mod.default.instalar === 'function' ? mod.default.instalar : null));
+        if (!inst || destruido) { modulosUsados.delete(nombre); return false; }
+        handle.registrar(opc ? (ctx) => inst(ctx, opc) : inst);
+        return true;
+      });
+      modulosUsados.set(nombre, p);
+      return p;
+    },
     /** Libera modelo, listeners y contexto WebGL. Idempotente. → bool (true la primera vez) */
     destruir() {
       if (destruido) return false;
       destruido = true;
       quitarListeners();
       vivos.delete(handle);
+      instaladores.length = 0; colaMod.length = 0;
       const mm = m;
       m = null; listo = false;
       liberarMascota(mm);             // m.destruir() si lo trae (una sola vez); si no, el respaldo
@@ -642,8 +730,8 @@ export function recargar(url, v) {
 export function activos() { return vivos.size; }
 
 export const LuneVRMBarra = Object.freeze({
-  crear, destruir, params, recargar, precargar, activos,
-  mapearCursor, urlConVersion, RUTA_MODELO,
+  crear, destruir, params, recargar, precargar, activos, cargarModulo,
+  mapearCursor, urlConVersion, RUTA_MODELO, RUTAS_MODULOS, OPCIONES_MODULOS,
 });
 
 if (typeof window !== 'undefined' && window) {

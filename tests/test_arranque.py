@@ -69,6 +69,58 @@ def test_el_vbs_no_lanza_la_app_en_modo_oculto(vbs):
         )
 
 
+def test_el_vbs_sigue_siendo_ascii():
+    """WSH lee el .vbs con la página de códigos del sistema: nada de UTF-8."""
+    datos = (RAIZ / "iniciar_lune.vbs").read_bytes()
+    raros = sorted({b for b in datos if b > 127})
+    assert not raros, f"bytes no ASCII en iniciar_lune.vbs: {raros[:10]}"
+
+
+def _probar_vbs(*args):
+    """cscript //nologo iniciar_lune.vbs /probar …  → (estilo, orden). No lanza nada."""
+    import shutil
+    import subprocess
+    if sys.platform != "win32" or shutil.which("cscript") is None:
+        pytest.skip("sin cscript (solo Windows)")
+    r = subprocess.run(["cscript", "//nologo", str(RAIZ / "iniciar_lune.vbs"), "/probar", *args],
+                       capture_output=True, text=True, timeout=120, cwd=str(RAIZ))
+    lineas = [ln.strip() for ln in r.stdout.splitlines() if ln.strip()]
+    if lineas and lineas[0].startswith("ERROR:"):
+        pytest.skip(f"este equipo no tiene el intérprete que busca el .vbs: {lineas[0]}")
+    assert r.returncode == 0, (r.stdout, r.stderr)
+    assert len(lineas) == 2 and lineas[0].startswith("estilo="), r.stdout
+    return int(lineas[0].split("=", 1)[1]), lineas[1]
+
+
+def test_el_vbs_a_mano_lanza_main_sin_banderas():
+    estilo, orden = _probar_vbs()
+    assert estilo == 1
+    assert orden.endswith(f'"{RAIZ / "main.py"}"')
+    assert "pythonw" in orden.lower() or "pyw" in orden.lower()
+
+
+def test_el_vbs_con_autoinicio_pasa_la_bandera_a_main():
+    estilo, orden = _probar_vbs("/autoinicio")
+    assert estilo == 1
+    assert orden.endswith(f'"{RAIZ / "main.py"}" --autoinicio')
+
+
+def test_el_vbs_patata_con_autoinicio_abre_la_consola_minimizada():
+    """D3: en patata la consola se abre minimizada (7 = SW_SHOWMINNOACTIVE) y con
+    un python.exe CON consola (no pythonw), sin exigir PyQt6."""
+    estilo, orden = _probar_vbs("/autoinicio", "/patata")
+    assert estilo == 7
+    assert orden.endswith(f'"{RAIZ / "patata.py"}" --autoinicio')
+    exe = orden.split('"')[1].lower()
+    assert not exe.endswith("pythonw.exe") and exe.endswith((".exe",))
+
+
+def test_el_vbs_patata_a_mano_en_ventana_normal():
+    estilo, orden = _probar_vbs("/patata")
+    assert estilo == 1
+    assert orden.endswith(f'"{RAIZ / "patata.py"}"')
+
+
 def test_el_codigo_deshace_el_arranque_oculto():
     """Cinturón y tirantes por si otro lanzador pasa SW_HIDE."""
     codigo = (RAIZ / "main.py").read_text("utf-8")

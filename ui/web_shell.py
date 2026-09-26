@@ -25,26 +25,78 @@ navegar el marco principal dentro del servidor local de Lune
 (http://127.0.0.1:<puerto>/…); un enlace http(s) pulsado se abre en el navegador
 del sistema y cualquier otra cosa (file:, data:, soltar un .html o un enlace en la
 ventana…) se rechaza. Además NavigateOnDropEnabled = False.
+
+CAMBIO DE MODO EN CALIENTE (ui/cambio_interfaz.py): la ventana cumple el contrato
+de GestorInterfaz. Con `diferir_servicios=True` (la construye el gestor mientras
+la vieja sigue viva) no pone su icono en la bandeja ni arranca los servicios de
+escritorio (atajos globales…) hasta `iniciar_servicios(estado)`, que además
+relanza la mascota y el bot de Telegram si estaban en marcha. Hereda el proveedor,
+la voz y la conversación (`aplicar_estado`), se enseña cuando la página ya pintó
+(`al_estar_lista`, con tope) y el fondo de la página es el de la app (sin destello
+blanco). `cerrar_para_cambio()` la cierra de verdad SIN salir de la app: corta la
+IA en curso sin ejecutar sus acciones, cierra las aprobaciones, calla la voz, cierra
+la mascota, para el bot, suelta los servicios de escritorio, quita la bandeja y
+para el servidor http. «Salir» (bandeja) suelta lo mismo antes de cerrar la app.
+
+CORTES 5 Y 6 (alarmas, pantalla grande y salvapantallas, baile): los objetos `alarmas`
+y `musica` del canal (ui/puentes_ocio.py) se registran también antes de setUrl; los
+controladores llegan con el corte 4 (ServiciosCorte4.ocio, ui/montaje_ocio.py) y se
+enlazan en _montar_servicios_c4; _liberar_todo los cierra una vez, antes de desmontar.
+
+CORTE 4 (bandeja única, menú radial, atajos globales, modo juego y tema): el segundo
+objeto del canal, `escritorio` (ui/puente_escritorio.py → window.luneEscritorio), se
+registra en __init__ ANTES de cargar la página (el JS solo ve lo registrado al crear su
+QWebChannel), todavía sin servicios. `iniciar_servicios` monta los servicios
+(ui/montaje_escritorio.montar_escritorio con ui/anfitrion_web.AnfitrionWeb) y se los da
+al puente: en un cambio de interfaz en caliente la ventana vieja ya soltó su bandeja y
+sus atajos (RegisterHotKey fallaría con 1409 si los dos vivieran a la vez). El icono de
+la bandeja es SIEMPRE el de la bandeja única (`tray` lo lee de ella cada vez);
+features.minimizar_a_bandeja solo decide si cerrar la ventana la oculta. Si el montaje
+falla, queda la bandeja de siempre como respaldo. Al arrancar (no en un cambio de modo)
+la última conversación sigue en el chat si chat.restaurar_ultima. El modo juego forzado a
+mano (bandeja) pasa a la ventana nueva: estado_para_cambio lleva "juego_forzado"
+(None|True|False) e iniciar_servicios lo vuelve a forzar.
 """
 from __future__ import annotations
 
 import json
 import sys
 
-from PyQt6.QtCore import Qt, QUrl
+from PyQt6.QtCore import Qt, QTimer, QUrl, pyqtSignal
 from PyQt6.QtWidgets import QApplication, QMainWindow, QSystemTrayIcon, QMenu
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineSettings
 from PyQt6.QtWebChannel import QWebChannel
-from PyQt6.QtGui import QDesktopServices, QIcon, QAction
+from PyQt6.QtGui import QColor, QDesktopServices, QIcon, QAction
 
 # El servidor http vive en ui/servidor_web.py (sin WebEngine) para que la
 # mascota lo comparta; aquí se conservan los nombres antiguos por compatibilidad.
 from ui.servidor_web import RAIZ, DIR_WEB, ServidorEstatico as _ServidorEstatico, HandlerSilencioso as _HandlerSilencioso  # noqa: F401
+from ui.cambio_interfaz import (PROVEEDOR_A_WEB, PROVEEDOR_DESDE_WEB, TOPE_CARGA_MS, callar_voz,
+                                cerrar_mascota, desmontar_servicios_c4, detener_bot,
+                                detener_hilo_ia, hilo_vivo, instantanea_sesion, ordenes_cortadas,
+                                parar_temporizadores, quitar_bandeja, soltar_hilos)
 
 PAGINA = "ui_kits/lune-desktop/index.html"
 RUTA_VRM = "/vrm/actual.vrm"          # la misma que RUTA_MODELO de vrm_barra.js
 _SIN_MODELO = {"url": "", "v": "", "archivo": "", "params": ""}
+
+# Fondo de la página mientras carga: el de la app (--bg, ink-900 de
+# ui_web/tokens/colors.css), no el blanco de Chromium.
+COLOR_FONDO = "#080B16"
+# ¿Ya pintó React? (.ln-app es la raíz de app.jsx.) Se sondea tras loadFinished.
+JS_PAGINA_PINTADA = "!!document.querySelector('.ln-app')"
+SONDEO_PINTADA_MS = 60
+# Al salir de la app, lo que se espera como mucho a que corte el hilo de la IA.
+ESPERA_IA_SALIR_MS = 1500
+
+
+def _log_error(msg: str) -> None:
+    try:
+        from nucleo.utils import log_error
+        log_error(msg)
+    except Exception:
+        pass
 
 
 def publicar_vrm(servidor, config) -> dict:
@@ -100,6 +152,22 @@ def js_vrm_params(params_json: str) -> str:
     datos = json.dumps(str(params_json or ""), ensure_ascii=False).replace("</", "<\\/")
     return (f"(function (p) {{ if (window.__luneVrmBarra) window.__luneVrmBarra.params = p;"
             f" try {{ window.LuneVRMBarra && window.LuneVRMBarra.params(p); }} catch (e) {{}} }})({datos});")
+
+
+def juego_forzado_de(servicios) -> "bool | None":
+    """El forzado del modo juego de ServiciosCorte4 (`juego.forzado`; si no lo expone,
+    su estado()): True/False si está puesto a mano (bandeja), None si detecta solo o no
+    hay modo juego. Va en estado_para_cambio (VS6)."""
+    juego = getattr(servicios, "juego", None) if servicios is not None else None
+    if juego is None:
+        return None
+    try:
+        v = getattr(juego, "forzado", None)
+        if v is None and callable(getattr(juego, "estado", None)):
+            v = (juego.estado() or {}).get("forzado")
+    except Exception:
+        return None
+    return v if isinstance(v, bool) else None
 
 
 # ── Navegación: solo el servidor local de Lune ─────────────────────────────────
@@ -192,8 +260,19 @@ def asegurar_pagina(web: QWebEngineView, origen: QUrl, abrir_fuera=None) -> Pagi
 class VentanaWeb(QMainWindow):
     """Ventana principal con la UI web y el puente al backend."""
 
-    def __init__(self, config=None, ai_manager=None, memoria=None, tools=None, parent=None):
+    MODO_INTERFAZ = "web"
+    # Ajustes pidió otro modo de interfaz (lo hace GestorInterfaz, ui/cambio_interfaz.py).
+    cambio_interfaz_pedido = pyqtSignal(str)
+    # Fábricas de montar_escritorio (ui/montaje_escritorio.py): None = las de verdad (tests).
+    FABRICAS_C4 = None
+
+    def __init__(self, config=None, ai_manager=None, memoria=None, tools=None, parent=None,
+                 *, diferir_servicios: bool = False):
         super().__init__(parent)
+        self._servicios_c4 = None     # corte 4 (montar_escritorio): en iniciar_servicios
+        self._anfitrion = None        # ui/anfitrion_web.AnfitrionWeb
+        self._puente_esc = None       # ui/puente_escritorio.PuenteEscritorio («escritorio»)
+        self._puentes_ocio = None     # ui/puentes_ocio.PuentesOcio («alarmas» y «musica»)
         self.setWindowTitle("Lune CD")
         self.resize(1280, 820)
         self._icono = QIcon()
@@ -204,17 +283,44 @@ class VentanaWeb(QMainWindow):
                 self.setWindowIcon(self._icono)
                 break
         self._salir = False   # True solo cuando el usuario elige "Salir" en la bandeja
+        self._relevada = False        # cerrada por un cambio de modo: sin bandeja ni quit
+        self._liberada = False        # ya soltó sus recursos (cambio de modo o salir)
+        self._en_marcha = {}          # lo que estaba en marcha al soltarlos
+        self._servicios = False       # bandeja y servicios de escritorio arrancados
+        self._pagina_cargada = False
+        self._al_cargar_pend = []     # al_estar_lista esperando a loadFinished
+        self.tray = None
 
         self._servidor = _ServidorEstatico(DIR_WEB)
         if not self._servidor.iniciar():
             raise RuntimeError("No pude servir la UI web (ui_web/).")
 
-        # Puente backend ↔ web
+        # Puente backend ↔ web. La conversación se guarda en chats/ (como la nativa)
+        # y, construida por el gestor, sin arrancar aún los servicios de escritorio.
         from ui.web_bridge import LuneBridge
         self.bridge = LuneBridge(config=config, ai_manager=ai_manager,
-                                 memoria=memoria, tools=tools, parent=self)
+                                 memoria=memoria, tools=tools, parent=self,
+                                 persistir_chats=True, diferir_servicios=diferir_servicios)
+        if not diferir_servicios:
+            # Al arrancar: la última conversación (un cambio de modo trae la suya con
+            # aplicar_estado). La página la pinta al cargar (estado_inicial).
+            restaurar = getattr(self.bridge, "restaurar_ultima", None)
+            if callable(restaurar):
+                try:
+                    restaurar()
+                except Exception as e:
+                    _log_error(f"[chats] no pude retomar la última conversación: {e}")
         self._canal = QWebChannel()
         self._canal.registerObject("lune", self.bridge)
+        # Corte 4: `escritorio` (window.luneEscritorio) también ANTES de setUrl.
+        self._registrar_puente_escritorio()
+        # Cortes 5/6: `alarmas` y `musica` (window.luneAlarmas / luneMusica), igual: antes
+        # de setUrl y sin servicios (los enlaza _montar_servicios_c4).
+        self._registrar_puentes_ocio()
+        # Ajustes → «Modo de interfaz»: el puente lo pide y el gestor hace el cambio.
+        senal = getattr(self.bridge, "interfaz_pedida", None)
+        if senal is not None and hasattr(senal, "connect"):
+            senal.connect(self.cambio_interfaz_pedido)
 
         # VRM de la barra lateral: /vrm/actual.vrm desde ya (la página lo pide al
         # cargar con vrm_barra()) y republicado cuando cambie personaje o modelo.
@@ -227,7 +333,11 @@ class VentanaWeb(QMainWindow):
         self.web = QWebEngineView()
         # Guarda de navegación ANTES de dar el canal: solo el servidor local de Lune.
         url_pagina = QUrl(self._servidor.url(PAGINA))
-        asegurar_pagina(self.web, url_pagina)
+        pagina = asegurar_pagina(self.web, url_pagina)
+        try:
+            pagina.setBackgroundColor(QColor(COLOR_FONDO))     # sin destello blanco al cargar
+        except Exception:
+            pass
         s = self.web.settings()
         s.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, True)
         s.setAttribute(QWebEngineSettings.WebAttribute.JavascriptEnabled, True)
@@ -235,13 +345,397 @@ class VentanaWeb(QMainWindow):
         # puente o un temporizador, sin un clic justo antes: Chromium los bloquearía.
         s.setAttribute(QWebEngineSettings.WebAttribute.PlaybackRequiresUserGesture, False)
         self.web.page().setWebChannel(self._canal)
+        self.web.loadFinished.connect(self._al_cargar)
         self.web.setUrl(url_pagina)
         self.setCentralWidget(self.web)
 
         # Quedarse en segundo plano (como Discord): al cerrar, se oculta en la
         # bandeja y sigue viva; se reabre desde la bandeja o relanzando el .vbs.
         QApplication.instance().setQuitOnLastWindowClosed(False)
-        self._construir_bandeja()
+        if diferir_servicios:
+            # La construye GestorInterfaz con la ventana anterior aún viva: la
+            # bandeja y los servicios de escritorio (atajos globales) son suyos
+            # hasta que se cierre; iniciar_servicios() los arranca después.
+            self._pausar_escritorio()
+        else:
+            self.iniciar_servicios()
+
+    # ── Servicios exclusivos (bandeja, escritorio) ──────────────────────────────
+    def iniciar_servicios(self, estado=None):
+        """Bandeja y servicios de escritorio (atajos globales, controladores) y lo que
+        estaba en marcha en la ventana anterior (mascota fuera, bot de Telegram). Una
+        sola vez; al arrancar normal, desde el constructor."""
+        if self._servicios:
+            return
+        self._servicios = True
+        estado = estado if isinstance(estado, dict) else {}
+        # Corte 4: bandeja única, atajos, radial, modo juego y tema. Aquí y no en
+        # __init__: en un cambio en caliente la ventana vieja ya los soltó.
+        montar = getattr(self, "_montar_servicios_c4", None)
+        if callable(montar) and getattr(self, "_servicios_c4", None) is None:
+            montar()
+        if (getattr(getattr(self, "_servicios_c4", None), "bandeja", None) is None
+                and getattr(self, "tray", None) is None):
+            self._construir_bandeja()                # respaldo: sin la bandeja única
+        b = getattr(self, "bridge", None)
+        esc = getattr(b, "escritorio", None)
+        if esc is not None:
+            try:
+                esc.iniciar()
+            except Exception as e:
+                _log_error(f"[interfaz] servicios de escritorio: {e}")
+        if b is None:
+            return
+        if estado.get("mascota_fuera"):
+            try:
+                if not b.mascota_visible():
+                    b.mascota_toggle()
+            except Exception as e:
+                _log_error(f"[interfaz] no pude volver a sacar la mascota: {e}")
+        # El modo juego forzado a mano en la ventana anterior sigue forzado (VS6).
+        forzado = estado.get("juego_forzado")
+        juego = getattr(getattr(self, "_servicios_c4", None), "juego", None)
+        if isinstance(forzado, bool) and juego is not None:
+            try:
+                juego.forzar(forzado)
+            except Exception as e:
+                _log_error(f"[interfaz] no pude volver a forzar el modo juego: {e}")
+        if estado.get("telegram"):
+            try:
+                if not hilo_vivo(getattr(b, "_tg_worker", None)):
+                    b.telegram_toggle()
+            except Exception as e:
+                _log_error(f"[interfaz] no pude relanzar el bot de Telegram: {e}")
+
+    # ── Corte 4: puente `escritorio`, montaje y bandeja única ───────────────────
+    def _registrar_puente_escritorio(self):
+        """El objeto `escritorio` del canal (window.luneEscritorio), registrado en
+        __init__ ANTES de cargar la página (el JS solo ve lo registrado al crear su
+        QWebChannel). Sin servicios todavía: se los da _montar_servicios_c4."""
+        try:
+            from ui.anfitrion_web import AnfitrionWeb
+            from ui.puente_escritorio import registrar_en_canal
+            if self._anfitrion is None:
+                self._anfitrion = AnfitrionWeb(self.bridge, self)
+            self._puente_esc = registrar_en_canal(self._canal, None, self.bridge.escritorio,
+                                                  self.bridge.config, anfitrion=self._anfitrion)
+        except Exception as e:
+            self._puente_esc = None
+            _log_error(f"[corte4] no pude registrar el puente de escritorio: {e}")
+        return self._puente_esc
+
+    def _registrar_puentes_ocio(self):
+        """Los objetos `alarmas` y `musica` del canal (cortes 5/6: window.luneAlarmas y
+        window.luneMusica), registrados en __init__ ANTES de cargar la página, sin
+        servicios: _montar_servicios_c4 les da ServiciosCorte4.ocio con enlazar()."""
+        try:
+            from ui.puentes_ocio import registrar_puentes_ocio
+            self._puentes_ocio = registrar_puentes_ocio(self._canal, self.bridge.config,
+                                                        getattr(self, "_servicios_c4", None))
+        except Exception as e:
+            self._puentes_ocio = None
+            _log_error(f"[ocio] no pude registrar los puentes de alarmas y música: {e}")
+        return self._puentes_ocio
+
+    def _montar_servicios_c4(self):
+        """Bandeja única, atajos globales, menú radial, modo juego y tema
+        (ui/montaje_escritorio.montar_escritorio) sobre los servicios de escritorio del
+        puente, y al puente `escritorio` de la página. Si falla, la ventana sigue con
+        la bandeja de siempre (respaldo). Devuelve ServiciosCorte4 o None. Con ellos
+        vienen los de los cortes 5/6 (ServiciosCorte4.ocio) para los puentes de ocio."""
+        b = self.bridge
+        try:
+            from ui.montaje_escritorio import montar_escritorio
+            if self._anfitrion is None:
+                from ui.anfitrion_web import AnfitrionWeb
+                self._anfitrion = AnfitrionWeb(b, self)
+            s = montar_escritorio(b.escritorio, self._anfitrion, b.config, voice=b.voice,
+                                  icono=self._icono, fabricas=self.FABRICAS_C4)
+        except Exception as e:
+            _log_error(f"[corte4] no pude montar bandeja/atajos/radial/modo juego: {e}")
+            return None
+        self._servicios_c4 = s
+        try:
+            b._servicios_c4 = s                      # desmontar_servicios_c4(ventana, puente)
+        except Exception:
+            pass
+        puente = self._puente_esc
+        if puente is not None:
+            try:
+                puente.usar_servicios(s, anfitrion=self._anfitrion, contexto=s.contexto)
+            except Exception as e:
+                _log_error(f"[corte4] el puente de escritorio no tomó los servicios: {e}")
+        po = getattr(self, "_puentes_ocio", None)
+        if po is not None:
+            try:
+                po.enlazar(s)                        # se suelta solo al desmontar (s._deshacer)
+            except Exception as e:
+                _log_error(f"[ocio] los puentes de alarmas y música no tomaron los servicios: {e}")
+        return s
+
+    @property
+    def tray(self):
+        """El icono de la bandeja: el de la bandeja única (corte 4) si está montada y
+        en marcha; si no, el de respaldo (_construir_bandeja). Se lee cada vez: tras
+        detener/iniciar los servicios de escritorio el icono es otro."""
+        s = getattr(self, "_servicios_c4", None)
+        t = getattr(getattr(s, "bandeja", None), "icono_tray", None) if s is not None else None
+        return t if t is not None else getattr(self, "_tray_respaldo", None)
+
+    @tray.setter
+    def tray(self, valor):
+        self._tray_respaldo = valor
+
+    def _pausar_escritorio(self):
+        esc = getattr(getattr(self, "bridge", None), "escritorio", None)
+        if esc is not None and getattr(esc, "iniciado", False):
+            try:
+                esc.detener()
+            except Exception:
+                pass
+
+    # ── Cambio de modo (GestorInterfaz) ─────────────────────────────────────────
+    def estado_para_cambio(self) -> dict:
+        """Lo que hereda la ventana del modo nuevo (la geometría la toma el gestor)."""
+        b = self.bridge
+        estado = {"modo": self.MODO_INTERFAZ}
+        prov = PROVEEDOR_DESDE_WEB.get(str(getattr(b, "_provider_web", "") or ""))
+        if prov:
+            estado["proveedor"] = prov
+        estado["voz"] = bool(getattr(getattr(b, "voice", None), "_enabled", False))
+        estado["sesion"] = instantanea_sesion(getattr(b, "chats", None))
+        try:
+            estado["mascota_fuera"] = bool(b.mascota_visible())
+        except Exception:
+            estado["mascota_fuera"] = False
+        estado["telegram"] = hilo_vivo(getattr(b, "_tg_worker", None))
+        # Modo juego forzado desde la bandeja (VS6): True/False a mano, None = detectar.
+        estado["juego_forzado"] = juego_forzado_de(getattr(self, "_servicios_c4", None))
+        return estado
+
+    def aplicar_estado(self, estado: dict) -> None:
+        """Antes de enseñarse: el proveedor, la voz y la conversación de la ventana
+        anterior (el puente la retoma en su historial de chats/ y en el del modelo,
+        con la marca de texto de terceros)."""
+        estado = estado if isinstance(estado, dict) else {}
+        b = self.bridge
+        web = PROVEEDOR_A_WEB.get(str(estado.get("proveedor") or ""))
+        if web:
+            try:
+                b.proveedor_elegido(web)
+            except Exception:
+                pass
+        voz = getattr(b, "voice", None)
+        if "voz" in estado and voz is not None:
+            quiere = bool(estado.get("voz")) and bool(getattr(voz, "available", False))
+            if bool(getattr(voz, "_enabled", False)) != quiere:
+                voz._enabled = quiere
+                try:
+                    b.voz_estado.emit(quiere)
+                except Exception:
+                    pass
+        retomar = getattr(b, "retomar_sesion", None)
+        if estado.get("sesion") and callable(retomar):
+            retomar(estado["sesion"])
+
+    def _al_cargar(self, _ok=True):
+        self._pagina_cargada = True
+        pend, self._al_cargar_pend = self._al_cargar_pend, []
+        for fn in pend:
+            try:
+                fn()
+            except Exception:
+                pass
+
+    def al_estar_lista(self, callback, tope_ms=TOPE_CARGA_MS):
+        """Llama a callback() UNA vez: cuando la página cargó y React ya pintó
+        (.ln-app), o a los `tope_ms` pase lo que pase (nunca se queda sin enseñar)."""
+        hecho = [False]
+
+        def listo(*_):
+            if hecho[0]:
+                return
+            hecho[0] = True
+            try:
+                callback()
+            except Exception as e:
+                _log_error(f"[interfaz] al enseñar la ventana web: {e}")
+
+        QTimer.singleShot(max(0, int(tope_ms)), listo)
+
+        def sondear():
+            if hecho[0]:
+                return
+
+            def resultado(pintada):
+                if hecho[0]:
+                    return
+                if pintada:
+                    listo()
+                else:
+                    QTimer.singleShot(SONDEO_PINTADA_MS, sondear)
+            try:
+                self.web.page().runJavaScript(JS_PAGINA_PINTADA, resultado)
+            except Exception:
+                listo()
+
+        if self._pagina_cargada:
+            sondear()
+        else:
+            self._al_cargar_pend.append(sondear)
+
+    def aviso_cambio(self, texto: str) -> None:
+        """Aviso no modal (el toast de la página)."""
+        try:
+            self.bridge.aviso.emit(str(texto))
+        except Exception:
+            _log_error(f"[interfaz] {texto}")
+
+    def cerrar_para_cambio(self) -> dict:
+        """Cambio de modo: suelta todo lo que la ventana nueva vuelve a crear y se
+        cierra de verdad SIN salir de la app. Devuelve lo que estaba en marcha."""
+        en_marcha = self._liberar_todo()
+        self._relevada = True
+        for metodo in ("hide", "close"):
+            try:
+                getattr(self, metodo)()
+            except (RuntimeError, AttributeError):
+                pass
+        return en_marcha
+
+    def _liberar_todo(self, espera_ia_ms: int = 0) -> dict:
+        """Suelta lo que tiene la ventana (una vez): IA en curso (sin ejecutar sus
+        acciones), aprobaciones, voz, llamada y dictado, temporizadores, mascota,
+        bot, servicios de escritorio, bandeja, servidor http y página."""
+        if getattr(self, "_liberada", False):
+            return dict(getattr(self, "_en_marcha", {}) or {})
+        self._liberada = True
+        en_marcha = {"mascota_fuera": False, "telegram": False}
+        b = getattr(self, "bridge", None)
+        # Puentes de ocio (cortes 5/6) fuera del canal antes de desmontar sus
+        # controladores (alarmas, pantalla grande, baile: van con el corte 4).
+        po = getattr(self, "_puentes_ocio", None)
+        if po is not None:
+            try:
+                po.cerrar()                          # idempotente
+            except Exception:
+                pass
+            self._puentes_ocio = None
+        # Corte 4 lo primero (bandeja única, atajos, detector de juego, radial, tema y
+        # el puente `escritorio`), una sola vez: el modo juego devuelve lo que cambió
+        # (prioridad, voz, la mascota que escondió: cuenta como «fuera») antes de que
+        # se suelte el resto, y la bandeja propia de respaldo se quita después.
+        desmontar_servicios_c4(self, b)
+        puente = getattr(self, "_puente_esc", None)
+        if puente is not None:
+            try:
+                puente.cerrar()                      # idempotente: sin servicios, lo desregistra aquí
+            except Exception:
+                pass
+            self._puente_esc = None
+        if b is not None:
+            guardar = getattr(b, "guardar_conversacion", None)
+            if callable(guardar):
+                try:
+                    guardar()
+                except Exception as e:
+                    _log_error(f"[interfaz] no pude guardar la conversación: {e}")
+            # Órdenes de Telegram a medio responder o esperando tu permiso: que allí
+            # no se queden esperando (antes de cortar la IA y de parar el bot).
+            acc = getattr(b, "acciones", None)
+            self._avisar_ordenes_cortadas(b, acc)
+            # Lo que emita el worker en curso ya no cuenta (generación) y sus
+            # señales se desconectan: ni se pinta ni se ejecutan sus <|CALL|>.
+            try:
+                b._gen = int(getattr(b, "_gen", 0) or 0) + 1
+            except Exception:
+                pass
+            detener_hilo_ia(getattr(b, "_worker", None),
+                            getattr(getattr(b, "ai", None), "providers", None), espera_ia_ms)
+            b._worker = None
+            if acc is not None:
+                try:
+                    acc.cerrar()                     # «¿Lo hago?» abiertas: se cierran sin hacer nada
+                except Exception:
+                    pass
+            if getattr(b, "_llamada", None) is not None:
+                try:
+                    b._llamada_detener()
+                except Exception:
+                    pass
+            grab, b._grabadora = getattr(b, "_grabadora", None), None
+            if grab is not None:
+                for metodo in ("cancelar", "detener"):
+                    fn = getattr(grab, metodo, None)
+                    if callable(fn):
+                        try:
+                            fn()
+                        except Exception:
+                            pass
+                        break
+            soltar_hilos(getattr(b, "_transcriptor", None), getattr(b, "_probador", None))
+            parar_temporizadores(getattr(b, "_aburrida_t", None))
+            cancelar_plan = getattr(b, "_cancelar_plan", None)
+            if callable(cancelar_plan):
+                try:
+                    cancelar_plan()
+                except Exception:
+                    pass
+            callar_voz(getattr(b, "voice", None))
+            # Mascota y bot: la ventana nueva los relanza si estaban en marcha.
+            en_marcha["mascota_fuera"] = cerrar_mascota(getattr(b, "_overlay", None))
+            b._overlay = None
+            en_marcha["telegram"] = detener_bot(getattr(b, "_tg_worker", None))
+            b._tg_worker = None
+            # Servicios de escritorio (atajos globales, controladores) y su BusEstado.
+            cerrar = getattr(b, "cerrar_escritorio", None)
+            if callable(cerrar):
+                try:
+                    cerrar()
+                except Exception:
+                    pass
+        # La bandeja de respaldo (la única ya se quitó con el corte 4, al principio).
+        quitar_bandeja(getattr(self, "tray", None))
+        self.tray = None
+        srv = getattr(self, "_servidor", None)
+        if srv is not None:
+            try:
+                srv.detener()
+            except Exception:
+                pass
+        web = getattr(self, "web", None)
+        if web is not None:
+            try:
+                pagina = web.page()
+                pagina.setAudioMuted(True)
+                pagina.setWebChannel(None)           # la página ya no llega al puente que se va
+            except Exception:
+                pass
+        self._en_marcha = dict(en_marcha)
+        return en_marcha
+
+    @staticmethod
+    def _avisar_ordenes_cortadas(b, acc) -> list:
+        """«Se detuvo…» a las órdenes de Telegram que se quedarían sin respuesta."""
+        try:
+            pend = acc.pendientes() if acc is not None else []
+        except Exception:
+            pend = []
+        ids = ordenes_cortadas(getattr(b, "_turno", None), hilo_vivo(getattr(b, "_worker", None)),
+                               pend, getattr(b, "_ultima_orden_tg", ""))
+        responder = getattr(b, "_responder_telegram", None)
+        if not ids or not callable(responder):
+            return []
+        try:
+            from servicios.telegram_worker import AVISO_TG_DETENIDA as texto
+        except Exception:
+            texto = "Se detuvo la respuesta en el PC."
+        for oid in ids:
+            try:
+                responder(oid, texto)
+            except Exception:
+                pass
+        return ids
 
     def _construir_bandeja(self):
         if not QSystemTrayIcon.isSystemTrayAvailable():
@@ -313,14 +807,30 @@ class VentanaWeb(QMainWindow):
     def _mostrar(self):
         self.showNormal(); self.raise_(); self.activateWindow()
 
-    def _salir_de_verdad(self):
+    def salir_de_verdad(self):
+        """«Salir»: suelta todo (bot, mascota, IA en curso…) y cierra la app."""
         self._salir = True
+        self._liberar_todo(espera_ia_ms=ESPERA_IA_SALIR_MS)
         self.close()
-        QApplication.instance().quit()
+        app = QApplication.instance()
+        if app is not None:
+            app.quit()
+
+    def _salir_de_verdad(self):
+        self.salir_de_verdad()
 
     def closeEvent(self, ev):
-        # Cerrar la ventana = ocultarla en la bandeja; solo "Salir" cierra de verdad.
-        if not self._salir and getattr(self, "tray", None) is not None:
+        if getattr(self, "_relevada", False):
+            ev.accept()                              # cambio de modo: ya soltó todo
+            return
+        # Cerrar la ventana = ocultarla en la bandeja (features.minimizar_a_bandeja, sí
+        # por defecto); solo "Salir" cierra de verdad. El icono está siempre.
+        cfg = getattr(getattr(self, "bridge", None), "config", None)
+        try:
+            minimizar = bool(cfg.feature("minimizar_a_bandeja", True)) if cfg is not None else True
+        except Exception:
+            minimizar = True
+        if not self._salir and minimizar and getattr(self, "tray", None) is not None:
             self.hide()
             if not getattr(self, "_aviso_bandeja", False):
                 self._aviso_bandeja = True
@@ -332,10 +842,14 @@ class VentanaWeb(QMainWindow):
                     pass
             ev.ignore()
             return
-        self._servidor.detener()
-        if getattr(self, "tray", None) is not None:
-            self.tray.hide()
+        salir = not self._salir                      # sin bandeja, cerrar es salir
+        self._liberar_todo(espera_ia_ms=ESPERA_IA_SALIR_MS)
         ev.accept()
+        if salir:
+            self._salir = True
+            app = QApplication.instance()
+            if app is not None:
+                app.quit()
 
 
 def main() -> int:

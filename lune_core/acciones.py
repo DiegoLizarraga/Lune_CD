@@ -16,16 +16,27 @@ Reglas (plan §2.5 y crítica d):
   · Un CALL con JSON inválido (o sin cerrar) desaparece del texto y no se ejecuta.
   · El formato antiguo (`ABRIR_URL:`, `ABRIR_BUSQUEDA:`, `TOOL:`) ya NO se
     ejecuta: se salta la neutralización de marcadores. Solo se borra del texto.
-  · Origen del turno: 'usuario' o 'no_confiable'. Si el prompt llevaba texto de
-    terceros (título de ventana, pantalla, Minecraft, Telegram, notas…), el turno
-    es 'no_confiable' y solo pasan herramientas de LECTURA. Un origen desconocido
-    cuenta como no confiable.
+  · Origen del turno: 'usuario', 'no_confiable' o 'remoto'. Si el prompt llevaba
+    texto de terceros (título de ventana, pantalla, Minecraft, Telegram, notas…),
+    el turno es 'no_confiable' y solo pasan herramientas de LECTURA. Un origen
+    desconocido cuenta como no confiable.
+  · Origen 'remoto' (orden desde Telegram con /pc): las herramientas del modo
+    están disponibles como con 'usuario', pero TODA llamada, también las de
+    LECTURA y las `directa`, la aprueba un humano en el PC (motivo AVISO_REMOTO,
+    «Pedido desde Telegram»); sin canal de aprobación, rechazada. Mezclado con
+    'no_confiable' manda lo más restrictivo de los dos: solo LECTURA, y con
+    aprobación.
   · Contexto contaminado (taint): un turno 'usuario' cuya conversación enviada
     lleva texto de terceros (el historial del AIManager lo marca) no es de fiar
     del todo: LECTURA sigue libre y TODO lo demás pide aprobación humana, aunque
     el catálogo no la pida; sin canal de aprobación, se rechaza con el motivo.
     Se mira al ejecutar (`contexto_contaminado(ctx)`). Las llamadas `directa`
-    (las escribió la persona: «abre youtube») no cuentan.
+    (las escribió la persona: «abre youtube») no cuentan. En una orden 'remoto'
+    también se mira: la pregunta lleva los dos motivos (AVISO_REMOTO y
+    AVISO_CONTAMINADO).
+  · Modo llamada (ctx['llamada'] = True): lo transcrito del micrófono puede ser
+    ruido de fondo u otra persona. LECTURA sigue libre y lo demás pide aprobación
+    (motivo AVISO_LLAMADA), también las `directa` («pon un temporizador…»).
   · Lo que requiere aprobación se pregunta a un HUMANO con
     `pedir_aprobacion(pendiente, responder)`; sin respuesta en 60 s, rechazada.
     Las llamadas de una misma respuesta van en orden: la siguiente espera a que
@@ -62,9 +73,16 @@ TIMEOUT_APROBACION = 60.0
 AVISO_CONTAMINADO = ("La conversación contiene contenido externo (adjuntos, mensajes de "
                      "otros, notas…) que pudo influir en la respuesta. Confirma solo si "
                      "esto lo pediste tú.")
+# Motivo de la pregunta cuando la orden llegó desde Telegram (origen 'remoto').
+AVISO_REMOTO = ("Pedido desde Telegram, no desde este PC. Apruébalo solo si fuiste tú "
+                "quien lo pidió.")
+# Motivo de la pregunta cuando lo pedido se oyó en el modo llamada (ctx['llamada']).
+AVISO_LLAMADA = ("Lo oí en la llamada (puede ser ruido de fondo, la tele u otra persona). "
+                 "Apruébalo solo si lo pediste tú.")
 
 USUARIO = cat.ORIGEN_USUARIO
 NO_CONFIABLE = cat.ORIGEN_NO_CONFIABLE
+REMOTO = cat.ORIGEN_REMOTO
 
 # Estados de ResultadoAccion
 HECHA = "hecha"
@@ -224,7 +242,17 @@ def limpiar_texto(texto: str) -> str:
 # ── Utilidades ───────────────────────────────────────────────────────────────────
 
 def _origen(o: Any) -> str:
-    return USUARIO if str(o or "").strip().lower() == USUARIO else NO_CONFIABLE
+    """'usuario' y 'remoto' solo si lo dicen tal cual; cualquier otra cosa, no confiable."""
+    t = str(o or "").strip().lower()
+    return t if t in (USUARIO, REMOTO) else NO_CONFIABLE
+
+
+def _origen_efectivo(origenes: List[Any]) -> str:
+    """El más restrictivo: no_confiable > remoto > usuario (sin ninguno: usuario)."""
+    norm = [_origen(o) for o in origenes]
+    if NO_CONFIABLE in norm:
+        return NO_CONFIABLE
+    return REMOTO if REMOTO in norm else USUARIO
 
 
 def _a_bool(v: Any) -> bool:
@@ -385,13 +413,17 @@ class Ejecutor:
         """
         Ejecuta las llamadas en orden. Cada resultado llega por `al_resultado`
         (también los rechazos y errores). No bloquea esperando aprobaciones.
-        Manda el origen más restrictivo entre `origen` y el de cada llamada.
+        Manda el origen más restrictivo entre `origen` y el de cada llamada
+        (no_confiable > remoto > usuario); si alguno es 'remoto', todo pide
+        aprobación aunque el efectivo sea no_confiable.
         """
         try:
             lista = [ll for ll in (llamadas or []) if isinstance(ll, Llamada)]
             origenes = [ll.origen for ll in lista] + ([origen] if origen is not None else [])
-            origen_ef = USUARIO if all(_origen(o) == USUARIO for o in origenes) else NO_CONFIABLE
+            origen_ef = _origen_efectivo(origenes)
             ctx_ef = self._ctx(ctx, origen_ef)
+            if REMOTO in (_origen(o) for o in origenes):
+                ctx_ef["remoto"] = True
             with self._lock:
                 gen = self._generacion
             self._continuar(lista, origen_ef, ctx_ef, al_resultado, gen)
@@ -449,19 +481,30 @@ class Ejecutor:
 
         # Turno con texto de terceros: solo lectura (crítica d).
         lectura = desc.riesgo == Riesgo.LECTURA and h.riesgo == Riesgo.LECTURA
-        if origen != USUARIO and not lectura:
+        if origen not in (USUARIO, REMOTO) and not lectura:
             self._auditar("denegada_origen", herramienta=nombre, args=ll.args, origen=origen)
             self._emitir(al_resultado, ResultadoAccion(
                 False, f"No hago «{nombre}»: la petición salió de un texto externo, "
                        "no de ti.", nombre, NO_CONFIABLE_ESTADO, dict(ll.args)))
             return False
 
-        # Turno del usuario, pero la conversación que vio el modelo lleva texto de
-        # terceros (taint): lo que no sea de lectura lo aprueba un humano, siempre.
-        contaminado = not lectura and not ll.directa and self.contexto_contaminado(ctx)
+        # Orden desde Telegram: TODO lo aprueba un humano en el PC (también la
+        # lectura y lo que se escribió tal cual en /pc).
+        remoto = origen == REMOTO or cat.valor_ctx(ctx, "remoto") is True
+        if remoto:
+            self._auditar("remoto", herramienta=nombre, args=ll.args)
+        # La conversación que vio el modelo lleva texto de terceros (taint): lo que no
+        # sea de lectura lo aprueba un humano, siempre. También en una orden remota
+        # (ya pide permiso por venir de Telegram): la pregunta dice los dos motivos.
+        contaminado = (not lectura and not ll.directa and self.contexto_contaminado(ctx))
         if contaminado:
             self._auditar("contexto_contaminado", herramienta=nombre, args=ll.args)
-        forzar = contaminado or cat.aprobacion_dinamica(nombre, ctx, ll.args)
+        # Modo llamada: se oyó por el micrófono (quizá no fuiste tú): lo que no sea de
+        # lectura lo aprueba un humano, aunque sea `directa`.
+        oida = not lectura and cat.valor_ctx(ctx, "llamada") is True
+        if oida:
+            self._auditar("oida_en_llamada", herramienta=nombre, args=ll.args)
+        forzar = remoto or contaminado or oida or cat.aprobacion_dinamica(nombre, ctx, ll.args)
         with self._lock:
             r = self._solicitar(nombre, ll.args, desc, forzar)
         estado = r.get("estado")
@@ -476,13 +519,20 @@ class Ejecutor:
                 False, "Ya hice demasiadas acciones en esta conversación; empieza una "
                        "nueva para seguir.", nombre, SIN_PRESUPUESTO, dict(ll.args)))
             return False
-        if estado == "permitida":
+        if estado == "permitida" and not remoto:
             self._emitir(al_resultado, self._ejecutar_handler(fn, nombre, ll.args, ctx))
             return False
         if estado == "aprobacion_requerida" and r.get("pendiente_id"):
             self._pedir(ll, r["pendiente_id"], veredicto, origen, ctx, al_resultado, gen, seguir,
-                        contaminado=contaminado)
+                        contaminado=contaminado, remoto=remoto, oida=oida)
             return True
+        if remoto:
+            # No debería pasar (forzar = aprobación obligatoria), pero una orden remota
+            # nunca se ejecuta sin que alguien la apruebe en el PC.
+            self._emitir(al_resultado, ResultadoAccion(
+                False, f"No hago «{nombre}»: una orden desde Telegram necesita tu permiso "
+                       "en el PC.", nombre, RECHAZADA, dict(ll.args)))
+            return False
         self._emitir(al_resultado, ResultadoAccion(
             False, f"No puedo hacer «{nombre}».", nombre, DENEGADA, dict(ll.args)))
         return False
@@ -533,8 +583,12 @@ class Ejecutor:
 
     def _pedir(self, ll: Llamada, pid: str, veredicto: dict, origen: str, ctx: dict,
                al_resultado, gen: int, seguir: Callable[[], None], *,
-               contaminado: bool = False) -> None:
+               contaminado: bool = False, remoto: bool = False, oida: bool = False) -> None:
         h = cat.obtener(ll.herramienta, self.catalogo)
+        # Todos los motivos que apliquen, en orden (remoto + contaminado a la vez, p. ej.).
+        motivos = [m for m, si in ((AVISO_REMOTO, remoto), (AVISO_LLAMADA, oida),
+                                   (AVISO_CONTAMINADO, contaminado)) if si]
+        motivo = " ".join(motivos) if motivos else veredicto.get("resumen", "")
         pendiente = {
             "id": pid,
             "herramienta": ll.herramienta,
@@ -542,20 +596,27 @@ class Ejecutor:
             "resumen": cat.resumen(ll.herramienta, ll.args, ctx, self.catalogo),
             "descripcion": h.descripcion if h else ll.herramienta,
             "riesgo": veredicto.get("riesgo", ""),
-            "motivo": AVISO_CONTAMINADO if contaminado else veredicto.get("resumen", ""),
+            "motivo": motivo,
             "origen": origen,
             "timeout": self.timeout,
             "pregunta": "¿Lo hago?",
         }
         if contaminado:
             pendiente["contaminado"] = True
+        if remoto:
+            pendiente["remoto"] = True               # «Pedido desde Telegram» en la pregunta
+        if oida:
+            pendiente["llamada"] = True              # «Lo oí en la llamada» en la pregunta
         turno = cat.valor_ctx(ctx, "turno")
         if turno:
             pendiente["turno"] = str(turno)          # el host enruta la pregunta a ese turno
         ap = _Aprobacion(pid, ll, pendiente, ctx, al_resultado, gen, seguir, self._reloj())
         with self._lock:
             self._aprob[pid] = ap
-        extra = "la conversación contiene contenido externo y " if contaminado else ""
+        extra = "".join(t for t, si in (("pedido desde Telegram y ", remoto),
+                                        ("oído en la llamada y ", oida),
+                                        ("la conversación contiene contenido externo y ", contaminado))
+                        if si)
         if self.pedir_aprobacion is None:
             self._resolver(pid, False, RECHAZADA, f"{extra}no hay a quién pedir permiso")
             return

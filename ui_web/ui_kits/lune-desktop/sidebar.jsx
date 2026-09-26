@@ -9,6 +9,12 @@
  *     web_shell con el evento 'lune-vrm-modelo' (y ya recarga los avatares vivos).
  *   · Lune fuera (mascota de escritorio): la barra no la dibuja dos veces. El vídeo se desmonta y el
  *     avatar 3D se pausa (FPS 0 y contexto WebGL liberado) y se oculta bajo el aviso.
+ *   · Modo juego (corte 4): el avatar 3D y el vídeo se pausan mientras hay un juego delante.
+ *   · Clic derecho sobre la mascota → menú radial SVG (window.LuneRadial, extra/apariencia.jsx).
+ *   · Baile (cortes 5/6): app.jsx pasa `baile` = window.LuneBaileWeb.useBaile() (extra/baile.jsx). En VRM, el
+ *     módulo baileProc (ui_web/vrm/lune_baile_proc.js) se registra en el avatar de la barra (h.usarModulo) y
+ *     recibe bailar(on, opts) y cada pulso; en vídeo, un transform por rAF a ≤ 30 fps, solo mientras baila y
+ *     no está en pausa (Lune fuera o modo juego). Encima, el rótulo «♪ Spotify · 124 BPM».
  */
 
 // PNG estático (respaldo si el video de un estado aún no existe).
@@ -39,15 +45,53 @@ const VID = {
 const VID_DIR = '../../assets/mascot/anime-videos/';
 const VID_IDLE = VID_DIR + 'lune-composed.webm';
 
-function MascotVideo({ state }) {
+const FPS_BAILE_VIDEO = 30;
+
+function MascotVideo({ state, pausado = false, baile = null }) {
   const wanted = VID_DIR + 'lune-' + (VID[state] || 'composed') + '.webm';
   const [src, setSrc] = React.useState(wanted);
   const [png, setPng] = React.useState(false);
+  const video = React.useRef(null);
   React.useEffect(() => { setSrc(wanted); setPng(false); }, [wanted]);
+  React.useEffect(() => {
+    const v = video.current;
+    if (!v) return;
+    try { if (pausado) v.pause(); else { const p = v.play(); if (p && p.catch) p.catch(() => {}); } } catch (e) { /* sin vídeo */ }
+  }, [pausado, src]);
+  // Baile: transform del <video> al pulso (reloj de extra/baile.jsx), ≤ 30 fps y solo mientras baila.
+  const bailando = !!(baile && baile.estado && baile.estado.bailando) && !pausado;
+  React.useEffect(() => {
+    const v = video.current;
+    const B = window.LuneBaileWeb;
+    const reloj = baile && baile.reloj;
+    if (!v || !bailando || !B || !reloj) return undefined;
+    let vivo = true, raf = 0, timer = 0, ultimo = -Infinity;
+    const programar = () => {
+      if (typeof window.requestAnimationFrame === 'function') raf = window.requestAnimationFrame(pintar);
+      else timer = setTimeout(pintar, 1000 / FPS_BAILE_VIDEO);
+    };
+    function pintar() {
+      if (!vivo) return;
+      const t = Date.now();
+      if (t - ultimo >= 1000 / FPS_BAILE_VIDEO - 1) {
+        ultimo = t;
+        try { v.style.transform = B.transformVideo(reloj.beat(), reloj.energia).css; } catch (e) { /* sin estilos */ }
+      }
+      programar();
+    }
+    try { v.classList.add('is-bailando'); } catch (e) { /* sin clases */ }
+    programar();
+    return () => {
+      vivo = false;
+      if (raf && typeof window.cancelAnimationFrame === 'function') window.cancelAnimationFrame(raf);
+      if (timer) clearTimeout(timer);
+      try { v.style.transform = ''; v.classList.remove('is-bailando'); } catch (e) { /* sin estilos */ }
+    };
+  }, [bailando, src, png]);
 
   if (png) return <img src={MASCOT[state] || MASCOT.normal} alt="Lune" />;
   return (
-    <video key={src} src={src} autoPlay loop muted playsInline
+    <video ref={video} key={src} src={src} autoPlay={!pausado} loop muted playsInline
       onError={() => { if (src !== VID_IDLE) setSrc(VID_IDLE); else setPng(true); }} />
   );
 }
@@ -115,11 +159,12 @@ function useLibVrm() {
 
 /** El <canvas> con el avatar. Se crea al montar y se destruye al desmontar (un canvas
  *  con el contexto destruido no se reutiliza: para reintentar, React monta otro). */
-function MascotVrm({ info, state, pausado, onFallo }) {
+function MascotVrm({ info, state, pausado, onFallo, baile = null }) {
   const lienzo = React.useRef(null);
   const handle = React.useRef(null);
   const fallo = React.useRef(onFallo);
   fallo.current = onFallo;
+  const bailaba = React.useRef(false);
   React.useEffect(() => {
     const B = window.LuneVRMBarra;
     const c = lienzo.current;
@@ -139,10 +184,43 @@ function MascotVrm({ info, state, pausado, onFallo }) {
   }, []);
   React.useEffect(() => { const h = handle.current; if (h) { try { h.setEstado(state || 'normal'); } catch (e) { /* sigue */ } } }, [state]);
   React.useEffect(() => { const h = handle.current; if (h) { try { h.pausar(!!pausado); } catch (e) { /* sigue */ } } }, [pausado]);
+  // Baile: módulo baileProc en el bus del avatar de la barra (se carga la primera vez que baila).
+  const B = window.LuneBaileWeb;
+  const bailando = !!(baile && baile.estado && baile.estado.bailando) && !pausado;
+  const opciones = bailando && B && typeof B.opcionesPagina === 'function' ? B.opcionesPagina(baile.config, baile.estado) : null;
+  const claveBaile = bailando ? JSON.stringify(opciones || {}) : '';
+  React.useEffect(() => {
+    const h = handle.current;
+    if (!h || typeof h.mod !== 'function') return undefined;
+    if (!bailando) {
+      if (bailaba.current) { bailaba.current = false; try { h.mod('baileProc', 'bailar', false); } catch (e) { /* sigue */ } }
+      return undefined;
+    }
+    let vivo = true, quitar = null;
+    const usar = typeof h.usarModulo === 'function' ? h.usarModulo('baileProc') : Promise.resolve(false);
+    Promise.resolve(usar).then((ok) => {
+      if (!vivo || !ok) return;
+      bailaba.current = true;
+      try { h.mod('baileProc', 'bailar', true, opciones || {}); } catch (e) { /* sigue */ }
+      const r = baile.reloj;
+      if (r && r.sincronizado) { try { h.mod('baileProc', 'pulso', r.bpm, r.fase(), r.energia); } catch (e) { /* sigue */ } }
+      if (typeof baile.suscribir === 'function') {
+        quitar = baile.suscribir((p) => { try { h.mod('baileProc', 'pulso', p.bpm, p.fase, p.energia); } catch (e) { /* sigue */ } });
+      }
+    }, () => {});
+    return () => { vivo = false; if (quitar) quitar(); };
+  }, [bailando, claveBaile]);
   return <canvas ref={lienzo} className="ln-mascot-vrm" aria-label="Lune (avatar 3D)" />;
 }
 
-function MascotStage({ state, mascotaFuera = false }) {
+/** «♪ Spotify · 124 BPM» sobre la mascota de la barra mientras baila (y está a la vista). */
+function RotuloBaile({ baile, visible }) {
+  const B = window.LuneBaileWeb;
+  const t = visible && baile && baile.estado && baile.estado.bailando && B && typeof B.rotulo === 'function' ? B.rotulo(baile.estado) : '';
+  return t ? <div className="ln-baile-rotulo" aria-live="polite">{t}</div> : null;
+}
+
+function MascotStage({ state, mascotaFuera = false, modoJuego = false, baile = null }) {
   const [info, personaje] = useVrmBarra();
   const lib = useLibVrm();
   const [fallida, setFallida] = React.useState('');    // clave (url|v) del modelo que falló
@@ -158,9 +236,10 @@ function MascotStage({ state, mascotaFuera = false }) {
   }, [info && info.url, info && info.v]);
   // Un modelo nuevo (otra versión) se vuelve a intentar aunque el anterior fallara.
   const usarVrm = !!(info && info.render === 'vrm' && info.url && lib && fallida !== claveVrm(info));
-  if (usarVrm) return <MascotVrm info={info} state={state} pausado={mascotaFuera} onFallo={onFallo} />;
+  const rotulo = <RotuloBaile baile={baile} visible={!mascotaFuera && !modoJuego} />;
+  if (usarVrm) return <>{rotulo}<MascotVrm info={info} state={state} pausado={mascotaFuera || modoJuego} onFallo={onFallo} baile={baile} /></>;
   if (mascotaFuera) return null;
-  return <MascotVideo state={state} />;
+  return <>{rotulo}<MascotVideo state={state} pausado={modoJuego} baile={baile} /></>;
 }
 
 // Lune está fuera (mascota de escritorio): el escenario no la dibuja dos veces.
@@ -176,11 +255,17 @@ function MascotFuera({ onTraer }) {
   );
 }
 
-function Sidebar({ provider, onProvider, mascotState, mascotaFuera = false, onTraer, compat = null }) {
+function Sidebar({ provider, onProvider, mascotState, mascotaFuera = false, onTraer, compat = null, modoJuego = false, baile = null }) {
   const { ProviderTab } = window.LUNE;
   // Tercera pestaña: API compatible con OpenAI (LM Studio, Groq…), solo si está configurada.
   const conCompat = !!(compat && compat.on);
   const descCompat = (compat && compat.model) || 'API compatible con OpenAI';
+  // Clic derecho sobre la mascota de la barra → menú radial SVG (sin el menú de Chromium).
+  const abrirRadial = (e) => {
+    if (!window.LuneRadial) return;
+    e.preventDefault();
+    window.LuneRadial.abrir(e.clientX, e.clientY);
+  };
   return (
     <aside className="ln-sidebar">
       <div className="ln-brand">
@@ -205,10 +290,10 @@ function Sidebar({ provider, onProvider, mascotState, mascotaFuera = false, onTr
       </div>
 
       <div className="ln-mascot">
-        <div className={`ln-mascot-stage${mascotaFuera ? ' is-out' : ''}`}>
+        <div className={`ln-mascot-stage${mascotaFuera ? ' is-out' : ''}`} onContextMenu={abrirRadial}>
           {/* El avatar 3D sigue montado (en pausa y oculto) mientras Lune está fuera. */}
           {mascotaFuera ? <MascotFuera onTraer={onTraer} /> : null}
-          <MascotStage state={mascotState} mascotaFuera={mascotaFuera} />
+          <MascotStage state={mascotState} mascotaFuera={mascotaFuera} modoJuego={modoJuego} baile={baile} />
         </div>
       </div>
     </aside>

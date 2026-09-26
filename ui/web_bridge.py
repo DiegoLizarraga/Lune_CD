@@ -26,6 +26,36 @@ probar conservan la guardada, y la de la API compatible solo viaja a su URL),
 resolver_aprobacion solo contesta lo que se le preguntó a la página y los modelos
 3D se eligen por nombre de modelo_vrm/, nunca por ruta.
 
+Órdenes desde Telegram (/pc): con «Órdenes desde Telegram» activado y tu ID de
+Telegram puesto, el bot que lanza `telegram_toggle` manda cada orden por su
+stdout (servicios/telegram_worker.py) y llega a `_orden_remota` (NO es un slot
+de la página). Sale en el chat como «📱 Telegram: …»; un comando directo («abre
+youtube») va al Ejecutor sin IA y lo demás es un turno de IA con origen
+'remoto'. TODA acción se aprueba aquí (modal o junto a la mascota), nunca desde
+Telegram; la respuesta y cada ✓/✕ vuelven al chat de Telegram.
+
+Modo de interfaz en caliente (ui/cambio_interfaz.py): `cambiar_interfaz(modo)` (Ajustes)
+emite `interfaz_pedida`; la ventana web se la pasa a GestorInterfaz, que hace el relevo y
+guarda interfaz.modo (guardar_config ya no lo toca). Con `persistir_chats` (lo pide
+ui/web_shell.py) la conversación se guarda en chats/ como en la nativa, con la marca de
+texto de terceros o de Telegram; `retomar_sesion` la sigue tras un cambio de modo (y el
+modelo la recuerda) y `estado_inicial()` da a la página proveedor, voz, bot, mascota y
+mensajes para pintarse al cargar. Al arrancar (no en un cambio de modo) la ventana llama a
+`restaurar_ultima()`: la última conversación sigue aquí si chat.restaurar_ultima.
+Limpiar el chat o abrir otra conversación con una orden de Telegram esperando tu permiso
+le contesta «Se detuvo…» (la pregunta se cierra sin hacer nada); parar el bot con una
+orden a medio responder o esperando tu permiso, también. Una sola vez por orden: al
+avisar se limpia su marca (Detener + limpiar chat no la repiten).
+
+Modo llamada: lo transcrito entra por la página (`usuario_dijo` → `enviar`) y se apunta
+en `_llamada_transcrito`; si lo que se envía es eso, lo que detecte detectar_llamadas va
+al Ejecutor con ctx['llamada'] = True: todo lo que no sea de lectura pide permiso («Lo oí
+en la llamada»: puede ser la tele u otra persona). El turno de IA va como siempre.
+
+Corte 4 (bandeja única, radial, atajos, modo juego): la mascota se crea sin icono propio
+(`crear_mascota(..., bandeja=False)`); `pausar_aburrimiento(on)` lo usa el modo juego
+(AnfitrionWeb) y `comentar_pantalla` no mira la pantalla con un juego delante.
+
 Chat de la mascota: la cajita que abre el doble clic (ui/chat_mascota.py) llama
 a `enviar_desde_mascota(texto)`, que entra por el mismo flujo que el chat de la
 ventana (mismo historial y memoria); la respuesta se ve también en la burbuja de
@@ -59,12 +89,14 @@ from nucleo.config import Config
 from nucleo.memoria import MemoriaManager
 from nucleo import datos, personajes, sueno, vrm
 from servicios.ai_manager import AIManager
-from servicios.ai_worker import AIWorker, ORIGEN_NO_CONFIABLE, ORIGEN_USUARIO
+from servicios.ai_worker import AIWorker, ORIGEN_NO_CONFIABLE, ORIGEN_REMOTO, ORIGEN_USUARIO
 from servicios.tools import ToolManager, ctx_acciones
+from servicios.telegram_worker import (AVISO_TG_DESACTIVADAS, AVISO_TG_DETENIDA, AVISO_TG_OCUPADA,
+                                       PREFIJO_IA, PREFIJO_TELEGRAM, SIN_TEXTO, ordenes_activas)
 from servicios.voice import VoiceEngine
 from lune_core import marcadores, expresiones
 from lune_core.acciones import limpiar_texto
-from ui.escritorio import ServiciosEscritorio
+from ui.escritorio import ServiciosEscritorio, crear_mascota
 
 # Emoción canónica del modelo → estado de mascota del set anime (assets/mascot/anime).
 EMOCION_A_MASCOTA = {
@@ -79,6 +111,8 @@ EMOCION_A_MASCOTA = {
 
 
 MODO_ACCIONES = "normal"          # modo del catálogo de herramientas en la piel web
+# Comentar la pantalla con un juego delante (modo juego, corte 4): no se mira.
+AVISO_JUEGO_PANTALLA = "En modo juego no miro la pantalla. Cuando termines la partida, pídemelo otra vez."
 ESPERA_UI_S = 5.0                 # herramientas de la mascota: espera máxima al hilo de Qt
 # _esperar_en_hilo con otra espera en curso: no se anida, se contesta esto al momento.
 OCUPADO = object()
@@ -230,15 +264,25 @@ class LuneBridge(QObject):
     modelo_vrm_cambio = pyqtSignal()        # personaje, modelo por defecto, biblioteca o render cambiaron
     vrm_params_cambio = pyqtSignal(str)     # json de params del modelo actual (calibración, seguimiento)
     personaje_cambio = pyqtSignal(str)      # nombre del personaje activo nuevo (la barra reintenta su 3D)
+    # Ajustes → «Modo de interfaz»: la ventana lo reenvía a GestorInterfaz (ui/cambio_interfaz.py).
+    interfaz_pedida = pyqtSignal(str)
     _en_ui_senal = pyqtSignal(object)       # interna: fn() a correr en el hilo de Qt (herramientas)
+    _resultado_remoto = pyqtSignal(object, str)   # interna: (ResultadoAccion, id de la orden de Telegram)
     _hablando = pyqtSignal(bool)            # interna: la voz suena (desde el hilo de audio)
     _acto_voz = pyqtSignal(str)             # interna: empieza a sonar un tramo con esta expresión
     _voz_error = pyqtSignal(str)            # interna: la voz falló (desde el hilo de audio)
 
     def __init__(self, config=None, ai_manager=None, memoria=None, tools=None,
-                 voice=None, parent=None, *, opciones_acciones=None):
-        """`opciones_acciones` van a AccionesQt / crear_ejecutor (audit_path, programar…; tests)."""
+                 voice=None, parent=None, *, opciones_acciones=None,
+                 persistir_chats: bool = False, diferir_servicios: bool = False):
+        """`opciones_acciones` van a AccionesQt / crear_ejecutor (audit_path, programar…; tests).
+        `persistir_chats`: la conversación se guarda en chats/ (la ventana web lo pide;
+        los tests no, así no escriben en la carpeta real). `diferir_servicios`: los
+        servicios de escritorio (atajos globales…) no arrancan hasta que la ventana
+        llame a escritorio.iniciar() (cambio de modo con la ventana anterior viva)."""
         super().__init__(parent)
+        self._persistir_chats = bool(persistir_chats)
+        self._ultima_orden_tg = ""          # id de la última orden de Telegram aceptada
         self.config = config or Config()
         self.ai = ai_manager or AIManager()
         self.memoria = memoria or MemoriaManager()
@@ -256,6 +300,7 @@ class LuneBridge(QObject):
         self._transcriptor = None
         self._probador = None               # hilo de «Probar micrófono»
         self._llamada = None                # LlamadaWorker mientras el modo llamada está activo
+        self._oido_llamada = ""             # lo último transcrito en la llamada (la página lo envía)
         # En modo llamada, la respuesta final la habla el worker (bloqueando) y
         # luego vuelve a escuchar; por eso se engancha a `done`.
         self.done.connect(self._llamada_entregar)
@@ -280,13 +325,15 @@ class LuneBridge(QObject):
         self._aburrida_t = QTimer(self)
         self._aburrida_t.setSingleShot(True)
         self._aburrida_t.timeout.connect(self._aburrida)
+        self._aburrimiento_pausado = False  # modo juego: pausar_aburrimiento(True)
         self._rearmar_aburrimiento()
         # Servicios de escritorio (ui/escritorio.py): estado compartido de la
         # mascota, tabla de prioridades y registro de controladores. Recibe la
         # mascota flotante en _crear_mascota y se cierra al salir de la app.
         self.escritorio = ServiciosEscritorio(self.config, voice=self.voice, ai=self.ai,
                                               bridge=self, parent=self)
-        self.escritorio.iniciar()
+        if not diferir_servicios:
+            self.escritorio.iniciar()
         # Las herramientas de la mascota pueden llegar desde otro hilo (el Ejecutor
         # tras una aprobación): lo que toca la ventana va al hilo de Qt por señal.
         self._hilo_qt = threading.get_ident()
@@ -299,6 +346,8 @@ class LuneBridge(QObject):
         self._registrar_herramientas_mascota()
         self.escritorio.conectar_herramientas(self.tools)
         self.acciones = self._crear_acciones(opciones_acciones or {})
+        # Resultados de las órdenes desde Telegram: al chat y de vuelta al bot.
+        self._resultado_remoto.connect(self._on_resultado_remoto)
         # La voz avisa si falla (voz inexistente, sin red…) en vez de quedarse muda.
         self._voz_error.connect(self._on_voz_error)
         try:
@@ -541,7 +590,7 @@ class LuneBridge(QObject):
     @pyqtSlot(str, str)
     def enviar(self, texto: str, provider: str = "local"):
         self._provider_web = str(provider or "local")
-        if self._enviar(texto, provider, desde_mascota=False):
+        if self._enviar(texto, provider, desde_mascota=False, oido=self._tomar_lo_oido(texto)):
             return
         # La página ya pintó tu mensaje y espera `done`: que no se quede «pensando»
         # (p. ej. tras Detener el worker viejo sigue vivo hasta que su proveedor corta).
@@ -578,7 +627,17 @@ class LuneBridge(QObject):
         self.usuario_mascota.emit(texto)
         return self._enviar(texto, self._provider_web, desde_mascota=True)
 
-    def _enviar(self, texto: str, provider: str, desde_mascota: bool = False) -> bool:
+    def _tomar_lo_oido(self, texto: str) -> bool:
+        """¿`texto` es lo último que transcribió el modo llamada? (La página lo mete en el
+        chat y lo manda por `enviar`, como si lo hubieras escrito.) Cuenta una sola vez."""
+        oido, self._oido_llamada = self._oido_llamada, ""
+        return bool(oido) and str(texto or "").strip() == oido
+
+    def _enviar(self, texto: str, provider: str, desde_mascota: bool = False,
+                oido: bool = False) -> bool:
+        """`oido`: lo transcribió el modo llamada (puede ser ruido de fondo u otra
+        persona): lo que detecte detectar_llamadas pide permiso (ctx['llamada']); el
+        turno de IA va como siempre."""
         texto = (texto or "").strip()
         # Lo que llega de la mascota no se lleva los adjuntos pendientes de la ventana.
         pend = [] if desde_mascota else list(self._adjuntos_pend)
@@ -593,22 +652,19 @@ class LuneBridge(QObject):
             self.voice.cancelar()         # …y su voz, si aún sonaba
         except Exception:
             pass
+        self._guardar_turno("user", texto or "Analiza lo que te adjunto.", adjuntos=pend)
 
         # Con adjuntos, todo va al modelo (ni la memoria ni las herramientas los
-        # entienden). Sin adjuntos, primero se prueban memoria y herramientas.
+        # entienden). Sin adjuntos, primero se prueban herramientas y memoria.
         if not pend:
-            try:
-                resp_mem = self.memoria.procesar_mensaje_usuario(texto)
-            except Exception:
-                resp_mem = None
-            if resp_mem:
-                self.done.emit(resp_mem, "happy")
-                self._eco_mascota(resp_mem, fin=True, tipeado=True)
-                return True
-            # Lo pidió la persona con sus palabras («abre youtube», «lanza paint»): sin
-            # IA, pero por el Ejecutor como cualquier acción (Política, denegación,
-            # presupuesto y aprobación de lanzar_app; también con lo que transcribe el
-            # modo llamada). El resultado llega por _on_resultado_accion.
+            # Lo pidió la persona con sus palabras («abre youtube», «lanza paint»,
+            # «avísame en 10 minutos»): sin IA, pero por el Ejecutor como cualquier
+            # acción (Política, denegación, presupuesto y aprobación de lanzar_app;
+            # también con lo que transcribe el modo llamada). El resultado llega por
+            # _on_resultado_accion. Antes que la memoria (cortes 5/6): «recuérdame que a
+            # las 5 tengo cita» es una alarma; sin hora ni duración sigue siendo un recuerdo.
+            # Oído en la llamada (SB2): todo lo que no sea de lectura pide permiso
+            # («lo oí en la llamada»): la tele o alguien al lado no te pone alarmas.
             try:
                 llamadas = self.tools.detectar_llamadas(texto)
             except Exception:
@@ -616,9 +672,20 @@ class LuneBridge(QObject):
             if llamadas and self.acciones is not None:
                 modo = self._modo_acciones()
                 ctx = ctx_acciones(self.ai, provider_id, modo)
+                if oido:
+                    ctx["llamada"] = True
                 self._turno = {"origen": ORIGEN_USUARIO, "ctx": ctx, "mascota": bool(desde_mascota)}
                 self.done.emit("", "happy")
                 self.acciones.ejecutar(llamadas, ORIGEN_USUARIO, ctx)
+                return True
+            try:
+                resp_mem = self.memoria.procesar_mensaje_usuario(texto)
+            except Exception:
+                resp_mem = None
+            if resp_mem:
+                self.done.emit(resp_mem, "happy")
+                self._guardar_turno("assistant", resp_mem)
+                self._eco_mascota(resp_mem, fin=True, tipeado=True)
                 return True
 
         try:
@@ -636,6 +703,20 @@ class LuneBridge(QObject):
             self._adjuntos_pend = []
             self.adjuntos_cambio.emit("[]")
 
+        # Origen del turno (crítica d): con adjuntos, el prompt lleva texto de
+        # terceros → en esta respuesta solo herramientas de LECTURA.
+        origen = ORIGEN_NO_CONFIABLE if pend else ORIGEN_USUARIO
+        # Con la mascota fuera el modo es "mascota"/"vrm": también las suyas (dormir…).
+        modo = self._modo_acciones()
+        ctx = ctx_acciones(self.ai, provider_id, modo)
+        self._arrancar_ia(texto or "Analiza lo que te adjunto.", provider_id, contexto=contexto,
+                          imagenes=imagenes, origen=origen, modo=modo, ctx=ctx,
+                          mascota=bool(desde_mascota))
+        return True
+
+    def _arrancar_ia(self, mensaje: str, provider_id: str, *, contexto: str = "", imagenes=None,
+                     origen: str, modo: str, ctx: dict, mascota: bool = False, remoto: str = ""):
+        """Lanza el AIWorker de un turno (ventana, mascota u orden de Telegram)."""
         self.estado.emit("busy")
         self.acto.emit("thinking")
         self._mascota_estado("thinking")
@@ -650,18 +731,14 @@ class LuneBridge(QObject):
             pass
         self._gen += 1
         gen = self._gen
-        # Origen del turno (crítica d): con adjuntos, el prompt lleva texto de
-        # terceros → en esta respuesta solo herramientas de LECTURA.
-        origen = ORIGEN_NO_CONFIABLE if pend else ORIGEN_USUARIO
-        # Con la mascota fuera el modo es "mascota"/"vrm": también las suyas (dormir…).
-        modo = self._modo_acciones()
-        ctx = ctx_acciones(self.ai, provider_id, modo)
-        self._turno = {"origen": origen, "ctx": ctx, "mascota": bool(desde_mascota)}
+        self._turno = {"origen": origen, "ctx": ctx, "mascota": bool(mascota)}
+        if remoto:
+            self._turno["remoto"] = remoto          # id de la orden: la respuesta vuelve a Telegram
         self._worker = AIWorker(
-            self.ai, texto or "Analiza lo que te adjunto.", provider_id,
+            self.ai, mensaje, provider_id,
             extra_context=contexto,
             permitir_acciones=self.config.feature("acciones_ia", True),
-            imagenes=imagenes,
+            imagenes=imagenes or [],
             emociones=self.config.feature("emociones", True),
             origen=origen, ejecutor=getattr(self.acciones, "ejecutor", None),
             modo=modo, ctx=ctx,
@@ -672,10 +749,147 @@ class LuneBridge(QObject):
         self._worker.response_ready.connect(lambda r, g=gen: self._on_done(r, g))
         self._worker.error_occurred.connect(lambda m, g=gen: self._on_error(m, g))
         self._worker.start()
-        return True
+
+    # ── Órdenes desde Telegram (/pc) ─────────────────────────────────────────────
+    # NO son slots de la página (sin @pyqtSlot): solo las llama el TelegramBotWorker.
+    def _responder_telegram(self, oid: str, texto: str) -> bool:
+        """`texto` al chat de Telegram de la orden `oid` (por el stdin del bot)."""
+        fn = getattr(self._tg_worker, "responder_orden", None)
+        if not oid or not callable(fn):
+            return False
+        try:
+            return bool(fn(str(oid), str(texto or "")))
+        except Exception:
+            return False
+
+    def _avisar_detenida(self, ids) -> list:
+        """«Se detuvo…» a esas órdenes de Telegram, UNA vez por orden: se limpia su marca
+        (la del turno que se respondía y la de la última orden) para que ni detener() +
+        limpiar_chat, ni parar el bot, ni el cambio de interfaz la repitan."""
+        hechos = []
+        for oid in ids or ():
+            oid = str(oid or "")
+            if not oid or oid in hechos:
+                continue
+            self._responder_telegram(oid, AVISO_TG_DETENIDA)
+            hechos.append(oid)
+            if isinstance(self._turno, dict) and str(self._turno.get("remoto") or "") == oid:
+                self._turno.pop("remoto", None)
+            if self._ultima_orden_tg == oid:
+                self._ultima_orden_tg = ""
+        return hechos
+
+    def _pendientes_acciones(self) -> list:
+        try:
+            return self.acciones.pendientes() if self.acciones is not None else []
+        except Exception:
+            return []
+
+    def _avisar_ordenes_pendientes(self, ya_avisada: str = "") -> list:
+        """Conversación nueva (limpiar chat, abrir otra del historial) con una orden de
+        Telegram esperando tu permiso: la pregunta se cierra sin hacer nada, así que a
+        Telegram le llega «Se detuvo…» (si no, se quedaría esperando). `ya_avisada`:
+        la que detener() ya contestó. Devuelve los ids avisados."""
+        from ui.cambio_interfaz import ordenes_cortadas
+        ids = [i for i in ordenes_cortadas(None, False, self._pendientes_acciones(),
+                                           self._ultima_orden_tg)
+               if i and i != str(ya_avisada or "")]
+        return self._avisar_detenida(ids)
+
+    def _avisar_ordenes_en_curso(self) -> list:
+        """Se para el bot: «Se detuvo…» a la orden que se está respondiendo y a la que
+        espera tu permiso (después ya no hay por dónde contestar)."""
+        from ui.cambio_interfaz import ordenes_cortadas
+        vivo = self._worker is not None and self._worker.isRunning()
+        return self._avisar_detenida(ordenes_cortadas(self._turno, vivo, self._pendientes_acciones(),
+                                                      self._ultima_orden_tg))
+
+    def _remota_en_curso(self) -> bool:
+        """¿Lune está respondiendo o espera que apruebes una orden de Telegram anterior?"""
+        if self._worker is not None and self._worker.isRunning():
+            return True
+        try:
+            return any(p.get("remoto") for p in (self.acciones.pendientes() if self.acciones else []))
+        except Exception:
+            return False
+
+    def _orden_remota(self, oid: str, texto: str):
+        """
+        Orden de Telegram (/pc, `TelegramBotWorker.orden_recibida`, hilo de Qt).
+        Sale en el chat como «📱 Telegram: …». Primero se mira si es un comando
+        directo («abre youtube»): va al Ejecutor con origen 'remoto' SIN IA (sirve
+        con Ollama apagado). Si no, turno de IA con origen 'remoto' y el mismo
+        historial. TODO lo que se ejecute se aprueba en el PC (modal de la página
+        o diálogo junto a la mascota), nunca desde Telegram; la respuesta y cada
+        ✓/✕ (también tras aprobar, rechazar o caducar) vuelven al chat de Telegram.
+        """
+        oid, texto = str(oid or ""), str(texto or "").strip()
+        if not oid or not texto:
+            return
+        if not ordenes_activas(self.config):
+            self._responder_telegram(oid, AVISO_TG_DESACTIVADAS)
+            return
+        if self._remota_en_curso():
+            self._responder_telegram(oid, AVISO_TG_OCUPADA)
+            return
+        provider_id = _provider_id(self._provider_web)
+        modo = self._modo_acciones()
+        ctx = ctx_acciones(self.ai, provider_id, modo)
+        ctx["origen"] = ORIGEN_REMOTO               # todas marcadas «(pide permiso)» en el prompt
+        self._turno = {"origen": ORIGEN_REMOTO, "ctx": ctx, "mascota": False, "remoto": oid}
+        # Si la ventana se cierra con esta orden esperando tu permiso (cambio de modo),
+        # se le contesta «Se detuvo…» (ui/web_shell.py).
+        self._ultima_orden_tg = oid
+        self._eco_texto = ""
+        self._cancelar_plan()
+        try:
+            self.voice.cancelar()
+        except Exception:
+            pass
+        # La página lo pinta como mensaje de entrada (como los de la mascota).
+        self.usuario_mascota.emit(PREFIJO_TELEGRAM + texto)
+        self._guardar_turno("user", PREFIJO_TELEGRAM + texto, no_confiable=True)
+
+        try:
+            llamadas = self.tools.detectar_llamadas(texto)
+        except Exception:
+            llamadas = []
+        if llamadas and self.acciones is not None:
+            self.done.emit("", "happy")
+            self._ejecutar_remoto(llamadas, ctx, oid)
+            return
+
+        try:
+            contexto = self.memoria.obtener_contexto_para_prompt()
+        except Exception:
+            contexto = ""
+        self._arrancar_ia(PREFIJO_IA + texto, provider_id, contexto=contexto,
+                          origen=ORIGEN_REMOTO, modo=modo, ctx=ctx, remoto=oid)
+
+    def _ejecutar_remoto(self, llamadas, ctx, oid: str):
+        """Acciones de una orden de Telegram: origen 'remoto' (todo con aprobación en el
+        PC); cada resultado lleva el id de su orden, llegue cuando llegue."""
+        ej = getattr(self.acciones, "ejecutor", None)
+        if ej is None or not llamadas:
+            return
+        ej.ejecutar_llamadas(llamadas, ORIGEN_REMOTO, ctx,
+                             lambda res, o=oid: self._resultado_remoto.emit(res, o))
+
+    def _on_resultado_remoto(self, res, oid: str):
+        """✓/✕ de una acción de una orden de Telegram: en el chat y de vuelta al bot."""
+        self._on_resultado_accion(res)
+        mensaje = str(getattr(res, "mensaje", "") or "").strip()
+        if mensaje:
+            ok = bool(getattr(res, "ok", False))
+            self._responder_telegram(oid, f"{'✓' if ok else '✕'} {mensaje}")
 
     @pyqtSlot()
     def detener(self):
+        # Una orden de Telegram a medio responder: que allí no se quede esperando (una
+        # vez: _avisar_detenida quita la marca y limpiar chat después no la repite).
+        remoto = (self._turno or {}).get("remoto")
+        if remoto and self._worker is not None and self._worker.isRunning():
+            self._avisar_detenida([remoto])
         try:
             for p in self.ai.providers.values():
                 p.cancel_flag = True
@@ -772,6 +986,9 @@ class LuneBridge(QObject):
         except (TypeError, ValueError):
             intensidad = 0.8
         self.emocion.emit(mascota, intensidad)
+        # A chats/ como la nativa: con texto de terceros (adjuntos) o desde Telegram,
+        # marcada (al retomarla, el historial del modelo sigue «contaminado»).
+        self._guardar_turno("assistant", limpio, no_confiable=(origen != ORIGEN_USUARIO))
 
         try:
             self.memoria.procesar_respuesta_lune(limpio)
@@ -812,12 +1029,21 @@ class LuneBridge(QObject):
             self._programar_plan(plan)
         # Si el turno salió del chat de la mascota, la respuesta final en su burbuja.
         self._eco_mascota(hablable if hablable.strip() else limpio, fin=True)
+        # Si era una orden de Telegram, la respuesta (limpia) vuelve a su chat.
+        remoto = turno.get("remoto")
+        if remoto:
+            visible = hablable.strip() or marcadores.limpiar_para_mostrar(limpio).strip()
+            self._responder_telegram(remoto, visible or SIN_TEXTO)
 
         # Las acciones que pidió el modelo, AL TERMINAR la respuesta (tras pintarla):
         # lo permitido se hace ya; lo que pide permiso pregunta (modal de la página o
         # junto a la mascota) y su resultado llega luego por _on_resultado_accion.
+        # Las de una orden de Telegram piden TODAS permiso y su ✓/✕ vuelve también allí.
         if llamadas and self.acciones is not None:
-            self.acciones.ejecutar(llamadas, origen, ctx)
+            if remoto:
+                self._ejecutar_remoto(llamadas, ctx, remoto)
+            else:
+                self.acciones.ejecutar(llamadas, origen, ctx)
 
     def _on_error(self, msg: str, gen=None):
         if gen is not None and gen != self._gen:
@@ -826,6 +1052,9 @@ class LuneBridge(QObject):
         self.done.emit(f"Error: {msg}", "error")
         self._mascota_estado("nervous", 6000)
         self._eco_mascota(f"✕ {msg}", fin=True)
+        remoto = (self._turno or {}).get("remoto")
+        if remoto:                               # p. ej. Ollama apagado: que se entienda allí
+            self._responder_telegram(remoto, f"✕ No pude responder: {msg}")
 
     # ── Chat de la mascota: la respuesta también en su burbuja ───────────────────
     def _mascota_viva(self):
@@ -874,8 +1103,10 @@ class LuneBridge(QObject):
     def limpiar_chat(self):
         """«Limpiar chat»: historial del modelo a cero y conversación nueva para las
         acciones (presupuesto repuesto; las preguntas abiertas se cierran sin hacer nada)."""
+        avisada = ""
         if self._worker is not None and self._worker.isRunning():
-            self.detener()
+            avisada = str((self._turno or {}).get("remoto") or "")
+            self.detener()                           # la que se estaba respondiendo: «Se detuvo…»
         self._gen += 1
         self._cancelar_plan()
         try:
@@ -883,8 +1114,119 @@ class LuneBridge(QObject):
         except Exception:
             pass
         if self.acciones is not None:
+            self._avisar_ordenes_pendientes(avisada)
             self.acciones.nueva_conversacion()
         self._turno = {}
+        if self._chats is not None:
+            self._chats.nueva_sesion(proveedor=_provider_id(self._provider_web),
+                                     personaje=personajes.activo_nombre() or "")
+
+    # ── Conversación en chats/ (como la nativa) y cambio de modo en caliente ──────
+    @property
+    def chats(self):
+        """GestorConversaciones de la conversación en curso (None si aún no hay)."""
+        return self._chats
+
+    def _guardar_turno(self, rol: str, contenido: str, adjuntos=None, no_confiable: bool = False):
+        """Un mensaje a chats/ si la ventana lo pide (persistir_chats) y la memoria de
+        conversaciones está activada. `no_confiable`: turno con texto de terceros o de
+        Telegram (se guarda la marca; al retomarlo, el historial sigue marcado)."""
+        if not self._persistir_chats or not str(contenido or "").strip():
+            return
+        try:
+            if not self.config.feature("guardar_conversaciones", True):
+                return
+            g = self._gestor_chats()
+            if g.sesion_id is None:
+                g.nueva_sesion(proveedor=_provider_id(self._provider_web),
+                               personaje=personajes.activo_nombre() or "")
+            extra = {"no_confiable": True} if no_confiable else {}
+            g.agregar(rol, str(contenido), adjuntos=adjuntos, **extra)
+        except Exception as e:
+            try:
+                from nucleo.utils import log_error
+                log_error(f"[chats] no pude guardar el turno: {e}")
+            except Exception:
+                pass
+
+    def guardar_conversacion(self):
+        """Vuelca la conversación en curso (al cerrar la ventana o cambiar de modo)."""
+        if self._chats is not None:
+            try:
+                self._chats.guardar()
+            except Exception:
+                pass
+
+    def retomar_sesion(self, sesion: dict) -> bool:
+        """Cambio de modo: la conversación de la ventana anterior sigue aquí (misma
+        id en chats/) y el modelo la recuerda, con la marca de texto de terceros."""
+        from ui.cambio_interfaz import retomar_sesion as _retomar
+        g = self._gestor_chats()
+        if not _retomar(g, sesion):
+            return False
+        try:
+            self.ai.cargar_historial(g.como_historial())
+        except Exception:
+            pass
+        return True
+
+    def restaurar_ultima(self) -> bool:
+        """Al ARRANCAR la ventana web (no en un cambio de modo, que trae la suya): la
+        última conversación de chats/ sigue aquí, como en la nativa, si
+        chat.restaurar_ultima y features.guardar_conversaciones (y persistir_chats).
+        La página la pinta al cargar con estado_inicial(). True si la retomó."""
+        if not self._persistir_chats:
+            return False
+        try:
+            if not self.config.feature("guardar_conversaciones", True):
+                return False
+            if not self.config.get("chat", "restaurar_ultima", True):
+                return False
+            sesion = self._gestor_chats().ultima()
+        except Exception:
+            return False
+        if not isinstance(sesion, dict) or not sesion.get("mensajes"):
+            return False
+        return self.retomar_sesion(sesion)
+
+    @pyqtSlot(str, result=str)
+    def cambiar_interfaz(self, modo: str) -> str:
+        """Ajustes → «Modo de interfaz»: web (completa) · nativo (bajos recursos) ·
+        patata (terminal). Se aplica al instante: la ventana lo pasa a GestorInterfaz,
+        que hace el relevo en la siguiente vuelta del bucle (la página que llama
+        termina antes de destruirse). Sin gestor (web_shell suelta), se guarda y se
+        aplica al reiniciar."""
+        from ui.cambio_interfaz import normalizar_modo
+        m = normalizar_modo(modo)
+        if m is None:
+            return json.dumps({"ok": False, "error": "Modo de interfaz desconocido."})
+        try:
+            escuchan = self.receivers(self.interfaz_pedida) > 0
+        except Exception:
+            escuchan = False
+        if not escuchan:
+            self.config.set("interfaz", "modo", m)
+            return json.dumps({"ok": True, "reinicio": True})
+        self.interfaz_pedida.emit(m)
+        return json.dumps({"ok": True})
+
+    @pyqtSlot(result=str)
+    def estado_inicial(self) -> str:
+        """Lo que la página pinta al cargar: proveedor, voz, bot, mascota y la
+        conversación en curso (p. ej. la que siguió tras un cambio de modo)."""
+        mensajes = []
+        g = self._chats
+        for m in (g.mensajes_actuales() if g is not None else []):
+            texto = marcadores.limpiar_para_mostrar(limpiar_texto(str(m.get("contenido") or ""))).strip()
+            if texto:
+                mensajes.append({"role": "user" if m.get("rol") == "user" else "bot", "text": texto})
+        return json.dumps({
+            "proveedor": self._provider_web,
+            "voz": bool(getattr(self.voice, "_enabled", False)),
+            "telegram": bool(self._tg_worker is not None and self._tg_worker.isRunning()),
+            "mascota_fuera": self.mascota_visible(),
+            "mensajes": mensajes,
+        }, ensure_ascii=False)
 
     # ── Mascota de escritorio: recibe lo mismo que la mascota de la barra lateral ──
     def _mascota_estado(self, estado: str, ms: int = 0):
@@ -922,6 +1264,9 @@ class LuneBridge(QObject):
             "ollama_model": datos.ollama_model(),
             "telegram_token": _mascara(datos.telegram_token()),
             "telegram_token_configurado": bool(str(datos.telegram_token() or "").strip()),
+            # Tu ID de Telegram (no es una clave) y «Órdenes desde Telegram».
+            "telegram_admin_id": str(datos.telegram_admin_id() or "").strip(),
+            "telegram_ordenes_pc": bool(self.config.get("telegram", "ordenes_pc", False)),
             "nombre": p.get("nombre", "Lune"),
             "system_prompt": p.get("systemPrompt", ""),
             "voz": bool(getattr(self.voice, "_enabled", False)),
@@ -1014,6 +1359,15 @@ class LuneBridge(QObject):
                     nueva = _clave_nueva(c[clave])
                     if nueva is not None:
                         apis[clave] = nueva
+            aviso_tg = ""
+            if "telegram_admin_id" in c:
+                tid = str(c["telegram_admin_id"] or "").strip()
+                if not tid or (tid.isascii() and tid.isdigit() and len(tid) <= 20):
+                    if tid != str(apis.get("telegram_admin_id", "") or "").strip():
+                        apis["telegram_admin_id"] = tid
+                        aviso_tg = "Reinicia el bot de Telegram para aplicar el cambio."
+                else:
+                    aviso_tg = "Tu ID de Telegram son solo números (escríbele /id al bot); no lo cambié."
             mod = d.setdefault("modelos", {})
             if "openrouter_model" in c:
                 mod["openrouter_model"] = str(c["openrouter_model"]).strip() or "openrouter/auto"
@@ -1051,6 +1405,15 @@ class LuneBridge(QObject):
             self._compat_borrador = None             # ya está guardado: se prueba lo guardado
             if "memoria" in c: self.config.set_feature("guardar_conversaciones", bool(c["memoria"]))
             if "acciones_ia" in c: self.config.set_feature("acciones_ia", bool(c["acciones_ia"]))
+            # Órdenes desde Telegram: se aplican al (re)iniciar el bot (el token va al lanzarlo).
+            if "telegram_ordenes_pc" in c and bool(c["telegram_ordenes_pc"]) != bool(
+                    self.config.get("telegram", "ordenes_pc", False)):
+                self.config.set("telegram", "ordenes_pc", bool(c["telegram_ordenes_pc"]))
+                aviso_tg = aviso_tg or "Reinicia el bot de Telegram para aplicar el cambio."
+            # El de «reinicia» solo tiene sentido con el bot en marcha (va tras «guardada»).
+            bot_vivo = self._tg_worker is not None and self._tg_worker.isRunning()
+            if aviso_tg.startswith("Reinicia") and not bot_vivo:
+                aviso_tg = ""
             if "voz" in c and getattr(self.voice, "_enabled", False) != bool(c["voz"]):
                 self.voice._enabled = bool(c["voz"]); self.voz_estado.emit(bool(c["voz"]))
             # Mascota: animado · vrm (avatar 3D) · sprites (bajos recursos), y las
@@ -1106,9 +1469,9 @@ class LuneBridge(QObject):
                 self._mascota_recrear()
             if cambio_vrm:
                 self._vrm_modelo_cambio()
-            # Interfaz: web (completa) · nativo (bajos recursos). Aplica al reiniciar.
-            if c.get("interfaz_modo") in ("web", "nativo", "patata"):
-                self.config.set("interfaz", "modo", c["interfaz_modo"])
+            # Interfaz (web · nativo · patata): NO se guarda aquí. Se cambia al instante
+            # con cambiar_interfaz(), y quien la escribe en config es GestorInterfaz
+            # (si el cambio falla, vuelve la de antes).
             # Aburrimiento (minutos; 0 = nunca) y autoinicio con Windows
             if "aburrimiento_min" in c:
                 try:
@@ -1116,7 +1479,10 @@ class LuneBridge(QObject):
                 except (TypeError, ValueError):
                     pass
                 self._rearmar_aburrimiento()
-            if "autoinicio" in c:
+            # Solo si cambió de verdad (la página manda lo que tocaste, pero pudo
+            # cambiarse desde la bandeja con Ajustes abierto): ni reescribe el registro
+            # ni repite el aviso en cada guardado.
+            if "autoinicio" in c and bool(c["autoinicio"]) != self.autoinicio_get():
                 self.autoinicio_set(bool(c["autoinicio"]))
             # Audio: micrófono (se resuelve al grabar), salida (se aplica ya) y Whisper
             if "dispositivo_entrada" in c:
@@ -1151,6 +1517,8 @@ class LuneBridge(QObject):
             except Exception: pass
             self.proveedores_cambio.emit(self.proveedores())   # la API compatible pudo aparecer o irse
             self.aviso.emit("Configuración guardada")
+            if aviso_tg:
+                self.aviso.emit(aviso_tg)
             return json.dumps({"ok": True})
         except Exception as e:
             return json.dumps({"ok": False, "error": str(e)})
@@ -1410,6 +1778,9 @@ class LuneBridge(QObject):
     @pyqtSlot(result=str)
     def telegram_toggle(self) -> str:
         if self._tg_worker is not None and self._tg_worker.isRunning():
+            # Una orden a medio responder o esperando tu permiso: «Se detuvo…» ANTES de
+            # parar el bot (después ya no hay por dónde contestar). Una vez por orden.
+            self._avisar_ordenes_en_curso()
             try:
                 self._tg_worker.stop(); self._tg_worker.requestInterruption(); self._tg_worker.wait(3000)
             except Exception:
@@ -1425,9 +1796,12 @@ class LuneBridge(QObject):
         if not TelegramBotWorker.BOT_DIR.exists():
             self.telegram_estado.emit(False, "No encontré la carpeta del bot")
             return json.dumps({"running": False, "error": "sin carpeta"})
-        self._tg_worker = TelegramBotWorker()
+        # Órdenes desde Telegram: el canal solo se abre si está activado y hay tu ID.
+        self._tg_worker = TelegramBotWorker(ordenes=ordenes_activas(self.config))
         self._tg_worker.log_signal.connect(lambda l: self.telegram_estado.emit(True, l))
         self._tg_worker.stopped.connect(lambda: self.telegram_estado.emit(False, "Bot detenido"))
+        # Llega del hilo del worker: en cola, al hilo de Qt (nunca es un slot de la página).
+        self._tg_worker.orden_recibida.connect(self._orden_remota, Qt.ConnectionType.QueuedConnection)
         self._tg_worker.start()
         self.telegram_estado.emit(True, "Iniciando el bot…")
         return json.dumps({"running": True})
@@ -1438,12 +1812,13 @@ class LuneBridge(QObject):
         Su señal `visibilidad` es la que le dice a la UI que Lune está fuera (y
         entonces la barra lateral deja de dibujarla, para no verla doble)."""
         render = str(self.config.get("avatar", "render", "animado") or "animado")
+        # Sin icono propio en la bandeja: la bandeja es una sola (corte 4, ui/bandeja.py).
         if render == "sprites":
             from ui.avatar_overlay import AvatarOverlay
-            ov = AvatarOverlay(self.config)
+            ov = crear_mascota(AvatarOverlay, self.config)
         else:
             from ui.companion import CompanionFlotante
-            ov = CompanionFlotante(self.config, ai_manager=self.ai, render=render)
+            ov = crear_mascota(CompanionFlotante, self.config, ai_manager=self.ai, render=render)
         try:
             ov.visibilidad.connect(self.mascota_estado)
         except Exception:
@@ -1499,7 +1874,12 @@ class LuneBridge(QObject):
 
     @pyqtSlot(result=bool)
     def comentar_pantalla(self) -> bool:
-        """Abre la mascota (si hace falta) y le pide comentar la pantalla ahora."""
+        """Abre la mascota (si hace falta) y le pide comentar la pantalla ahora. En
+        modo juego no: ni captura ni comentario (anticheat y rendimiento), y la
+        mascota que escondió el juego no se saca para eso."""
+        if self._en_modo_juego():
+            self.aviso.emit(AVISO_JUEGO_PANTALLA)
+            return False
         self._mascota()
         if not self._overlay.isVisible():
             self._overlay.show(); self._overlay.raise_()
@@ -1763,15 +2143,34 @@ class LuneBridge(QObject):
 
     @pyqtSlot(str, result=str)
     def historial_cargar(self, sesion_id: str) -> str:
+        """La página la pinta en el chat y se sigue en ella: los turnos nuevos van a
+        esa conversación y el modelo la recuerda (con su marca de terceros), como
+        «abrir conversación» en la nativa."""
         try:
-            s = self._gestor_chats().cargar(sesion_id) or {}
+            g = self._gestor_chats()
+            s = g.cargar(sesion_id) or {}
             msgs = []
             for msg in s.get("mensajes", []):
                 rol = msg.get("rol") or msg.get("role")
+                texto = str(msg.get("contenido") or msg.get("content") or "")
                 msgs.append({
                     "role": "user" if rol == "user" else "bot",
-                    "text": msg.get("contenido") or msg.get("content") or "",
+                    "text": marcadores.limpiar_para_mostrar(texto),
                 })
+            if s.get("mensajes"):
+                avisada = ""
+                if self._worker is not None and self._worker.isRunning():
+                    avisada = str((self._turno or {}).get("remoto") or "")
+                    self.detener()                   # la respuesta en curso era de la otra
+                self._gen += 1
+                try:
+                    self.ai.cargar_historial(g.como_historial())
+                except Exception:
+                    pass
+                if self.acciones is not None:
+                    self._avisar_ordenes_pendientes(avisada)
+                    self.acciones.nueva_conversacion()
+                self._turno = {}
             return json.dumps(msgs, ensure_ascii=False)
         except Exception:
             return json.dumps([])
@@ -2017,7 +2416,10 @@ class LuneBridge(QObject):
         return True
 
     def _llamada_transcrito(self, texto: str):
-        # El JS lo mete como mensaje del usuario y lo envía por el chat normal.
+        # El JS lo mete como mensaje del usuario y lo envía por el chat normal
+        # (`enviar`). Se apunta para que ese envío cuente como oído en la llamada:
+        # sus acciones directas piden permiso (_enviar, SB2).
+        self._oido_llamada = str(texto or "").strip()
         self.usuario_dijo.emit(texto)
 
     # Estado de la llamada → JS y, si la mascota de escritorio está abierta, a ella
@@ -2066,11 +2468,17 @@ class LuneBridge(QObject):
     def autoinicio_set(self, quiere: bool) -> bool:
         try:
             from servicios import autoinicio
-            estado = autoinicio.establecer(bool(quiere))
-            self.aviso.emit("Lune arrancará con Windows" if estado else "Autoinicio desactivado")
-            return estado
+            estado = bool(autoinicio.establecer(bool(quiere)))
         except Exception:
             return False
+        # sistema.autoinicio sigue al estado REAL (registro y Administrador de tareas),
+        # como la bandeja y el panel nativo.
+        try:
+            self.config.set("sistema", "autoinicio", estado)
+        except Exception:
+            pass
+        self.aviso.emit("Lune arrancará con Windows" if estado else "Autoinicio desactivado")
+        return estado
 
     @pyqtSlot(result=bool)
     def abrir_instalador(self) -> bool:
@@ -2087,14 +2495,34 @@ class LuneBridge(QObject):
             self.aviso.emit(f"No pude abrir el instalador: {e}"); return False
 
     def _rearmar_aburrimiento(self):
-        """(Re)arma el temporizador con los minutos de config; 0 = apagado."""
+        """(Re)arma el temporizador con los minutos de config; 0 = apagado. En pausa
+        (modo juego) no se arma: pausar_aburrimiento(False) lo rearma al acabar."""
         try:
             minutos = int(self.config.get("chat", "aburrimiento_min", 10) or 0)
         except (TypeError, ValueError):
             minutos = 0
         self._aburrida_t.stop()
-        if minutos > 0:
+        if minutos > 0 and not getattr(self, "_aburrimiento_pausado", False):
             self._aburrida_t.start(minutos * 60_000)
+
+    def pausar_aburrimiento(self, on: bool) -> None:
+        """Modo juego (corte 4, AnfitrionWeb.set_aburrimiento): con `on` Lune no se
+        aburre ni te habla por aburrimiento; al quitarlo, la cuenta empieza de cero."""
+        on = bool(on)
+        if on == bool(getattr(self, "_aburrimiento_pausado", False)):
+            return
+        self._aburrimiento_pausado = on
+        if on:
+            self._aburrida_t.stop()
+        else:
+            self._rearmar_aburrimiento()
+
+    def _en_modo_juego(self) -> bool:
+        """¿Hay partida? (BusEstado.juego de los servicios de escritorio)."""
+        try:
+            return bool(self.escritorio.estado.actual().juego)
+        except Exception:
+            return False
 
     # Frases con la personalidad de Lune: aburrimiento, una pregunta o un empujón.
     _ABURRIDA = (
@@ -2109,6 +2537,8 @@ class LuneBridge(QObject):
 
     def _aburrida(self):
         """Lune se aburre: gesto + una línea (sin usar el modelo, sin tocar memoria)."""
+        if getattr(self, "_aburrimiento_pausado", False) or self._en_modo_juego():
+            return                                    # modo juego: nada de hablarte
         if self._worker is not None and self._worker.isRunning():
             self._rearmar_aburrimiento(); return       # está respondiendo: no interrumpir
         import random

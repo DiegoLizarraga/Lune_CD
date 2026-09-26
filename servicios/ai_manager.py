@@ -30,7 +30,9 @@ arranque en frío) ni un 500 (p. ej. sin memoria para el modelo: repetirlo no lo
 arregla); sí 502/503/504.
 
 HISTORIAL CON ORIGEN (taint)
-Un turno 'no_confiable' (texto de terceros: adjuntos, Telegram, notas…) deja su
+Un turno 'no_confiable' (texto de terceros: adjuntos, Telegram, notas…) o
+'remoto' (una orden desde Telegram con /pc: cualquier origen que no sea
+'usuario', ver `es_no_confiable`) deja su
 prompt y su respuesta MARCADOS en el historial (`MARCA_NO_CONFIABLE`, que nunca
 se envía al proveedor), y los `<|CALL|>` de esa respuesta, neutralizados.
 `contexto_contaminado(proveedor)` dice si la ventana enviada en el último turno

@@ -112,7 +112,7 @@ const CSS = `
   background:transparent; color:var(--cyan-500);
   box-shadow:inset 0 0 0 1.5px var(--cyan-500);
 }
-.lune-btn.is-ghost:hover{ background:rgba(0,229,255,.10); color:var(--cyan-300); }
+.lune-btn.is-ghost:hover{ background:rgb(var(--cyan-500-rgb, 0 229 255) / .10); color:var(--cyan-300); }
 `;
 if (typeof document !== 'undefined' && !document.getElementById('lune-button-css')) {
   const s = document.createElement('style');
@@ -413,7 +413,7 @@ const CSS = `
   width:9px; height:9px; flex:none; border-radius:50%;
   background:var(--gray-400); position:relative;
 }
-.lune-status.s-live .led{ background:var(--cyan-500); box-shadow:0 0 0 0 rgba(0,229,255,.6); animation:lune-pulse 1.8s var(--ease-out) infinite; }
+.lune-status.s-live .led{ background:var(--cyan-500); box-shadow:0 0 0 0 rgb(var(--cyan-500-rgb, 0 229 255) / .6); animation:lune-pulse 1.8s var(--ease-out) infinite; }
 .lune-status.s-busy .led{ background:var(--yellow-500); }
 .lune-status.s-error .led{ background:var(--red-500); }
 .lune-status.s-off .led{ background:var(--gray-500); }
@@ -421,9 +421,9 @@ const CSS = `
 .lune-status.s-busy{ color:var(--yellow-500); border-color:var(--yellow-600); }
 .lune-status.s-error{ color:var(--red-500); border-color:var(--red-600); }
 @keyframes lune-pulse{
-  0%{ box-shadow:0 0 0 0 rgba(0,229,255,.55); }
-  70%{ box-shadow:0 0 0 7px rgba(0,229,255,0); }
-  100%{ box-shadow:0 0 0 0 rgba(0,229,255,0); }
+  0%{ box-shadow:0 0 0 0 rgb(var(--cyan-500-rgb, 0 229 255) / .55); }
+  70%{ box-shadow:0 0 0 7px rgb(var(--cyan-500-rgb, 0 229 255) / 0); }
+  100%{ box-shadow:0 0 0 0 rgb(var(--cyan-500-rgb, 0 229 255) / 0); }
 }
 @media (prefers-reduced-motion: reduce){ .lune-status .led{ animation:none !important; } }
 `;
@@ -629,12 +629,12 @@ const CSS = `
 .lune-provtab-led{ margin-left:auto; width:8px; height:8px; flex:none; border-radius:50%; background:var(--gray-600); }
 
 /* active — cyan (local) */
-.lune-provtab.is-active.accent-cyan{ background:rgba(0,229,255,.10); border-color:var(--cyan-700); color:var(--cyan-300); }
+.lune-provtab.is-active.accent-cyan{ background:rgb(var(--cyan-500-rgb, 0 229 255) / .10); border-color:var(--cyan-700); color:var(--cyan-300); }
 .lune-provtab.is-active.accent-cyan .lune-provtab-ic{ background:var(--cyan-500); color:var(--ink-950); border-color:var(--cyan-400); }
 .lune-provtab.is-active.accent-cyan .lune-provtab-name{ color:var(--cyan-300); }
 .lune-provtab.is-active.accent-cyan .lune-provtab-led{ background:var(--cyan-500); box-shadow:var(--glow-cyan-sm); }
 /* active — blue (cloud) */
-.lune-provtab.is-active.accent-blue{ background:rgba(30,85,255,.12); border-color:var(--blue-600); color:var(--blue-300); }
+.lune-provtab.is-active.accent-blue{ background:rgb(var(--blue-500-rgb, 30 85 255) / .12); border-color:var(--blue-600); color:var(--blue-300); }
 .lune-provtab.is-active.accent-blue .lune-provtab-ic{ background:var(--blue-500); color:var(--white); border-color:var(--blue-400); }
 .lune-provtab.is-active.accent-blue .lune-provtab-name{ color:var(--blue-300); }
 .lune-provtab.is-active.accent-blue .lune-provtab-led{ background:var(--blue-400); }

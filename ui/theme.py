@@ -83,6 +83,11 @@ COLORS = {
 }
 
 
+# Copia de los colores de siempre: aplicar_tema parte de aquí cada vez (así
+# volver al cian, o de «teñir fondos» a no teñirlos, restaura lo que había).
+_COLORS_BASE = dict(COLORS)
+
+
 def _get_system_prompt():
     # Construye el prompt rico de roleplay del personaje activo.
     from nucleo import personajes
@@ -113,3 +118,32 @@ PROVIDER_META = {
         "system": _get_system_prompt,
     },
 }
+# Claves de COLORS de las que sale el color de cada proveedor (color, dark).
+_PROVEEDOR_COLORES = {"openrouter": ("blue_soft", "blue_dark"), "ollama": ("cyan", "cyan_dark")}
+
+
+def aplicar_tema(config) -> None:
+    """Aplica el tema de color (sección `tema` de config.json, ver nucleo/tema.py)
+    a COLORS y a los colores de PROVIDER_META, EN SITIO (los módulos que ya
+    importaron COLORS ven el cambio).
+
+    Solo cambian las claves de acento (cian/azul; el amarillo con `tenir_pop` y
+    los fondos con `tenir_fondo`). Los widgets ya construidos no se repintan: por
+    eso main.py lo llama antes de `_init_ui` y la interfaz nativa cambia de color
+    al reiniciar. `config`: nucleo.config.Config, el dict de config o la sección.
+    Nunca lanza: con un tema roto se queda la paleta de siempre.
+    """
+    try:
+        from nucleo import tema
+        nuevos = tema.colores_nativos(tema.paleta(tema.normalizar(config)))
+    except Exception:
+        import logging
+        logging.getLogger("lune.tema").exception("aplicar_tema: tema no válido, se queda el de siempre")
+        nuevos = {}
+    COLORS.update(_COLORS_BASE)
+    COLORS.update({k: v for k, v in nuevos.items() if k in COLORS})
+    for pid, (clave, oscuro) in _PROVEEDOR_COLORES.items():
+        meta = PROVIDER_META.get(pid)
+        if meta is not None:
+            meta["color"] = COLORS[clave]
+            meta["dark"] = COLORS[oscuro]

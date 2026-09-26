@@ -1,0 +1,86 @@
+/* ============================================================
+   ui_web/css/grande.css — pantalla grande y salvapantallas en las
+   dos páginas de la mascota (clases que pone ui_web/lune_pantalla.js).
+
+   body.lune-grande       la ventana ocupa el monitor (Qt la mueve):
+                          sin márgenes, la burbuja flota arriba y, en la
+                          animada, el #stage crece hasta el alto de la
+                          pantalla (máx. 1280 px: el WebM de 720×1280 se
+                          reduce, no se estira)
+   body.lune-salva        salvapantallas (Lune duerme dentro)
+   body.lune-salva-fondo  + escritorio oscurecido detrás de ella
+   .lune-reloj            la hora (HH:MM y el día)
+
+   Canales del tema siempre con respaldo: rgb(var(--x-rgb, r g b) / a).
+   Los selectores llevan `body` delante: ganan al <style> de la página.
+   ============================================================ */
+
+body { transition: background-color .6s ease; }
+
+body.lune-grande #wrap {
+  padding: 0;
+  gap: 0;
+}
+
+/* La burbuja no empuja al avatar: flota arriba, centrada */
+body.lune-grande #bubble {
+  position: absolute;
+  top: 4vh;
+  left: 50%;
+  z-index: 20;
+  max-width: min(520px, 80vw);
+  font-size: 15px;
+  transform: translate(-50%, 6px);
+}
+body.lune-grande #bubble.on { transform: translate(-50%, 0); }
+
+/* Animada (<body class="lune-animada">): el stage al alto de la pantalla,
+   con la proporción del vídeo */
+body.lune-animada.lune-grande #stage {
+  height: min(100vh, 1280px);
+  width: min(100vw, calc(min(100vh, 1280px) * 0.5625));
+  border-radius: 0;
+  border-width: 0;
+}
+
+/* VRM: el canvas ya ocupa el #stage (flex: 1) */
+body.lune-grande #zzz { top: 12%; right: 30%; transform: scale(1.8); transform-origin: top right; }
+
+/* ── Salvapantallas ─────────────────────────────────────────── */
+body.lune-salva-fondo {
+  background: rgb(var(--ink-950-rgb, 5 7 15) / .94);
+}
+
+body .lune-reloj {
+  position: fixed;
+  left: 50%;
+  top: 7vh;
+  z-index: 5;
+  transform: translateX(-50%);
+  text-align: center;
+  color: var(--paper, #EAF1FF);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .6s ease;
+  text-shadow: 0 0 24px rgb(var(--cyan-500-rgb, 0 229 255) / .45);
+}
+body .lune-reloj.on { opacity: .92; }
+
+body .lune-reloj .hora {
+  display: block;
+  font: 700 clamp(48px, 11vw, 168px)/1 var(--font-display, var(--font-mono, monospace));
+  letter-spacing: .04em;
+}
+
+body .lune-reloj .dia {
+  display: block;
+  margin-top: .6em;
+  font: 600 clamp(11px, 1.4vw, 20px)/1.2 var(--font-mono, monospace);
+  letter-spacing: .3em;
+  text-transform: uppercase;
+  color: rgb(var(--cyan-400-rgb, 54 236 255) / .8);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body, body .lune-reloj { transition: none; }
+}

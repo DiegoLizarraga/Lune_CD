@@ -44,7 +44,7 @@ const CSS = `
   background:transparent; color:var(--cyan-500);
   box-shadow:inset 0 0 0 1.5px var(--cyan-500);
 }
-.lune-btn.is-ghost:hover{ background:rgba(0,229,255,.10); color:var(--cyan-300); }
+.lune-btn.is-ghost:hover{ background:rgb(var(--cyan-500-rgb, 0 229 255) / .10); color:var(--cyan-300); }
 `;
 if (typeof document !== 'undefined' && !document.getElementById('lune-button-css')) {
   const s = document.createElement('style'); s.id = 'lune-button-css'; s.textContent = CSS;

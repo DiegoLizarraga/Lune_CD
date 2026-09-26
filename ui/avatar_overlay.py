@@ -46,11 +46,33 @@ Movimiento (corte 3, ui/sprites_fx.py):
   cara dormida (lune_sleeping.png o la más cercana), oscurecida y respirando lento.
 - Frases de la mascota (lune_core/frases_mascota.py) en la burbuja Qt: arrastre,
   soltar, mareo, dormir, despertar y aparecer, sin pisar una respuesta de la IA.
+
+Corte 4 (el mismo contrato que ui/companion.py): `bandeja=False` y
+`quitar_bandeja()`; clic derecho al soltar → `menu_pedido('principal', QPoint)`;
+`ancla_menu(cb)` (por geometría: los sprites no tienen luneCabeza);
+`set_menu_abierto(on)` (sin arrastre ni sueño); `aplicar_plan_juego(plan|None)`
+(ocultar, o sin «siempre encima», y sin física ni respiración); `aplicar_tema`
+(tiñe el borde de la burbuja); `set_encima`, `set_fps_max` (se guarda: los
+sprites no tienen bucle de render), `set_comentarios_auto` (no comenta la
+pantalla: no hace nada), `llevar_a_esquina`, `comentarios_auto`, `click_through`.
+
+Cortes 5 y 6 (lo que aplica del contrato de ui/companion.py):
+- `bailar(on, opciones)` / `pulso(bpm, fase, energia)`: baile con la música
+  (ui/sprites_baile.BaileSpriteQt): giro de ±4° y saltitos de pocos píxeles al
+  pulso, cara feliz, sin respiración mientras baila; el arrastre lo corta y al
+  soltarla vuelve. El lienzo tiene margen para los saltitos (LIENZO_DY_PX).
+- `mostrar_alarma(texto, retraso_ms)` / `ocultar_alarma()`: burbuja roja
+  (#FF4826) a los 3 s, escrita a 35 c/s; mientras suena, el clic no reacciona y
+  ni las frases ni el chat la tapan.
+- `soporta_grande = False`: la pantalla grande y el salvapantallas de los sprites
+  son ui/ventana_reloj.VentanaReloj (decisión D2).
 """
 from __future__ import annotations
 
 import dataclasses
+import json
 import os
+import re
 import sys
 import time
 
@@ -64,6 +86,7 @@ from lune_core.frases_mascota import frases_para
 from nucleo.sueno import ReglaSueno
 from ui.chat_mascota import BurbujaQt, ChatMascota, DesambiguadorClic, ms_lectura
 from ui.lune_face import LuneFaceWidget, estado_desde_emocion
+from ui.sprites_baile import DY_MAX as BAILE_DY_MAX, BaileSpriteQt
 from ui.sprites_fx import (
     CARA_SPRITE, PIVOTE, TOPE_GRADOS, FisicaSpriteQt, RespiracionSpriteQt, SpriteRotado,
     margen_lienzo,
@@ -77,6 +100,13 @@ UMBRAL_FONDO = 45
 CAJA_SPRITE = (190, 250)
 GIRO_MAX = TOPE_GRADOS * 1.25
 RESP_PX = 2
+LIENZO_DY_PX = max(RESP_PX, BAILE_DY_MAX)   # hueco vertical del lienzo: respiración y saltitos del baile
+
+# Alarma (corte 5): burbuja roja como la de Mate-Engine (AvatarBigScreenTimer.cs).
+COLOR_ALARMA = "#FF4826"
+ALARMA_CPS = 35                  # caracteres por segundo al escribirla
+ALARMA_ANCHO_MAX = 600
+ALARMA_RETRASO_MS = 3000
 
 MS_FRASE = 3500                  # lo que dura una frase de la mascota en la burbuja
 MS_MAREO = 2500                  # cara mareada
@@ -88,6 +118,38 @@ ATENUAR_DORMIDA = 0.25           # dormida, el sprite un poco más oscuro
 MIN_VISIBLE_PX = 60              # al restaurar: trozo de la figura que tiene que verse
 # Estados que son una ACTIVIDAD en curso (una emoción vieja cuenta como reposo).
 ESTADOS_ACTIVIDAD = frozenset({"thinking", "typing", "working", "talking", "listening"})
+ALTO_CABEZA = 0.35               # ancla del menú radial: la cabeza, al 35 % de la figura
+FPS_MIN, FPS_MAX = 15, 144
+_RE_HEX = re.compile(r"#[0-9a-fA-F]{6}")
+
+
+def _acento_de(css_json):
+    """--cyan-500 del tema (nucleo/tema.css_json) o None (cian de serie). Lanza
+    ValueError si no es un JSON de tema."""
+    if css_json is None:
+        return None
+    datos = css_json
+    if isinstance(css_json, (str, bytes)):
+        try:
+            datos = json.loads(css_json)
+        except ValueError as e:
+            raise ValueError(f"tema no es JSON: {e}") from None
+    if datos is None:
+        return None
+    if not isinstance(datos, dict):
+        raise ValueError("el tema tiene que ser un objeto o null")
+    v = datos.get("--cyan-500")
+    return v if isinstance(v, str) and _RE_HEX.fullmatch(v) else None
+
+
+def _ventana_nativa() -> bool:
+    """¿Las ventanas de Qt son HWND de verdad? (no con QT_QPA_PLATFORM=offscreen)."""
+    if sys.platform != "win32":
+        return False
+    try:
+        return QApplication.platformName() == "windows"
+    except Exception:
+        return False
 
 
 def _boton_izquierdo():
@@ -103,14 +165,29 @@ class AvatarOverlay(QMainWindow):
     """Mascota flotante de sprites. `config` persiste su posición y el modo fantasma."""
 
     visibilidad = pyqtSignal(bool)       # se muestra / se oculta o cierra
+    menu_pedido = pyqtSignal(str, object)  # ('principal'|'secundario', QPoint global): menú radial
 
     UMBRAL_ARRASTRE = 6                  # px: menos que esto es un CLIC, no arrastre
 
-    def __init__(self, config=None, parent=None):
+    def __init__(self, config=None, parent=None, bandeja: bool = True):
         super().__init__(parent)
         self.config = config
         self.cerrado = False
         self.render = "sprites"
+        # Corte 4: menú radial, modo juego, orden Z y tema.
+        self.tray = None
+        self.act_fantasma = None
+        self._menu_bandeja = None
+        self._menu_abierto = False
+        self._der_pulsado = False
+        self._plan_juego = None
+        self._oculta_por_juego = False
+        self._juego_mostrada_a_mano = False
+        self._mostrando_por_juego = False
+        self._fisica_previa = True       # set_habilitado_fisica de antes de la partida
+        self._encima = bool(config.get("avatar", "siempre_encima", True)) if config else True
+        self._fps_max = self._fps_de_config()
+        self._acento_tema = None         # borde de la burbuja (--cyan-500 del tema)
         # Chat con la mascota: on_chat(texto) -> bool lo pone quien lleva la app.
         self.on_chat = None
         self.proveedor_chat = None
@@ -145,6 +222,13 @@ class AvatarOverlay(QMainWindow):
         self._sr = None                  # SpriteRotado del sprite actual (None: vídeo/sin imagen)
         self._img_compuesta = None       # último fotograma puesto (evita repintar lo mismo)
         self._region_sprite = None       # su región de clic (coordenadas del fotograma)
+        # Cortes 5 y 6: baile y alarma.
+        self._bailando = False           # ControlBaile pidió bailar (aunque ahora esté oculta)
+        self._baile_opciones = {}
+        self._baile_cuadro = (0.0, 0)    # (grados, dy) del último cuadro del baile
+        self._alarma_texto = None        # texto de la alarma que suena (None: ninguna)
+        self._alarma_mostrada = ""       # lo ya escrito en la burbuja
+        self._estilo_rojo = False        # la burbuja lleva ahora el estilo de alarma
 
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
@@ -152,6 +236,10 @@ class AvatarOverlay(QMainWindow):
             | Qt.WindowType.Tool                 # fuera de la barra de tareas
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        # Al volver tras el modo juego (o al sacarla) no le roba el foco al juego.
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
+        # Clic derecho = menú radial (al soltar), sin menú contextual de Qt.
+        self.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
 
         central = QWidget()
         central.setStyleSheet("background:transparent;")
@@ -168,7 +256,7 @@ class AvatarOverlay(QMainWindow):
         # Margen para girar y respirar sin salirse (crítica c.8): la cara y la
         # ventana crecen una vez; el sprite queda centrado igual que antes.
         mx, my = margen_lienzo(CAJA_SPRITE[0], CAJA_SPRITE[1], GIRO_MAX, PIVOTE)
-        self._margen = (mx, my + RESP_PX)
+        self._margen = (mx, my + LIENZO_DY_PX)
         self.cara.setFixedSize(self.cara.minimumWidth() + 2 * self._margen[0],
                                self.cara.minimumHeight() + 2 * self._margen[1])
         self.resize(210 + 2 * self._margen[0], 280 + 2 * self._margen[1])
@@ -187,6 +275,16 @@ class AvatarOverlay(QMainWindow):
         self._fx.mareo.connect(self._on_mareo)
         self._resp = RespiracionSpriteQt(self)
         self._resp.dy.connect(self._on_respiracion)
+        # Baile (corte 6): cuadros (grados, dy) a 30 Hz solo mientras baila.
+        self._baile = BaileSpriteQt(self)
+        self._baile.cuadro.connect(self._on_cuadro_baile)
+        # Alarma (corte 5): la burbuja roja sale a los retraso_ms y se escribe a 35 c/s.
+        self._t_alarma = QTimer(self)
+        self._t_alarma.setSingleShot(True)
+        self._t_alarma.timeout.connect(self._empezar_alarma)
+        self._t_tipeo = QTimer(self)
+        self._t_tipeo.setInterval(max(1, round(1000 / ALARMA_CPS)))
+        self._t_tipeo.timeout.connect(self._tipear_alarma)
 
         self._timer_sueno = QTimer(self)
         self._timer_sueno.setSingleShot(True)
@@ -200,7 +298,8 @@ class AvatarOverlay(QMainWindow):
 
         self._restaurar_posicion()
         self._fx.vigilar(self)                   # tras colocarla: sin balanceo de arranque
-        self._construir_bandeja()
+        if bandeja:
+            self._construir_bandeja()
 
         self._arrastrando_desde = None
         self._click_through = False
@@ -272,6 +371,9 @@ class AvatarOverlay(QMainWindow):
         if fin is not None and ahora >= fin:
             estado, fin = "normal", None
             self._base = (estado, None)
+        if self._bailando and estado == "normal":
+            self.cara.set_state("happy")                 # bailando: cara feliz
+            return
         if soltar and estado == "normal":
             self.cara.set_state(CARA_SPRITE["soltar"], auto_revert_ms=MS_SOLTAR)
             return
@@ -410,20 +512,30 @@ class AvatarOverlay(QMainWindow):
         pm = getattr(self.cara, "_pixmap_actual", None)
         if pm is not None and not pm.isNull() and not self.cara.image_label.isHidden():
             try:
-                self._sr = SpriteRotado(pm.toImage())
+                self._sr = SpriteRotado(pm.toImage(), resp_px=LIENZO_DY_PX)
             except Exception:
                 self._sr = None
         self._actualizar_fisica()
         self._componer()
 
+    def _pose(self):
+        """(grados, dy) del fotograma: el balanceo más el baile mientras baila (y
+        no la arrastran; arrastrándola manda la física), o balanceo y respiración."""
+        baile = getattr(self, "_baile", None)
+        if baile is not None and baile.activo and not self._arrastrando:
+            g, dy = self._baile_cuadro
+            return self._angulo + g, dy
+        return self._angulo, self._dy
+
     def _componer(self):
-        """Pone el fotograma (ángulo, respiración, dormida) y su máscara."""
+        """Pone el fotograma (ángulo, respiración o baile, dormida) y su máscara."""
         sr = self._sr
         if sr is None:
             self._actualizar_mascara()
             return
+        angulo, dy = self._pose()
         try:
-            img, region = sr.componer(self._angulo, self._dy, False,
+            img, region = sr.componer(angulo, dy, False,
                                       ATENUAR_DORMIDA if self._durmiendo else 0.0)
         except Exception:
             self._sr = None
@@ -459,13 +571,14 @@ class AvatarOverlay(QMainWindow):
         """Modo juego (o ajuste): False = quieta y recta, sin balanceo ni respiración."""
         self._fisica_permitida = bool(on)
         self._actualizar_fisica()
-        if self._fisica_permitida and self.isVisible() and not self.cerrado:
+        if self._fisica_permitida and self.isVisible() and not self.cerrado and not self._bailando:
             self._resp.iniciar()
         elif not self._fisica_permitida:
             self._resp.detener()
 
     # ── Física: arrastre, caras por velocidad y mareo ──────────────────────────
     def _on_movimiento(self, on: bool):
+        self._baile.set_arrastre(on)                 # arrastrarla corta el baile; al soltar vuelve
         if on:
             self._arrastrando = True
             self._despertar(usuario=True)
@@ -504,10 +617,40 @@ class AvatarOverlay(QMainWindow):
     def _burbuja_qt(self) -> BurbujaQt:
         if self._burbuja is None:
             self._burbuja = BurbujaQt(self)
+            if self._acento_tema:
+                self._estilo_burbuja()
         return self._burbuja
 
+    def _estilo_burbuja(self):
+        """Borde de la burbuja con el acento del tema (o el de serie); con una
+        alarma a la vista, la burbuja roja."""
+        b = self._burbuja
+        if b is None:
+            return
+        try:
+            from ui.theme import COLORS, FONT_BODY
+            self._estilo_rojo = self._alarma_en_burbuja()
+            if self._estilo_rojo:
+                b.setStyleSheet(
+                    f"QLabel{{background:{COLOR_ALARMA};color:#FFFFFF;"
+                    f"border:2px solid #FFFFFF;border-radius:12px;padding:10px 14px;"
+                    f"font-family:'{FONT_BODY}';font-size:16px;font-weight:bold;}}")
+                return
+            borde = self._acento_tema or COLORS["accent"]
+            b.setStyleSheet(
+                f"QLabel{{background:{COLORS['surface']};color:{COLORS['text']};"
+                f"border:2px solid {borde};border-radius:10px;padding:8px 10px;"
+                f"font-family:'{FONT_BODY}';font-size:12px;}}")
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _alarma_en_burbuja(self) -> bool:
+        return self._alarma_texto is not None and bool(self._alarma_mostrada)
+
     def _burbuja_ocupada(self) -> bool:
-        """¿La burbuja es de la IA ahora (respuesta en curso o a la vista)?"""
+        """¿La burbuja es de la IA ahora (respuesta en curso o a la vista) o de una alarma?"""
+        if self._alarma_texto is not None:
+            return True
         return self._burbuja_ia or time.monotonic() < self._burbuja_ia_hasta
 
     def _frase(self, evento: str):
@@ -605,6 +748,12 @@ class AvatarOverlay(QMainWindow):
     def _motivo_no_dormir(self, forzado: bool = False) -> str:
         if self.cerrado:
             return "la ventana está cerrada"
+        if self._menu_abierto and not forzado:
+            return "el menú está abierto"
+        if self._alarma_texto is not None:
+            return "hay una alarma sonando"
+        if self._bailando:
+            return "está bailando"
         arrastrando = self._arrastrando or bool(self._pulsado and self._pulsado.get("movido"))
         return self._regla.motivo_no(self._estado_regla(forzado), arrastrando=arrastrando,
                                      hablando=self._hablando and not forzado)
@@ -673,12 +822,21 @@ class AvatarOverlay(QMainWindow):
     # ── Ciclo de vida ──────────────────────────────────────────────────────────
     def showEvent(self, ev):
         super().showEvent(ev)
+        if self._plan_juego is not None and not self._mostrando_por_juego:
+            self._juego_mostrada_a_mano = True       # la sacan en plena partida: gana el usuario
+            self._oculta_por_juego = False
         QTimer.singleShot(0, self._actualizar_mascara)
+        self._aplicar_encima()                       # reafirmar el orden Z al mostrarse
         self.visibilidad.emit(True)
         self._estado_bus(visible=True)
-        if self._fisica_permitida:
+        if self._bailando:
+            self._resp.detener()
+            self._baile.bailar(True, self._baile_opciones)   # vuelve a bailar donde lo dejó
+        elif self._fisica_permitida:
             self._resp.iniciar()
         self._despertar(usuario=True)
+        if self._alarma_en_burbuja():
+            self._burbuja_alarma(self._alarma_mostrada)
         self._frase("aparecer")
 
     def hideEvent(self, ev):
@@ -687,6 +845,7 @@ class AvatarOverlay(QMainWindow):
         self._chat.cerrar()
         self._resp.detener()
         self._fx.detener()
+        self._baile.detener()                        # oculta no baila (sigue pedido: vuelve al mostrarse)
         self._timer_sueno.stop()
         if self._burbuja is not None:
             self._burbuja.hide()
@@ -723,6 +882,14 @@ class AvatarOverlay(QMainWindow):
             self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, activo)
         if self.config:
             self.config.set("avatar", "click_through", self._click_through)
+        act = getattr(self, "act_fantasma", None)
+        if act is not None and act.isChecked() != self._click_through:
+            act.setChecked(self._click_through)
+
+    @property
+    def click_through(self) -> bool:
+        """¿Modo fantasma total (deja pasar todos los clics)?"""
+        return self._click_through
 
     def _alternar_fantasma(self, checked):
         self.set_click_through(checked)
@@ -733,7 +900,10 @@ class AvatarOverlay(QMainWindow):
     # CLIC (reacción corta, tras el intervalo de doble clic) y dos seguidos, el chat.
     # El balanceo no depende de estos eventos: FisicaSpriteQt mira los Move.
     def mousePressEvent(self, ev):
-        if ev.button() == Qt.MouseButton.LeftButton and not self._click_through:
+        if ev.button() == Qt.MouseButton.RightButton:
+            # Menú radial: se abre al SOLTAR.
+            self._der_pulsado = not self._click_through and not self._menu_abierto
+        elif ev.button() == Qt.MouseButton.LeftButton and not self._click_through and not self._menu_abierto:
             self._clic.cancelar()             # pulsar de nuevo: el clic anterior no cuenta solo
             self._pulsado = {"origen": ev.globalPosition().toPoint(), "movido": False}
             self._despertar(usuario=True)     # tocarla la despierta y rearma el sueño
@@ -767,6 +937,12 @@ class AvatarOverlay(QMainWindow):
         self._arrastrando_desde = pos - self.frameGeometry().topLeft()
 
     def mouseReleaseEvent(self, ev):
+        if ev.button() == Qt.MouseButton.RightButton:
+            pulsado, self._der_pulsado = self._der_pulsado, False
+            if pulsado:
+                self._pedir_menu(ev.globalPosition().toPoint())
+            super().mouseReleaseEvent(ev)
+            return                            # no toca un arrastre izquierdo en curso
         p, self._pulsado = self._pulsado, None
         self._arrastrando_desde = None
         if p is not None and ev.button() == Qt.MouseButton.LeftButton:
@@ -777,7 +953,7 @@ class AvatarOverlay(QMainWindow):
         super().mouseReleaseEvent(ev)
 
     def mouseDoubleClickEvent(self, ev):
-        if ev.button() == Qt.MouseButton.LeftButton and not self._click_through:
+        if ev.button() == Qt.MouseButton.LeftButton and not self._click_through and not self._menu_abierto:
             self._pulsado = None
             self._arrastrando_desde = None
             self._clic.doble_clic()           # cancela el clic simple y abre el chat
@@ -792,10 +968,167 @@ class AvatarOverlay(QMainWindow):
             if self._burbuja is not None and self._burbuja.isVisible():
                 self._burbuja._colocar()      # la burbuja la sigue
 
+    # ── Menú radial (corte 4: ui/menu_radial.ControlMenuRadial) ────────────────
+    def _pedir_menu(self, punto: QPoint):
+        """Clic derecho soltado sobre ella → menu_pedido (no arrastrándola, ni en
+        modo fantasma, ni con el menú ya abierto)."""
+        if self.cerrado or self._click_through or self._menu_abierto:
+            return
+        if self._arrastrando or (self._pulsado is not None and self._pulsado.get("movido")):
+            return
+        if not self.frameGeometry().contains(punto):
+            return                            # soltó fuera de ella: se arrepintió
+        self._clic.cancelar()
+        self.menu_pedido.emit("principal", QPoint(punto))
+
+    def set_menu_abierto(self, on: bool):
+        """El menú radial se abre (True) o se cierra: abierto, sin arrastre ni sueño
+        (no la despierta: el radial ofrece «Despertar» si duerme)."""
+        on = bool(on)
+        if on == self._menu_abierto:
+            return
+        self._menu_abierto = on
+        if on:
+            self._clic.cancelar()
+            self._pulsado = None
+            self._arrastrando_desde = None
+            self._timer_sueno.stop()
+        else:
+            self._rearmar_sueno()
+
+    def ancla_menu(self, callback):
+        """`callback(QPoint global)` con la cabeza: el 35 % del alto de la figura
+        (los sprites no tienen luneCabeza). Se llama en el acto."""
+        if not callable(callback):
+            return
+        fig = self._rect_figura(self.x(), self.y())
+        punto = QPoint(fig.x() + fig.width() // 2, fig.y() + round(fig.height() * ALTO_CABEZA))
+        try:
+            callback(punto)
+        except Exception:
+            pass
+
+    # ── Modo juego (corte 4: ui/modo_juego_qt.ControlModoJuego) ────────────────
+    def aplicar_plan_juego(self, plan):
+        """Plan del modo juego o None al acabar. ocultar → se oculta (y vuelve solo
+        si la ocultó esto) · fondo → sin «siempre encima» · nada → se queda. En
+        partida, quieta: sin física ni respiración. Si el usuario la saca a mano
+        durante la partida, gana él."""
+        antes = self._plan_juego
+        if plan is None:
+            if antes is None:
+                return
+            self._plan_juego = None
+            self._juego_mostrada_a_mano = False
+            if not self.cerrado:
+                self.set_habilitado_fisica(self._fisica_previa)
+            volver, self._oculta_por_juego = self._oculta_por_juego, False
+            if volver and not self.cerrado and not self.isVisible():
+                self._mostrar_por_juego()
+            elif self.isVisible() and not self.cerrado:
+                self._aplicar_encima()
+            return
+        self._plan_juego = plan
+        if antes is None:
+            self._fisica_previa = self._fisica_permitida
+            self._oculta_por_juego = False
+            self._juego_mostrada_a_mano = False
+        if self.cerrado:
+            return
+        self.set_habilitado_fisica(False)
+        if plan.accion == "ocultar":
+            if self.isVisible() and not self._juego_mostrada_a_mano:
+                self._oculta_por_juego = True
+                self.hide()
+        else:
+            if self._oculta_por_juego and not self.isVisible():
+                self._oculta_por_juego = False
+                self._mostrar_por_juego()
+            elif self.isVisible():
+                self._aplicar_encima()
+
+    def _mostrar_por_juego(self):
+        self._mostrando_por_juego = True
+        try:
+            self.show()
+        finally:
+            self._mostrando_por_juego = False
+
+    # ── Orden Z, FPS, tema y comentarios (corte 4) ─────────────────────────────
+    @property
+    def siempre_encima(self) -> bool:
+        return self._encima
+
+    def set_encima(self, on: bool):
+        """Siempre encima (avatar.siempre_encima); se reafirma al mostrarse."""
+        on = bool(on)
+        self._encima = on
+        if self.config and bool(self.config.get("avatar", "siempre_encima", True)) != on:
+            self.config.set("avatar", "siempre_encima", on)
+        if self.isVisible() and not self.cerrado:
+            self._aplicar_encima()
+
+    def _aplicar_encima(self):
+        if not _ventana_nativa():
+            return
+        try:
+            from servicios import win_ventana
+            plan = self._plan_juego
+            fondo = plan is not None and plan.accion == "fondo" and not self._juego_mostrada_a_mano
+            win_ventana.set_encima(int(self.winId()), False if fondo else self._encima)
+        except Exception:
+            pass
+
+    def _fps_de_config(self) -> int:
+        try:
+            n = int(self.config.get("avatar", "fps_max", 60)) if self.config else 60
+        except (TypeError, ValueError):
+            n = 60
+        return max(FPS_MIN, min(FPS_MAX, n))
+
+    def set_fps_max(self, n: int):
+        """avatar.fps_max: se guarda (lo usan las mascotas web); los sprites no tienen
+        bucle de render que limitar."""
+        try:
+            n = max(FPS_MIN, min(FPS_MAX, int(n)))
+        except (TypeError, ValueError):
+            return
+        self._fps_max = n
+        if self.config and self._fps_de_config() != n:
+            self.config.set("avatar", "fps_max", n)
+
+    def set_comentarios_auto(self, on: bool):
+        """Los sprites no comentan la pantalla: no hace nada."""
+
+    @property
+    def comentarios_auto(self) -> bool:
+        return False
+
+    def aplicar_tema(self, css_json):
+        """Tema de color: el borde de la burbuja con su --cyan-500 (None = de serie).
+        Un JSON que no es un tema se ignora."""
+        try:
+            acento = _acento_de(css_json)
+        except ValueError:
+            return
+        if acento == self._acento_tema:
+            return
+        self._acento_tema = acento
+        self._estilo_burbuja()
+
+    def llevar_a_esquina(self):
+        """A la esquina inferior derecha de su monitor (y se guarda la posición)."""
+        if self.cerrado:
+            return
+        self._esquina_inferior_derecha()
+        self._guardar_posicion()
+
     def _clic_simple(self):
         """Clic limpio: una reacción corta, solo si está tranquila (no pisa una emoción)."""
         if self.cerrado or not self.isVisible() or self.cara is None:
             return
+        if self._alarma_texto is not None:
+            return                                   # con una alarma sonando el clic la apaga (fuera)
         if getattr(self.cara, "_current_state", "normal") == "normal":
             self.cara.set_state("happy", auto_revert_ms=1500)
 
@@ -813,18 +1146,158 @@ class AvatarOverlay(QMainWindow):
         t = str(texto or "").strip()
         if self.cerrado or not t or not self.isVisible():
             return                                   # oculta: la burbuja no reaparece sola
+        if self._alarma_texto is not None:
+            return                                   # la alarma manda en la burbuja
         self._despertar()
         self._burbuja_ia, self._burbuja_ultimo = True, t   # las frases de la mascota esperan
         self._burbuja_qt().texto(texto)
 
     def burbuja_fin(self, ms: int | None = None):
         """La burbuja se oculta a los `ms` (sin ms: el tiempo de lectura)."""
+        if self._alarma_texto is not None:
+            self._burbuja_ia = False                 # no toca la burbuja de la alarma
+            return
         if self._burbuja is not None:
             self._burbuja.fin(ms)
         if self._burbuja_ia:
             vista = ms_lectura(self._burbuja_ultimo) if ms is None else max(0, int(ms))
             self._burbuja_ia = False
             self._burbuja_ia_hasta = max(self._burbuja_ia_hasta, time.monotonic() + vista / 1000.0)
+
+    # ── Baile (corte 6: ui/baile_qt.ControlBaile) ──────────────────────────────
+    @property
+    def soporta_grande(self) -> bool:
+        """Los sprites no hacen pantalla grande ni salvapantallas: VentanaReloj (D2)."""
+        return False
+
+    @property
+    def bailando(self) -> bool:
+        return self._bailando
+
+    def bailar(self, on: bool, opciones: dict | None = None):
+        """Baila (True, con {estilo, cambiar, cambiarS, particulas}) o para (False,
+        con fundido). Cara feliz y sin respiración mientras baila; oculta no baila,
+        pero al volver a mostrarse sigue."""
+        if self.cerrado:
+            return
+        if on:
+            self._bailando = True
+            self._baile_opciones = dict(opciones) if isinstance(opciones, dict) else {}
+            if self._durmiendo:
+                self._despertar()
+            self._timer_sueno.stop()
+            self._resp.detener()
+            if not (self._arrastrando or self._mareada or self._durmiendo) \
+                    and self._base[0] not in ESTADOS_ACTIVIDAD:
+                self.cara.set_state("happy")
+            if self.isVisible():
+                self._baile.bailar(True, self._baile_opciones)
+            return
+        if not self._bailando:
+            return
+        self._bailando = False
+        self._baile.bailar(False)                    # fundido de salida; al acabar, respira otra vez
+        if not self._baile.activo:
+            self._fin_baile()
+        if not (self._arrastrando or self._mareada or self._durmiendo):
+            self._restaurar_cara()
+        self._rearmar_sueno()
+
+    def pulso(self, bpm: float, fase: float, energia: float):
+        """Pulso de la música (≤ 2 Hz): el baile lo extrapola con su reloj."""
+        self._baile.pulso(bpm, fase, energia)
+
+    def _on_cuadro_baile(self, grados: float, dy: int):
+        self._baile_cuadro = (float(grados), int(dy))
+        if not self._baile.activo and not self._bailando:
+            self._fin_baile()
+        if self._sr is not None and not self._arrastrando:
+            self._componer()
+
+    def _fin_baile(self):
+        """Acabó el fundido de salida: vuelve la respiración."""
+        self._baile_cuadro = (0.0, 0)
+        if self._fisica_permitida and self.isVisible() and not self.cerrado:
+            self._resp.iniciar()
+
+    # ── Alarma (corte 5: ui/alarmas_qt.ControlAlarmasQt) ───────────────────────
+    def mostrar_alarma(self, texto: str, retraso_ms: int = ALARMA_RETRASO_MS):
+        """Alarma sonando: la despierta y, a los `retraso_ms`, la burbuja roja con
+        `texto` escrito a 35 c/s. Se queda hasta `ocultar_alarma()`."""
+        if self.cerrado:
+            return
+        t = str(texto or "").strip() or "⏰"
+        self._t_alarma.stop()
+        self._t_tipeo.stop()
+        self._alarma_texto = t[:BurbujaQt.MAX_CARACTERES]
+        self._alarma_mostrada = ""
+        self._burbuja_ia = False
+        if self._burbuja is not None:
+            self._burbuja.hide()                     # lo que dijera antes deja sitio a la alarma
+        self._despertar(usuario=True)
+        self._timer_sueno.stop()
+        try:
+            ms = max(0, int(retraso_ms))
+        except (TypeError, ValueError):
+            ms = ALARMA_RETRASO_MS
+        self._t_alarma.start(ms)
+
+    def ocultar_alarma(self):
+        """La alarma se apagó: fuera la burbuja roja (vuelve el estilo normal)."""
+        self._t_alarma.stop()
+        self._t_tipeo.stop()
+        habia = self._alarma_texto is not None
+        self._alarma_texto = None
+        self._alarma_mostrada = ""
+        if not habia:
+            return
+        b = self._burbuja
+        if b is not None:
+            try:
+                b.hide()
+                b.setMaximumWidth(BurbujaQt.ANCHO_MAX)
+            except RuntimeError:
+                pass
+            self._estilo_burbuja()
+        self._rearmar_sueno()
+
+    @property
+    def alarma(self) -> str | None:
+        """El texto de la alarma que se enseña (None: ninguna)."""
+        return self._alarma_texto
+
+    def _empezar_alarma(self):
+        if self._alarma_texto is None or self.cerrado:
+            return
+        self._alarma_mostrada = ""
+        self._t_tipeo.start()
+        self._tipear_alarma()
+
+    def _tipear_alarma(self):
+        texto = self._alarma_texto
+        if texto is None or self.cerrado:
+            self._t_tipeo.stop()
+            return
+        self._alarma_mostrada = texto[:len(self._alarma_mostrada) + 1]
+        if len(self._alarma_mostrada) >= len(texto):
+            self._t_tipeo.stop()
+        if self.isVisible():
+            self._burbuja_alarma(self._alarma_mostrada)
+
+    def _burbuja_alarma(self, texto: str):
+        b = self._burbuja_qt()
+        t_fin = getattr(b, "_t_fin", None)
+        if t_fin is not None:
+            t_fin.stop()                             # la burbuja de la alarma no se va sola
+        ancho = ALARMA_ANCHO_MAX
+        pantalla = self.screen() or QApplication.primaryScreen()
+        if pantalla is not None:
+            ancho = min(ancho, int(pantalla.availableGeometry().width() * 0.92))
+        if b.maximumWidth() != ancho:
+            b.setMaximumWidth(ancho)
+        if not self._estilo_rojo:
+            self._estilo_burbuja()
+        b.texto(texto)
 
     # ── Posición persistida ────────────────────────────────────────────────────
     def _mover_por_codigo(self, x: int, y: int):
@@ -891,14 +1364,14 @@ class AvatarOverlay(QMainWindow):
             icono = QIcon(ruta)
         self.tray = QSystemTrayIcon(icono, self)
         self.tray.setToolTip("Lune · mascota")
-        menu = QMenu()
+        menu = self._menu_bandeja = QMenu()
         act_chat = QAction("Escribirle a Lune…", self)
         act_chat.triggered.connect(self.abrir_chat)
         menu.addAction(act_chat)
         act_mostrar = QAction("Mostrar / ocultar", self)
         act_mostrar.triggered.connect(self._alternar)
         act_centrar = QAction("Llevar a la esquina", self)
-        act_centrar.triggered.connect(lambda: (self._esquina_inferior_derecha(), self._guardar_posicion()))
+        act_centrar.triggered.connect(self.llevar_a_esquina)
         self.act_fantasma = QAction("Modo fantasma (dejar pasar clics)", self)
         self.act_fantasma.setCheckable(True)
         self.act_fantasma.setChecked(bool(self.config and self.config.get("avatar", "click_through", False)))
@@ -909,9 +1382,29 @@ class AvatarOverlay(QMainWindow):
         menu.addAction(self.act_fantasma)
         menu.addSeparator(); menu.addAction(act_cerrar)
         self.tray.setContextMenu(menu)
-        self.tray.activated.connect(
-            lambda r: self._alternar() if r == QSystemTrayIcon.ActivationReason.Trigger else None)
+        self.tray.activated.connect(self._on_tray_activado)
         self.tray.show()
+
+    def _on_tray_activado(self, razon):
+        if razon == QSystemTrayIcon.ActivationReason.Trigger:
+            self._alternar()
+
+    def quitar_bandeja(self):
+        """Quita su icono de bandeja (la app tiene una sola: ui/bandeja.BandejaLune)."""
+        tray, self.tray = getattr(self, "tray", None), None
+        menu, self._menu_bandeja = getattr(self, "_menu_bandeja", None), None
+        self.act_fantasma = None
+        if tray is not None:
+            try:
+                tray.hide()
+                tray.deleteLater()
+            except RuntimeError:
+                pass
+        if menu is not None:
+            try:
+                menu.deleteLater()
+            except RuntimeError:
+                pass
 
     def _alternar(self):
         self.hide() if self.isVisible() else (self.showNormal(), self.raise_())
@@ -921,6 +1414,8 @@ class AvatarOverlay(QMainWindow):
         self._clic.cancelar()
         self._t_guardar.stop()
         self._timer_sueno.stop(); self._timer_sueno_pedido.stop(); self._timer_mareo.stop()
+        self._t_alarma.stop(); self._t_tipeo.stop()
+        self._baile.detener()
         self._resp.detener()
         self._fx.detener()
         self._fx.dejar()
@@ -933,8 +1428,7 @@ class AvatarOverlay(QMainWindow):
             except RuntimeError:
                 pass
         self._estado_bus(visible=False, arrastrando=False, hablando=False)
-        if getattr(self, "tray", None):
-            self.tray.hide()
+        self.quitar_bandeja()
         if self.cara is not None and getattr(self.cara, "_player", None):
             self.cara._player.stop()
         ev.accept()

@@ -22,12 +22,12 @@ const CSS = `
 .lune-provtab-led{ margin-left:auto; width:8px; height:8px; flex:none; border-radius:50%; background:var(--gray-600); }
 
 /* active — cyan (local) */
-.lune-provtab.is-active.accent-cyan{ background:rgba(0,229,255,.10); border-color:var(--cyan-700); color:var(--cyan-300); }
+.lune-provtab.is-active.accent-cyan{ background:rgb(var(--cyan-500-rgb, 0 229 255) / .10); border-color:var(--cyan-700); color:var(--cyan-300); }
 .lune-provtab.is-active.accent-cyan .lune-provtab-ic{ background:var(--cyan-500); color:var(--ink-950); border-color:var(--cyan-400); }
 .lune-provtab.is-active.accent-cyan .lune-provtab-name{ color:var(--cyan-300); }
 .lune-provtab.is-active.accent-cyan .lune-provtab-led{ background:var(--cyan-500); box-shadow:var(--glow-cyan-sm); }
 /* active — blue (cloud) */
-.lune-provtab.is-active.accent-blue{ background:rgba(30,85,255,.12); border-color:var(--blue-600); color:var(--blue-300); }
+.lune-provtab.is-active.accent-blue{ background:rgb(var(--blue-500-rgb, 30 85 255) / .12); border-color:var(--blue-600); color:var(--blue-300); }
 .lune-provtab.is-active.accent-blue .lune-provtab-ic{ background:var(--blue-500); color:var(--white); border-color:var(--blue-400); }
 .lune-provtab.is-active.accent-blue .lune-provtab-name{ color:var(--blue-300); }
 .lune-provtab.is-active.accent-blue .lune-provtab-led{ background:var(--blue-400); }

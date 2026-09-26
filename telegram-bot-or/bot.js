@@ -12,9 +12,21 @@ import {
   formatearTamano, HOME
 } from "./archivos.js";
 import { estadoSistema } from "./sistema.js";
+import { CanalOrdenes } from "./ordenes.js";
 
 const config = loadConfig();
 const bot = new Bot(config.telegramToken);
+
+// ── Órdenes al PC (/pc) ─────────────────────────────────────────────────────
+// Solo si Lune lanzó el bot con «Órdenes desde Telegram» activado: entonces le
+// pasa LUNE_ORDENES_TOKEN y el canal es el stdin/stdout de este proceso
+// (ordenes.js). Lo que se ejecute lo aprueba una persona EN EL PC.
+const ordenes = new CanalOrdenes({
+  token: process.env.LUNE_ORDENES_TOKEN || "",
+  responder: (chatId, texto) => bot.api.sendMessage(chatId, texto),
+});
+const lanzadoPorLune = process.env.LUNE_BOT_HIJO === "1";
+if (ordenes.activo() || lanzadoPorLune) ordenes.escuchar({ salirAlCerrar: lanzadoPorLune });
 
 // ── SEGURIDAD: solo tu usuario puede usar el bot ─────────────────────────────
 // Pon tu Telegram ID en datos.json como apis.telegram_admin_id
@@ -62,10 +74,42 @@ function menuPrincipal() {
 bot.command("start", async (ctx) => {
   const p = getPersonaje(ctx.session.personajeActivo);
   await ctx.reply(
-    `Hola! Soy *${p.nombre}*.\n${p.descripcion}\n\nUsa el menu de abajo o escribe "/" para ver los comandos.`,
+    `Hola! Soy *${p.nombre}*.\n${p.descripcion}\n\nUsa el menu de abajo o escribe "/" para ver los comandos.\n\n` +
+    `Ordenes a tu PC: /pc <orden> (por ejemplo: /pc abre youtube). Llegan a Lune y las apruebas en el PC.`,
     { parse_mode: "Markdown", reply_markup: menuPrincipal() }
   );
 });
+
+// ── /pc y /orden: mandar una orden a Lune en tu PC ───────────────────────────
+// Aquí NO vale el «permite todo» de esAdmin() sin adminId: hace falta tu ID
+// configurado y que coincida. La orden se aprueba (o no) en el PC.
+async function comandoOrden(ctx) {
+  const texto = (ctx.match ?? "").toString().trim();
+  if (!config.adminId) {
+    await ctx.reply("Para mandar ordenes a tu PC, configura tu ID de Telegram en Lune (apis.telegram_admin_id). Escribe /id para verlo.");
+    return;
+  }
+  if (String(ctx.from?.id) !== String(config.adminId).trim()) {
+    await ctx.reply("No tienes permiso para mandar ordenes a este PC.");
+    return;
+  }
+  if (!ordenes.activo()) {
+    await ctx.reply('Activa "Órdenes desde Telegram" en Ajustes de Lune e inicia el bot desde Lune.');
+    return;
+  }
+  if (ctx.chat?.type !== "private") {
+    await ctx.reply("Las ordenes al PC solo se aceptan en el chat privado con el bot.");
+    return;
+  }
+  if (!texto) {
+    await ctx.reply("Uso: /pc <orden>\nEjemplo: /pc abre youtube");
+    return;
+  }
+  const id = ordenes.pedirOrden(texto, ctx.chat.id);
+  if (!id) { await ctx.reply("No pude mandar la orden a tu PC."); return; }
+  await ctx.reply("Enviado a tu PC; apruébalo allí.");
+}
+bot.command(["pc", "orden"], comandoOrden);
 
 // ── /id (para saber tu Telegram ID) ──────────────────────────────────────────
 bot.command("id", async (ctx) => {
@@ -444,6 +488,7 @@ await bot.api.setMyCommands([
   { command: "limpiar",  description: "Reiniciar conversacion" },
   { command: "modelo",   description: "Ver modelo de IA activo" },
   { command: "id",       description: "Ver tu Telegram ID" },
+  { command: "pc",       description: "Orden a tu PC (se aprueba alli) — /pc abre youtube" },
 ]);
 
 // Manejador global de errores

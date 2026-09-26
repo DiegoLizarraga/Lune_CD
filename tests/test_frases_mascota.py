@@ -40,9 +40,12 @@ def sin_cooldown(personaje=None, semilla=1):
 # ── Frases base ──────────────────────────────────────────────────────────────────
 
 def test_eventos_y_probabilidades():
-    assert fm.EVENTOS == ("arrastre", "soltar", "caricia", "dormir", "despertar", "mareo", "aparecer")
+    assert fm.EVENTOS == ("arrastre", "soltar", "caricia", "dormir", "despertar", "mareo", "aparecer",
+                          "sentarse", "bajar", "comer")
     assert fm.PROBABILIDADES == {"arrastre": 0.45, "soltar": 0.30, "caricia": 0.60, "dormir": 0.50,
-                                 "despertar": 0.70, "mareo": 1.00, "aparecer": 0.50}
+                                 "despertar": 0.70, "mareo": 1.00, "aparecer": 0.50,
+                                 "sentarse": 0.40, "bajar": 0.30, "comer": 0.50}
+    assert set(fm.FRASES_BASE) == set(fm.EVENTOS) == set(fm.PROBABILIDADES)
     assert fm.COOLDOWN_S == 20.0
     for ev in fm.EVENTOS:
         assert fm.FRASES_BASE[ev], ev
@@ -134,6 +137,38 @@ def test_cooldown_global_de_20_s_entre_eventos():
             break
     assert dijo in fm.FRASES_BASE["despertar"]
     assert f.restante_cooldown() == pytest.approx(20.0)
+
+
+def test_eventos_de_los_cortes_7_y_8_comparten_el_cooldown_global():
+    """sentarse, bajar y comer hablan con su probabilidad y respetan los 20 s
+    de silencio con los demás eventos (ninguno es prioritario)."""
+    assert not ({"sentarse", "bajar", "comer"} & fm.PRIORITARIOS)
+    reloj = Reloj()
+    f = fm.FrasesMascota(None, reloj=reloj, rng=random.Random(8))
+    dicha = f.elegir("sentarse", forzar=True)
+    assert dicha in fm.FRASES_BASE["sentarse"] and f.ultima == ("sentarse", dicha)
+    reloj.avanzar(10)
+    estado = f._rng.getstate()
+    for ev in ("bajar", "comer", "arrastre"):
+        assert f.elegir(ev) is None
+    assert f._rng.getstate() == estado                     # en cooldown no se tira el dado
+    reloj.avanzar(10)
+    dijo = next(x for x in (f.elegir("comer") for _ in range(40)) if x)
+    assert dijo in fm.FRASES_BASE["comer"]
+    reloj.avanzar(19)
+    assert f.elegir("aparecer") is None and f.elegir("bajar") is None
+
+
+def test_eventos_nuevos_del_personaje():
+    personaje = {"nombre": "Aria", "frases_mascota": {
+        "comer": ["¡Ñam!"], "Sentarse": {"p": 0.9}, "bajar": []}}
+    f = sin_cooldown(personaje)
+    assert f.frases("comer") == ["¡Ñam!"] and f.probabilidad("comer") == 0.5
+    assert f.frases("sentarse") == list(fm.FRASES_BASE["sentarse"]) and f.probabilidad("sentarse") == 0.9
+    assert f.frases("bajar") == [] and f.elegir("bajar", forzar=True) is None
+    assert f.elegir("comer", forzar=True) == "¡Ñam!"
+    d = f.como_dict()["eventos"]
+    assert d["comer"] == {"p": 0.5, "frases": ["¡Ñam!"]} and d["bajar"]["frases"] == []
 
 
 def test_mareo_se_salta_el_cooldown_pero_lo_reinicia():

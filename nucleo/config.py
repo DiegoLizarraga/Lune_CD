@@ -230,6 +230,7 @@ class Config:
             "modo": "web",
             "en_barra_tareas": True,             # la ventana principal sale en la barra de tareas
             "idioma": "es",                      # idioma de los textos de la interfaz (fase 2)
+            "fundido_ms": 180,                   # fundido al cambiar de interfaz en caliente (0 = sin fundido)
         },
         # Avatar/expresiones: permite cambiar el "modelo" visual de Lune.
         "avatar": {
@@ -278,6 +279,13 @@ class Config:
         # Adjuntos: documentos e imágenes (ver adjuntos.py).
         "adjuntos": {
             "max_caracteres": 20000,             # texto máximo por documento
+        },
+        # Bot de Telegram (telegram-bot-or/, lo lanza servicios/telegram_worker.py).
+        "telegram": {
+            # /pc <orden> desde tu Telegram: la orden llega a Lune y TODO lo que haga
+            # se aprueba en el PC. Necesita apis.telegram_admin_id (datos.json) y
+            # reiniciar el bot para aplicarse. Apagado por defecto.
+            "ordenes_pc": False,
         },
         # Red de Lune: rol de este dispositivo y descubrimiento en la LAN.
         "red": {
@@ -339,11 +347,13 @@ class Config:
             "decir_texto": True,                 # decir el texto de la alarma en voz alta
             "recuperar_min": 10,                 # si el PC estuvo suspendido, sonar las perdidas de hace ≤ N min
             "posponer_min": 5,                   # minutos de «posponer»
+            "volumen": 0.8,                      # volumen del sonido de la alarma (0–1)
+            "sonido": "azar",                    # azar · alarma_1 · alarma_2 · alarma_3
         },
         # Baile con la música del PC y reproductor de bailes (bailes/) (P04).
         "baile": {
             "auto": True,                        # bailar sola cuando suena música en una app permitida
-            "umbral": 0.2,                       # pico de audio mínimo (0–1) para contar como música
+            "umbral": 0.05,                      # pico de audio mínimo (0–1) para contar como música
             "apps": ["Spotify", "MusicBee", "foobar2000", "vlc", "AppleMusic"],  # apps que cuentan como música
             "cambiar": False,                    # cambiar de baile procedural cada `cambiar_s`
             "cambiar_s": 15,                     # s entre cambios de baile

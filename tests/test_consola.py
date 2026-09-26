@@ -435,6 +435,131 @@ def test_titulo_y_parpadear_usan_la_api(crear):
     assert c.out.getvalue().endswith("\a")
 
 
+# ── Título por capas (cortes 5 y 6) ──────────────────────────────────────────────
+def test_titulo_por_capas_con_prioridad_y_repintado(crear):
+    c = crear()
+    t = c.api_falsa.titulos
+    c.titulo("Lune :) · patata")
+    c.titulo_capa("baile", "ヽ(^o^)ﾉ ♪ 120 BPM", 20)
+    assert t[-1] == "ヽ(^o^)ﾉ ♪ 120 BPM" and c.capa_titulo() == "baile"
+    c.titulo_capa("salvapantallas", "(-_-) zzZ 23:41", 10)       # por debajo: no se ve
+    assert t[-1] == "ヽ(^o^)ﾉ ♪ 120 BPM"
+    c.titulo_capa("juego", "Lune · modo juego", 50)
+    assert t[-1] == "Lune · modo juego"
+    n = len(t)
+    c.titulo_capa("baile", "┏(^o^)┛ ♪ 120 BPM", 20)               # cambia una de debajo: no repinta
+    c.titulo("Lune :D · patata")                                  # el normal se guarda para luego
+    assert len(t) == n
+    c.titulo_capa("alarma", "⏰ Sacar la ropa", 60)
+    assert t[-1] == "⏰ Sacar la ropa"
+    c.titulo_capa("alarma", None)
+    assert t[-1] == "Lune · modo juego"
+    c.titulo_capa("juego", None)
+    assert t[-1] == "┏(^o^)┛ ♪ 120 BPM"                          # el último texto del baile
+    c.titulo_capa("baile", None)
+    assert t[-1] == "(-_-) zzZ 23:41"
+    c.titulo_capa("salvapantallas", None)
+    assert t[-1] == "Lune :D · patata" and c.capa_titulo() is None
+    n = len(t)
+    assert c.titulo_capa("no_existe", None) is False and len(t) == n
+
+
+def test_titulo_capa_mismo_texto_no_repinta_y_empate_gana_la_ultima(crear):
+    c = crear()
+    t = c.api_falsa.titulos
+    c.titulo_capa("a", "uno", 20)
+    c.titulo_capa("a", "uno", 20)
+    assert t == ["uno"]
+    c.titulo_capa("b", "dos", 20)
+    assert t[-1] == "dos"
+    c.titulo_capa("a", "uno bis", 20)                  # cambiar el texto no la sube
+    assert t[-1] == "dos"
+    c.titulo_capa("b", None)
+    assert t[-1] == "uno bis"
+
+
+def test_quitar_la_ultima_capa_sin_titulo_normal_repinta_el_de_por_defecto(crear):
+    # MO6: sin titulo() previo (patata recién arrancada), quitar el salvapantallas no
+    # deja congelado «(-_-) zzZ 23:41».
+    from nucleo.consola import TITULO_DEFECTO
+    c = crear()
+    t = c.api_falsa.titulos
+    c.titulo_capa("salvapantallas", "(-_-) zzZ 23:41", 10)
+    c.titulo_capa("salvapantallas", None, 10)
+    assert t == ["(-_-) zzZ 23:41", TITULO_DEFECTO] and c.capa_titulo() is None
+    c.titulo_capa("baile", "ヽ(^o^)ﾉ ♪ Spotify · 124 BPM", 20)
+    c.titulo_capa("baile", None, 20)
+    assert t[-1] == TITULO_DEFECTO
+    c.titulo("Lune :D · patata")
+    c.titulo_capa("alarma", "⏰ Pizza", 60)
+    c.titulo_capa("alarma", None, 60)
+    assert t[-1] == "Lune :D · patata"                          # con título normal, ese
+    otra = ConsolaAsincrona("> ", stdout=io.StringIO(), stdin=io.StringIO(""), api=ApiFalsa(), ansi=False,
+                            titulo_defecto="Lune · patata")
+    otra.titulo_capa("x", "capa", 1)
+    otra.titulo_capa("x", None, 1)
+    assert otra._api.titulos == ["capa", "Lune · patata"]
+
+
+# ── Reclamos con prioridad y prompt que cambia (cortes 5 y 6) ────────────────────
+def test_reclamo_de_mas_prioridad_se_queda_antes_la_linea(crear):
+    c = crear()
+    baile, alarma = [], []
+    c.reclamar(baile.append, prompt="♪ baile > ", prioridad=-10)
+    c.reclamar(alarma.append, prompt="alarma > ")
+    assert c._texto_prompt() == "alarma > "
+    c.entrada.put("\n")
+    assert esperar(lambda: alarma == [""])
+    assert baile == [] and c._texto_prompt() == "♪ baile > "
+    c.entrada.put("\n")
+    assert esperar(lambda: baile == [""])
+
+
+def test_cambiar_prompt_repinta_la_linea_viva_sin_perder_lo_tecleado(crear):
+    c = crear("teclas")
+    h = en_hilo(c.leer_linea)
+    assert esperar(lambda: c.out.getvalue().endswith("tú > "))
+    vistas = []
+    cancelar = c.reclamar(lambda l: vistas.append(l) if l == "" else False,
+                          prompt="♪ \\o/ 120 BPM ", prioridad=-10)
+    assert esperar(lambda: c.out.getvalue().endswith("♪ \\o/ 120 BPM "))
+    teclear(c, "ho")
+    assert esperar(lambda: c.out.getvalue().endswith("♪ \\o/ 120 BPM ho"))
+    pos = len(c.out.getvalue())
+    assert cancelar.cambiar_prompt("♪ |o| 121 BPM ") is True
+    assert c.out.getvalue()[pos:] == BORRAR_LINEA + "♪ |o| 121 BPM ho"
+    pos = len(c.out.getvalue())
+    cancelar.cambiar_prompt("♪ |o| 121 BPM ")                  # el mismo: no repinta
+    assert c.out.getvalue()[pos:] == ""
+    teclear(c, "la\r")                                         # con texto: sigue al chat
+    h.join(3)
+    assert h.caja["r"] == "hola" and vistas == [] and c.reclamada
+    cancelar()
+    assert cancelar.cambiar_prompt("otro") is False
+    assert not c.reclamada
+
+
+def test_cambiar_prompt_de_un_reclamo_que_no_se_ve_no_repinta(crear):
+    c = crear("teclas")
+    h = en_hilo(c.leer_linea)
+    c.reclamar(lambda l: None, prompt="alarma > ")
+    abajo = c.reclamar(lambda l: None, prompt="baile > ", prioridad=-10)
+    assert esperar(lambda: c.out.getvalue().endswith("alarma > "))
+    pos = len(c.out.getvalue())
+    abajo.cambiar_prompt("baile 2 > ")
+    assert c.out.getvalue()[pos:] == ""
+    teclear(c, "\r")                                           # se lo queda la alarma…
+    assert esperar(lambda: c.out.getvalue().endswith("baile 2 > "))   # …y se ve el del baile
+    c.detener()
+    h.join(3)
+
+
+def test_ansi_y_columnas_publicos(crear):
+    c = crear(ancho=57, ansi=True)
+    assert c.ansi is True and c.columnas() == 57
+    assert crear(ansi=False).ansi is False
+
+
 # ── ApiConsolaWin32 con DLLs falsas ──────────────────────────────────────────────
 class Kernel32Falso:
     def __init__(self, modo=0x3, consola=True, hwnd=1234, registros=()):

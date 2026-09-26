@@ -167,6 +167,9 @@ def crear(tmp_path, datos_tmp):
         cfg = Config(str(tmp_path / "config.json"))
         tm = tools if tools is not None else ToolManager()
         timers = []
+        # Cortes 5/6 aparte (sus hilos: alarmas.json, audio, inactividad): tests/test_anfitriones_c56.py
+        for pieza in ("alarmas", "baile", "salvapantallas"):
+            kw.setdefault(pieza, None)
         p = patata.Patata(color=False, consola=consola, config=cfg, ai=AIFalsa(texto),
                           memoria=MemFalsa(), voice=voice, tools=tm, audit_path=None,
                           programar=lambda s, fn: timers.append(TimerFalso(fn)) or timers[-1],
@@ -507,3 +510,193 @@ def test_main_sale_sin_traceback_con_ctrl_c_al_arrancar(monkeypatch):
         raise KeyboardInterrupt
     monkeypatch.setattr(patata, "Patata", revienta)
     assert patata.main([]) == 130
+
+
+# ── Revisión 4-5-6: título base desde el arranque y todo el ocio a la vez ──────────
+
+def test_correr_pone_el_titulo_normal_al_empezar(crear):
+    # MO6: sin haber chateado, al quitarse la última capa vuelve el título de patata
+    # (no se queda «(-_-) zzZ 23:41»).
+    import threading
+    p = crear()
+    t = p.consola._api.titulos
+    hilo = threading.Thread(target=p.correr, daemon=True)
+    hilo.start()
+    assert esperar(lambda: bool(t))
+    base = t[0]
+    assert base.startswith("Lune ") and base.endswith("· patata")
+    p.consola.titulo_capa("salvapantallas", "(-_-) zzZ 23:41", 10)
+    p.consola.titulo_capa("salvapantallas", None, 10)
+    assert t[-2:] == ["(-_-) zzZ 23:41", base]
+    p.entrada.put("/salir\n")
+    hilo.join(5)
+    assert not hilo.is_alive()
+
+
+class _Mez:
+    def cargar_wav(self, ruta):
+        return b""
+
+    def reproducir(self, *a, **k):
+        return 1
+
+    def detener(self, sid):
+        pass
+
+    def detener_canal(self, canal):
+        pass
+
+
+class _Mutex:
+    es_dueno = True
+
+    def adquirir(self):
+        return True
+
+    def liberar(self):
+        pass
+
+
+class _ApiInactiva:
+    """GetLastInputInfo y compañía de mentira (servicios/win_entrada)."""
+
+    def __init__(self):
+        self.ultima = self.t = 1_000_000
+
+    def inactivo(self, s):
+        self.t = self.ultima + int(s * 1000)
+
+    def tick(self):
+        return self.t
+
+    def ultima_entrada(self):
+        return self.ultima
+
+    def cursor(self):
+        return (0, 0)
+
+    def boton_izquierdo(self):
+        return False
+
+    def hay_xinput(self):
+        return False
+
+    def estado_mando(self, i):
+        return None
+
+    def estado_ejecucion(self):
+        return 0
+
+
+class _Juego:
+    INTERVALO_S = 3600
+    activo = False
+
+    def detectando(self):
+        return True
+
+    def evaluar(self):
+        return True, self.activo, "prueba"
+
+
+class _Musica:
+    on_cambio = on_pulso = on_sesiones = None
+
+    def iniciar(self):
+        pass
+
+    def detener(self):
+        pass
+
+    def forzar_pulso(self, on):
+        pass
+
+    def pedir_sondeo(self):
+        pass
+
+    def reanudar_auto(self):
+        pass
+
+    def silenciar_hasta_silencio(self):
+        pass
+
+
+def test_alarma_baile_salvapantallas_juego_y_aprobacion_conviven(tmp_path, datos_tmp):
+    """Todo el ocio de patata a la vez: capas del título (alarma 60 > juego 50 >
+    baile 20 > salvapantallas 10 > el normal) y reclamos de la consola (el Enter es
+    de la alarma aunque haya un «¿Lo hago?» pendiente; «s» responde a la aprobación;
+    el Enter en vacío que queda para el baile)."""
+    from nucleo.alarmas import Almacen, Disparo
+    from servicios.alarmas_patata import AlarmasTerminal
+    from servicios.baile_terminal import BaileTerminal
+    from servicios.salvapantallas_terminal import SalvapantallasTerminal
+
+    reloj = [100.0]
+    entrada, out, api = EntradaBloqueante(), io.StringIO(), ApiFalsa()
+    consola = ConsolaAsincrona("tú > ", stdout=out, stdin=entrada, api=api, ansi=True)
+    cfg = Config(str(tmp_path / "config.json"))
+    cfg.set("salvapantallas", "activo", True)
+    tm, lanzadas = _tm_con_lanzar()
+    alarmas = AlarmasTerminal(consola, cfg, almacen=Almacen(tmp_path / "alarmas.json"), mutex=_Mutex(),
+                              mezclador=_Mez(), reloj=lambda: reloj[0], lanzar_sonido=lambda f: f())
+    juego = _Juego()
+    timers = []
+    p = patata.Patata(color=False, consola=consola, config=cfg,
+                      ai=AIFalsa('Vale. <|CALL ["lanzar_app", {"app": "calc"}]|>'), memoria=MemFalsa(),
+                      voice=None, tools=tm, audit_path=None,
+                      programar=lambda s, fn: timers.append(TimerFalso(fn)) or timers[-1],
+                      juego=juego, prioridad=lambda baja: None, alarmas=alarmas, baile=None, salvapantallas=None)
+    p.baile = BaileTerminal(consola, cfg, detector=_Musica(), en_juego=p._en_juego)
+    api_in = _ApiInactiva()
+    p.salvapantallas = SalvapantallasTerminal(consola, cfg, api=api_in, en_juego=p._en_juego,
+                                              reloj=lambda: reloj[0])
+    try:
+        p._poner_titulo()                                   # como correr() al empezar
+        base = api.titulos[-1]
+        p.responder("hola")                                 # «¿Lo hago? [s/N]» pendiente
+        assert consola.reclamada and p.ejecutor.pendientes()
+        # Salvapantallas (10) y baile a mano (20; su línea viva reclama con -10).
+        reloj[0] += 40
+        api_in.inactivo(40)
+        assert p.salvapantallas.tic() is True and consola.capa_titulo() == "salvapantallas"
+        p.comando("/bailar 60")
+        assert p.baile.bailando and consola.capa_titulo() == "baile"
+        # Suena una alarma (60): encima de todo.
+        alarmas.aviso.disparar(Disparo("a1", "pizza", "alarma", 0.0, "07:30", 0.0))
+        assert consola.capa_titulo() == "alarma" and api.titulos[-1] == "⏰ pizza"
+        # Enter en el bloqueo: lo consume la alarma («espera»), no la aprobación.
+        entrada.put("\n")
+        assert esperar(lambda: "(espera" in out.getvalue())
+        assert alarmas.aviso.sonando is not None and p.ejecutor.pendientes() and lanzadas == []
+        # Enter pasado el bloqueo: apaga la alarma; la aprobación y el baile siguen.
+        reloj[0] += 6
+        entrada.put("\n")
+        assert esperar(lambda: alarmas.aviso.sonando is None)
+        assert esperar(lambda: consola.capa_titulo() == "baile")
+        assert p.ejecutor.pendientes() and lanzadas == [] and p.baile.bailando
+        # «s» es para la aprobación.
+        entrada.put("s\n")
+        assert esperar(lambda: lanzadas == [("calc", "usuario")])
+        assert p.baile.bailando
+        # El Enter en vacío que queda para el baile: para.
+        entrada.put("\n")
+        assert esperar(lambda: not p.baile.bailando)
+        assert esperar(lambda: consola.capa_titulo() == "salvapantallas")
+        # Modo juego (50): el salvapantallas se quita; una alarma sigue por encima.
+        juego.activo = True
+        assert p._tic_juego() is True and consola.capa_titulo() == "juego"
+        assert p.salvapantallas.tic() is False and consola.capa_titulo() == "juego"
+        assert "baile" not in consola._capas and "salvapantallas" not in consola._capas
+        alarmas.aviso.disparar(Disparo("a2", "cita", "alarma", 0.0, "08:00", 0.0))
+        assert consola.capa_titulo() == "alarma"
+        reloj[0] += 6
+        entrada.put("\n")
+        assert esperar(lambda: alarmas.aviso.sonando is None)
+        assert esperar(lambda: consola.capa_titulo() == "juego")
+        juego.activo = False
+        assert p._tic_juego() is True
+        assert consola.capa_titulo() is None and api.titulos[-1] == base
+        assert not consola.reclamada                       # nada se queda esperando una línea
+    finally:
+        entrada.put(None)
+        p.cerrar()

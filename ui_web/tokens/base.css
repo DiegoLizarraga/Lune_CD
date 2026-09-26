@@ -24,8 +24,8 @@ a { color: var(--accent); text-decoration: none; }
 /* App-shell ambient backdrop: ink + faint grid + cyan bloom */
 .lune-backdrop {
   background:
-    radial-gradient(900px 500px at 12% -10%, rgba(30,85,255,.18), transparent 60%),
-    radial-gradient(700px 500px at 100% 110%, rgba(0,229,255,.12), transparent 55%),
+    radial-gradient(900px 500px at 12% -10%, rgb(var(--blue-500-rgb, 30 85 255) / .18), transparent 60%),
+    radial-gradient(700px 500px at 100% 110%, rgb(var(--cyan-500-rgb, 0 229 255) / .12), transparent 55%),
     var(--tex-grid),
     var(--bg);
   background-size: auto, auto, var(--tex-grid-size), var(--tex-grid-size), auto;

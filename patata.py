@@ -21,6 +21,13 @@ Acciones: el modelo las pide con <|CALL …|> (lune_core/acciones.py). Las de
 lectura van solas; abrir una app pregunta. El formato antiguo (ABRIR_URL:,
 TOOL:) ya no hace nada.
 
+Alarmas, salvapantallas y baile (cortes 5 y 6), sin Qt: las alarmas y los
+temporizadores suenan también aquí (banner, sonido y título; Enter apaga, «p»
+pospone; con la app de ventanas abierta a la vez suena UNA vez), el salvapantallas
+es el título «(-_-) zzZ 23:41» y, con música, el título baila. «Avísame en 10
+minutos» o «baila» escritos en el chat van directos, como «abre youtube». El
+título va por capas: alarma 60, modo juego 50, baile 20, salvapantallas 10.
+
 Sueño: aquí no hay mascota que dormir, pero la regla es la misma
 (nucleo/sueno.ReglaSueno, avatar.dormir_min). Si vuelves tras una pausa larga,
 antes de la respuesta sale «Lune se quedó dormida hace N min… (-_-) zzZ» y, a
@@ -42,7 +49,25 @@ Comandos:
   /herramientas                 lo que Lune puede hacer en tu PC desde aquí
   /nuevo                        conversación nueva (presupuesto de acciones repuesto)
   /limpiar                      conversación nueva y pantalla limpia
+  /menu [n [opción]]            acciones rápidas numeradas: voz, modo juego, tema, arrancar con
+                                Windows, liberar memoria y salir (/menu 2 elige la segunda)
+  /tema [nombre]                colores de esta terminal: cian, magenta_mate, violeta, rojo_neon,
+                                ambar o verde_acido
+  /caritas [clasico|kaomoji]    caritas de teclado :D o kaomoji (^▽^)
+  /juego [on|off|auto]          modo juego: con un juego delante Lune baja su prioridad (se ve
+                                en el título de la consola); on/off lo fuerzan, auto lo detecta
+  /ram                          libera la memoria que Lune no está usando ahora
+  /alarma HH:MM [lmxjvsd|todos] [texto]   alarma (sin días: una sola vez) · /alarma probar
+  /alarmas [on|off]             lista de alarmas y temporizadores (con su id) o encenderlas/apagarlas
+  /borrar_alarma <id|n>         quita una alarma o un temporizador (id o número de /alarmas)
+  /timer 10m [texto] · /timers  temporizador (10m, 1h30, 90s, 1:30…) y los que hay
+  /apagar · /posponer           la alarma que suena (también Enter o «p» mientras suena)
+  /bailar [segundos] · /bailar auto on|off · /bailar apps · /bailar permitir <app> ·
+  /bailar quitar <app> · /parar   Lune baila en el título (con música, sola)
+  /interfaz [web|nativo]        vuelve a las ventanas (completa o bajos recursos) y cierra la terminal
   /salir
+  (La terminal no tiene bandeja, menú radial ni atajos globales: eso es de las ventanas.
+  Tampoco pantalla grande: el salvapantallas es el título, con salvapantallas.activo.)
 """
 from __future__ import annotations
 
@@ -84,12 +109,36 @@ CARITAS = {
     "laughing": "xD", "bored": "-.-",
 }
 
+# Las mismas emociones en kaomoji (config patata.caritas = "kaomoji", /caritas).
+KAOMOJI = {
+    "happy": "(^▽^)", "sad": "(╥_╥)", "angry": "(╬`益´)", "think": "(・_・ヾ", "surprised": "(°o°)",
+    "awkward": "(^_^;)", "question": "(・・?)", "curious": "(o_O)", "neutral": "(・_・)",
+    "nervous": "(;^_^)", "wave": "(^_^)/", "dismiss": "(￣ー￣)",
+    "laughing": "(≧▽≦)", "bored": "(=_=)",
+}
+_EMOCION_DE_CARITA = {v: k for k, v in CARITAS.items()}
+ESTILOS_CARITAS = ("clasico", "kaomoji")
+
 SI = frozenset({"s", "si", "sí", "y", "yes"})
+# Prioridad del reclamo «¿Lo hago? [s/N]» en la consola: la alarma que suena
+# (servicios/alarmas_patata) va por encima y el baile (-10) por debajo.
+PRIORIDAD_APROBACION = 0
 ALIAS_PROVEEDOR = {"local": "ollama", "nube": "openrouter", "api": "compat"}
 CLAVE_MODELO = {"ollama": "ollama_model", "openrouter": "openrouter_model",
                 "compat": "compat_model"}
 _RE_MODELO = re.compile(r"^[\w.:/@+\-]{1,160}$")
 CTX_MIN, CTX_MAX = 512, 131072
+
+# /interfaz: volver a las ventanas (config interfaz.modo, lo lee main.py al arrancar).
+MODOS_INTERFAZ = {"web": "web", "completa": "web", "completo": "web",
+                  "nativo": "nativo", "nativa": "nativo", "bajos": "nativo", "ligera": "nativo",
+                  "ligero": "nativo"}
+NOMBRE_INTERFAZ = {"web": "completa", "nativo": "de bajos recursos"}
+ESPERA_ARRANQUE_S = 1.5      # si la app muere antes (falta PyQt6…), patata no se cierra
+# Windows: la app va sin consola y desacoplada de esta terminal (cerrarla no la mata).
+_DETACHED_PROCESS = 0x00000008
+_CREATE_NEW_PROCESS_GROUP = 0x00000200
+_CREATE_NO_WINDOW = 0x08000000
 
 
 # Colores ANSI (Windows 10+ los soporta al activar VT). Con --sin-color van vacíos.
@@ -138,6 +187,28 @@ def url_compat_valida(url: str) -> Optional[str]:
     return u
 
 
+def _plano(texto: Any) -> str:
+    """«Magenta Mate», «rojo-neón» → «magenta_mate», «rojo_neon» (para /tema y /caritas)."""
+    s = unicodedata.normalize("NFD", str(texto or "").strip().lower())
+    s = "".join(ch for ch in s if unicodedata.category(ch) != "Mn")
+    return re.sub(r"[\s\-]+", "_", s)
+
+
+def preset_tema(texto: Any) -> Optional[str]:
+    """Nombre de preset de nucleo/tema.PRESETS (id, etiqueta o inicio único) o None."""
+    from nucleo import tema
+    t = _plano(texto)
+    if not t:
+        return None
+    if t in tema.PRESETS:
+        return t
+    for pid, etiqueta in tema.ETIQUETAS.items():
+        if pid in tema.PRESETS and _plano(etiqueta) == t:
+            return pid
+    candidatos = [p for p in tema.PRESETS if p.startswith(t)]
+    return candidatos[0] if len(candidatos) == 1 else None
+
+
 def _en_hilo(fn: Callable[[], None]) -> None:
     """Lo que sigue a una aprobación sale del hilo lector de la consola (tiene que ser rápido)."""
     threading.Thread(target=fn, name="lune-accion", daemon=True).start()
@@ -151,13 +222,89 @@ def _config_por_defecto():
         return None
 
 
+def python_sin_consola(exe: Optional[str] = None) -> str:
+    """El pythonw.exe hermano del intérprete actual (la app de ventanas no necesita
+    consola); si no existe, el mismo intérprete."""
+    exe = exe or sys.executable
+    ruta = Path(exe)
+    if os.name == "nt" and ruta.name.lower() == "python.exe":
+        pyw = ruta.with_name("pythonw.exe")
+        if pyw.exists():
+            return str(pyw)
+    return str(exe)
+
+
+def lanzar_app_qt(modo: str = "", *, raiz: Path = RAIZ, popen: Optional[Callable[..., Any]] = None,
+                  espera_s: float = ESPERA_ARRANQUE_S) -> bool:
+    """Abre la app de ventanas (main.py) sin consola y desacoplada de esta terminal:
+    si cierras la consola, la app sigue. Lee el modo de config (interfaz.modo).
+
+    Sin importar Qt aquí: se comprueba que PyQt6 esté instalado buscándolo, no
+    importándolo. Si la app se cierra con error en los primeros segundos (le falta
+    algo), lanza RuntimeError con el motivo para que patata no se vaya. True si
+    quedó abierta (o terminó bien: otra Lune ya estaba abierta y se trajo al frente)."""
+    import importlib.util
+    import subprocess
+    script = Path(raiz) / "main.py"
+    if not script.exists():
+        raise RuntimeError(f"no encuentro {script.name}")
+    if importlib.util.find_spec("PyQt6") is None:
+        raise RuntimeError("este Python no tiene PyQt6 (ejecuta instalar_lune.bat o "
+                           "pip install -r requirements.txt)")
+    exe = python_sin_consola()
+    kw: Dict[str, Any] = {"cwd": str(raiz), "stdin": subprocess.DEVNULL,
+                          "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL,
+                          "close_fds": True}
+    if os.name == "nt":
+        sin_consola = Path(exe).name.lower() == "pythonw.exe"
+        kw["creationflags"] = _CREATE_NEW_PROCESS_GROUP | (
+            _DETACHED_PROCESS if sin_consola else _CREATE_NO_WINDOW)
+    else:
+        kw["start_new_session"] = True
+    proc = (popen or subprocess.Popen)([exe, str(script)], **kw)
+    if espera_s and espera_s > 0:
+        try:
+            codigo = proc.wait(timeout=espera_s)
+        except subprocess.TimeoutExpired:
+            return True                               # sigue viva: arrancó
+        except Exception:
+            return True
+        if codigo not in (0, None):
+            raise RuntimeError(f"la interfaz se cerró al arrancar (código {codigo}); "
+                               "mira logs/ o ejecuta instalar_lune.bat")
+    return True
+
+
 class Patata:
     def __init__(self, color: bool = True, *, consola: Any = None, config: Any = _AUTO,
                  ai: Any = None, memoria: Any = None, voice: Any = _AUTO, tools: Any = _AUTO,
                  audit_path: Any = _AUTO, reloj_sueno: Optional[Callable[[], float]] = None,
+                 lanzador: Optional[Callable[[str], Any]] = None,
+                 juego: Any = None, prioridad: Optional[Callable[[bool], Any]] = None,
+                 recortar: Optional[Callable[[], Any]] = None, autoinicio: Any = None,
+                 alarmas: Any = _AUTO, baile: Any = _AUTO, salvapantallas: Any = _AUTO,
                  **opciones_ejecutor):
         self.c = _colores(color)
+        self._c_base = dict(self.c)                          # /tema parte de aquí cada vez
         self.config = _config_por_defecto() if config is _AUTO else config
+        # Corte 4 en la terminal (sin Qt): modo juego con su hilo (DetectorJuego y la
+        # prioridad del proceso), /ram, /tema, /caritas y /menu. Inyectables en tests.
+        self._det_juego = juego                              # DetectorJuego (perezoso)
+        self._prioridad_fn = prioridad                       # modo_juego.aplicar_prioridad
+        self._recortar_fn = recortar                         # recorte_ram.recortar
+        self._autoinicio = autoinicio                        # servicios.autoinicio
+        self._juego_activo = False
+        self._juego_motivo = ""
+        self._prioridad_baja = False
+        self._lock_juego = threading.Lock()
+        self._parar_juego = threading.Event()
+        self._hilo_juego: Optional[threading.Thread] = None
+        self._desp = None                                    # Despachador de /menu
+        self._salir_pedido = False
+        self._ultima_cara = CARITAS["neutral"]
+        self._aplicar_tema_consola()
+        # /interfaz: abre la app de ventanas (lanzador(modo) -> bool; inyectable en tests).
+        self._lanzador = lanzador or lanzar_app_qt
         # Sueño: hora (monótona) de la última actividad (tu última línea —mensaje, comando
         # o «s/n»— o el fin de la última respuesta); la regla se lee de config en cada turno.
         self._reloj_sueno = reloj_sueno or time.monotonic
@@ -169,6 +316,18 @@ class Patata:
         self.provider = self._proveedor_inicial()
         self.voice = self._crear_voz() if voice is _AUTO else voice
         self.tools = self._crear_tools() if tools is _AUTO else tools
+        # Cortes 5/6 (sin Qt): alarmas (servicios/alarmas_patata), baile en el título
+        # (servicios/baile_terminal) y salvapantallas en el título
+        # (servicios/salvapantallas_terminal). Arrancan en correr(); None = sin ellos.
+        self.alarmas = self._crear_alarmas() if alarmas is _AUTO else alarmas
+        self.baile = self._crear_baile() if baile is _AUTO else baile
+        self.salvapantallas = (self._crear_salvapantallas() if salvapantallas is _AUTO
+                               else salvapantallas)
+        if self.alarmas is not None and self.tools is not None:
+            try:
+                self.alarmas.registrar_herramientas(self.tools)   # temporizador, alarma…
+            except Exception:
+                pass
         self._reclamos: Dict[str, Callable[[], None]] = {}   # aprobación → cancelar()
         self._lock = threading.Lock()
         self.ejecutor = None
@@ -233,6 +392,33 @@ class Patata:
             pass
         return tm
 
+    def _en_juego(self) -> bool:
+        return bool(getattr(self, "_juego_activo", False))
+
+    def _crear_alarmas(self):
+        """AlarmasTerminal (alarmas.json, el mismo que la app; suena una vez aunque las
+        dos estén abiertas). None si no se puede."""
+        try:
+            from servicios.alarmas_patata import AlarmasTerminal
+            return AlarmasTerminal(self.consola, self.config, voice=self.voice, colores=self.c)
+        except Exception:
+            return None
+
+    def _crear_baile(self):
+        try:
+            from servicios.baile_terminal import BaileTerminal
+            return BaileTerminal(self.consola, self.config, colores=self.c, en_juego=self._en_juego)
+        except Exception:
+            return None
+
+    def _crear_salvapantallas(self):
+        try:
+            from servicios.salvapantallas_terminal import SalvapantallasTerminal
+            return SalvapantallasTerminal(self.consola, self.config, en_juego=self._en_juego,
+                                          restaurar_titulo=self._poner_titulo)
+        except Exception:
+            return None
+
     def _ctx(self) -> dict:
         try:
             from servicios.tools import ctx_acciones
@@ -249,7 +435,60 @@ class Patata:
 
     def _lune(self, cara: str, texto: str) -> str:
         c = self.c
+        cara = self._en_estilo(cara)
         return f"{c['cyan']}Lune {c['yellow']}{cara}{c['reset']}  {texto}"
+
+    # ── Caritas y colores (patata.caritas, patata.tema) ─────────────────────────
+    def _estilo_caritas(self) -> str:
+        estilo = _plano(self._cfg("patata", "caritas", "clasico"))
+        return estilo if estilo in ESTILOS_CARITAS else "clasico"
+
+    def _cara(self, emocion: str) -> str:
+        """La carita de una emoción canónica en el estilo elegido (clasico o kaomoji)."""
+        tabla = KAOMOJI if self._estilo_caritas() == "kaomoji" else CARITAS
+        return tabla.get(str(emocion or ""), tabla["neutral"])
+
+    def _en_estilo(self, cara: str) -> str:
+        """Una carita clásica (":D") en el estilo elegido; lo demás, tal cual."""
+        emocion = _EMOCION_DE_CARITA.get(cara)
+        return self._cara(emocion) if emocion else cara
+
+    def _tema_consola(self) -> str:
+        """Preset de patata.tema (el color de «Lune» en esta terminal); si no vale, cian."""
+        return preset_tema(self._cfg("patata", "tema", "cian")) or "cian"
+
+    def _aplicar_tema_consola(self) -> None:
+        """El color de «Lune» con la paleta del preset (ANSI truecolor, nucleo/tema);
+        con el cian de siempre, el color ANSI de siempre. Sin color, nada."""
+        base = self._c_base.get("cyan", "")
+        if not base:
+            return
+        preset = self._tema_consola()
+        if preset == "cian":
+            self.c["cyan"] = base
+            return
+        try:
+            from nucleo import tema
+            self.c["cyan"] = tema.ansi(tema.paleta(preset)["cyan-500"])
+        except Exception:
+            self.c["cyan"] = base
+
+    def _poner_titulo(self, cara: Optional[str] = None) -> None:
+        """Título de la consola: la última carita y, con un juego delante, «modo juego».
+        Con capas (nucleo/consola.titulo_capa), el modo juego es la capa «juego» (50):
+        una alarma (60) se ve por encima; el baile (20) y el salvapantallas (10), debajo."""
+        if cara:
+            self._ultima_cara = cara
+        texto = f"Lune {self._ultima_cara} · patata"
+        capa = getattr(self.consola, "titulo_capa", None)
+        try:
+            if callable(capa):
+                self.consola.titulo(texto)
+                capa("juego", texto + " · modo juego" if self._juego_activo else None, 50)
+            else:
+                self.consola.titulo(texto + (" · modo juego" if self._juego_activo else ""))
+        except Exception:
+            pass
 
     def _aviso_voz(self, mensaje: str) -> None:
         """on_error del VoiceEngine (llega del hilo de audio): aviso sin romper el prompt."""
@@ -311,8 +550,8 @@ class Patata:
     def _carita(self, control) -> str:
         acts = [v for k, v in control if k == "act"]
         if not acts:
-            return CARITAS["neutral"]
-        return CARITAS.get(str(acts[-1].get("emotion", "neutral")), CARITAS["neutral"])
+            return self._cara("neutral")
+        return self._cara(str(acts[-1].get("emotion", "neutral")))
 
     # ── Sueño (la mascota que no hay) ────────────────────────────────────────────
     def _frases_mascota(self):
@@ -370,6 +609,34 @@ class Patata:
 
     def _responder(self, texto: str):
         c = self.c
+        # herramienta directa ("abre youtube", "estado del pc", "avísame en 10 minutos"):
+        # la pidió la persona. Va al Ejecutor como cualquier acción (política,
+        # presupuesto, aprobación y auditoría); el resultado llega por _al_resultado (en
+        # línea o tras el «s»). Antes que la memoria (cortes 5/6): «recuérdame que a las
+        # 5 tengo cita» es una alarma; sin hora ni duración sigue siendo un recuerdo.
+        if self.tools is not None:
+            try:
+                llamadas = self.tools.detectar_llamadas(texto)
+            except Exception:
+                llamadas = []
+            baile = [ll for ll in llamadas if ll.herramienta in ("mascota_bailar", "parar_baile")]
+            if baile:
+                # «baila» / «para de bailar»: aquí el baile es el título (BaileTerminal).
+                bt = getattr(self, "baile", None)
+                if bt is None:
+                    self._p(self._lune("^^'", "Aquí no puedo bailar.") + "\n")
+                    return
+                orden = "/bailar" if baile[0].herramienta == "mascota_bailar" else "/parar"
+                try:
+                    r = bt.comando(orden)
+                except Exception as e:
+                    r = f"No pude: {e}"
+                if r:
+                    self._p(self._lune(":D", str(r)) + "\n")
+                return
+            if llamadas and self.ejecutor is not None:
+                self.ejecutor.ejecutar_llamadas(llamadas, ORIGEN_USUARIO, self._ctx(), self._al_resultado)
+                return
         # memoria por comando ("recuerda que…")
         try:
             r = self.memoria.procesar_mensaje_usuario(texto)
@@ -377,17 +644,6 @@ class Patata:
             r = None
         if r:
             self._p(self._lune(":D", r) + "\n"); return
-        # herramienta directa ("abre youtube", "estado del pc"): la pidió la persona.
-        # Va al Ejecutor como cualquier acción (política, presupuesto, aprobación y
-        # auditoría); el resultado llega por _al_resultado (en línea o tras el «s»).
-        if self.tools is not None and self.ejecutor is not None:
-            try:
-                llamadas = self.tools.detectar_llamadas(texto)
-            except Exception:
-                llamadas = []
-            if llamadas:
-                self.ejecutor.ejecutar_llamadas(llamadas, ORIGEN_USUARIO, self._ctx(), self._al_resultado)
-                return
 
         ctx = self._ctx()
         self.consola.escribir(f"{c['cyan']}Lune{c['reset']}  ")
@@ -423,10 +679,7 @@ class Patata:
             self.consola.escribir(hablable.strip())   # respuesta sin streaming (p. ej. un error)
         cara = self._carita(control)
         self._p(f"  {c['yellow']}{cara}{c['reset']}\n")
-        try:
-            self.consola.titulo(f"Lune {cara} · patata")
-        except Exception:
-            pass
+        self._poner_titulo(cara)
         self._hablar(limpio)
         try:
             self.memoria.procesar_respuesta_lune(limpio)
@@ -480,18 +733,25 @@ class Patata:
         self.consola.aviso("\n".join(lineas))
 
         def al_responder(linea: str):
+            if not str(linea or "").strip() and self._alarma_sonando():
+                return False                          # el Enter vacío es de la alarma: sigue esperando
             with self._lock:
                 self._reclamos.pop(pid, None)
             self._actividad()                         # contestar «s/n» también es estar ahí
             responder(str(linea or "").strip().lower() in SI)
 
-        cancelar = self.consola.reclamar(al_responder, prompt=f"{c['yellow']}¿Lo hago? [s/N]{c['reset']} ")
+        cancelar = self.consola.reclamar(al_responder, prompt=f"{c['yellow']}¿Lo hago? [s/N]{c['reset']} ",
+                                         prioridad=PRIORIDAD_APROBACION)
         with self._lock:
             self._reclamos[pid] = cancelar
         try:
             self.consola.parpadear()
         except Exception:
             pass
+
+    def _alarma_sonando(self) -> bool:
+        aviso = getattr(self.alarmas, "aviso", None)
+        return getattr(aviso, "sonando", None) is not None
 
     def _cerrar_aprobacion(self, pid: str) -> None:
         """Caducó o se canceló (conversación nueva): la línea vuelve al chat."""
@@ -553,6 +813,18 @@ class Patata:
         cmd, arg = partes[0].lower(), (partes[1] if len(partes) > 1 else "")
         if cmd == "/salir":
             return True
+        # Cortes 5/6: /alarma, /alarmas, /timer, /apagar… y /bailar, /parar.
+        for modulo in (getattr(self, "alarmas", None), getattr(self, "baile", None)):
+            if modulo is None:
+                continue
+            try:
+                r = modulo.comando(linea)
+            except Exception as e:
+                r = f"No pude hacerlo: {e}"
+            if r is not None:
+                if r:
+                    self._p(str(r) + "\n")
+                return False
         acciones = {
             "/ayuda": lambda a: (__doc__.split("Comandos:")[1].strip("\n")
                                  if "Comandos:" in __doc__ else ""),
@@ -573,11 +845,24 @@ class Patata:
             "/voz": self._cmd_voz,
             "/herramientas": self._cmd_herramientas,
             "/nuevo": self._cmd_nuevo,
+            "/tema": self._cmd_tema,
+            "/caritas": self._cmd_caritas,
+            "/juego": self._cmd_juego,
+            "/ram": self._cmd_ram,
         }
         if cmd == "/limpiar":
             self.nueva_conversacion()
             os.system("cls" if os.name == "nt" else "clear")
             return False
+        if cmd in ("/interfaz", "/menu"):
+            fn2 = self._cmd_interfaz if cmd == "/interfaz" else self._cmd_menu
+            try:
+                texto, salir = fn2(arg.strip())
+            except Exception as e:
+                texto, salir = f"No pude hacerlo: {e}", False
+            if texto:
+                self._p(str(texto) + "\n")
+            return salir
         fn = acciones.get(cmd)
         if fn is None:
             self._p(f"{c['dim']}Comando desconocido. /ayuda{c['reset']}\n")
@@ -773,8 +1058,375 @@ class Patata:
         self.nueva_conversacion()
         return "Conversación nueva."
 
+    # ── Corte 4 en la terminal: tema, caritas, memoria, modo juego y /menu ──────
+    def _guardar_patata(self, clave: str, valor: Any) -> Optional[str]:
+        """config patata.<clave>; devuelve el motivo si no se pudo."""
+        if self.config is None:
+            return "No puedo guardar la configuración (config.json)."
+        try:
+            self.config.set("patata", clave, valor)
+        except Exception as e:
+            return f"No pude guardarlo: {una_linea(e, 200)}"
+        return None
+
+    def _cmd_tema(self, arg: str) -> str:
+        from nucleo import tema
+        actual = self._tema_consola()
+        if not arg.strip():
+            lista = ", ".join(("*" if p == actual else "") + p for p in tema.PRESETS)
+            return f"Temas: {lista}  ·  /tema <nombre> (el color de esta terminal)"
+        p = preset_tema(arg)
+        if p is None:
+            return f"No conozco el tema «{una_linea(arg, 30)}». Temas: {', '.join(tema.PRESETS)}."
+        error = self._guardar_patata("tema", p)
+        if error:
+            return error
+        self._aplicar_tema_consola()
+        return self._lune(":D", f"Tema {tema.ETIQUETAS.get(p, p)}.")
+
+    def _cmd_caritas(self, arg: str) -> str:
+        a = _plano(arg)
+        if not a:
+            estilo = self._estilo_caritas()
+            return (f"Caritas: {estilo} {self._cara('happy')}  ·  /caritas clasico  ·  "
+                    f"/caritas kaomoji")
+        estilo = {"clasico": "clasico", "clasicas": "clasico", "teclado": "clasico",
+                  "kaomoji": "kaomoji", "kaomojis": "kaomoji"}.get(a)
+        if estilo is None:
+            return "Elige: /caritas clasico (:D) o /caritas kaomoji (^▽^)."
+        error = self._guardar_patata("caritas", estilo)
+        if error:
+            return error
+        return self._lune(":D", f"Caritas {estilo}.")
+
+    def _cmd_ram(self, arg: str = "") -> str:
+        fn = self._recortar_fn
+        if fn is None:
+            from servicios.recorte_ram import recortar as fn  # noqa: N813
+        try:
+            antes, despues = fn()
+            antes, despues = float(antes), float(despues)
+        except Exception as e:
+            return f"No pude liberar memoria: {una_linea(e, 200)}"
+        return f"Memoria de Lune: {antes:.0f} MB → {despues:.0f} MB."
+
+    # Modo juego: DetectorJuego (servicios/modo_juego.py, sin Qt) en un hilo cada 2 s.
+    def _detector(self):
+        if self._det_juego is None:
+            try:
+                from servicios.modo_juego import DetectorJuego
+                self._det_juego = DetectorJuego(self.config)
+            except Exception:
+                self._det_juego = False
+        return self._det_juego or None
+
+    def _cambiar_prioridad(self, baja: bool) -> None:
+        fn = self._prioridad_fn
+        if fn is None:
+            from servicios.modo_juego import aplicar_prioridad as fn
+        try:
+            fn(bool(baja))
+        except Exception:
+            pass
+
+    def _tic_juego(self) -> bool:
+        """Una lectura del detector; si cambió, lo aplica. True si cambió."""
+        det = self._detector()
+        if det is None:
+            return False
+        with self._lock_juego:
+            try:
+                if not det.detectando() and not self._juego_activo:
+                    return False
+                _cambio, activo, motivo = det.evaluar()
+            except Exception:
+                return False
+            activo = bool(activo)
+            self._juego_motivo = str(motivo or "") if activo else ""
+            if activo == self._juego_activo:
+                return False
+            self._juego_activo = activo
+            self._aplicar_juego(activo)
+            return True
+
+    def _aplicar_juego(self, activo: bool) -> None:
+        """Con un juego delante: prioridad «por debajo de lo normal» (solo Lune) si
+        juego.prioridad_baja; al acabar, la de antes. Y el estado en el título."""
+        if activo:
+            try:
+                from servicios.modo_juego import plan
+                baja = bool(plan(self.config).prioridad_baja)
+            except Exception:
+                baja = True
+            if baja and not self._prioridad_baja:
+                self._cambiar_prioridad(True)
+                self._prioridad_baja = True
+        elif self._prioridad_baja:
+            self._cambiar_prioridad(False)
+            self._prioridad_baja = False
+        self._poner_titulo()
+        try:
+            from nucleo.utils import log_info
+            log_info(f"[juego] {'entra: ' + (self._juego_motivo or '?') if activo else 'sale'} (patata)")
+        except Exception:
+            pass
+
+    def _texto_juego(self) -> str:
+        det = self._detector()
+        if det is None:
+            return "El modo juego no está disponible aquí."
+        from nucleo.acciones_ui import texto_motivo_juego
+        try:
+            forzado = det.forzado
+        except Exception:
+            forzado = None
+        if self._juego_activo:
+            texto = "Modo juego: activo"
+            if self._juego_motivo:
+                texto += f" ({texto_motivo_juego(self._juego_motivo)})"
+        else:
+            texto = "Modo juego: no hay juego delante"
+        if forzado is True:
+            texto += " · forzado a mano (/juego auto para detectarlo)"
+        elif forzado is False:
+            texto += " · apagado a mano (/juego auto para detectarlo)"
+        elif not bool(self._cfg("juego", "activo", True)):
+            texto += " · la detección está apagada (juego.activo)"
+        else:
+            texto += " · automático"
+        return texto + "."
+
+    def _cmd_juego(self, arg: str) -> str:
+        det = self._detector()
+        if det is None:
+            return "El modo juego no está disponible aquí."
+        a = _plano(arg)
+        forzar = {"on": True, "si": True, "1": True, "forzar": True,
+                  "off": False, "no": False, "0": False,
+                  "auto": None, "automatico": None}
+        if a:
+            if a not in forzar:
+                return "Uso: /juego · /juego on · /juego off · /juego auto"
+            det.forzar(forzar[a])
+            self._tic_juego()                    # se aplica ya, sin esperar al hilo
+        return self._texto_juego()
+
+    def iniciar_juego(self) -> bool:
+        """El hilo del modo juego (una lectura cada DetectorJuego.INTERVALO_S). Lo
+        arranca correr(); True si arrancó."""
+        if self._hilo_juego is not None:
+            return False
+        det = self._detector()
+        if det is None:
+            return False
+        try:
+            intervalo = max(0.05, float(getattr(det, "INTERVALO_S", 2.0) or 2.0))
+        except (TypeError, ValueError):
+            intervalo = 2.0
+        self._parar_juego.clear()
+
+        def bucle():
+            while not self._parar_juego.wait(intervalo):
+                try:
+                    self._tic_juego()
+                except Exception:
+                    pass
+        self._hilo_juego = threading.Thread(target=bucle, name="lune-juego", daemon=True)
+        self._hilo_juego.start()
+        return True
+
+    def detener_juego(self) -> None:
+        """Para el hilo y devuelve la prioridad si el modo juego la bajó."""
+        self._parar_juego.set()
+        hilo, self._hilo_juego = self._hilo_juego, None
+        if hilo is not None and hilo is not threading.current_thread():
+            hilo.join(timeout=1.0)
+        with self._lock_juego:
+            if self._prioridad_baja:
+                self._cambiar_prioridad(False)
+                self._prioridad_baja = False
+            self._juego_activo = False
+
+    # /menu: el catálogo común de acciones (nucleo/acciones_ui) en modo «patata».
+    def _despachador(self):
+        if self._desp is None:
+            from nucleo.acciones_ui import Despachador
+            d = Despachador()
+            d.registrar("voz", self._accion_voz,
+                        marcado=lambda: bool(getattr(self.voice, "_enabled", False)))
+            if self._detector() is not None:
+                d.registrar("modo_juego_forzar", self._accion_juego, marcado=lambda: self._juego_activo)
+            d.registrar("tema", self._accion_tema)
+            d.registrar("autoinicio", self._accion_autoinicio, marcado=self._autoinicio_on)
+            d.registrar("liberar_memoria", lambda: self._p(self._cmd_ram()))
+            d.registrar("salir", self._accion_salir)
+            self._desp = d
+        return self._desp
+
+    def _mod_autoinicio(self):
+        if self._autoinicio is None:
+            try:
+                from servicios import autoinicio
+                self._autoinicio = autoinicio
+            except Exception:
+                self._autoinicio = False
+        return self._autoinicio or None
+
+    def _autoinicio_on(self) -> bool:
+        m = self._mod_autoinicio()
+        try:
+            return bool(m.activo()) if m is not None else False
+        except Exception:
+            return False
+
+    def _accion_voz(self) -> None:
+        from servicios import voces
+        orden = "off" if getattr(self.voice, "_enabled", False) else "on"
+        self._p(voces.comando_voz(orden, self.config, self.voice))
+
+    def _accion_juego(self, arg: str = "") -> None:
+        det = self._detector()
+        if det is None:
+            return
+        if not _plano(arg):                      # alternar: forzado → auto; activo → apagar; si no → forzar
+            forzado = getattr(det, "forzado", None)
+            arg = "auto" if forzado is not None else ("off" if self._juego_activo else "on")
+        self._p(self._cmd_juego(arg))
+
+    def _accion_tema(self, arg: str = "") -> None:
+        if not str(arg or "").strip():           # sin nombre: el siguiente preset
+            from nucleo import tema
+            orden = list(tema.PRESETS)
+            actual = self._tema_consola()
+            arg = orden[(orden.index(actual) + 1) % len(orden)] if actual in orden else orden[0]
+        self._p(self._cmd_tema(arg))
+
+    def _accion_autoinicio(self) -> None:
+        m = self._mod_autoinicio()
+        if m is None:
+            self._p("No sé arrancar con Windows desde aquí.")
+            return
+        try:
+            nuevo = bool(m.establecer(not self._autoinicio_on()))
+        except Exception as e:
+            self._p(f"No pude cambiarlo: {una_linea(e, 200)}")
+            return
+        if self.config is not None:
+            try:
+                self.config.set("sistema", "autoinicio", nuevo)
+            except Exception:
+                pass
+        self._p("Lune arrancará con Windows." if nuevo else "Lune ya no arranca con Windows.")
+
+    def _accion_salir(self) -> None:
+        self._salir_pedido = True
+
+    def _items_menu(self) -> list:
+        from nucleo import acciones_ui as au
+        d = self._despachador()
+        det = self._detector()
+        ctx = au.Contexto(
+            modo="patata", voz_on=bool(getattr(self.voice, "_enabled", False)),
+            juego_forzado=getattr(det, "forzado", None) if det is not None else None,
+            autoinicio_on=self._autoinicio_on(), tema_preset=self._tema_consola(),
+            juego_activo=self._juego_activo, juego_motivo=self._juego_motivo)
+        items = [x for x in au.catalogo(d, None, ctx) if x.get("disponible") and x.get("visible")]
+        return sorted(items, key=lambda x: x["id"] == "salir")      # «Salir», la última
+
+    def _cmd_menu(self, arg: str):
+        """(texto, salir). Sin número, la lista; con él, la hace (con la opción si la
+        hay: /menu 3 violeta)."""
+        items = self._items_menu()
+        partes = arg.split(None, 1)
+        if not partes:
+            lineas = ["Menú (/menu <n> para elegir; algunas aceptan una opción: /menu <n> <opción>):"]
+            for i, it in enumerate(items, 1):
+                marca = "" if it.get("marcado") is None else ("  ✓" if it["marcado"] else "  ·")
+                lineas.append(f"  {i}. {it['etiqueta']}{marca}")
+            lineas.append("  (Aquí no hay bandeja, menú radial ni atajos globales: eso es de las ventanas.)")
+            return "\n".join(lineas), False
+        try:
+            n = int(partes[0])
+        except ValueError:
+            ids = [it["id"] for it in items]
+            n = ids.index(partes[0].lower()) + 1 if partes[0].lower() in ids else 0
+        if not 1 <= n <= len(items):
+            return f"No hay la opción «{una_linea(partes[0], 20)}». /menu para verlas.", False
+        it = items[n - 1]
+        self._salir_pedido = False
+        if not self._despachador().ejecutar(it["id"], partes[1] if len(partes) > 1 else ""):
+            return f"No pude hacer «{it['etiqueta']}».", False
+        salir = self._salir_pedido
+        self._salir_pedido = False
+        return "", salir
+
+    def _cmd_interfaz(self, arg: str):
+        """(texto, salir). Guarda interfaz.modo, abre la app de ventanas y, si abrió,
+        patata se cierra (salir=True). Si no pudo, vuelve el modo de antes y sigue aquí."""
+        uso = ("Estás en la terminal (modo patata). /interfaz web → la interfaz completa · "
+               "/interfaz nativo → la de bajos recursos. Cierro la terminal al abrirla.")
+        a = arg.strip().lower()
+        if not a:
+            return uso, False
+        if a in ("patata", "terminal"):
+            return "Ya estás en el modo patata.", False
+        modo = MODOS_INTERFAZ.get(a)
+        if modo is None:
+            return f"No conozco la interfaz «{una_linea(arg, 30)}». {uso}", False
+        if self.config is None:
+            return "No puedo guardar la configuración (config.json): sigo aquí.", False
+        anterior = self._cfg("interfaz", "modo", "web")
+        try:
+            self.config.set("interfaz", "modo", modo)
+        except Exception as e:
+            return f"No pude guardar el modo: {una_linea(e, 200)}. Sigo aquí.", False
+        c = self.c
+        self._p(f"{c['dim']}Abriendo la interfaz {NOMBRE_INTERFAZ[modo]}…{c['reset']}")
+        motivo = ""
+        try:
+            ok = bool(self._lanzador(modo))
+        except Exception as e:
+            ok, motivo = False, una_linea(e, 200)
+        if not ok:
+            try:
+                self.config.set("interfaz", "modo", anterior)
+            except Exception:
+                pass
+            return (f"No pude abrir la interfaz{': ' + motivo if motivo else ''}. Sigo aquí.", False)
+        # salir=True: correr() sale del bucle y cerrar() deja nada pendiente.
+        return self._lune("o/", "Te espero en la ventana. Cierro la terminal."), True
+
     # ── Bucle ────────────────────────────────────────────────────────────────────
+    def iniciar_ocio(self) -> None:
+        """Cortes 5/6: el hilo de las alarmas, el detector de música del baile y el
+        salvapantallas del título (cada uno en su hilo). Lo llama correr()."""
+        for nombre in ("alarmas", "baile", "salvapantallas"):
+            modulo = getattr(self, nombre, None)
+            if modulo is None:
+                continue
+            try:
+                modulo.iniciar()
+            except Exception:
+                pass
+
+    def detener_ocio(self) -> None:
+        """Para lo de iniciar_ocio y quita sus capas del título (idempotente). Lo que
+        sonaba queda en alarmas.json para la próxima vez."""
+        for nombre in ("salvapantallas", "baile", "alarmas"):
+            modulo = getattr(self, nombre, None)
+            if modulo is None:
+                continue
+            try:
+                modulo.detener()
+            except Exception:
+                pass
+
     def cerrar(self) -> None:
+        self.detener_ocio()                          # antes que la consola: quitan sus capas
+        try:
+            self.detener_juego()                     # hilo del modo juego y prioridad de antes
+        except Exception:
+            pass
         if self.ejecutor is not None:
             self.ejecutor.nueva_conversacion()       # nada pendiente al salir
         if self.voice is not None:
@@ -795,6 +1447,14 @@ class Patata:
         self._p(f"{c['dim']}Solo texto. Caritas en vez de mascota. /ayuda para los comandos, "
                 f"/salir para irte.{c['reset']}\n")
         self._p(self._lune("o/", "Lune en línea. Dime qué necesitas.") + "\n")
+        # El título normal desde el principio: al quitarse la última capa (salvapantallas,
+        # baile, alarma…) vuelve este, aunque aún no hayas chateado.
+        self._poner_titulo()
+        try:
+            self.iniciar_juego()                     # modo juego: detector cada 2 s (sin Qt)
+        except Exception:
+            pass
+        self.iniciar_ocio()                          # alarmas, baile y salvapantallas
         try:
             while True:
                 try:

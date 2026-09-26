@@ -22,6 +22,16 @@ revuelta. `ConsolaAsincrona` lo resuelve con:
   prompt con lo que llevabas escrito, o la frase a medias del streaming.
 - `titulo(txt)` (`SetConsoleTitleW`) y `parpadear()` (`FlashWindowEx`) para
   avisar aunque la consola esté minimizada. Activa las secuencias VT al crearse.
+- Título por CAPAS (`titulo_capa(capa, texto, prioridad)`): varias piezas
+  quieren el título a la vez (alarma 60, modo juego 50, baile 20, salvapantallas
+  10). Se enseña la capa de mayor prioridad (a igualdad, la última puesta); al
+  quitarla (`texto=None`) se repinta la siguiente y, sin capas, el título normal
+  de `titulo()` (o `titulo_defecto` si nadie lo puso: nunca se queda puesta una
+  capa ya quitada).
+- `reclamar()` devuelve `cancelar()` con `cancelar.cambiar_prompt(texto)`: el
+  prompt del reclamo cambia en vivo (la línea del baile, la cuenta atrás de la
+  alarma). `prioridad` ordena los reclamos (el baile usa una baja: una alarma
+  o una aprobación se quedan antes su Enter).
 
 LECTURA
 -------
@@ -64,6 +74,8 @@ from dataclasses import dataclass
 from typing import Any, Callable, Deque, List, Optional, Tuple, Union
 
 _log = logging.getLogger("lune.consola")
+
+TITULO_DEFECTO = "Lune"             # sin capas y sin titulo(): lo que se repinta
 
 # Secuencias ANSI/VT
 BORRAR_LINEA = "\r\033[2K"          # al principio de la línea y la borra entera
@@ -288,6 +300,7 @@ class _Reclamo:
     bloqueante: bool = False               # alguien espera (preguntar): se enseña el prompt
     evento: Optional[threading.Event] = None
     cancelado: bool = False
+    prioridad: int = 0                     # los de más prioridad reciben antes la línea
 
 
 class ConsolaAsincrona:
@@ -295,7 +308,8 @@ class ConsolaAsincrona:
 
     def __init__(self, prompt: str = "tú > ", *, stdout: Any = None, stdin: Any = None,
                  leer_tecla: Optional[Callable[[], str]] = None, api: Optional[ApiConsolaWin32] = None,
-                 ansi: Optional[bool] = None, ancho: Union[int, Callable[[], int], None] = None):
+                 ansi: Optional[bool] = None, ancho: Union[int, Callable[[], int], None] = None,
+                 titulo_defecto: str = TITULO_DEFECTO):
         self.prompt = prompt
         self.lock = threading.RLock()        # EL lock de salida (streaming + avisos)
         self._cond = threading.Condition(self.lock)
@@ -333,6 +347,21 @@ class ConsolaAsincrona:
         self._reclamos: Deque[_Reclamo] = deque()
         self._eof = False
         self._hilo: Optional[threading.Thread] = None
+        # Título: el normal (titulo()) y las capas {capa: (prioridad, orden, texto)}.
+        self._titulo_base: Optional[str] = None
+        self._titulo_defecto = str(titulo_defecto or TITULO_DEFECTO)
+        self._capas: dict = {}
+        self._orden_capa = 0
+        self._titulo_pintado: Optional[str] = None
+
+    @property
+    def ansi(self) -> bool:
+        """¿La salida entiende secuencias ANSI (borrar línea, colores)?"""
+        return self._ansi
+
+    def columnas(self) -> int:
+        """Ancho de la terminal en columnas."""
+        return self._columnas()
 
     # ── Salida ───────────────────────────────────────────────────────────────────
     def escribir(self, texto: str) -> None:
@@ -371,7 +400,56 @@ class ConsolaAsincrona:
             self._repintar_vivo(con_prompt)
 
     def titulo(self, texto: str) -> bool:
-        """Cambia el título de la ventana de la consola (estado, carita, reloj…)."""
+        """Cambia el título normal de la ventana de la consola (estado, carita…).
+
+        Si hay alguna capa (`titulo_capa`) se guarda y se enseñará al quitarlas."""
+        with self.lock:
+            self._titulo_base = str(texto)
+            if self._capas:
+                return True
+            self._titulo_pintado = self._titulo_base
+            return self._poner_titulo(self._titulo_base)
+
+    def titulo_capa(self, capa: str, texto: Optional[str], prioridad: int = 0) -> bool:
+        """Pone (o quita, con `texto=None`) la capa `capa` del título.
+
+        Se enseña la de mayor `prioridad` (a igualdad, la puesta más tarde); sin
+        capas, el título de `titulo()`. Solo se repinta si cambia lo que se ve.
+        """
+        with self.lock:
+            capa = str(capa)
+            if texto is None:
+                if self._capas.pop(capa, None) is None:
+                    return False
+            else:
+                viejo = self._capas.get(capa)
+                if viejo is not None and viejo[0] == int(prioridad):
+                    orden = viejo[1]               # cambiar el texto no la sube por encima de sus iguales
+                else:
+                    self._orden_capa += 1
+                    orden = self._orden_capa
+                self._capas[capa] = (int(prioridad), orden, str(texto))
+            return self._repintar_titulo()
+
+    def capa_titulo(self) -> Optional[str]:
+        """La capa que se ve ahora en el título (None: el título normal)."""
+        with self.lock:
+            if not self._capas:
+                return None
+            return max(self._capas.items(), key=lambda kv: (kv[1][0], kv[1][1]))[0]
+
+    def _repintar_titulo(self) -> bool:
+        if self._capas:
+            texto = max(self._capas.values(), key=lambda v: (v[0], v[1]))[2]
+        else:
+            # Sin titulo() todavía: el de por defecto, no la capa que se acaba de quitar.
+            texto = self._titulo_base if self._titulo_base is not None else self._titulo_defecto
+        if texto == self._titulo_pintado:
+            return True
+        self._titulo_pintado = texto
+        return self._poner_titulo(texto)
+
+    def _poner_titulo(self, texto: str) -> bool:
         limpio = "".join(ch for ch in str(texto) if ch.isprintable() or ch == " ")
         if self._api.titulo(limpio):
             return True
@@ -431,21 +509,28 @@ class ConsolaAsincrona:
                 self.aviso(self.prompt + linea)
             return linea
 
-    def reclamar(self, fn: Callable[[str], Any], prompt: Optional[str] = None) -> Callable[[], None]:
+    def reclamar(self, fn: Callable[[str], Any], prompt: Optional[str] = None, *,
+                 prioridad: int = 0) -> Callable[[], None]:
         """La próxima línea escrita irá a `fn(linea)` en vez de al chat.
 
         `fn` se llama desde el hilo lector: que sea rápida (apagar un sonido,
         guardar una respuesta). Si devuelve False, la línea NO se consume: sigue
         al siguiente reclamo o al chat, y este reclamo sigue esperando (p. ej. la
         alarma solo se apaga con Enter en vacío). `prompt` sustituye al prompt
-        normal mientras este reclamo es el primero de la cola.
-        Devuelve `cancelar()`.
+        normal mientras este reclamo es el primero de la cola. Los reclamos van
+        por `prioridad` (mayor antes) y, a igualdad, por orden de llegada.
+        Devuelve `cancelar()`; `cancelar.cambiar_prompt(texto)` cambia su prompt
+        (y lo repinta si es el que se ve).
         """
-        r = _Reclamo(fn, prompt)
+        r = _Reclamo(fn, prompt, prioridad=int(prioridad))
         self._encolar(r)
 
         def cancelar() -> None:
             self._quitar(r)
+
+        def cambiar_prompt(texto: Optional[str]) -> bool:
+            return self._cambiar_prompt(r, texto)
+        cancelar.cambiar_prompt = cambiar_prompt          # type: ignore[attr-defined]
         return cancelar
 
     def preguntar(self, prompt: str, timeout: Optional[float] = None) -> Optional[str]:
@@ -574,7 +659,21 @@ class ConsolaAsincrona:
         with self.lock:
             if self._eof:
                 return False
-            self._reclamos.append(r)
+            # Detrás de los de prioridad mayor o igual, delante de los de menos.
+            pos = len(self._reclamos)
+            for i, x in enumerate(self._reclamos):
+                if x.prioridad < r.prioridad:
+                    pos = i
+                    break
+            self._reclamos.insert(pos, r)
+            self._sincronizar()
+            return True
+
+    def _cambiar_prompt(self, r: _Reclamo, texto: Optional[str]) -> bool:
+        with self.lock:
+            if r.cancelado or self._eof:
+                return False
+            r.prompt = texto
             self._sincronizar()
             return True
 

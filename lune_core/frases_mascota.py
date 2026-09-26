@@ -5,7 +5,8 @@ PARA QUÉ SIRVE
 --------------
 Frases cortas, sin pasar por el modelo, para los eventos de la mascota: la
 arrastras, la sueltas, la acaricias, se duerme, se despierta, se marea al
-agitarla o aparece en pantalla. Antes vivían fijas en `ui_web/companion_vrm.html`
+agitarla, aparece en pantalla, se sienta en la barra o en una ventana, se baja
+o come algo (cortes 7 y 8). Antes vivían fijas en `ui_web/companion_vrm.html`
 (`FRASES`, 4 eventos) y cada página tiraba su dado. Ahora hay un solo sitio:
 
 - `FRASES_BASE`: las de Lune, con su tono (directa y con filo, nada de «amo~»).
@@ -30,7 +31,9 @@ Cada personaje puede traer las suyas en `datos.json`:
     }
 
 Lo que no traiga sale de FRASES_BASE. Eventos desconocidos (p. ej. «pudor», que
-está fuera del alcance de esta versión) se ignoran.
+está fuera del alcance de esta versión) se ignoran. Los eventos «sentarse»,
+«bajar» y «comer» los dicen las mascotas de escritorio (ui/companion.py y
+ui/avatar_overlay.py) al sentarse, bajarse y comer.
 
 Sin Qt ni red: reloj y azar inyectables, así los tests son deterministas.
 """
@@ -43,7 +46,8 @@ import time
 from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 # ── Eventos y probabilidades ─────────────────────────────────────────────────────
-EVENTOS: Tuple[str, ...] = ("arrastre", "soltar", "caricia", "dormir", "despertar", "mareo", "aparecer")
+EVENTOS: Tuple[str, ...] = ("arrastre", "soltar", "caricia", "dormir", "despertar", "mareo", "aparecer",
+                            "sentarse", "bajar", "comer")
 
 PROBABILIDADES: Dict[str, float] = {
     "arrastre": 0.45,
@@ -53,6 +57,9 @@ PROBABILIDADES: Dict[str, float] = {
     "despertar": 0.70,
     "mareo": 1.00,
     "aparecer": 0.50,
+    "sentarse": 0.40,       # se sienta en la barra o en una ventana (corte 7)
+    "bajar": 0.30,          # se baja (la bajan o se levanta sola)
+    "comer": 0.50,          # le das de comer (corte 8)
 }
 
 COOLDOWN_S = 20.0
@@ -112,6 +119,26 @@ FRASES_BASE: Dict[str, Tuple[str, ...]] = {
         "Volví. ¿Me echaste de menos? No contestes.",
         "Presente. Más o menos despierta.",
         "Hola. Haz como que no me ves.",
+    ),
+    "sentarse": (
+        "Buen sitio. Me lo quedo.",
+        "Desde aquí arriba se ve todo mejor.",
+        "No te importa que me siente, ¿verdad? Da igual, ya estoy.",
+        "Asiento con vistas. Aceptable.",
+        "No muevas la ventana. O sí, ya veremos.",
+    ),
+    "bajar": (
+        "Vale, ya bajo.",
+        "Se acabó el descanso, por lo visto.",
+        "¿Ya? Estaba cómoda.",
+        "Bajando. Sin prisas.",
+    ),
+    "comer": (
+        "Mm. Esto sí.",
+        "¿Era para mí? Demasiado tarde.",
+        "No está mal. Nada mal.",
+        "Gracias. No se lo digas a nadie.",
+        "Otro y te perdono lo de antes.",
     ),
 }
 
@@ -357,7 +384,7 @@ class FrasesMascota:
             {"v": 1, "personaje": "Lune", "cooldown_s": 20.0, "prioritarios": ["mareo"],
              "eventos": {"arrastre": {"p": 0.45, "frases": ["…", …]}, …}}
 
-        Siempre trae los 7 eventos de EVENTOS; `frases: []` = callada en ese evento.
+        Siempre trae todos los eventos de EVENTOS; `frases: []` = callada en ese evento.
         """
         return json.dumps(self.como_dict(), ensure_ascii=False, separators=(",", ":"))
 

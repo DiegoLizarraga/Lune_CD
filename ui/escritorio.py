@@ -50,6 +50,7 @@ alguno en cola los del hilo de Qt también se encolan detrás.
 """
 from __future__ import annotations
 
+import inspect
 import logging
 import threading
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
@@ -60,6 +61,22 @@ from nucleo import estado_mascota as em
 from nucleo.estado_mascota import BusEstado, Cesion, EstadoMascota, Resultado
 
 _log = logging.getLogger("lune.escritorio")
+
+
+def crear_mascota(cls: Any, *args, **kw) -> Any:
+    """Crea la mascota flotante (CompanionFlotante, AvatarOverlay…) SIN su propio
+    icono de bandeja: desde el corte 4 la bandeja es una sola (ui/bandeja.BandejaLune,
+    que además le llama a quitar_bandeja() por si acaso). Una clase sin el parámetro
+    `bandeja` (anterior al corte 4, o un doble de test) se crea como siempre."""
+    init = getattr(cls, "__init__", None)
+    try:
+        params = inspect.signature(init).parameters if init not in (None, object.__init__) else {}
+        acepta = "bandeja" in params or any(p.kind == p.VAR_KEYWORD for p in params.values())
+    except (TypeError, ValueError):
+        acepta = False
+    if acepta:
+        kw.setdefault("bandeja", False)
+    return cls(*args, **kw)
 
 
 def _llamar(obj: Any, metodo: str, *args) -> Any:

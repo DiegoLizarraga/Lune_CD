@@ -27,6 +27,12 @@ QUÉ OFRECE
   (rcMonitor − rcWork); si la barra está auto-oculta, la ventana
   Shell_TrayWnd / Shell_SecondaryTrayWnd que cae en ese monitor.
 - `monitores()`, `monitor_de_ventana(hwnd)`, `lado_barra()`.
+- `ventanas_visibles()` → `VentanaVisible(hwnd, pid, titulo)` de las ventanas
+  de primer nivel visibles, con título y sin WS_EX_TOOLWINDOW (lo que sale en
+  Alt-Tab, más o menos): para el «Añadir app» del modo juego.
+- `pids_propios()`: los pids sobre los que Lune puede ACTUAR (prioridad,
+  recorte de RAM): el propio y sus hijos QtWebEngineProcess, comprobados dos
+  veces. Ningún otro, aunque sea hijo suyo (un juego lanzado por una herramienta).
 
 PROCESOS AJENOS
 ---------------
@@ -63,7 +69,10 @@ QUNS_QUIET_TIME = 6
 QUNS_APP = 7
 
 WS_CAPTION = 0x00C00000          # WS_BORDER | WS_DLGFRAME
+WS_EX_TOOLWINDOW = 0x00000080
 GWL_STYLE = -16
+GWL_EXSTYLE = -20
+MAX_VENTANAS = 512               # tope de ventanas_visibles()
 MONITOR_DEFAULTTONEAREST = 2
 MONITORINFOF_PRIMARY = 1
 ABM_GETSTATE = 4
@@ -139,6 +148,12 @@ class InfoVentana(NamedTuple):
     hmon: int = 0
 
 
+class VentanaVisible(NamedTuple):
+    hwnd: int
+    pid: int
+    titulo: str           # texto NO fiable: lo escribe el otro programa
+
+
 def _como_rect(r) -> Rect:
     return r if isinstance(r, Rect) else Rect(*(int(v) for v in r))
 
@@ -165,6 +180,11 @@ def _tipo_enum_monitores():
     # WINFUNCTYPE solo existe en Windows; fuera se usa CFUNCTYPE (da igual: no se llama).
     fabrica = getattr(ctypes, "WINFUNCTYPE", ctypes.CFUNCTYPE)
     return fabrica(*_FIRMA_ENUM_MONITORES)
+
+
+def _tipo_enum_ventanas():
+    fabrica = getattr(ctypes, "WINFUNCTYPE", ctypes.CFUNCTYPE)
+    return fabrica(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
 
 
 def _rect_win(r) -> Rect:
@@ -247,6 +267,9 @@ class ApiPantallaNula(_ProcesosPsutil):
 
     def barra_auto_oculta(self) -> bool:
         return False
+
+    def ventanas_visibles(self) -> List[Tuple[int, int, str]]:
+        return []
 
 
 class ApiPantallaWin32(_ProcesosPsutil):
@@ -364,6 +387,43 @@ class ApiPantallaWin32(_ProcesosPsutil):
         abd = APPBARDATA()
         abd.cbSize = ctypes.sizeof(APPBARDATA)
         return bool(int(self._s.SHAppBarMessage(ABM_GETSTATE, ctypes.byref(abd))) & ABS_AUTOHIDE)
+
+    def _firmar_enum_ventanas(self):
+        """Firmas de EnumWindows e IsWindowVisible, al primer uso (las DLL falsas de
+        los tests más viejos no las traen)."""
+        if getattr(self, "_enum_ventanas_tipo", None) is not None:
+            return
+        u, H = self._u, wintypes.HWND
+        tipo = _tipo_enum_ventanas()
+        u.EnumWindows.argtypes = [tipo, wintypes.LPARAM]
+        u.EnumWindows.restype = wintypes.BOOL
+        u.IsWindowVisible.argtypes = [H]
+        u.IsWindowVisible.restype = wintypes.BOOL
+        self._enum_ventanas_tipo = tipo
+
+    def ventanas_visibles(self) -> List[Tuple[int, int, str]]:
+        """(hwnd, pid, título) de las ventanas de primer nivel visibles, con título
+        y sin WS_EX_TOOLWINDOW. Solo lee: estilo, título y pid de cada una."""
+        self._firmar_enum_ventanas()
+        salida: List[Tuple[int, int, str]] = []
+
+        def _cada(hwnd, _lparam):
+            try:
+                if not hwnd or not self._u.IsWindowVisible(hwnd):
+                    return True
+                ex = int(self._u.GetWindowLongW(hwnd, GWL_EXSTYLE)) & _MASCARA_32
+                if ex & WS_EX_TOOLWINDOW:
+                    return True
+                titulo = self.titulo_ventana(hwnd)
+                if titulo:
+                    salida.append((int(hwnd), self.pid_ventana(hwnd), titulo))
+            except Exception:
+                pass
+            return len(salida) < MAX_VENTANAS
+
+        callback = self._enum_ventanas_tipo(_cada)     # vivo hasta que vuelve la llamada
+        self._u.EnumWindows(callback, 0)
+        return salida
 
 
 _api_defecto = None
@@ -516,6 +576,75 @@ def es_de_lune(pid: int, api=None) -> bool:
     if _pids_defecto is None or _pids_defecto.api is not api:
         _pids_defecto = PidsLune(api)
     return _pids_defecto.contiene(pid)
+
+
+def pids_propios(pids=None, psutil_mod=None) -> List[int]:
+    """
+    Los pids sobre los que Lune puede ACTUAR (bajar la prioridad, recortar la RAM):
+    el propio y sus hijos QtWebEngineProcess, comprobados dos veces. Un pid vale
+    solo si está en `pids` (un `PidsLune`, o un conjunto de pids) Y es el propio o
+    un descendiente suyo que psutil ve con nombre de QtWebEngineProcess. Así un
+    juego lanzado por una herramienta (hijo de Lune, pero no WebEngine) o un pid
+    ajeno colado en la lista no se tocan nunca. El propio va siempre el primero.
+    """
+    if pids is None:
+        pids = PidsLune()
+    if hasattr(pids, "pids"):
+        try:
+            propio = int(pids.api.pid_propio())
+        except Exception:
+            propio = os.getpid()
+        try:
+            candidatos = {int(p) for p in pids.pids()}
+        except Exception:
+            candidatos = {propio}
+    else:
+        propio = os.getpid()
+        try:
+            candidatos = {int(p) for p in pids}
+        except Exception:
+            candidatos = set()
+    salida = [propio] if propio in candidatos else []
+    resto = sorted(candidatos - {propio})
+    if not resto:
+        return salida
+    ps = psutil_mod
+    if ps is None:
+        try:
+            import psutil as ps
+        except Exception:
+            return salida
+    try:
+        hijos = {}
+        for p in ps.Process(propio).children(recursive=True):
+            try:
+                hijos[int(p.pid)] = p.name() or ""
+            except Exception:
+                continue
+    except Exception:
+        return salida
+    salida.extend(pid for pid in resto if pid in hijos and _es_hijo_de_lune(hijos[pid]))
+    return salida
+
+
+# ── Ventanas visibles (para «Añadir app» del modo juego) ──────────────────────
+
+def ventanas_visibles(api=None) -> List[VentanaVisible]:
+    """Ventanas de primer nivel visibles, con título y sin WS_EX_TOOLWINDOW. Solo
+    lectura (estilo, título, pid); el título es texto NO fiable."""
+    api = api or api_defecto()
+    try:
+        crudas = api.ventanas_visibles() or []
+    except Exception:
+        return []
+    salida = []
+    for v in crudas[:MAX_VENTANAS]:
+        try:
+            hwnd, pid, titulo = v
+            salida.append(VentanaVisible(int(hwnd), int(pid or 0), str(titulo or "")))
+        except Exception:
+            continue
+    return salida
 
 
 # ── Monitores ─────────────────────────────────────────────────────────────────

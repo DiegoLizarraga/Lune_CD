@@ -6,19 +6,19 @@
    ============================================================ */
 :root {
   /* ── NEON GLOWS ── */
-  --glow-cyan:   0 0 0 1px rgba(0,229,255,.5), 0 0 18px rgba(0,229,255,.35);
-  --glow-cyan-sm:0 0 12px rgba(0,229,255,.30);
-  --glow-blue:   0 0 0 1px rgba(30,85,255,.55), 0 0 18px rgba(30,85,255,.40);
-  --glow-yellow: 0 0 0 1px rgba(255,224,0,.55), 0 0 16px rgba(255,224,0,.35);
-  --text-glow-cyan: 0 0 10px rgba(0,229,255,.55);
-  --text-glow-blue: 0 0 10px rgba(61,116,255,.55);
+  --glow-cyan:   0 0 0 1px rgb(var(--cyan-500-rgb, 0 229 255) / .5), 0 0 18px rgb(var(--cyan-500-rgb, 0 229 255) / .35);
+  --glow-cyan-sm:0 0 12px rgb(var(--cyan-500-rgb, 0 229 255) / .30);
+  --glow-blue:   0 0 0 1px rgb(var(--blue-500-rgb, 30 85 255) / .55), 0 0 18px rgb(var(--blue-500-rgb, 30 85 255) / .40);
+  --glow-yellow: 0 0 0 1px rgb(var(--yellow-500-rgb, 255 224 0) / .55), 0 0 16px rgb(var(--yellow-500-rgb, 255 224 0) / .35);
+  --text-glow-cyan: 0 0 10px rgb(var(--cyan-500-rgb, 0 229 255) / .55);
+  --text-glow-blue: 0 0 10px rgb(var(--blue-400-rgb, 61 116 255) / .55);
 
   /* ── HARD PRINT / STICKER SHADOWS (no blur, offset) ── */
   --shadow-hard:    4px 4px 0 var(--ink-950);
   --shadow-hard-sm: 2px 2px 0 var(--ink-950);
-  --shadow-hard-cyan:  4px 4px 0 rgba(0,229,255,.9);
-  --shadow-hard-blue:  4px 4px 0 rgba(30,85,255,.9);
-  --shadow-hard-yellow:4px 4px 0 rgba(255,224,0,.9);
+  --shadow-hard-cyan:  4px 4px 0 rgb(var(--cyan-500-rgb, 0 229 255) / .9);
+  --shadow-hard-blue:  4px 4px 0 rgb(var(--blue-500-rgb, 30 85 255) / .9);
+  --shadow-hard-yellow:4px 4px 0 rgb(var(--yellow-500-rgb, 255 224 0) / .9);
 
   /* ── DEPTH SHADOWS (subtle, for panels) ── */
   --shadow-panel: 0 8px 30px rgba(0,0,0,.5), 0 2px 0 rgba(255,255,255,.03) inset;
@@ -36,12 +36,12 @@
 
   /* ── TEXTURES (compose as background layers) ── */
   /* fine horizontal scanlines */
-  --tex-scanline: repeating-linear-gradient(0deg, rgba(0,229,255,.05) 0 1px, transparent 1px 3px); /* @kind other */
+  --tex-scanline: repeating-linear-gradient(0deg, rgb(var(--cyan-500-rgb, 0 229 255) / .05) 0 1px, transparent 1px 3px); /* @kind other */
   /* technical grid */
-  --tex-grid: linear-gradient(rgba(46,61,102,.35) 1px, transparent 1px), linear-gradient(90deg, rgba(46,61,102,.35) 1px, transparent 1px); /* @kind other */
+  --tex-grid: linear-gradient(rgb(var(--ink-400-rgb, 46 61 102) / .35) 1px, transparent 1px), linear-gradient(90deg, rgb(var(--ink-400-rgb, 46 61 102) / .35) 1px, transparent 1px); /* @kind other */
   --tex-grid-size: 28px 28px;  /* @kind other */
   /* halftone dot field */
-  --tex-halftone: radial-gradient(rgba(0,229,255,.18) 1.1px, transparent 1.4px); /* @kind other */
+  --tex-halftone: radial-gradient(rgb(var(--cyan-500-rgb, 0 229 255) / .18) 1.1px, transparent 1.4px); /* @kind other */
   --tex-halftone-size: 9px 9px;  /* @kind other */
   /* diagonal hazard stripes (warnings / dividers) */
   --tex-hazard: repeating-linear-gradient(-45deg, var(--yellow-500) 0 10px, var(--ink-950) 10px 20px);

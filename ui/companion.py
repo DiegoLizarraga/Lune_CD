@@ -67,6 +67,48 @@ ui_web/lune_packs.js, que las dos páginas cargan con <script src>).
 Seguridad (crítica d): el comentario de pantalla lleva texto de terceros (la
 captura o el título de la ventana activa), así que su turno va con origen
 'no_confiable', sin herramientas, y el título pasa por neutralizar_marcadores.
+
+Navegación (revisión 4-5-6, SB4): Python le empuja a la página cada respuesta de la
+IA (window.comentar), las frases y las alarmas, y lee lo que dice (luneEventos,
+luneCabeza). Por eso su vista lleva la misma guarda que la ventana principal
+(ui/web_shell.asegurar_pagina): el marco principal solo navega dentro del servidor
+local de la mascota; un enlace pulsado va al navegador del sistema; soltar un enlace
+o un archivo sobre ella (en grande, todo el monitor), file:, data:… se rechazan.
+
+Corte 4 (contrato de la mascota, igual en ui/avatar_overlay.py):
+  - `bandeja=False` al crearla: sin icono propio (la bandeja única es
+    ui/bandeja.BandejaLune); `quitar_bandeja()` quita uno ya creado.
+  - clic derecho (al SOLTAR, sin menú contextual de Chromium: NoContextMenu) →
+    señal `menu_pedido('principal', QPoint global)` para el menú radial;
+    `ancla_menu(cb)` da el punto de la cabeza (window.luneCabeza() de la página o,
+    si no lo tiene o no responde, el 35 % del alto de la ventana);
+    `set_menu_abierto(on)`: con el menú abierto no se arrastra, no se acaricia,
+    no se duerme sola y no deja pasar los clics.
+  - `aplicar_plan_juego(plan | None)` (ui/modo_juego_qt): ocultar / al fondo /
+    nada, FPS del juego, sin comentarios automáticos ni capturas. Solo vuelve a
+    mostrarse si la ocultó el modo juego; si el usuario la saca a mano, gana él.
+  - `aplicar_tema(css_json)` → window.luneTema (se reaplica al recargar),
+    `set_encima(on)` (reafirmado al mostrarse), `set_fps_max(n)` (en vez del 60
+    fijo), `set_comentarios_auto(on)`, `llevar_a_esquina()`, propiedades
+    `comentarios_auto` y `click_through`.
+
+Cortes 5 y 6 (contrato de la mascota; los controladores son ui/pantalla_grande_qt,
+ui/alarmas_qt y ui/baile_qt):
+  - `soporta_grande` (página cargada), `geometria()` / `set_geometria(QRect)` (sin
+    guardar la posición ni devolverla a la pantalla) y `grande_fase(fase, opciones)`
+    con fase glide · entrar · salir · volver · fin → luneGrande de la página. Desde
+    el primer glide hasta fin: sin rueda, sin arrastre, sin comentar con el clic,
+    sin chat con el doble clic, sin sueño ni comentarios automáticos y sin fantasma
+    automático; el clic izquierdo MANTENIDO aparta el pelo (luneHold, solo VRM), el
+    cursor se mide desde el 50 % del alto y va a 30 fps (fin → avatar.fps_max).
+  - `set_salvapantallas(on, fondo_oscuro=, reloj=)` → luneSalvapantallas y la
+    duerme directamente (la regla del sueño bloquea en grande) o la despierta.
+  - `mostrar_alarma(texto, retraso_ms=3000)` / `ocultar_alarma()` → luneAlarma
+    (burbuja roja a 35 c/s); con una alarma a la vista el clic no comenta.
+  - `bailar(on, opciones)` → luneBailar (la animada pone el clip happy con una capa
+    de emoción mientras baila) y `pulso(bpm, fase, energia)` → lunePulso. Bailando
+    no se duerme sola.
+  Si la página recarga, se le vuelve a pedir lo que estaba a la vista.
 """
 from __future__ import annotations
 
@@ -74,12 +116,14 @@ import base64
 import dataclasses
 import io
 import json
+import math
+import re
 import sys
 import threading
 import time
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, QUrl, QPoint, QTimer, QEvent, pyqtSignal
+from PyQt6.QtCore import Qt, QUrl, QPoint, QRect, QTimer, QEvent, pyqtSignal
 from PyQt6.QtWidgets import QMainWindow, QApplication, QSystemTrayIcon, QMenu
 from PyQt6.QtGui import QIcon, QAction, QActionGroup, QColor, QCursor
 from PyQt6.QtWebEngineWidgets import QWebEngineView
@@ -155,6 +199,101 @@ _JS_SONIDOS = "(function (w) { var s = w.luneSonidos; if (s && s.__METODO__) s._
 
 def _js_sonidos(metodo: str, arg: str) -> str:
     return _JS_SONIDOS.replace("__METODO__", metodo).replace("__ARG__", arg)
+
+
+# ── Corte 4: FPS, menú radial y tema ──────────────────────────────────────────
+FPS_MIN, FPS_MAX = 15, 144          # avatar.fps_max (el limitador de Mate-Engine)
+ALTO_CABEZA = 0.35                  # sin luneCabeza: la cabeza, al 35 % del alto
+ANCLA_TIMEOUT_MS = 300              # la página no contesta a luneCabeza: geometría
+MS_AVISO_JUEGO = 3500
+_AVISO_JUEGO = "En modo juego no miro la pantalla."
+# luneCabeza() (ui_web/tema.js del corte 4) → '{"x":…,"y":…,"r":…}' en px de la página.
+_JS_CABEZA = ("(function () { try { var r = window.luneCabeza ? window.luneCabeza() : null;"
+              " return (r && typeof r === 'object') ? JSON.stringify(r) : r; } catch (e) { return null; } })()")
+_SIN_TEMA = object()                # aún no se ha pedido ningún tema
+_RE_VAR_CSS = re.compile(r"--[a-z0-9-]{1,40}")
+_RE_VALOR_CSS = re.compile(r"[#0-9a-zA-Z .,%()/-]{1,64}")
+
+
+# ── Cortes 5 y 6: pantalla grande, salvapantallas, alarma y baile ──────────────
+FASES_GRANDE = ("glide", "entrar", "salir", "volver", "fin")
+FPS_GRANDE = 30                     # ventana translúcida del tamaño del monitor
+ALTO_CURSOR_GRANDE = 0.5            # en pantalla grande la cara está en el centro
+RETRASO_ALARMA_MS = 3000            # la burbuja de la alarma sale a los 3 s…
+CPS_ALARMA = 35                     # …y se escribe a 35 caracteres por segundo
+MAX_TEXTO_ALARMA = 500
+HOLD_HZ = 30                        # luneHold mientras se arrastra con el botón pulsado
+BPM_MIN, BPM_MAX = 40.0, 240.0
+_RE_CLAVE_OPCION = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,39}")
+
+
+def opciones_seguras(opciones) -> dict:
+    """Opciones para la página (luneGrande, luneBailar…) → dict plano y seguro:
+    claves identificador, valores bool/None/números finitos/texto corto. Lo demás
+    (listas, objetos, NaN) se descarta."""
+    if not isinstance(opciones, dict):
+        return {}
+    res = {}
+    for k, v in list(opciones.items())[:32]:
+        if not isinstance(k, str) or not _RE_CLAVE_OPCION.fullmatch(k):
+            continue
+        if v is None or isinstance(v, bool):
+            res[k] = v
+        elif isinstance(v, (int, float)):
+            if math.isfinite(float(v)):
+                res[k] = v
+        elif isinstance(v, str):
+            res[k] = v[:80]
+    return res
+
+
+def _js_opciones(opciones) -> str:
+    return json.dumps(opciones_seguras(opciones), ensure_ascii=True, sort_keys=True)
+
+
+def _finito(v, defecto=None):
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return defecto
+    return f if math.isfinite(f) else defecto
+
+
+def mapa_tema(css_json):
+    """css_json de nucleo/tema.css_json ("null", '{"--cyan-500": "#…", …}', un dict
+    o None) → dict saneado (solo --variables con valores de color) o None.
+    Lanza ValueError si no es un JSON de tema (y entonces no se aplica nada)."""
+    if css_json is None:
+        return None
+    datos = css_json
+    if isinstance(css_json, (str, bytes)):
+        try:
+            datos = json.loads(css_json)
+        except ValueError as e:
+            raise ValueError(f"tema no es JSON: {e}") from None
+    if datos is None:
+        return None
+    if not isinstance(datos, dict):
+        raise ValueError("el tema tiene que ser un objeto o null")
+    return {k: v for k, v in datos.items()
+            if isinstance(k, str) and isinstance(v, str)
+            and _RE_VAR_CSS.fullmatch(k) and _RE_VALOR_CSS.fullmatch(v)}
+
+
+def _js_tema(mapa) -> str:
+    """La llamada a window.luneTema con el mapa (o null) como literal JSON."""
+    arg = "null" if mapa is None else json.dumps(mapa, ensure_ascii=True, sort_keys=True)
+    return f"window.luneTema && window.luneTema({arg})"
+
+
+def _ventana_nativa() -> bool:
+    """¿Las ventanas de Qt son HWND de verdad? (no con QT_QPA_PLATFORM=offscreen)."""
+    if sys.platform != "win32":
+        return False
+    try:
+        return QApplication.platformName() == "windows"
+    except Exception:
+        return False
 
 
 def _parsear_eventos(resultado) -> list:
@@ -264,6 +403,7 @@ class CompanionFlotante(QMainWindow):
     visibilidad = pyqtSignal(bool)       # se muestra / se oculta o cierra
     recrear = pyqtSignal()               # "ya puedo ser VRM": quien me creó debe recrearme
     evento_js = pyqtSignal(str, dict)    # evento de la página (tipo, datos), vía luneEventos()
+    menu_pedido = pyqtSignal(str, object)  # ('principal'|'secundario', QPoint global): menú radial
     _sondeo_listo = pyqtSignal(object)   # interna: el sondeo de Ollama (hilo aparte) terminó
 
     UMBRAL_ARRASTRE = 6                  # px: menos que esto es un CLIC, no arrastre
@@ -271,10 +411,37 @@ class CompanionFlotante(QMainWindow):
     EVENTOS_HZ = 12                      # frecuencia con la que se vacía la cola de eventos
 
     def __init__(self, config=None, ai_manager=None, render: str | None = None, parent=None,
-                 bus_estado=None):
+                 bus_estado=None, bandeja: bool = True):
         super().__init__(parent)
         self.config = config
         self._bus_estado = bus_estado    # nucleo.estado_mascota.BusEstado (opcional)
+        # Corte 4: menú radial, modo juego, orden Z, FPS y tema.
+        self.tray = None
+        self.act_auto = None
+        self.act_fantasma = None
+        self._menu_bandeja = None
+        self._menu_abierto = False       # el menú radial está abierto sobre ella
+        self._der_pulsado = False        # clic derecho pulsado sobre ella (se abre al soltar)
+        self._plan_juego = None          # servicios.modo_juego.PlanJuego mientras hay partida
+        self._oculta_por_juego = False   # la ocultó el modo juego (y solo entonces vuelve sola)
+        self._juego_mostrada_a_mano = False   # el usuario la sacó durante la partida: gana él
+        self._mostrando_por_juego = False
+        self._encima = self._cfg_bool("siempre_encima", True)
+        self._fps_max = self._fps_de_config()
+        self._min_auto = 0               # avatar.comentarios_cada_min vigente
+        self._tema = _SIN_TEMA           # mapa de tema aplicado (dict | None)
+        self._ancla_cb = None
+        self._ancla_token = 0
+        # Cortes 5 y 6: pantalla grande, salvapantallas, alarma y baile.
+        self._grande_fase = None         # glide|entrar|salir|volver mientras dura (None = normal)
+        self._geom_normal = None         # geometría de antes de la pantalla grande
+        self._hold = False               # clic izquierdo mantenido en grande (luneHold)
+        self._hold_envio = 0.0
+        self._salvapantallas = False
+        self._salva_opts = {"fondo": True, "reloj": True}
+        self._alarma_texto = None        # alarma a la vista (mostrar_alarma)
+        self._bailando = False
+        self._baile_opts = {}
         self._ai = ai_manager
         self._worker = None
         self._pensando = False
@@ -336,7 +503,13 @@ class CompanionFlotante(QMainWindow):
         self._servidor.iniciar()
 
         self.web = QWebEngineView()
+        # Guarda de navegación ANTES de cargar nada (y antes de tocar la página y sus
+        # ajustes: setPage la cambia): solo el servidor local de la mascota.
+        self._asegurar_navegacion()
         self.web.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        # Clic derecho = menú radial (al soltar): nada de menú contextual de Chromium.
+        self.web.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
+        self.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
         try:
             self.web.page().setBackgroundColor(QColor(0, 0, 0, 0))
             s = self.web.settings()
@@ -352,7 +525,13 @@ class CompanionFlotante(QMainWindow):
         self.setCentralWidget(self.web)
 
         self._restaurar_posicion()
-        self._construir_bandeja()
+        if bandeja:
+            self._construir_bandeja()
+
+        # Menú radial: si la página no contesta a luneCabeza, se ancla por geometría.
+        self._timer_ancla = QTimer(self)
+        self._timer_ancla.setSingleShot(True)
+        self._timer_ancla.timeout.connect(self._ancla_vencida)
 
         # Comentarios automáticos de pantalla (opcional, apagado por defecto).
         self._timer = QTimer(self)
@@ -407,6 +586,20 @@ class CompanionFlotante(QMainWindow):
             self.set_click_through(True)
 
     # ── Render, modelo y página ──────────────────────────────────────────────────
+    def _asegurar_navegacion(self):
+        """PaginaLune en la vista (ui/web_shell.asegurar_pagina) con el origen del
+        servidor local de la mascota y NavigateOnDropEnabled apagado. Devuelve la
+        página o None si no se pudo (queda registrado)."""
+        if not callable(getattr(self.web, "setPage", None)):
+            _log("[companion] la vista no admite otra página: sin guarda de navegación")
+            return None
+        try:
+            from ui.web_shell import asegurar_pagina
+            return asegurar_pagina(self.web, QUrl(self._servidor.url(PAGINAS[self.render])))
+        except Exception as e:                       # noqa: BLE001 — la mascota sigue igual
+            _log(f"[companion] no pude poner la guarda de navegación: {e}")
+            return None
+
     def _elegir_render(self, render: str | None) -> str:
         r = render or (str(self.config.get("avatar", "render", "animado")) if self.config else "animado")
         if r != "vrm":
@@ -520,6 +713,9 @@ class CompanionFlotante(QMainWindow):
         self._rearmar_sueno()
         if self.isVisible():
             self._timer_eventos.start()
+            self._aplicar_fps()                      # avatar.fps_max (o el del modo juego)
+        self._reaplicar_tema()                       # la página recargada vuelve al cian
+        self._reaplicar_ocio()                       # pantalla grande, alarma, baile…
         self.cargar_pack_sonidos()
         self._aparecer()
 
@@ -675,7 +871,10 @@ class CompanionFlotante(QMainWindow):
         self._chat.abrir()
 
     def _clic_simple(self):
-        """Clic limpio (sin doble clic detrás): comenta la pantalla."""
+        """Clic limpio (sin doble clic detrás): comenta la pantalla. No con una alarma
+        a la vista (ese clic es para apagarla) ni en pantalla grande."""
+        if self._alarma_texto is not None or self._grande_fase is not None:
+            return
         if not self.cerrado and self.isVisible():
             self.comentar_pantalla()
 
@@ -741,6 +940,10 @@ class CompanionFlotante(QMainWindow):
                 self._estado_visual = nombre
                 if nombre == "normal":               # acabó el gesto: vuelve al reposo
                     self._estado_bus(emocion="neutral")
+        elif tipo == "grande_fase":                  # cortes 5 y 6: solo para el log
+            _log(f"[companion] pantalla grande: {str(datos.get('fase'))[:20]}")
+        elif tipo == "baile":
+            _log(f"[companion] baile {'on' if datos.get('on') else 'off'} ({str(datos.get('estilo'))[:20]})")
 
     # ── Frases de la mascota (lune_core/frases_mascota.py) ───────────────────────
     def _burbuja_ocupada(self) -> bool:
@@ -752,6 +955,8 @@ class CompanionFlotante(QMainWindow):
         una respuesta de la IA (y entonces ni tira el dado ni gasta el cooldown)."""
         if self.cerrado or not self._pagina_lista or not self.isVisible() or self._burbuja_ocupada():
             return None
+        if self._salvapantallas:
+            return None                              # durmiendo en el salvapantallas: callada
         try:
             t = self._frases.elegir(evento)
         except Exception as e:
@@ -778,7 +983,7 @@ class CompanionFlotante(QMainWindow):
         # Normalizado respecto al centro de la cara (≈ 35 % desde arriba en retrato)
         # y a media pantalla: -1..1 dentro del monitor, más allá si se sale.
         cx = g.left() + g.width() / 2
-        cy = g.top() + g.height() * 0.35
+        cy = g.top() + g.height() * (ALTO_CURSOR_GRANDE if self._grande_fase is not None else 0.35)
         nx = (c.x() - cx) / max(1.0, sg.width() / 2)
         ny = (cy - c.y()) / max(1.0, sg.height() / 2)
         nx = max(-1.6, min(1.6, nx)); ny = max(-1.6, min(1.6, ny))
@@ -797,8 +1002,10 @@ class CompanionFlotante(QMainWindow):
 
     def _on_cursor_respuesta(self, sobre_modelo):
         """La página dice si el cursor está sobre el avatar (píxel con alfa)."""
-        if sobre_modelo is None or self._click_through or self._arrastre:
+        if sobre_modelo is None or self._click_through or self._arrastre or self._menu_abierto:
             return
+        if self._grande_fase is not None:
+            return                                   # en grande recibe los clics (sin fantasma automático)
         sobre = bool(sobre_modelo)
         if sobre == self._sobre_modelo:
             return
@@ -839,6 +1046,8 @@ class CompanionFlotante(QMainWindow):
     ESCALA_MIN, ESCALA_MAX, ESCALA_PASO = 0.6, 1.5, 0.1
 
     def _rueda(self, ev) -> bool:
+        if self._grande_fase is not None:
+            return True                              # en pantalla grande no escala (ni hace zoom)
         if self.render != "vrm" or self._arrastre or self._click_through:
             return False
         muescas = ev.angleDelta().y() / 120.0
@@ -943,6 +1152,12 @@ class CompanionFlotante(QMainWindow):
             return "la ventana está cerrada"
         if self._pensando:
             return "está pensando un comentario"
+        if self._menu_abierto and not forzado:
+            return "el menú está abierto"
+        if self._grande_fase is not None and not forzado:
+            return "está en pantalla grande"
+        if self._bailando and not forzado:
+            return "está bailando"
         return self._regla.motivo_no(
             self._estado_regla(forzado),
             arrastrando=bool(self._arrastre and self._arrastre.get("movido")),
@@ -955,6 +1170,8 @@ class CompanionFlotante(QMainWindow):
         self._regla = ReglaSueno.desde_config(self.config)
         if self.cerrado or self._durmiendo or not self._pagina_lista or not self._regla.activa:
             return
+        if self._grande_fase is not None:
+            return                                   # en pantalla grande no se duerme sola
         self._timer_sueno.start(int(ms) if ms is not None else int(self._regla.umbral_s * 1000))
 
     def _sueno_vencido(self):
@@ -1015,10 +1232,18 @@ class CompanionFlotante(QMainWindow):
         """Comentario AUTOMÁTICO (avatar.comentarios_cada_min): nadie lo pidió en ese
         momento, así que la captura nunca sale a la nube; sin visión local, comenta
         por la ventana activa (texto)."""
+        if self._grande_fase is not None:
+            return
         self._comentar(automatico=True)
 
     def _comentar(self, automatico: bool):
         if self._pensando or self._ai is None or self.cerrado:
+            return
+        if self._en_juego():
+            # Modo juego: ni captura ni comentario (anticheat y rendimiento). Al manual
+            # se le contesta en la burbuja si se la ve.
+            if not automatico and self.isVisible() and self._pagina_lista and not self._burbuja_ocupada():
+                self._js(f"window.comentar && window.comentar({_js_str(_AVISO_JUEGO)}, {MS_AVISO_JUEGO})")
             return
         self._despertar()
         # La captura, antes de ponerse a «pensar» (que no salga en ella); si al final
@@ -1155,7 +1380,21 @@ class CompanionFlotante(QMainWindow):
         except (RuntimeError, AttributeError):
             return False
 
+    def _en_juego(self) -> bool:
+        """¿Hay partida? (plan del modo juego aplicado o BusEstado.juego)."""
+        if self._plan_juego is not None:
+            return True
+        bus = getattr(self, "_bus_estado", None)
+        if bus is None:
+            return False
+        try:
+            return bool(bus.actual().juego)
+        except Exception:
+            return False
+
     def _capturar(self):
+        if self._en_juego():
+            return None                              # nunca capturas con un juego delante
         try:
             from PIL import ImageGrab
             img = ImageGrab.grab()
@@ -1234,16 +1473,38 @@ class CompanionFlotante(QMainWindow):
             minutos = int(minutos)
         except (TypeError, ValueError):
             minutos = 0
-        if minutos > 0:
+        self._min_auto = max(0, minutos)
+        plan = self._plan_juego
+        if minutos > 0 and not (plan is not None and plan.parar_comentarios) and self._grande_fase is None:
             self._timer.start(minutos * 60_000)
         else:
-            self._timer.stop()
+            self._timer.stop()                       # apagados, o parados en modo juego o en grande
 
     def _alternar_auto(self, activo: bool):
-        minutos = 3 if activo else 0
-        if self.config:
+        # Al encenderlos se conserva el intervalo que hubiera (3 min si no había).
+        actual = self._cfg_int("comentarios_cada_min", 0)
+        minutos = (actual if actual > 0 else 3) if activo else 0
+        if self.config and actual != minutos:
             self.config.set("avatar", "comentarios_cada_min", minutos)
         self._aplicar_intervalo(minutos)
+
+    def set_comentarios_auto(self, on: bool):
+        """Comentarios automáticos de pantalla sí/no (bandeja, radial, atajos)."""
+        on = bool(on)
+        self._alternar_auto(on)
+        act = getattr(self, "act_auto", None)
+        if act is not None and act.isChecked() != on:
+            act.setChecked(on)
+
+    @property
+    def comentarios_auto(self) -> bool:
+        """¿Están puestos los comentarios automáticos? (aunque el modo juego los pare)."""
+        return self._min_auto > 0
+
+    @property
+    def click_through(self) -> bool:
+        """¿Modo fantasma total (deja pasar todos los clics)?"""
+        return self._click_through
 
     # ── Modo fantasma total (click-through) ──────────────────────────────────────
     def set_click_through(self, activo: bool):
@@ -1260,12 +1521,17 @@ class CompanionFlotante(QMainWindow):
 
     def aplicar_opciones(self):
         """Ajustes cambiaron (dormir_min, vrm_fantasma_auto, comentarios, pesos de
-        seguimiento): aplicar en caliente."""
+        seguimiento, siempre encima, fps_max): aplicar en caliente."""
         self._aplicar_intervalo(self._cfg_int("comentarios_cada_min", 0))
         if getattr(self, "act_auto", None) is not None:
             self.act_auto.setChecked(self._cfg_int("comentarios_cada_min", 0) > 0)
         if not self._durmiendo:
             self._rearmar_sueno()                     # dormir_min nuevo (0 = nunca)
+        self._encima = self._cfg_bool("siempre_encima", True)
+        self._fps_max = self._fps_de_config()
+        if self.isVisible() and not self.cerrado:
+            self._aplicar_encima()
+            self._aplicar_fps()
         if self.render != "vrm":
             return
         self.aplicar_params_vrm()                     # avatar.peso_*/seguir_cursor
@@ -1279,6 +1545,8 @@ class CompanionFlotante(QMainWindow):
             return
         if self.config:
             self.config.set("avatar", "vrm_tamano", nombre)
+        if self._grande_fase is not None:
+            return                                   # la ventana es la del monitor: al volver
         # Crece hacia arriba/izquierda para que los pies se queden donde estaban.
         w, h = self._tamano_ventana()
         g = self.geometry()
@@ -1300,7 +1568,14 @@ class CompanionFlotante(QMainWindow):
     # (DesambiguadorClic). Mientras se arrastra, el avatar VRM recibe la velocidad
     # para balancearse.
     def _raton_press(self, ev):
-        if ev.button() != Qt.MouseButton.LeftButton or self._click_through:
+        if ev.button() == Qt.MouseButton.RightButton:
+            # Menú radial: se abre al SOLTAR (así el soltar no cae en el propio menú).
+            self._der_pulsado = not self._click_through and not self._menu_abierto
+            return
+        if ev.button() != Qt.MouseButton.LeftButton or self._click_through or self._menu_abierto:
+            return
+        if self._grande_fase is not None:
+            self._empezar_hold(ev)                   # en grande: sujetar el pelo, nada de arrastre
             return
         self._despertar(usuario=True)                # tocarla la despierta y rearma el sueño
         self._clic.cancelar()                        # pulsar de nuevo: el clic anterior no cuenta solo
@@ -1314,6 +1589,12 @@ class CompanionFlotante(QMainWindow):
         }
 
     def _raton_move(self, ev):
+        if self._hold:
+            if ev.buttons() & Qt.MouseButton.LeftButton:
+                self._mover_hold(ev)
+            else:
+                self._soltar_hold()
+            return
         a = self._arrastre
         if not a or not (ev.buttons() & Qt.MouseButton.LeftButton):
             return
@@ -1334,6 +1615,14 @@ class CompanionFlotante(QMainWindow):
                 self._js(f"window.luneDrag && window.luneDrag(true, {v.x() / dt / 1000:.3f}, {v.y() / dt / 1000:.3f})")
 
     def _raton_release(self, ev):
+        if ev.button() == Qt.MouseButton.RightButton:
+            pulsado, self._der_pulsado = self._der_pulsado, False
+            if pulsado:
+                self._pedir_menu(ev.globalPosition().toPoint())
+            return                                   # no toca un arrastre izquierdo en curso
+        if self._hold and ev.button() == Qt.MouseButton.LeftButton:
+            self._soltar_hold()
+            return
         a = self._arrastre
         self._arrastre = None
         if a:
@@ -1352,8 +1641,10 @@ class CompanionFlotante(QMainWindow):
 
     def _raton_doble(self, ev):
         """Doble clic sobre Lune → la cajita de chat (y nada de comentar la pantalla)."""
-        if ev.button() != Qt.MouseButton.LeftButton or self._click_through:
+        if ev.button() != Qt.MouseButton.LeftButton or self._click_through or self._menu_abierto:
             return
+        if self._grande_fase is not None:
+            return                                   # en pantalla grande no se abre el chat
         if self._arrastre:
             self._arrastre = None
             self._estado_bus(arrastrando=False)
@@ -1385,6 +1676,440 @@ class CompanionFlotante(QMainWindow):
 
     def mouseDoubleClickEvent(self, ev):
         self._raton_doble(ev); ev.accept()
+
+    # ── Menú radial (corte 4: ui/menu_radial.ControlMenuRadial) ──────────────────
+    def _pedir_menu(self, punto: QPoint):
+        """Clic derecho soltado sobre ella → menu_pedido. Arrastrándola, en modo
+        fantasma o con el menú ya abierto, no."""
+        if self.cerrado or self._click_through or self._menu_abierto:
+            return
+        if self._arrastre and self._arrastre.get("movido"):
+            return
+        if not self.frameGeometry().contains(punto):
+            return                                   # soltó fuera de ella: se arrepintió
+        self._clic.cancelar()                        # un clic izquierdo pendiente ya no comenta
+        self.menu_pedido.emit("principal", QPoint(punto))
+
+    def set_menu_abierto(self, on: bool):
+        """El menú radial se abre (True) o se cierra sobre ella. Abierto: sin
+        arrastre, sin caricia, sin dormirse sola y recibiendo clics (sin fantasma
+        automático). No la despierta: el radial ofrece «Despertar» si duerme."""
+        on = bool(on)
+        if on == self._menu_abierto:
+            return
+        self._menu_abierto = on
+        if on:
+            self._clic.cancelar()
+            a, self._arrastre = self._arrastre, None
+            if a:
+                self._estado_bus(arrastrando=False)
+                if a.get("movido"):
+                    self._js("window.luneDrag && window.luneDrag(false, 0, 0)")
+            self._timer_sueno.stop()
+            if not self._click_through:
+                self._sobre_modelo = True
+                self._aplicar_transparente(False)
+        else:
+            self._rearmar_sueno()
+
+    def ancla_menu(self, callback):
+        """Llama a `callback(QPoint global)` con el centro de la cabeza: el de
+        window.luneCabeza() si la página lo tiene (VRM: el hueso proyectado); si no,
+        o si no contesta en ANCLA_TIMEOUT_MS, el 35 % del alto de la ventana."""
+        if not callable(callback):
+            return
+        self._ancla_token += 1
+        token = self._ancla_token
+        self._ancla_cb = callback
+        if self.cerrado or not self._pagina_lista or self.web is None:
+            self._resolver_ancla(token, None)
+            return
+        self._timer_ancla.start(ANCLA_TIMEOUT_MS)
+        self._js(_JS_CABEZA, lambda r, t=token: self._resolver_ancla(t, r))
+
+    def _ancla_vencida(self):
+        self._resolver_ancla(self._ancla_token, None)
+
+    def _resolver_ancla(self, token: int, respuesta):
+        if token != self._ancla_token or self._ancla_cb is None:
+            return                                   # respuesta vieja o ya resuelta
+        cb, self._ancla_cb = self._ancla_cb, None
+        self._timer_ancla.stop()
+        punto = None
+        if not self.cerrado:
+            punto = self._punto_cabeza(respuesta)
+        if punto is None:
+            punto = self._punto_geometria()
+        try:
+            cb(punto)
+        except Exception as e:                       # noqa: BLE001 — un receptor roto no tumba la mascota
+            _log(f"[companion] el ancla del menú falló en el receptor: {e}")
+
+    def _punto_cabeza(self, respuesta):
+        """'{"x":…,"y":…,"r":…}' (px de la página) → QPoint global, o None."""
+        datos = respuesta
+        if isinstance(datos, str):
+            try:
+                datos = json.loads(datos)
+            except ValueError:
+                return None
+        if not isinstance(datos, dict):
+            return None
+        try:
+            x, y = float(datos.get("x")), float(datos.get("y"))
+        except (TypeError, ValueError):
+            return None
+        if not (math.isfinite(x) and math.isfinite(y)):
+            return None
+        w, h = max(1, self.web.width()), max(1, self.web.height())
+        x = min(max(x, 0.0), w - 1.0)
+        y = min(max(y, 0.0), h - 1.0)
+        try:
+            return self.web.mapToGlobal(QPoint(round(x), round(y)))
+        except Exception:
+            return None
+
+    def _punto_geometria(self) -> QPoint:
+        g = self.geometry()
+        return QPoint(g.x() + g.width() // 2, g.y() + round(g.height() * ALTO_CABEZA))
+
+    # ── Modo juego (corte 4: ui/modo_juego_qt.ControlModoJuego) ──────────────────
+    def aplicar_plan_juego(self, plan):
+        """Plan del modo juego (servicios.modo_juego.PlanJuego) o None al acabar.
+        ocultar → se oculta (y vuelve al acabar solo si la ocultó esto) · fondo →
+        sin «siempre encima» y detrás de todo · nada → se queda. FPS del juego
+        (0 = pausada), sin comentarios automáticos ni capturas. Si el usuario la
+        saca a mano durante la partida, gana él (FPS y orden Z normales)."""
+        antes = self._plan_juego
+        if plan is None:
+            if antes is None:
+                return
+            self._plan_juego = None
+            self._juego_mostrada_a_mano = False
+            self._aplicar_intervalo(self._cfg_int("comentarios_cada_min", 0))
+            volver, self._oculta_por_juego = self._oculta_por_juego, False
+            if volver and not self.cerrado and not self.isVisible():
+                self._mostrar_por_juego()
+            elif self.isVisible() and not self.cerrado:
+                self._aplicar_encima()
+                self._aplicar_fps()
+            return
+        self._plan_juego = plan
+        if antes is None:
+            self._oculta_por_juego = False
+            self._juego_mostrada_a_mano = False
+        if getattr(plan, "parar_comentarios", True):
+            self._timer.stop()
+        if self.cerrado:
+            return
+        if plan.accion == "ocultar":
+            if self.isVisible() and not self._juego_mostrada_a_mano:
+                self._oculta_por_juego = True
+                self.hide()
+        else:
+            if self._oculta_por_juego and not self.isVisible():
+                self._oculta_por_juego = False       # el plan dejó de ser «ocultar»
+                self._mostrar_por_juego()
+            elif self.isVisible():
+                self._aplicar_encima()
+                self._aplicar_fps()
+
+    def _mostrar_por_juego(self):
+        self._mostrando_por_juego = True
+        try:
+            self.show()
+        finally:
+            self._mostrando_por_juego = False
+
+    # ── Pantalla grande (cortes 5 y 6: ui/pantalla_grande_qt.ControlPantallaGrande) ──
+    @property
+    def soporta_grande(self) -> bool:
+        """¿Puede ponerse en pantalla grande? (VRM o animada con la página cargada)."""
+        return not self.cerrado and self._pagina_lista and self.web is not None
+
+    @property
+    def en_grande(self) -> bool:
+        """¿Está en pantalla grande (de glide a fin)?"""
+        return self._grande_fase is not None
+
+    def geometria(self) -> QRect:
+        """Geometría de la ventana (px lógicos) para guardarla y restaurarla."""
+        return QRect(self.geometry())
+
+    def set_geometria(self, r):
+        """Pone la ventana en `r` (QRect, px lógicos) TAL CUAL: sin guardar la posición
+        en la config ni devolverla a la pantalla (la pantalla grande la mueve y la
+        restaura)."""
+        if self.cerrado or r is None:
+            return
+        try:
+            rect = QRect(r)
+        except TypeError:
+            return
+        if rect.width() <= 0 or rect.height() <= 0:
+            return
+        self.setGeometry(rect)
+
+    def grande_fase(self, fase: str, opciones: dict | None = None):
+        """Fase de la pantalla grande (glide · entrar · salir · volver · fin) →
+        luneGrande(fase, opciones) de la página. La ventana la mueve quien llama
+        (set_geometria). Desde la primera fase hasta «fin», el modo grande (ver el
+        docstring del módulo); «fin» vale en cualquier momento (salida inmediata)."""
+        fase = str(fase or "").strip().lower()
+        if fase not in FASES_GRANDE or self.cerrado:
+            return
+        if fase == "fin":
+            self._salir_de_grande()
+        else:
+            nuevo = self._grande_fase is None
+            self._grande_fase = fase
+            if nuevo:
+                self._entrar_en_grande()
+        self._js(f"window.luneGrande && window.luneGrande({json.dumps(fase)}, {_js_opciones(opciones)})")
+        if fase == "fin":
+            self._aplicar_fps()                      # después del fin de la página: vuelve a fps_max
+
+    def _entrar_en_grande(self):
+        self._geom_normal = QRect(self.geometry())
+        self._clic.cancelar()
+        a, self._arrastre = self._arrastre, None
+        if a:
+            self._estado_bus(arrastrando=False)
+            if a.get("movido"):
+                self._js("window.luneDrag && window.luneDrag(false, 0, 0)")
+        if self._timer_escala.isActive():
+            self._timer_escala.stop()
+            self._escala_obj = self._escala
+        self._chat.cerrar()
+        self._timer.stop()                           # sin comentarios automáticos
+        self._timer_sueno.stop()                     # ni sueño automático
+        if not self._click_through:
+            self._sobre_modelo = True
+            self._aplicar_transparente(False)        # recibe los clics (el pelo, el salvapantallas)
+        self._aplicar_fps()
+
+    def _salir_de_grande(self):
+        estaba = self._grande_fase is not None
+        self._soltar_hold()
+        self._grande_fase = None
+        self._geom_normal = None
+        if estaba:
+            self._sobre_modelo = True
+            self._aplicar_intervalo(self._cfg_int("comentarios_cada_min", 0))
+            self._rearmar_sueno()
+
+    def _pos_pagina(self, ev):
+        try:
+            p = self.web.mapFromGlobal(ev.globalPosition().toPoint())
+            return int(p.x()), int(p.y())
+        except Exception:
+            return 0, 0
+
+    def _empezar_hold(self, ev):
+        self._clic.cancelar()
+        self._hold = True
+        self._hold_envio = time.monotonic()
+        px, py = self._pos_pagina(ev)
+        self._js(f"window.luneHold && window.luneHold(true, {px}, {py})")
+
+    def _mover_hold(self, ev):
+        ahora = time.monotonic()
+        if ahora - self._hold_envio < 1.0 / HOLD_HZ:
+            return
+        self._hold_envio = ahora
+        px, py = self._pos_pagina(ev)
+        self._js(f"window.luneHold && window.luneHold(true, {px}, {py})")
+
+    def _soltar_hold(self):
+        if not self._hold:
+            return
+        self._hold = False
+        self._js("window.luneHold && window.luneHold(false, 0, 0)")
+
+    # ── Salvapantallas, alarma y baile (cortes 5 y 6) ────────────────────────────
+    def set_salvapantallas(self, on: bool, *, fondo_oscuro: bool = True, reloj: bool = True):
+        """Salvapantallas (ui/pantalla_grande_qt): la página oscurece el escritorio y
+        pone la hora (luneSalvapantallas) y Lune se duerme ya, sin la regla del sueño
+        (que bloquea en pantalla grande). Al quitarlo, se despierta."""
+        if self.cerrado:
+            return
+        on = bool(on)
+        self._salvapantallas = on
+        self._salva_opts = {"fondo": bool(fondo_oscuro), "reloj": bool(reloj)}
+        self._js(f"window.luneSalvapantallas && window.luneSalvapantallas("
+                 f"{'true' if on else 'false'}, {json.dumps(self._salva_opts, sort_keys=True)})")
+        if on:
+            self._sueno_pedido_t = None
+            self._timer_sueno_pedido.stop()
+            self._dormir()
+        else:
+            self._despertar(usuario=True)
+
+    @property
+    def salvapantallas(self) -> bool:
+        return self._salvapantallas
+
+    def mostrar_alarma(self, texto: str, retraso_ms: int = RETRASO_ALARMA_MS):
+        """Burbuja roja de la alarma en la página (luneAlarma: sale a los `retraso_ms`
+        y se escribe a 35 c/s). La despierta; mientras se ve, el clic no comenta."""
+        if self.cerrado:
+            return
+        t = " ".join(str(texto or "").split())[:MAX_TEXTO_ALARMA] or "Alarma"
+        ms = _finito(retraso_ms, RETRASO_ALARMA_MS)
+        ms = int(max(0.0, min(60_000.0, ms)))
+        self._alarma_texto = t
+        self._clic.cancelar()
+        self._despertar(usuario=True)
+        self._js_alarma(ms)
+
+    def _js_alarma(self, retraso_ms: int):
+        op = json.dumps({"cps": CPS_ALARMA, "retrasoMs": int(retraso_ms)}, sort_keys=True)
+        self._js(f"window.luneAlarma && window.luneAlarma({_js_str(self._alarma_texto)}, {op})")
+
+    def ocultar_alarma(self):
+        """Quita la burbuja de la alarma (apagada o pospuesta)."""
+        if self.cerrado:
+            return
+        self._alarma_texto = None
+        self._js("window.luneAlarma && window.luneAlarma(null)")
+
+    @property
+    def alarma_visible(self) -> bool:
+        return self._alarma_texto is not None
+
+    def bailar(self, on: bool, opciones: dict | None = None):
+        """Baile procedural (ui/baile_qt.ControlBaile) → luneBailar(on, opciones) con
+        {estilo, cambiar, cambiarS, particulas}. En la animada la página pone el clip
+        happy mientras baila. Bailando no se duerme sola."""
+        if self.cerrado:
+            return
+        on = bool(on)
+        self._bailando = on
+        self._baile_opts = opciones_seguras(opciones) if on else {}
+        if on:
+            self._timer_sueno.stop()
+            self._js(f"window.luneBailar && window.luneBailar(true, {_js_opciones(self._baile_opts)})")
+        else:
+            self._js("window.luneBailar && window.luneBailar(false)")
+            self._rearmar_sueno()
+
+    @property
+    def bailando(self) -> bool:
+        return self._bailando
+
+    def pulso(self, bpm: float, fase: float, energia: float):
+        """Pulso de la música (nucleo/pulso.py, como mucho 2 Hz) → lunePulso. La página
+        extrapola entre medias. bpm 40–240, fase 0..1 del pulso, energía 0..1."""
+        if self.cerrado or not self._pagina_lista:
+            return
+        b = _finito(bpm)
+        if b is None or b <= 0:
+            return
+        b = max(BPM_MIN, min(BPM_MAX, b))
+        f = _finito(fase, 0.0) % 1.0
+        e = max(0.0, min(1.0, _finito(energia, 0.5)))
+        self._js(f"window.lunePulso && window.lunePulso({b:.2f}, {f:.4f}, {e:.3f})")
+
+    def _reaplicar_ocio(self):
+        """La página recargó: vuelve a pedirle lo que estaba a la vista."""
+        if self._grande_fase is not None:
+            self._js(f"window.luneGrande && window.luneGrande({json.dumps(self._grande_fase)}, {_js_opciones({'ms': 0})})")
+        if self._salvapantallas:
+            self._js(f"window.luneSalvapantallas && window.luneSalvapantallas(true, "
+                     f"{json.dumps(self._salva_opts, sort_keys=True)})")
+        if self._alarma_texto is not None:
+            self._js_alarma(0)
+        if self._bailando:
+            self._js(f"window.luneBailar && window.luneBailar(true, {_js_opciones(self._baile_opts)})")
+
+    # ── Orden Z, FPS y tema (corte 4) ────────────────────────────────────────────
+    @property
+    def siempre_encima(self) -> bool:
+        return self._encima
+
+    def set_encima(self, on: bool):
+        """Siempre encima (avatar.siempre_encima). Se reafirma al mostrarse; con el
+        modo juego «fondo» se aplica al acabar la partida."""
+        on = bool(on)
+        self._encima = on
+        if self.config and self._cfg_bool("siempre_encima", True) != on:
+            self.config.set("avatar", "siempre_encima", on)
+        if self.isVisible() and not self.cerrado:
+            self._aplicar_encima()
+
+    def _aplicar_encima(self):
+        """HWND_TOPMOST / NOTOPMOST (o al fondo en modo juego) sobre ESTA ventana."""
+        if not _ventana_nativa():
+            return
+        try:
+            from servicios import win_ventana
+            hwnd = int(self.winId())
+            plan = self._plan_juego
+            if plan is not None and plan.accion == "fondo" and not self._juego_mostrada_a_mano:
+                win_ventana.al_fondo(hwnd)
+            else:
+                win_ventana.set_encima(hwnd, self._encima)
+        except Exception as e:                       # noqa: BLE001
+            _log(f"[companion] no pude cambiar el orden de la ventana: {e}")
+
+    def _fps_de_config(self) -> int:
+        return max(FPS_MIN, min(FPS_MAX, self._cfg_int("fps_max", 60)))
+
+    def set_fps_max(self, n: int):
+        """Tope de FPS de la página (avatar.fps_max, 15–144; en reposo la página
+        baja a min(n, 30))."""
+        try:
+            n = max(FPS_MIN, min(FPS_MAX, int(n)))
+        except (TypeError, ValueError):
+            return
+        self._fps_max = n
+        if self.config and self._cfg_int("fps_max", 60) != n:
+            self.config.set("avatar", "fps_max", n)
+        if self.isVisible() and not self.cerrado:
+            self._aplicar_fps()
+
+    def _fps_efectivo(self) -> int:
+        plan = self._plan_juego
+        if plan is not None and not self._juego_mostrada_a_mano:
+            return max(0, int(plan.fps))
+        if self._grande_fase is not None:
+            return min(FPS_GRANDE, self._fps_max)
+        return self._fps_max
+
+    def _aplicar_fps(self):
+        """luneSetFPS con el tope vigente; con 0 (modo juego pausado) tampoco se
+        manda el cursor a la página."""
+        n = self._fps_efectivo() if self.isVisible() else 0
+        self._js(f"window.luneSetFPS && window.luneSetFPS({n})")
+        if self.render == "vrm" and self._pagina_lista and not self.cerrado:
+            if n > 0:
+                if not self._timer_cursor.isActive():
+                    self._timer_cursor.start()
+            else:
+                self._timer_cursor.stop()
+
+    def aplicar_tema(self, css_json):
+        """Tema de color (nucleo/tema.css_json: mapa de variables CSS o "null") →
+        window.luneTema de la página. Se guarda y se reaplica si la página recarga.
+        Un JSON que no es un tema se ignora."""
+        try:
+            self._tema = mapa_tema(css_json)
+        except ValueError as e:
+            _log(f"[companion] tema ignorado: {e}")
+            return
+        self._reaplicar_tema()
+
+    def _reaplicar_tema(self):
+        if self._tema is _SIN_TEMA or not self._pagina_lista or self.cerrado:
+            return
+        self._js(_js_tema(self._tema))
+
+    def llevar_a_esquina(self):
+        """A la esquina inferior derecha de su monitor (y se guarda la posición)."""
+        if self.cerrado or self._grande_fase is not None:
+            return
+        self._esquina_inferior_derecha()
+        self._guardar_posicion()
 
     # ── Posición ─────────────────────────────────────────────────────────────────
     def _cfg_int(self, clave, default):
@@ -1444,8 +2169,10 @@ class CompanionFlotante(QMainWindow):
 
     def _guardar_posicion(self):
         if self.config:
-            self.config.set("avatar", "companion_x", self.x())
-            self.config.set("avatar", "companion_y", self.y())
+            g = self._geom_normal if self._grande_fase is not None else None
+            x, y = (g.x(), g.y()) if g is not None else (self.x(), self.y())
+            self.config.set("avatar", "companion_x", x)
+            self.config.set("avatar", "companion_y", y)
 
     # ── Bandeja ──────────────────────────────────────────────────────────────────
     def _construir_bandeja(self):
@@ -1454,7 +2181,7 @@ class CompanionFlotante(QMainWindow):
             return
         self.tray = QSystemTrayIcon(self._icono, self)
         self.tray.setToolTip("Lune · mascota 3D" if self.render == "vrm" else "Lune · companion")
-        menu = QMenu()
+        menu = self._menu_bandeja = QMenu()
         act_chat = QAction("Escribirle a Lune…", self)
         act_chat.triggered.connect(self.abrir_chat)
         menu.addAction(act_chat)
@@ -1478,7 +2205,7 @@ class CompanionFlotante(QMainWindow):
             self._submenu_opciones(menu, "Encuadre", (("retrato", "Retrato (cara y torso)"), ("cuerpo", "Cuerpo entero")),
                                    self._cfg_str("vrm_encuadre", "retrato"), self.aplicar_encuadre)
             act_esq = QAction("Llevar a la esquina", self)
-            act_esq.triggered.connect(lambda: (self._esquina_inferior_derecha(), self._guardar_posicion()))
+            act_esq.triggered.connect(self.llevar_a_esquina)
             menu.addAction(act_esq)
         menu.addSeparator()
         act_cerrar = QAction("Cerrar mascota", self)
@@ -1486,6 +2213,24 @@ class CompanionFlotante(QMainWindow):
         menu.addAction(act_cerrar)
         self.tray.setContextMenu(menu)
         self.tray.show()
+
+    def quitar_bandeja(self):
+        """Quita su icono de bandeja (la app tiene una sola: ui/bandeja.BandejaLune)."""
+        tray, self.tray = getattr(self, "tray", None), None
+        menu, self._menu_bandeja = getattr(self, "_menu_bandeja", None), None
+        self.act_auto = None
+        self.act_fantasma = None
+        if tray is not None:
+            try:
+                tray.hide()
+                tray.deleteLater()
+            except RuntimeError:
+                pass
+        if menu is not None:
+            try:
+                menu.deleteLater()
+            except RuntimeError:
+                pass
 
     def _submenu_opciones(self, menu, titulo, opciones, actual, aplicar):
         sub = menu.addMenu(titulo)
@@ -1498,11 +2243,17 @@ class CompanionFlotante(QMainWindow):
     # ── Ciclo de vida ────────────────────────────────────────────────────────────
     def showEvent(self, ev):
         super().showEvent(ev)
+        if self._plan_juego is not None and not self._mostrando_por_juego:
+            # La sacan a mano en plena partida: gana el usuario (no se vuelve a
+            # ocultar y va con sus FPS y su orden Z de siempre).
+            self._juego_mostrada_a_mano = True
+            self._oculta_por_juego = False
         self._timer_liberar.stop()
         self._reactivar_pagina()                     # si se liberó oculta, se recarga
         self.visibilidad.emit(True)
         self._estado_bus(visible=True)
-        self._js("window.luneSetFPS && window.luneSetFPS(60)")   # oculta no renderiza
+        self._aplicar_fps()                          # oculta no renderiza; visible, a fps_max
+        self._aplicar_encima()                       # Qt puede haber rehecho el orden Z
         self._js_hablando()                          # la voz pudo empezar o acabar oculta
         self._despertar(usuario=True)
         if not self.cerrado:
@@ -1515,6 +2266,7 @@ class CompanionFlotante(QMainWindow):
         self._timer_eventos.stop()
         self._clic.cancelar()
         self._chat.cerrar()
+        self._soltar_hold()
         self._aparecer_pendiente = True              # al volver a mostrarse, «aparecer»
         # Oculta no recibe caras del chat: una actividad a medias (escribiendo una
         # respuesta…) se quedaría puesta al volver y no la dejaría dormirse nunca.
@@ -1570,12 +2322,12 @@ class CompanionFlotante(QMainWindow):
         self._guardar_posicion()
         self._timer.stop(); self._timer_cursor.stop(); self._timer_sueno.stop(); self._timer_escala.stop()
         self._timer_eventos.stop(); self._timer_sueno_pedido.stop(); self._timer_liberar.stop()
-        self._timer_revertir.stop()
+        self._timer_revertir.stop(); self._timer_ancla.stop()
+        self._ancla_cb = None
         self._clic.cancelar()
         self._chat.destruir()
         self._estado_bus(visible=False, arrastrando=False, hablando=False)
-        if getattr(self, "tray", None) is not None:
-            self.tray.hide()
+        self.quitar_bandeja()
         if self._servidor is not None:
             self._servidor.detener()
         ev.accept()

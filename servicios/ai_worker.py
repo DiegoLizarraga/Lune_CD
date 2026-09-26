@@ -11,6 +11,10 @@ Origen del turno (crítica d, inyección hacia herramientas):
   · 'usuario'       lo escribió la persona en el chat.
   · 'no_confiable'  el prompt lleva texto de terceros (captura o título de
                     ventana, chat o log de Minecraft, Telegram, notas, adjuntos…).
+  · 'remoto'        una orden desde Telegram (/pc) que llegó por el bot que
+                    lanzó Lune. Se ofrecen las herramientas del modo como con
+                    'usuario', pero el Ejecutor pide aprobación en el PC para
+                    TODAS; en el historial cuenta como no confiable (taint).
 En un turno no confiable solo se ofrecen las herramientas de LECTURA, y quien
 procese la respuesta tiene que pasar el mismo `worker.origen` al Ejecutor,
 que es quien de verdad lo hace cumplir.
@@ -28,6 +32,7 @@ from lune_core.reglas_prompt import reglas_herramientas
 
 ORIGEN_USUARIO = "usuario"
 ORIGEN_NO_CONFIABLE = "no_confiable"
+ORIGEN_REMOTO = "remoto"          # = lune_core.catalogo_herramientas.ORIGEN_REMOTO
 
 # Proveedor 'compat' (LM Studio, Groq, OpenAI, Together, Mistral…): no está en
 # ui/theme.PROVIDER_META, así que se describe aquí con el mismo formato.
@@ -53,8 +58,9 @@ def meta_proveedor(provider_id: str) -> dict:
 
 
 def normalizar_origen(origen) -> str:
-    """'usuario' solo si lo dice explícitamente; cualquier otra cosa es no confiable."""
-    return ORIGEN_USUARIO if str(origen or "").strip().lower() == ORIGEN_USUARIO else ORIGEN_NO_CONFIABLE
+    """'usuario' o 'remoto' solo si lo dice explícitamente; cualquier otra cosa es no confiable."""
+    o = str(origen or "").strip().lower()
+    return o if o in (ORIGEN_USUARIO, ORIGEN_REMOTO) else ORIGEN_NO_CONFIABLE
 
 
 def kwargs_chat(chat, **opciones) -> dict:
@@ -84,9 +90,13 @@ def reglas_para(ejecutor=None, modo=None, origen: str = ORIGEN_USUARIO, ctx=None
     if disponibles is None:
         disponibles = set(getattr(ejecutor, "handlers", {}) or {})
     try:
+        o = normalizar_origen(origen)
+        if o == ORIGEN_REMOTO:
+            # Todas las del modo, marcadas «(pide permiso)»: el Ejecutor las pregunta todas.
+            base = dict(ctx) if isinstance(ctx, dict) else {}
+            ctx = {**base, "origen": ORIGEN_REMOTO}
         return reglas_herramientas(registro, modo, set(disponibles),
-                                   solo_lectura=normalizar_origen(origen) != ORIGEN_USUARIO,
-                                   ctx=ctx)
+                                   solo_lectura=o == ORIGEN_NO_CONFIABLE, ctx=ctx)
     except Exception as e:
         log_error(f"AIWorker: no pude armar las reglas de herramientas: {e}")
         return ""
@@ -108,7 +118,7 @@ class AIWorker(QThread):
                  origen: str = ORIGEN_USUARIO, ejecutor=None, modo=None, ctx=None,
                  disponibles=None, efimero: bool = False):
         """
-        origen       'usuario' | 'no_confiable' (ver la cabecera). Se expone en
+        origen       'usuario' | 'no_confiable' | 'remoto' (ver la cabecera). Se expone en
                      `self.origen` para pasárselo al Ejecutor con la respuesta.
                      Un turno no confiable queda MARCADO en el historial (prompt
                      y respuesta): mientras siga en la ventana, las acciones que

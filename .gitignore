@@ -13,6 +13,12 @@ config.json
 config.json.corrupto-*
 .config.json.*.tmp
 
+# Alarmas y temporizadores del usuario (nucleo/alarmas.py), las copias de un
+# alarmas.json roto y el temporal de su escritura atómica
+alarmas.json
+alarmas.json.corrupto-*
+.alarmas.json.*.tmp
+
 # Memoria personal del usuario
 memoria.json
 telegram-bot-or/data/
