@@ -79,17 +79,26 @@ class GestorConversaciones:
         return self._sesion
 
     def agregar(self, rol: str, contenido: str, adjuntos: Optional[list] = None,
-                uso: Optional[dict] = None):
-        """Añade un mensaje y persiste. `rol` es 'user' o 'assistant'."""
+                uso: Optional[dict] = None, no_confiable: bool = False):
+        """
+        Añade un mensaje y persiste. `rol` es 'user' o 'assistant'.
+
+        `no_confiable`: la respuesta salió de un turno con contenido externo
+        (adjuntos, notas). Se guarda para que, al reabrir la conversación, el
+        historial del modelo siga marcado y las acciones pidan permiso.
+        """
         if self._sesion is None:
             self.nueva_sesion()
-        self._sesion["mensajes"].append({
+        mensaje = {
             "rol": rol,
             "contenido": contenido,
             "hora": _ahora(),
             "adjuntos": [a.get("nombre", "") for a in (adjuntos or [])],
             "uso": uso or {},
-        })
+        }
+        if no_confiable:
+            mensaje["no_confiable"] = True
+        self._sesion["mensajes"].append(mensaje)
         if not self._sesion["titulo"] and rol == "user":
             self._sesion["titulo"] = _titulo_desde(contenido)
         self._sesion["actualizado"] = _ahora()
@@ -186,4 +195,12 @@ class GestorConversaciones:
         retomar una conversación vieja con el modelo sabiendo de qué iba.
         """
         mensajes = self.mensajes_actuales()[-limite_turnos * 2:]
-        return [{"role": m["rol"], "content": m["contenido"]} for m in mensajes]
+        historial = []
+        for m in mensajes:
+            entrada = {"role": m["rol"], "content": m["contenido"]}
+            if m.get("no_confiable"):
+                # = servicios.ai_manager.MARCA_NO_CONFIABLE (sin importar servicios
+                # desde nucleo); AIManager.cargar_historial la conserva.
+                entrada["_no_confiable"] = True
+            historial.append(entrada)
+        return historial

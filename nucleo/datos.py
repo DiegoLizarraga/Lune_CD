@@ -9,6 +9,7 @@ datos.json no está versionado (lleva las API keys). Si no existe, se crea
 automáticamente a partir de datos.example.json al importar este módulo.
 """
 import json
+import os
 import shutil
 from pathlib import Path
 from typing import Any, Dict
@@ -64,9 +65,26 @@ def cargar() -> dict:
 
 
 def guardar(data: dict):
-    """Escribe datos.json e invalida la caché para que el cambio se vea ya."""
+    """
+    Escribe datos.json e invalida la caché para que el cambio se vea ya.
+
+    Escritura atómica (temporal + os.replace): datos.json lleva las API keys y
+    lo leen a la vez la app, patata y el bot de Telegram; un corte a mitad de
+    escritura dejaba el JSON truncado. Si Windows no deja reemplazar (el otro
+    proceso lo tiene abierto justo en ese instante) se escribe directo, como antes.
+    """
     global _cache, _cache_mtime
-    _PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    texto = json.dumps(data, ensure_ascii=False, indent=2)
+    tmp = _PATH.with_name(_PATH.name + ".tmp")
+    try:
+        tmp.write_text(texto, encoding="utf-8")
+        os.replace(tmp, _PATH)
+    except OSError:
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        _PATH.write_text(texto, encoding="utf-8")
     _cache = data
     try:
         _cache_mtime = _PATH.stat().st_mtime
@@ -139,7 +157,133 @@ def ollama_timeout() -> int:
 
 
 def temperatura() -> float:
-    return float(_num(get_modelos().get("temperatura"), 0.7))
+    """Temperatura efectiva (la explícita o la del preset), limitada a 0–2."""
+    return float(parametros_muestreo()["temperatura"])
+
+
+# ── Atajos: proveedor compatible con OpenAI ('compat') ──
+# Cualquier servidor que hable /v1/chat/completions: LM Studio, llama.cpp,
+# Groq, OpenAI, Together, Mistral… Se configura en `modelos.compat_*`; la clave
+# se acepta también en `apis.compat_key`, junto a las demás, por si la UI la
+# guarda ahí.
+
+def compat_url() -> str:
+    """URL base tal como la escribió el usuario (sin barra final). Vacía = sin proveedor."""
+    return str(get_modelos().get("compat_url") or "").strip().rstrip("/")
+
+
+def compat_key() -> str:
+    return str(get_modelos().get("compat_key") or get_apis().get("compat_key") or "").strip()
+
+
+def compat_model() -> str:
+    return str(get_modelos().get("compat_model") or "").strip()
+
+
+def compat_timeout() -> int:
+    """Segundos de espera por respuesta del proveedor compatible (mínimo 5)."""
+    return max(5, int(_num(get_modelos().get("compat_timeout"), 120)))
+
+
+# ── Atajos: parámetros de muestreo (IA avanzada) ──
+# Un preset da valores de partida; lo que el usuario fije a mano en `modelos`
+# manda sobre el preset (así el campo de temperatura del panel nativo sigue
+# funcionando). Para CAMBIAR de preset usa `aplicar_preset_muestreo`, que
+# reescribe sus valores. Lo que ni el preset ni el usuario fijan queda en None:
+# el proveedor no lo envía y el modelo usa su propio valor por defecto.
+
+PRESETS_MUESTREO: Dict[str, Dict[str, float]] = {
+    "preciso": {"temperatura": 0.2, "top_p": 0.9, "top_k": 40, "min_p": 0.05,
+                "repeat_penalty": 1.1},
+    "equilibrado": {"temperatura": 0.7},
+    "creativo": {"temperatura": 1.0},
+}
+PRESET_POR_DEFECTO = "equilibrado"
+PRESET_PERSONALIZADO = "personalizado"
+
+# clave en datos.json → (tipo, mínimo, máximo, «≤0 significa sin valor»)
+_PARAMS_MUESTREO = {
+    "temperatura":    (float, 0.0, 2.0, False),
+    "top_p":          (float, 0.01, 1.0, False),
+    "top_k":          (int, 1, 1000, True),
+    "min_p":          (float, 0.0, 1.0, False),
+    "repeat_penalty": (float, 0.5, 2.0, False),
+    "num_predict":    (int, 1, 131072, True),
+    "seed":           (int, 0, 2**31 - 1, False),
+}
+# Los que un preset reescribe (seed, num_predict y el contexto no son del preset).
+_CLAVES_DE_PRESET = ("temperatura", "top_p", "top_k", "min_p", "repeat_penalty")
+
+
+def _opcional(valor: Any, tipo, minimo, maximo, cero_es_nada: bool):
+    """Número validado y limitado a [minimo, maximo]; None si falta o es basura."""
+    if valor is None or valor == "" or isinstance(valor, bool):
+        return None
+    try:
+        v = float(valor)
+    except (TypeError, ValueError):
+        return None
+    if v != v or v in (float("inf"), float("-inf")):
+        return None
+    if tipo is int:
+        v = int(v)
+    if cero_es_nada and v <= 0:
+        return None
+    if v < 0 and minimo >= 0 and tipo is int:
+        return None          # seed negativa = aleatoria
+    return tipo(min(max(v, minimo), maximo))
+
+
+def preset_muestreo() -> str:
+    """'preciso' · 'equilibrado' · 'creativo' · 'personalizado' (desconocido → por defecto)."""
+    p = str(get_modelos().get("preset_muestreo") or PRESET_POR_DEFECTO).strip().lower()
+    return p if p in PRESETS_MUESTREO or p == PRESET_PERSONALIZADO else PRESET_POR_DEFECTO
+
+
+def parametros_muestreo() -> Dict[str, Any]:
+    """
+    Parámetros efectivos del modelo:
+    {preset, temperatura, top_p, top_k, min_p, repeat_penalty, num_predict,
+     seed, num_ctx}. temperatura y num_ctx siempre tienen valor; el resto puede
+    ser None (= no enviarlo).
+    """
+    m = get_modelos()
+    preset = preset_muestreo()
+    base = PRESETS_MUESTREO.get(preset, {})
+    out: Dict[str, Any] = {"preset": preset}
+    for clave, (tipo, minimo, maximo, cero_es_nada) in _PARAMS_MUESTREO.items():
+        valor = _opcional(m.get(clave), tipo, minimo, maximo, cero_es_nada)
+        if valor is None and clave in base:
+            valor = tipo(base[clave])
+        out[clave] = valor
+    if out["temperatura"] is None:
+        out["temperatura"] = 0.7
+    out["num_ctx"] = ollama_num_ctx()
+    return out
+
+
+def aplicar_preset_muestreo(nombre: str) -> Dict[str, Any]:
+    """
+    Guarda el preset y reescribe sus valores en datos.json. Lo que el preset no
+    define (p. ej. top_k en 'creativo') se borra para que vuelva al valor del
+    modelo. 'personalizado' solo cambia la etiqueta. Devuelve los parámetros
+    efectivos resultantes.
+    """
+    nombre = str(nombre or "").strip().lower()
+    if nombre not in PRESETS_MUESTREO and nombre != PRESET_PERSONALIZADO:
+        raise ValueError(f"preset de muestreo desconocido: {nombre!r}")
+    d = cargar()
+    m = d.setdefault("modelos", {})
+    m["preset_muestreo"] = nombre
+    if nombre != PRESET_PERSONALIZADO:
+        valores = PRESETS_MUESTREO[nombre]
+        for clave in _CLAVES_DE_PRESET:
+            if clave in valores:
+                m[clave] = valores[clave]
+            else:
+                m.pop(clave, None)
+    guardar(d)
+    return parametros_muestreo()
 
 
 # ── Atajos: comportamiento ──
@@ -150,6 +294,59 @@ def max_historial() -> int:
 
 def max_tokens() -> int:
     return int(_num(get_bot().get("max_tokens"), 1024))
+
+
+# ── Atajos: Minecraft (bot de Lune, `minecraft-bot/`) ──
+# Solo la conexión del bot y su carácter. Lo de la mascota (reaccionar al log,
+# UDP de Mate-Engine…) vive en config.json. OJO: `solo_dueno` compara el nick,
+# y en un servidor con online-mode=false el nick se puede suplantar; no es una
+# garantía de seguridad, solo un filtro.
+
+MINECRAFT_DEFECTO: Dict[str, Any] = {
+    "host": "localhost",
+    "port": 25565,
+    "version": "",            # vacío = la detecta mineflayer
+    "usuario": "",            # nick del bot; vacío = el del personaje
+    "dueno": "",              # nick de quien manda al bot
+    "pensar_cada_s": 45,      # cadencia del «cerebro» (comparte Ollama con el chat)
+    "defender": True,
+    "solo_dueno": True,
+    "estilo_frases": "personaje",
+    "visor": False,           # prismarine-viewer (dependencia opcional)
+}
+
+
+def _bool(valor: Any, defecto: bool) -> bool:
+    if isinstance(valor, bool):
+        return valor
+    if isinstance(valor, (int, float)):
+        return bool(valor)
+    if isinstance(valor, str):
+        v = valor.strip().lower()
+        if v in ("1", "true", "si", "sí", "yes", "on"):
+            return True
+        if v in ("0", "false", "no", "off"):
+            return False
+    return defecto
+
+
+def minecraft() -> Dict[str, Any]:
+    """Sección `minecraft` de datos.json validada y con valores por defecto."""
+    crudo = _load().get("minecraft")
+    crudo = crudo if isinstance(crudo, dict) else {}
+    d = MINECRAFT_DEFECTO
+    out: Dict[str, Any] = {k: v for k, v in crudo.items() if k not in d and not k.startswith("_")}
+    out["host"] = str(crudo.get("host") or "").strip() or d["host"]
+    puerto = _opcional(crudo.get("port"), int, 1, 10**6, True)
+    out["port"] = puerto if puerto is not None and puerto <= 65535 else d["port"]
+    for clave in ("version", "usuario", "dueno"):
+        out[clave] = str(crudo.get(clave) or "").strip()
+    pensar = _opcional(crudo.get("pensar_cada_s"), int, 10, 3600, True)
+    out["pensar_cada_s"] = pensar if pensar is not None else d["pensar_cada_s"]
+    for clave in ("defender", "solo_dueno", "visor"):
+        out[clave] = _bool(crudo.get(clave), d[clave])
+    out["estilo_frases"] = str(crudo.get("estilo_frases") or "").strip().lower() or d["estilo_frases"]
+    return out
 
 
 # ── Atajos: hub (red de Lune: host y terminales) ──

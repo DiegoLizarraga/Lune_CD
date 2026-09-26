@@ -113,6 +113,8 @@ export class HubCliente {
     try { ev = JSON.parse(typeof m.data === "string" ? m.data : m.data.toString()); } catch { return; }
     const pid = ev.meta?.parent_id;
     // Streaming de chat: varios eventos con el mismo parent_id hasta el done.
+    // Lo demas de ese turno (tool:approval:request, tool:result...) sigue a los
+    // oyentes por tipo: antes se tragaba aqui y nunca llegaba a nadie.
     if (pid && this.chats.has(pid)) {
       const c = this.chats.get(pid);
       if (ev.type === "output:chat:delta") { c.onDelta?.(ev.data?.text ?? ""); return; }
@@ -120,7 +122,6 @@ export class HubCliente {
       if (ev.type === "output:chat:done") {
         clearTimeout(c.timer); this.chats.delete(pid); c.resolve(ev); return;
       }
-      return;
     }
     if (pid && this.pendientes.has(pid)) {
       const p = this.pendientes.get(pid);

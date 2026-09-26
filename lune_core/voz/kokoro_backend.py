@@ -20,6 +20,17 @@ Descarga (una vez):
 
 El modelo se carga UNA vez y se queda en memoria: la primera frase tarda unos
 segundos y las siguientes son rápidas.
+
+VOCES
+-----
+VOCES_ES (prefijo «e») y VOCES_EN (americanas «a», británicas «b») son las de
+voices-v1.0.bin. Si el archivo está, `voces_instaladas()` lee sus nombres sin
+cargar el modelo y la voz pedida se valida contra ellos; si no se puede leer,
+se valida contra estas listas. Una voz que no vale cae a VOZ_POR_DEFECTO.
+El fonemizador sigue al idioma del TEXTO (voz.idioma, «es» en Lune), no al de
+la voz: una voz inglesa leyendo español suena a acento, no a otro idioma.
+Las carpetas relativas se anclan a la raíz del proyecto, no al directorio de
+trabajo, para que la app, patata y los tests encuentren los mismos pesos.
 """
 from __future__ import annotations
 
@@ -28,7 +39,9 @@ import tempfile
 import threading
 import wave
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
+
+RAIZ = Path(__file__).resolve().parents[2]
 
 # Kokoro genera audio a 24 kHz.
 SAMPLE_RATE = 24000
@@ -39,6 +52,25 @@ VOCES_ES = {
     "em_alex": "Alex (masculina)",
     "em_santa": "Santa (masculina)",
 }
+# Voces inglesas de Kokoro v1.0 ('a' = EE. UU., 'b' = Reino Unido; 'f'/'m' = género).
+VOCES_EN = {
+    "af_alloy": "Alloy (femenina, EE. UU.)", "af_aoede": "Aoede (femenina, EE. UU.)",
+    "af_bella": "Bella (femenina, EE. UU.)", "af_heart": "Heart (femenina, EE. UU.)",
+    "af_jessica": "Jessica (femenina, EE. UU.)", "af_kore": "Kore (femenina, EE. UU.)",
+    "af_nicole": "Nicole (femenina, EE. UU.)", "af_nova": "Nova (femenina, EE. UU.)",
+    "af_river": "River (femenina, EE. UU.)", "af_sarah": "Sarah (femenina, EE. UU.)",
+    "af_sky": "Sky (femenina, EE. UU.)",
+    "am_adam": "Adam (masculina, EE. UU.)", "am_echo": "Echo (masculina, EE. UU.)",
+    "am_eric": "Eric (masculina, EE. UU.)", "am_fenrir": "Fenrir (masculina, EE. UU.)",
+    "am_liam": "Liam (masculina, EE. UU.)", "am_michael": "Michael (masculina, EE. UU.)",
+    "am_onyx": "Onyx (masculina, EE. UU.)", "am_puck": "Puck (masculina, EE. UU.)",
+    "am_santa": "Santa (masculina, EE. UU.)",
+    "bf_alice": "Alice (femenina, Reino Unido)", "bf_emma": "Emma (femenina, Reino Unido)",
+    "bf_isabella": "Isabella (femenina, Reino Unido)", "bf_lily": "Lily (femenina, Reino Unido)",
+    "bm_daniel": "Daniel (masculina, Reino Unido)", "bm_fable": "Fable (masculina, Reino Unido)",
+    "bm_george": "George (masculina, Reino Unido)", "bm_lewis": "Lewis (masculina, Reino Unido)",
+}
+VOCES: Dict[str, str] = {**VOCES_ES, **VOCES_EN}
 VOZ_POR_DEFECTO = "ef_dora"
 
 # Carpeta y nombres por defecto de los pesos.
@@ -49,6 +81,7 @@ ARCHIVO_VOCES = "voices-v1.0.bin"
 _kokoro = None                 # instancia cacheada
 _ruta_cargada = None           # (onnx, voces) con la que se cargó
 _lock = threading.Lock()
+_cache_instaladas: dict = {}   # (ruta, mtime) → lista de nombres
 
 
 # ── Disponibilidad ─────────────────────────────────────────────────────────────
@@ -63,6 +96,8 @@ def dependencias_faltantes() -> List[str]:
 
 def _rutas(carpeta: Optional[str] = None):
     base = Path(carpeta or CARPETA_DEFECTO)
+    if not base.is_absolute():
+        base = RAIZ / base
     return base / ARCHIVO_ONNX, base / ARCHIVO_VOCES
 
 
@@ -88,6 +123,70 @@ def mensaje_instalacion(carpeta: Optional[str] = None) -> str:
         partes.append("    https://github.com/thewh1teagle/kokoro-onnx/releases")
     partes.append("\nMientras tanto, Lune sigue hablando con edge-tts.")
     return "\n".join(partes)
+
+
+# ── Voces ───────────────────────────────────────────────────────────────────────
+
+def voces_instaladas(carpeta: Optional[str] = None) -> List[str]:
+    """
+    Nombres de las voces que trae voices-v1.0.bin (un .npz), sin cargar el
+    modelo. Lista vacía si no hay archivo, falta numpy o no se puede leer: en
+    ese caso quien valida se conforma con VOCES.
+    """
+    _onnx, voces = _rutas(carpeta)
+    with _lock:
+        if _kokoro is not None and _ruta_cargada and _ruta_cargada[1] == str(voces):
+            try:
+                return sorted(_kokoro.get_voices())
+            except Exception:
+                pass
+    try:
+        clave = (str(voces), voces.stat().st_mtime)
+    except OSError:
+        return []
+    if clave in _cache_instaladas:
+        return list(_cache_instaladas[clave])
+    try:
+        import numpy as np
+        with np.load(str(voces), allow_pickle=False) as npz:
+            nombres = sorted(str(n) for n in npz.files)
+    except Exception:
+        nombres = []
+    _cache_instaladas.clear()
+    _cache_instaladas[clave] = nombres
+    return list(nombres)
+
+
+def es_voz_valida(voz: str, carpeta: Optional[str] = None, instaladas: Optional[List[str]] = None) -> bool:
+    """¿Se puede usar `voz`? Contra lo instalado si se sabe; si no, contra VOCES."""
+    if not isinstance(voz, str) or not voz:
+        return False
+    if instaladas is None:
+        instaladas = voces_instaladas(carpeta)
+    return voz in instaladas if instaladas else voz in VOCES
+
+
+def validar_voz(voz: str, carpeta: Optional[str] = None, instaladas: Optional[List[str]] = None) -> str:
+    """`voz` si vale; si no, VOZ_POR_DEFECTO (o la primera instalada si ni esa está)."""
+    if instaladas is None:
+        instaladas = voces_instaladas(carpeta)
+    if es_voz_valida(voz, instaladas=instaladas):
+        return voz
+    if not instaladas or VOZ_POR_DEFECTO in instaladas:
+        return VOZ_POR_DEFECTO
+    return instaladas[0]
+
+
+def idioma_fonemas(idioma: Optional[str], voz: str = "") -> str:
+    """Código de idioma para Kokoro según el idioma del texto: «es», «en-us», «en-gb»…"""
+    i = (idioma or "es").strip().lower().replace("_", "-")
+    if i in ("en", "en-us", "en-gb"):
+        if i == "en-gb" or (i == "en" and voz.startswith("b")):
+            return "en-gb"
+        return "en-us"
+    # Los que entiende Kokoro v1.0; «auto» (Whisper) y lo desconocido → español.
+    return {"es": "es", "fr": "fr-fr", "fr-fr": "fr-fr", "it": "it", "pt": "pt-br",
+            "pt-br": "pt-br", "hi": "hi", "ja": "ja", "zh": "cmn", "cmn": "cmn"}.get(i, "es")
 
 
 # ── Carga y síntesis ────────────────────────────────────────────────────────────
@@ -122,9 +221,13 @@ def sintetizar(texto: str, voz: str = VOZ_POR_DEFECTO, velocidad: float = 1.0,
     try:
         import numpy as np
         k = cargar(carpeta)
-        if voz not in VOCES_ES:
-            voz = VOZ_POR_DEFECTO
-        muestras, sr = k.create(texto, voice=voz, speed=float(velocidad or 1.0), lang=idioma)
+        try:
+            instaladas = sorted(k.get_voices())
+        except Exception:
+            instaladas = []
+        voz = validar_voz(voz, instaladas=instaladas)
+        muestras, sr = k.create(texto, voice=voz, speed=float(velocidad or 1.0),
+                                lang=idioma_fonemas(idioma, voz))
         muestras = np.asarray(muestras, dtype=np.float32)
         # float32 [-1, 1] → int16 PCM
         pcm = np.clip(muestras, -1.0, 1.0)

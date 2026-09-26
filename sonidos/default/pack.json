@@ -1,0 +1,31 @@
+{
+  "nombre": "Lune (por defecto)",
+  "autor": "Lune CD",
+  "descripcion": "Efectos sintetizados por scripts/generar_sfx.py. Para hacer tu pack copia esta carpeta con otro nombre, pon tus .ogg/.wav junto a pack.json, quita \"base\" y rellena las listas. Los eventos que dejes vacíos o no pongas usan estos.",
+  "base": "ui_web/assets/sfx",
+  "mapeo": "ciclo",
+  "volumen": 1.0,
+  "eventos": {
+    "arrastre_inicio": ["drag_start.wav"],
+    "arrastre_fin": ["drag_stop.wav"],
+    "caricia": [],
+    "pudor": [],
+    "mareo": [],
+    "despertar": [],
+    "dormir": [],
+    "saludo": [],
+    "burbuja_abrir": [],
+    "burbuja_cerrar": [],
+    "tecleo": ["blip.wav"],
+    "alarma": ["alarma_1.wav", "alarma_2.wav", "alarma_3.wav"],
+    "comida_aparece": ["comida_aparece.wav"],
+    "comida_capa": ["comida_capa_1.wav", "comida_capa_2.wav"],
+    "beber": ["trago_1.wav", "trago_2.wav", "trago_3.wav"],
+    "comer": ["mordisco_1.wav", "mordisco_2.wav", "mordisco_3.wav"],
+    "menu_abrir": ["menu_abrir.wav"],
+    "menu_cerrar": ["menu_cerrar.wav"],
+    "menu_boton": ["menu_boton.wav"],
+    "menu_interruptor": ["menu_boton.wav"]
+  },
+  "capas": {}
+}

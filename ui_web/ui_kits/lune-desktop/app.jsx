@@ -4,7 +4,10 @@ const { useState, useRef, useCallback } = React;
 const PROVIDERS = {
   local: { name:'Lune AI · Local', desc:'Modelo offline · sin red', Icon: () => <window.IconCpu/>, accent:'cyan' },
   cloud: { name:'Lune AI · Nube',  desc:'Enrutamiento inteligente', Icon: () => <window.IconCloud/>, accent:'blue' },
+  // Tercer proveedor (solo si está configurado en Ajustes): LM Studio, Groq, OpenAI…
+  compat: { name:'Lune AI · API', desc:'API compatible con OpenAI', Icon: () => <window.IconBolt/>, accent:'yellow' },
 };
+const COMPAT_OFF = { on:false, model:'', url:'' };
 let _mid = 0;
 const uid = () => `m${++_mid}`;
 const NOW = () => new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
@@ -20,7 +23,7 @@ function limpiarMarcadores(t) {
 
 function Topbar({ provider, status, view, onView, onMenu }) {
   const { StatusPill, IconButton } = window.LUNE;
-  const p = PROVIDERS[provider];
+  const p = PROVIDERS[provider] || PROVIDERS.local;
   return (
     <header className="ln-topbar">
       <span className={`ln-topbar-ic ${provider}`}><p.Icon/></span>
@@ -108,6 +111,7 @@ function App() {
   const [grabando, setGrabando] = useState(false); // micrófono grabando
   const [llamadaOn, setLlamadaOn] = useState(false); // modo llamada por voz
   const [toast, setToast] = useState('');          // aviso breve del backend
+  const [compat, setCompat] = useState(COMPAT_OFF); // API compatible configurada (tercer proveedor)
   const toastT = useRef(null);
   const sendRef = useRef(null);                    // send() actual, para las señales
   const [fx, setFx] = useState(() => {
@@ -134,6 +138,9 @@ function App() {
     function wire() {
       const b = window.lune;
       if (!b) return;
+      // El efecto de `provider` pudo correr antes de que existiera window.lune (al
+      // recargar la página): el puente se quedaría con el proveedor de antes.
+      try { if (typeof b.proveedor_elegido === 'function') b.proveedor_elegido(providerRef.current); } catch (e) {}
       b.chunk.connect((acumulado) => {
         setTyping(false);   // la cara la lleva `acto` (typing y los <|ACT|> según llegan)
         // El id se fija AQUÍ (síncrono), no dentro del updater: si no, 'done'
@@ -184,10 +191,36 @@ function App() {
         });
         if (mascota) setMascot(mascota);   // vacío = la cara la va llevando la voz
       });
+      // Chat de la mascota (doble clic sobre ella): mismo historial que esta ventana.
+      // Lo que escribiste allí entra aquí como mensaje tuyo y la respuesta llega por chunk/done.
+      try {
+        b.usuario_mascota.connect((texto) => {
+          if (!texto) return;
+          streamId.current = null;
+          setMessages((m) => [...m, { id: uid(), role:'user', text: texto, time: NOW() }]);
+          setBusy(true); setTyping(true); setMascot('thinking');
+        });
+      } catch (e) {}
+      // Tercer proveedor: la pestaña «API» solo sale si la API compatible está configurada.
+      const leerCompat = (j) => {
+        let r = {}; try { r = typeof j === 'string' ? JSON.parse(j) : (j || {}); } catch (e) {}
+        setCompat(r && r.compat ? { on:true, model: String(r.compat_model || ''), url: String(r.compat_url || '') } : COMPAT_OFF);
+      };
+      try { b.proveedores(leerCompat); } catch (e) {}
+      try { b.proveedores_cambio.connect(leerCompat); } catch (e) {}
     }
     if (window.lune) wire();
     else window.addEventListener('lune-ready', wire, { once:true });
   }, []);
+
+  // Si la API compatible deja de estar configurada, se vuelve al modelo local.
+  React.useEffect(() => { if (!compat.on && provider === 'compat') setProvider('local'); }, [compat.on, provider]);
+  // El chat de la mascota usa el mismo proveedor que esta ventana.
+  React.useEffect(() => {
+    if (window.lune && typeof window.lune.proveedor_elegido === 'function') {
+      try { window.lune.proveedor_elegido(provider); } catch (e) {}
+    }
+  }, [provider]);
 
   const status = busy ? 'busy' : (mascot === 'error' ? 'error' : 'live');
 
@@ -253,7 +286,13 @@ function App() {
     setMessages((m) => m.map((x) => x.streaming ? { ...x, streaming:false } : x));
   }, []);
 
-  const clear = useCallback(() => { clearTimers(); setMessages([]); setTyping(false); setBusy(false); setMascot('normal'); setView('chat'); }, []);
+  // Limpiar chat: también el historial del modelo y la conversación de las acciones
+  // (presupuesto repuesto; las preguntas «¿Lo hago?» abiertas se cierran sin hacer nada).
+  const clear = useCallback(() => {
+    if (window.lune && typeof window.lune.limpiar_chat === 'function') { try { window.lune.limpiar_chat(); } catch (e) {} }
+    clearTimers(); streamId.current = null;
+    setMessages([]); setTyping(false); setBusy(false); setMascot('normal'); setView('chat');
+  }, []);
 
   // ── Toggles cableados al backend real (con fallback local para la demo) ──
   const toggleVoz = useCallback(() => {
@@ -293,7 +332,7 @@ function App() {
     <div className={`ln-app lune-backdrop${fx.bg?'':' fx-no-bg'}${fx.sweep?'':' fx-no-sweep'}${fx.micro?'':' fx-no-micro'}${provider==='cloud'?' tema-nube':''}`}>
       {fx.bg && <BgShards />}
       <window.Sidebar provider={provider} onProvider={setProvider} mascotState={mascot}
-        mascotaFuera={mascotaFuera} onTraer={toggleMascota} />
+        mascotaFuera={mascotaFuera} onTraer={toggleMascota} compat={compat} />
       <main className="ln-main">
         {provider==='cloud' && <BgNube />}
         <Topbar provider={provider} status={status} view={view} onView={setView} onMenu={() => setMenuOpen(true)} />
@@ -320,12 +359,15 @@ function App() {
         { label:'Historial', desc:'Conversaciones previas', onClick:()=>setView('historial') },
         { label:'Optimizar', desc:'Rendimiento del modelo', onClick:()=>setView('optimizar') },
         { label:`Mascota ${mascotaFuera?'ON':'OFF'}`, desc: mascotaFuera ? 'Traer a Lune de vuelta a la ventana' : 'Sacar a Lune al escritorio', on:mascotaFuera, onClick:toggleMascota },
-        { label:`Voz ${voiceOn?'ON':'OFF'}`, desc:'edge-tts · es-MX', on:voiceOn, onClick:toggleVoz },
+        { label:`Voz ${voiceOn?'ON':'OFF'}`, desc:'Lune lee sus respuestas (la voz se elige en Ajustes)', on:voiceOn, onClick:toggleVoz },
         { label:'Telegram', desc:'Bot sincronizado', on:telegramOn, onClick:toggleTelegram },
         { label:`Llamada ${llamadaOn?'ON':'OFF'}`, desc:'Conversación solo por voz', on:llamadaOn, onClick:toggleLlamada },
         { label:'Limpiar chat', desc:'Borra la conversación actual', danger:true, onClick:clear },
       ]} />
       {toast && <div className="ln-toast" role="status">{toast}</div>}
+      {/* Acciones del modelo que piden permiso (señal aprobacion_pedida): modal global
+          con cuenta atrás de 60 s; «Sí, hazlo» / «No» → window.lune.resolver_aprobacion. */}
+      {window.AprobacionHost && <window.AprobacionHost />}
     </div>
   );
 }

@@ -10,11 +10,36 @@ Streaming Microphone)» virtual, y el headset Bluetooth no se vuelve el default
 solo por estar conectado). Por eso el usuario puede elegir la salida en
 Configuración → Audio; se guarda por NOMBRE en config (`voz.dispositivo_salida`,
 vacío = la del sistema) y se aplica al abrir el mixer con `devicename=`.
+
+VOZ ELEGIBLE (v10.4)
+--------------------
+Qué voz suena lo decide servicios/voces.resolver_voz (personaje > config > por
+defecto), releído cada 2 s o al llamar a `invalidar_params()`. El motor se
+elige por frase: el pedido si está disponible; si no, edge; si no, gTTS.
+
+    probar_voz(params, texto)   corta lo que suene y prueba una voz, aunque la
+                                voz esté apagada (botón «Probar»)
+    reiniciar_motor()           vuelve a mirar qué motores hay (cambio de motor)
+    silenciar(on)               modo juego: calla y no habla hasta silenciar(False)
+    on_error(msg)               aviso legible de lo que antes se tragaba (voz
+                                inexistente → NoAudioReceived, sin red…). Llega
+                                desde el hilo de audio: marshalear a Qt
+    al_hablar(bool)             ya existía: la boca de la mascota
 """
-import io
+import json
 import os
 import re
+import sys
 import threading
+import time
+
+# Sin el anuncio «Hello from the pygame community» en patata ni en la consola.
+os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
+
+from servicios import voces  # noqa: E402  (ligero: no importa edge_tts)
+
+CACHE_PARAMS_S = 2.0            # cada cuánto se relee la voz del personaje activo
+SILENCIO_AVISOS_S = 20.0        # el mismo aviso no se repite antes de esto
 
 
 def listar_salidas():
@@ -42,11 +67,47 @@ def listar_salidas():
     return nombres
 
 
+def _es_sin_audio(exc) -> bool:
+    """edge-tts lanza NoAudioReceived si la voz no existe (o el texto no se puede leer)."""
+    return any(c.__name__ == "NoAudioReceived" for c in type(exc).__mro__)
+
+
+def _es_de_red(exc) -> bool:
+    nombres = {c.__name__ for c in type(exc).__mro__}
+    return bool(isinstance(exc, (OSError, TimeoutError, ConnectionError))
+                or nombres & {"ClientError", "WebSocketError", "gTTSError", "ServerTimeoutError"})
+
+
 class VoiceEngine:
-    def __init__(self, config=None):
+    # `al_hablar(True/False)` y `on_error(msg)` se llaman desde el hilo de audio:
+    # quien los use debe marshalear al hilo de Qt (el puente lo hace con señales).
+    al_hablar = None
+    on_error = None
+    _gen_voz = 0          # sube con cancelar(): las lecturas de una generación vieja se callan
+    # Valores de clase para lo nuevo: los tests crean motores con __new__ y solo
+    # rellenan lo que usan, así que nada de esto puede depender de __init__.
+    config = None
+    _engine = None
+    _enabled = False
+    _silenciada = False
+    _disponibles = frozenset()
+    _kokoro_ok = None
+    _params_cache = None
+    _avisos = None
+    ultimo_error = ""
+
+    def __init__(self, config=None, on_error=None):
         self.config = config
         self._enabled = False; self._lock = threading.Lock(); self._engine = None
         self._salida = ""          # nombre de la salida con la que se abrió el mixer ("" = sistema)
+        self._silenciada = False   # modo juego
+        self._disponibles = set()  # motores importables: edge, gtts (kokoro se mira aparte)
+        self._kokoro_ok = None     # None = sin comprobar
+        self._params_cache = None  # (instante, ParamsVoz)
+        self._avisos = {}          # mensaje → último instante (para no repetir)
+        self.ultimo_error = ""
+        if on_error is not None:
+            self.on_error = on_error
         self._init_engine()
 
     def _cfg(self, clave, default):
@@ -117,26 +178,156 @@ class VoiceEngine:
         threading.Thread(target=_beep, daemon=True).start()
         return True
 
-    def _init_engine(self):
-        pref = self._cfg("motor_salida", "auto")
-        # Voz local Kokoro: solo si se pide explícitamente y está disponible.
-        if pref == "kokoro":
+    # ── Motores ─────────────────────────────────────────────────────────────────
+    @staticmethod
+    def _detectar_motores():
+        """edge/gTTS instalados (sin importarlos: edge_tts tarda ~1 s en cargar)."""
+        import importlib.util
+        disp = set()
+        for motor, modulo in (("edge", "edge_tts"), ("gtts", "gtts")):
+            if sys.modules.get(modulo) is not None:     # ya importado (o sustituido en tests)
+                disp.add(motor)
+                continue
+            try:
+                if importlib.util.find_spec(modulo) is not None:
+                    disp.add(motor)
+            except (ImportError, ValueError):
+                pass
+        return disp
+
+    def _kokoro_disponible(self):
+        if self._kokoro_ok is None:
             try:
                 from lune_core.voz import kokoro_backend
-                if kokoro_backend.disponible(self._cfg("kokoro_carpeta", "modelos_voz")):
-                    self._abrir_mixer(); self._engine = "kokoro"; return
+                self._kokoro_ok = bool(kokoro_backend.disponible(self._cfg("kokoro_carpeta", "modelos_voz")))
             except Exception:
-                pass
-            # se pidió kokoro pero no está: se cae a edge (degradación silenciosa)
-        if pref in ("auto", "edge", "kokoro"):
-            try: import edge_tts; self._abrir_mixer(); self._engine = "edge"; return
-            except ImportError: pass
-            except Exception: pass          # sin tarjeta de sonido: mudo, no muerto
-        try: from gtts import gTTS; self._abrir_mixer(); self._engine = "gtts"; return
-        except ImportError: pass
-        except Exception: pass
-        self._engine = None
+                self._kokoro_ok = False
+        return self._kokoro_ok
 
+    def _motor_para(self, params):
+        """Motor que va a sonar para `params`: el pedido si está; si no, edge; si no, gTTS."""
+        if params.motor == "kokoro" and self._kokoro_disponible():
+            return "kokoro"
+        if params.motor == "gtts" and "gtts" in self._disponibles:
+            return "gtts"
+        if "edge" in self._disponibles:
+            return "edge"
+        if "gtts" in self._disponibles:
+            return "gtts"
+        return None
+
+    def _init_engine(self):
+        # Voz local Kokoro: solo si se pide explícitamente (personaje o config) y
+        # está disponible; si no, se cae a edge y luego a gTTS (degradación silenciosa).
+        self._disponibles = self._detectar_motores()
+        self._kokoro_ok = None
+        params = self._params(refrescar=True)
+        motor = self._motor_para(params)
+        if motor is None:
+            self._engine = None
+            return
+        try:
+            self._abrir_mixer()
+        except Exception:                 # sin tarjeta de sonido: mudo, no muerto
+            self._engine = None
+            return
+        self._engine = motor
+
+    def reiniciar_motor(self):
+        """Vuelve a mirar qué motores hay y cuál toca (tras cambiar el motor o
+        instalar Kokoro). Corta lo que suene. Devuelve el nombre del motor."""
+        self.cancelar()
+        self._params_cache = None
+        self._kokoro_ok = None
+        if self._engine is None:
+            self._init_engine()          # quizá ahora sí hay librería o tarjeta
+        else:
+            self._disponibles = self._detectar_motores()
+            self._engine = self._motor_para(self._params(refrescar=True))
+        return self.engine_name
+
+    # ── Parámetros de la voz ────────────────────────────────────────────────────
+    def _params(self, refrescar=False):
+        """ParamsVoz efectivos (personaje activo > config > defecto), con caché de 2 s."""
+        ahora = time.monotonic()
+        c = self._params_cache
+        if not refrescar and c is not None and ahora - c[0] < CACHE_PARAMS_S:
+            return c[1]
+        try:
+            p = voces.voz_activa(self.config)
+        except Exception:
+            p = voces.ParamsVoz()
+        self._params_cache = (ahora, p)
+        return p
+
+    def invalidar_params(self):
+        """La próxima frase relee la voz (tras cambiar personaje o voz)."""
+        self._params_cache = None
+
+    @property
+    def params(self):
+        return self._params()
+
+    def _params_edge(self, params=None):
+        """Argumentos de edge_tts.Communicate: voice, rate, pitch y volume."""
+        p = params or self._params()
+        voz = p.id
+        if not voces.es_id_edge(voz):     # el personaje pidió Kokoro/gTTS y no está: su voz de edge
+            try:
+                voz = voces.resolver_voz(self.config, None, motor="edge").id
+            except Exception:
+                voz = voces.VOZ_POR_DEFECTO
+        return {"voice": voz, "rate": p.rate, "pitch": p.pitch, "volume": p.volumen}
+
+    def _velocidad_kokoro(self, params):
+        try:
+            base = float(self._cfg("kokoro_velocidad", 1.0) or 1.0)
+        except (TypeError, ValueError):
+            base = 1.0
+        return max(0.5, min(2.0, base * (1 + voces.porcentaje(params.rate) / 100)))
+
+    # ── Errores: avisar en vez de tragarse ──────────────────────────────────────
+    def _mensaje_error(self, exc, params=None, motor=""):
+        p = params or self._params()
+        if _es_sin_audio(exc):
+            voz = self._params_edge(p)["voice"]
+            if voces.es_voz_edge_conocida(voz):
+                return f"edge-tts no devolvió audio con la voz «{voz}». Vuelve a intentarlo en un momento."
+            return (f"La voz «{voz}» no devolvió audio: puede que no exista. "
+                    f"Elige otra en Configuración → Voz (o /voces en la terminal).")
+        if isinstance(exc, ImportError):
+            return f"Falta el motor de voz {motor or '?'}: {exc}"
+        if isinstance(exc, ValueError):
+            return f"Ajuste de voz no válido ({exc}). Revisa velocidad, tono y volumen."
+        if _es_de_red(exc):
+            return f"No pude conectar con el servicio de voz ({motor or 'edge-tts'}). ¿Hay internet?"
+        return f"Error de voz ({motor or '?'}): {type(exc).__name__}: {exc}"
+
+    def _avisar(self, mensaje):
+        """Llama a on_error(mensaje) sin repetir el mismo aviso en ráfaga."""
+        self.ultimo_error = mensaje
+        if self._avisos is None:
+            self._avisos = {}
+        ahora = time.monotonic()
+        ultimo = self._avisos.get(mensaje)
+        if ultimo is not None and ahora - ultimo < SILENCIO_AVISOS_S:
+            return
+        self._avisos[mensaje] = ahora
+        cb = self.on_error
+        if cb is None:
+            return
+        try:
+            cb(mensaje)
+        except Exception:
+            pass
+
+    def _avisar_error(self, exc, params=None, motor=""):
+        try:
+            self._avisar(self._mensaje_error(exc, params, motor))
+        except Exception:
+            pass
+
+    # ── Hablar ──────────────────────────────────────────────────────────────────
     @staticmethod
     def _limpiar(text: str, tope: int = 400) -> str:
         limpio = re.sub(r'[^\w\s,.!?áéíóúüñ¿¡]', '', text or '', flags=re.UNICODE).strip()
@@ -145,10 +336,21 @@ class VoiceEngine:
             limpio = limpio[:corte if corte > tope // 2 else tope].rstrip()
         return limpio
 
+    @property
+    def silenciada(self):
+        return self._silenciada
+
+    def silenciar(self, on=True):
+        """Modo juego: corta lo que suene y no habla hasta silenciar(False)."""
+        self._silenciada = bool(on)
+        if self._silenciada:
+            self.cancelar()
+
     def speak(self, text: str):
-        if not self._enabled or not self._engine: return
+        if not self._enabled or not self._engine or self._silenciada: return
         clean = self._limpiar(text)
-        if clean: threading.Thread(target=self._speak_blocking, args=(clean,), daemon=True).start()
+        if clean:
+            threading.Thread(target=self._speak_blocking, args=(clean, self._gen_voz), daemon=True).start()
 
     # ── Varios tramos seguidos, cada uno con su expresión ─────────────────────
     def speak_segmentos(self, segmentos, al_segmento=None, al_terminar=None, tope: int = 600) -> bool:
@@ -161,7 +363,7 @@ class VoiceEngine:
         `cancelar()` corta la lectura y los tramos pendientes. Devuelve False si
         no hay voz o nada que decir (para que quien llama exprese de otra forma).
         """
-        if not self._enabled or not self._engine:
+        if not self._enabled or not self._engine or self._silenciada:
             return False
         limpios = [(et, self._limpiar(t, tope)) for et, t in (segmentos or [])]
         if not any(t for _, t in limpios):
@@ -185,6 +387,7 @@ class VoiceEngine:
         with self._lock:
             if gen != self._gen_voz:                # lo cancelaron mientras esperaba su turno
                 return
+            # Todos los tramos salen con la misma voz: _params() la guarda 2 s.
             with ThreadPoolExecutor(max_workers=3) as pool:
                 futuros = [pool.submit(self._sintetizar_a_archivo, texto) if texto else None
                            for _, texto in segmentos]
@@ -211,20 +414,66 @@ class VoiceEngine:
                 except Exception:
                     pass
 
-    def _speak_blocking(self, text: str):
+    def _speak_blocking(self, text: str, gen=None):
         with self._lock:
-            if self._engine == "edge": self._speak_edge(text)
-            elif self._engine == "gtts": self._speak_gtts(text)
-            elif self._engine == "kokoro":
-                ruta = self._sintetizar_a_archivo(text)
+            if gen is not None and gen != self._gen_voz:
+                return
+            params = self._params()
+            motor = self._motor_para(params)
+            if motor == "edge": self._speak_edge(text, params)
+            elif motor == "gtts": self._speak_gtts(text, params)
+            elif motor == "kokoro":
+                ruta = self._sintetizar_a_archivo(text, params)
                 if ruta: self._reproducir_archivo(ruta)
 
-    # ── Aviso «está sonando» (la mascota 3D mueve la boca mientras Lune habla) ──
-    # `al_hablar(True/False)` se llama desde el hilo de audio: quien lo use debe
-    # marshalear al hilo de Qt (el puente lo hace con una señal).
-    al_hablar = None
-    _gen_voz = 0          # sube con cancelar(): las lecturas de una generación vieja se callan
+    # ── Probar una voz (botón «Probar», /voz prueba) ─────────────────────────────
+    def probar_voz(self, params=None, texto=None) -> bool:
+        """
+        Corta lo que suene y dice `texto` (o una frase de prueba) con `params`
+        (ParamsVoz, dict o JSON de la interfaz; lo que falte sale de la voz
+        actual; un "texto" dentro del JSON vale como `texto`). Suena aunque la
+        voz esté apagada o en modo juego: es una orden explícita. En su propio
+        hilo. False si no hay motor ni salida de audio.
+        """
+        if isinstance(params, str):
+            try:
+                params = json.loads(params) if params.strip() else None
+            except ValueError:
+                params = None
+        if isinstance(params, dict) and not texto:
+            texto = str(params.get("texto") or "").strip() or None
+        if not self._engine:
+            self._avisar("No hay motor de voz: instala edge-tts (pip install edge-tts) "
+                         "o revisa la salida de audio.")
+            return False
+        self.cancelar()
+        try:
+            p = voces.params_desde(params, self._params())
+        except Exception:
+            p = self._params()
+        clean = self._limpiar(texto or voces.TEXTO_PRUEBA)
+        if not clean:
+            return False
+        if p.motor == "kokoro" and not self._kokoro_disponible():
+            self._avisar("Kokoro no está instalado; la prueba suena con edge-tts.")
+        gen = self._gen_voz
 
+        def _probar():
+            with self._lock:
+                if gen != self._gen_voz:
+                    return
+                ruta = self._sintetizar_a_archivo(clean, p)
+                if ruta is None:
+                    return
+                if gen != self._gen_voz:
+                    self._borrar(ruta)
+                    return
+                self._reproducir(ruta)
+
+        threading.Thread(target=_probar, name="voz-prueba", daemon=True).start()
+        return True
+
+    # ── Aviso «está sonando» (la mascota 3D mueve la boca mientras Lune habla) ──
     def _sonando(self, activo: bool):
         cb = self.al_hablar
         if cb is None:
@@ -234,36 +483,15 @@ class VoiceEngine:
         except Exception:
             pass
 
-    def _speak_edge(self, text: str):
-        try:
-            import asyncio, edge_tts, pygame, tempfile
-            async def _synth():
-                c = edge_tts.Communicate(text, voice="es-MX-DaliaNeural")
-                t = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
-                t.close(); await c.save(t.name); return t.name
-            path = asyncio.run(_synth())
-            pygame.mixer.music.load(path); pygame.mixer.music.play()
-            self._sonando(True)
-            try:
-                while pygame.mixer.music.get_busy(): threading.Event().wait(0.1)
-            finally:
-                self._sonando(False)
-                self._soltar_audio()
-            self._borrar(path)
-        except Exception: pass
+    def _speak_edge(self, text: str, params=None):
+        ruta = self._sintetizar_a_archivo(text, params, motor="edge")
+        if ruta:
+            self._reproducir_archivo(ruta)
 
-    def _speak_gtts(self, text: str):
-        try:
-            from gtts import gTTS; import pygame
-            tts = gTTS(text, lang="es"); fp = io.BytesIO()
-            tts.write_to_fp(fp); fp.seek(0)
-            pygame.mixer.music.load(fp); pygame.mixer.music.play()
-            self._sonando(True)
-            try:
-                while pygame.mixer.music.get_busy(): threading.Event().wait(0.1)
-            finally:
-                self._sonando(False)
-        except Exception: pass
+    def _speak_gtts(self, text: str, params=None):
+        ruta = self._sintetizar_a_archivo(text, params, motor="gtts")
+        if ruta:
+            self._reproducir_archivo(ruta)
 
     def toggle(self) -> bool: self._enabled = not self._enabled; return self._enabled
     @property
@@ -274,41 +502,69 @@ class VoiceEngine:
                 "kokoro": "Kokoro (local)"}.get(self._engine, "sin voz")
 
     # ── Síntesis de una frase a archivo (para el pipeline en streaming) ─────────
-    def _sintetizar_a_archivo(self, texto: str):
+    def _edge_guardar(self, texto: str, ruta: str, params):
+        """edge-tts a `ruta` con la voz de `params`. Si la voz no existe (NoAudioReceived
+        con una voz que no está en la lista), avisa y repite con la de por defecto."""
+        import asyncio
+        import edge_tts
+        kw = self._params_edge(params)
+
+        async def _s(k):
+            await edge_tts.Communicate(texto, k["voice"], rate=k["rate"], pitch=k["pitch"],
+                                       volume=k["volume"]).save(ruta)
+        try:
+            asyncio.run(_s(kw))
+        except Exception as e:
+            if (not _es_sin_audio(e) or kw["voice"] == voces.VOZ_POR_DEFECTO
+                    or voces.es_voz_edge_conocida(kw["voice"])):
+                raise
+            self._avisar(self._mensaje_error(e, params, "edge-tts")
+                         + f" Mientras tanto hablo con {voces.VOZ_POR_DEFECTO}.")
+            asyncio.run(_s(dict(kw, voice=voces.VOZ_POR_DEFECTO)))
+
+    def _sintetizar_a_archivo(self, texto: str, params=None, motor=None):
         """Devuelve la ruta de un audio con `texto`, o None. Sin reproducir."""
-        clean = re.sub(r'[^\w\s,.!?áéíóúüñ¿¡]', '', texto, flags=re.UNICODE).strip()
+        clean = re.sub(r'[^\w\s,.!?áéíóúüñ¿¡]', '', texto or '', flags=re.UNICODE).strip()
         if not clean or not self._engine:
             return None
+        if not re.search(r"[^\W_]", clean):     # solo signos: nada que decir (edge daría NoAudioReceived)
+            return None
+        p = params or self._params()
+        motor = motor or self._motor_para(p)
         # Kokoro local → WAV, con posible conversión de voz (RVC) encima.
-        if self._engine == "kokoro":
+        if motor == "kokoro":
             try:
                 from lune_core.voz import kokoro_backend
                 ruta = kokoro_backend.sintetizar(
                     clean,
-                    voz=self._cfg("kokoro_voz", kokoro_backend.VOZ_POR_DEFECTO),
-                    velocidad=self._cfg("kokoro_velocidad", 1.0),
+                    voz=p.id if p.motor == "kokoro" else self._cfg("kokoro_voz", kokoro_backend.VOZ_POR_DEFECTO),
+                    velocidad=self._velocidad_kokoro(p),
                     carpeta=self._cfg("kokoro_carpeta", "modelos_voz"),
                     idioma=self._cfg("idioma", "es"),
                 )
-                return self._quizas_rvc(ruta) if ruta else None
+                if ruta:
+                    return self._quizas_rvc(ruta)
             except Exception:
+                pass
+            # Kokoro falló (pesos, espeak-ng…): se avisa y se sigue con edge/gTTS.
+            self._avisar("Kokoro no pudo generar la voz; sigo con edge-tts.")
+            motor = "edge" if "edge" in self._disponibles else ("gtts" if "gtts" in self._disponibles else None)
+            if motor is None:
                 return None
         import tempfile
         t = None
         try:
             t = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False); t.close()
-            if self._engine == "edge":
-                import asyncio, edge_tts
-                async def _s():
-                    await edge_tts.Communicate(clean, voice="es-MX-DaliaNeural").save(t.name)
-                asyncio.run(_s())
+            if motor == "edge":
+                self._edge_guardar(clean, t.name, p)
             else:
                 from gtts import gTTS
-                gTTS(clean, lang="es").save(t.name)
+                gTTS(clean, lang="es", tld=p.tld or voces.TLD_POR_DEFECTO).save(t.name)
             return t.name
-        except Exception:
+        except Exception as e:
             if t is not None:
                 self._borrar(t.name)         # sin red: no dejar un .mp3 vacío por ahí
+            self._avisar_error(e, p, {"edge": "edge-tts", "gtts": "gTTS"}.get(motor, motor))
             return None
 
     def _quizas_rvc(self, ruta_wav):
@@ -333,6 +589,13 @@ class VoiceEngine:
             return ruta_wav
 
     def _reproducir_archivo(self, ruta: str):
+        """Reproduce y borra `ruta`. En modo juego no suena (solo se borra)."""
+        if self._silenciada:
+            self._borrar(ruta)
+            return
+        self._reproducir(ruta)
+
+    def _reproducir(self, ruta: str):
         try:
             import pygame
             pygame.mixer.music.load(ruta); pygame.mixer.music.play()
@@ -343,8 +606,8 @@ class VoiceEngine:
             finally:
                 self._sonando(False)
                 self._soltar_audio()
-        except Exception:
-            pass
+        except Exception as e:
+            self._avisar(f"No pude reproducir la voz por la salida de audio: {e}")
         self._borrar(ruta)
 
     @staticmethod
@@ -388,7 +651,7 @@ class VozStreaming:
         self._ultimo = ""      # texto ya procesado (para deltas del buffer acumulado)
 
     def iniciar(self) -> bool:
-        if not self.voz.available or not self.voz._enabled:
+        if not self.voz.available or not self.voz._enabled or getattr(self.voz, "silenciada", False):
             return False
         import asyncio
         from lune_core.voz import SegmentadorStream, PipelineVoz

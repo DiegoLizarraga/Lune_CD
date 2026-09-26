@@ -15,7 +15,11 @@ Piezas:
     y registro de auditoría (audit.jsonl). La aprobación la da un HUMANO, nunca
     el modelo (fallo de AIRI: en su modo 'actions' el LLM podía aprobarse solo).
 
-Este módulo decide y registra; ejecutar la acción aprobada es cosa de tools.py.
+Este módulo decide y registra; ejecutar la acción aprobada es cosa del
+Ejecutor (lune_core/acciones.py) con los handlers de servicios/tools.py.
+`registro_por_defecto()` trae las cuatro herramientas de siempre y las del
+catálogo (lune_core/catalogo_herramientas.py); `registro_basico()`, solo las
+cuatro.
 """
 from __future__ import annotations
 
@@ -95,16 +99,40 @@ class Registro:
 # Nombres de app/proceso que NUNCA se tocan, aunque el modelo insista.
 DENY_APPS = {
     "1password", "bitwarden", "keepass", "lastpass", "keychain",
-    "credential", "administrador de credenciales", "cmd", "powershell",
+    "credential", "administrador de credenciales", "cmd", "powershell", "pwsh",
     "regedit", "configuracion", "settings", "lune", "lune cd",
 }
 
 # Combinaciones de teclas prohibidas (normalizadas).
 DENY_TECLAS = {"alt+f4", "ctrl+alt+supr", "ctrl+alt+del", "win+r", "win+l"}
 
+# Alias en español → ejecutable de Windows (lanzar_app). La Política compara la
+# lista de denegación con el nombre YA traducido: «terminal» es cmd.
+ALIAS_APPS = {
+    "paint": "mspaint",
+    "calculadora": "calc",
+    "bloc de notas": "notepad",
+    "notas": "notepad",
+    "word": "winword",
+    "excel": "excel",
+    "powerpoint": "powerpnt",
+    "archivos": "explorer",
+    "explorador": "explorer",
+    "cmd": "cmd",
+    "consola": "cmd",
+    "terminal": "cmd",
+    "navegador": "msedge",
+}
+
 
 def _normalizar(s: str) -> str:
     return re.sub(r"\s+", " ", (s or "").strip().lower())
+
+
+def resolver_app(nombre: str) -> str:
+    """El programa que de verdad se lanzaría: el alias traducido o el nombre tal cual."""
+    limpio = (nombre or "").strip().strip('"').strip("'")
+    return ALIAS_APPS.get(_normalizar(limpio), limpio)
 
 
 class Politica:
@@ -117,11 +145,13 @@ class Politica:
             return Veredicto(Decision.DENEGAR, "herramienta no registrada",
                              Riesgo.DESTRUCTIVO, "Acción desconocida: denegada.")
 
-        # 2) deny-list de apps (para lanzar/enfocar/cerrar apps)
-        objetivo = _normalizar(str(args.get("app") or args.get("nombre") or ""))
-        if objetivo and any(bloq in objetivo for bloq in self.deny_apps):
-            return Veredicto(Decision.DENEGAR, f"«{objetivo}» está en la lista de denegación",
-                             desc.riesgo, f"No toco «{objetivo}»: es sensible.")
+        # 2) deny-list de apps (para lanzar/enfocar/cerrar apps). Se mira el nombre
+        #    pedido Y el programa real tras el alias («terminal» → cmd).
+        crudo = str(args.get("app") or args.get("nombre") or "")
+        for objetivo in dict.fromkeys((_normalizar(crudo), _normalizar(resolver_app(crudo)))):
+            if objetivo and any(bloq in objetivo for bloq in self.deny_apps):
+                return Veredicto(Decision.DENEGAR, f"«{objetivo}» está en la lista de denegación",
+                                 desc.riesgo, f"No toco «{objetivo}»: es sensible.")
 
         # 3) teclas prohibidas
         teclas = _normalizar(str(args.get("teclas") or args.get("keys") or "")).replace(" ", "")
@@ -247,6 +277,20 @@ class Sesion:
     def registrar_resultado(self, herramienta: str, ok: bool, detalle: str = ""):
         self._auditar("resultado", herramienta=herramienta, ok=ok, detalle=detalle[:500])
 
+    def reiniciar(self, motivo: str = "conversación nueva") -> int:
+        """
+        Conversación nueva: rechaza lo que quedaba pendiente (queda en la
+        auditoría) y pone a cero el presupuesto gastado. Devuelve cuántas
+        pendientes se descartaron.
+        """
+        pendientes = list(self.pendientes)
+        for pid in pendientes:
+            self.rechazar(pid, motivo)
+        self.pendientes.clear()
+        self.gastado = 0
+        self._auditar("reinicio", descartadas=len(pendientes), motivo=motivo)
+        return len(pendientes)
+
 
 def asdict_veredicto(v: Veredicto) -> dict:
     return {"decision": v.decision.value, "motivo": v.motivo,
@@ -255,7 +299,8 @@ def asdict_veredicto(v: Veredicto) -> dict:
 
 # ── Registro por defecto con las herramientas actuales de Lune ─────────────────
 
-def registro_por_defecto() -> Registro:
+def registro_basico() -> Registro:
+    """Solo las cuatro herramientas de siempre (servicios/tools.py)."""
     r = Registro()
     r.registrar(Descriptor("sistema_info", "Ver estado de CPU y RAM",
                            Riesgo.LECTURA, requiere_aprobacion=False, coste=0))
@@ -266,3 +311,13 @@ def registro_por_defecto() -> Registro:
     r.registrar(Descriptor("lanzar_app", "Abrir una aplicación del equipo",
                            Riesgo.ESCRITURA, requiere_aprobacion=True, coste=1))
     return r
+
+
+def registro_por_defecto() -> Registro:
+    """
+    Las cuatro de siempre + las del catálogo de los cortes de Mate-Engine
+    (lune_core/catalogo_herramientas.py). Registrar un descriptor no la hace
+    ejecutable: el Ejecutor además exige esquema y handler (fail-closed).
+    """
+    from .catalogo_herramientas import registrar_extras   # import tardío: el catálogo importa este módulo
+    return registrar_extras(registro_basico())

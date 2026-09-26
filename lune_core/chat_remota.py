@@ -28,22 +28,31 @@ class ChatRemoto:
 
     async def chat(self, message: str, system_prompt: str = "",
                    provider: Optional[str] = None, on_token: Callable = None,
-                   imagenes: Optional[List[str]] = None) -> str:
+                   imagenes: Optional[List[str]] = None, *,
+                   origen: Optional[str] = None, efimero: bool = False) -> str:
         """
         El `system_prompt` se ignora a propósito: lo arma el host con SU memoria,
-        emociones y herramientas. Aquí solo mandamos el texto y las imágenes.
+        emociones y herramientas. Aquí solo mandamos el texto y las imágenes, y
+        el origen (un turno con texto de terceros también lo es en el host) y si
+        es efímero (el host no lo guarda en la conversación).
         """
         loop = asyncio.get_running_loop()
+        extra = {}
+        if origen is not None:
+            extra["origen"] = origen
+        if efimero:
+            extra["efimero"] = True
 
         def trabajo():
             return self.cliente.chat_remoto_sync(
                 message, imagenes=imagenes, on_delta=on_token,
-                provider=provider, timeout=180.0)
+                provider=provider, timeout=180.0, **extra)
 
         try:
             res = await loop.run_in_executor(None, trabajo)
         except Exception as e:
-            return f"Error: no pude hablar con el host ({e})."
+            from servicios.ai_manager import redactar_secretos
+            return f"Error: no pude hablar con el host ({redactar_secretos(e)})."
         self._ultimo_uso = res.get("usage", {}) or {}
         return res.get("text", "") or "Sin respuesta"
 

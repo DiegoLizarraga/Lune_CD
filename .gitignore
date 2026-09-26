@@ -8,6 +8,10 @@ api_keys.json
 
 # Preferencias locales de la app
 config.json
+# Copias de un config.json roto que aparta nucleo/config.py (mismos datos
+# personales) y el temporal de su escritura atómica
+config.json.corrupto-*
+.config.json.*.tmp
 
 # Memoria personal del usuario
 memoria.json

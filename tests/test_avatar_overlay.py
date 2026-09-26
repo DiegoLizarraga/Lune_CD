@@ -52,8 +52,9 @@ def test_persistencia_de_posicion(qapp, tmp_path):
     ov = AvatarOverlay(config=cfg)
     ov.move(300, 200)
     ov._guardar_posicion()
-    assert cfg.get("avatar", "overlay_x") == 300
-    assert cfg.get("avatar", "overlay_y") == 200
+    # se guarda la posición lógica (la ventana sin el margen de giro, como en la 10.2)
+    assert cfg.get("avatar", "overlay_x") == 300 + ov._margen[0]
+    assert cfg.get("avatar", "overlay_y") == 200 + ov._margen[1]
     ov.close()
 
     # una nueva mascota restaura esa posición

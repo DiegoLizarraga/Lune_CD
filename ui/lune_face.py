@@ -2,6 +2,10 @@
 lune_face.py — Cara animada de Lune, emociones y avatar packs.
 Maneja imágenes/videos de expresión y los packs intercambiables
 (base para modelos VRM/Live2D; ver avatar_overlay.py).
+
+La mascota de sprites (avatar_overlay.py) pinta el sprite girado/respirando con
+`set_pixmap_compuesto(pm)` sin cambiar de estado, y duerme con el estado
+`sleeping` (lune_sleeping.png si el pack lo trae; si no, la cara más cercana).
 """
 from pathlib import Path
 
@@ -16,6 +20,7 @@ STATE_LABELS = {
     "normal": "EN LÍNEA", "happy": "OK", "reading": "LEYENDO",
     "thinking": "PENSANDO", "typing": "ESCRIBIENDO",
     "sad": "EN PAUSA", "confused": "???", "error": "ERROR",
+    "sleeping": "DURMIENDO",
 }
 
 try:
@@ -36,11 +41,18 @@ FACE_FILES = {
     "sad":       ("lune_sad.png",       "image"),
     "confused":  ("lune_confused.png",  "image"),
     "error":     ("lune_error.png",     "image"),
+    "sleeping":  ("lune_sleeping.png",  "image"),
 }
 
 FACE_FALLBACK_IMAGE = {
     "thinking": "lune_thinking.png",
     "typing":   "lune_typing.png",
+}
+
+# Estado sin archivo propio (ni en el pack ni en lune_face/) → la cara más cercana.
+# Dormida: «EN PAUSA» (sad) es la de ojos bajos; la mascota además la oscurece.
+FACE_FALLBACK_STATE = {
+    "sleeping": "sad",
 }
 
 # ── Avatar packs (base para "modelos" intercambiables estilo Mate-Engine) ───────
@@ -125,6 +137,8 @@ def get_face_info(state: str) -> tuple:
     if kind == "video" and state in FACE_FALLBACK_IMAGE:
         fallback_path = FACE_DIR / FACE_FALLBACK_IMAGE[state]
         if fallback_path.exists(): return str(fallback_path), "image"
+    if state in FACE_FALLBACK_STATE:
+        return get_face_info(FACE_FALLBACK_STATE[state])
     return None, "image"
 
 
@@ -154,18 +168,23 @@ class LuneFaceWidget(QFrame):
             f"border:1px solid {COLORS['cyan_dark']};padding:2px 6px;"
         )
         self.state_tag.setAlignment(Qt.AlignmentFlag.AlignLeft)
-        tag_row = QVBoxLayout(); tag_row.setContentsMargins(6, 6, 6, 0)
-        tag_row.addWidget(self.state_tag, 0, Qt.AlignmentFlag.AlignLeft)
-        layout.addLayout(tag_row)
+        self._tag_flotante = False
+        self._tag_row = QVBoxLayout(); self._tag_row.setContentsMargins(6, 6, 6, 0)
+        self._tag_row.addWidget(self.state_tag, 0, Qt.AlignmentFlag.AlignLeft)
+        layout.addLayout(self._tag_row)
 
         self.image_label = QLabel(); self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter); self.image_label.setScaledContents(False)
         self.image_label.setStyleSheet("background: transparent; border: none;"); layout.addWidget(self.image_label)
 
         if _MULTIMEDIA_OK:
+            # Reproductor hijo de la cara y creado ANTES que su vídeo: Qt borra los hijos
+            # en orden, así se va antes que la superficie donde pinta (sin padre, lo
+            # soltaba el recolector de Python cuando quisiera, con el vídeo ya borrado).
+            self._player = QMediaPlayer(self); self._audio = QAudioOutput(self); self._audio.setVolume(0)
             self.video_widget = QVideoWidget(); self.video_widget.setFixedSize(190, 250)
             self.video_widget.setStyleSheet("background: transparent; border: none;"); self.video_widget.hide()
-            layout.addWidget(self.video_widget)
-            self._player = QMediaPlayer(); self._audio  = QAudioOutput(); self._audio.setVolume(0)
+            # Centrado como el sprite (image_label lo centra): pasar a «pensando» no salta.
+            layout.addWidget(self.video_widget, 0, Qt.AlignmentFlag.AlignCenter)
             self._player.setAudioOutput(self._audio); self._player.setVideoOutput(self.video_widget)
             self._player.mediaStatusChanged.connect(self._on_media_status)
         else: self.video_widget = None; self._player = None
@@ -174,8 +193,12 @@ class LuneFaceWidget(QFrame):
         self._fallback_label.setAlignment(Qt.AlignmentFlag.AlignCenter); self._fallback_label.setStyleSheet("background: transparent; border: none;")
         self._fallback_label.hide(); layout.addWidget(self._fallback_label)
 
+        # Vuelta a normal: un método (no una lambda), así la conexión muere con la cara.
         self._revert_timer = QTimer(self); self._revert_timer.setSingleShot(True)
-        self._revert_timer.timeout.connect(lambda: self.set_state("normal")); self._load_face("normal")
+        self._revert_timer.timeout.connect(self._volver_a_normal); self._load_face("normal")
+
+    def _volver_a_normal(self):
+        self.set_state("normal")
 
     def _on_media_status(self, status):
         if self._player and status == QMediaPlayer.MediaStatus.EndOfMedia:
@@ -197,11 +220,50 @@ class LuneFaceWidget(QFrame):
                 scaled = pixmap.scaled(190, 250, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
                 self._pixmap_actual = scaled
                 self.image_label.setPixmap(scaled); self.image_label.show(); self._fallback_label.hide(); return
-        fallback_marks = { "normal": "月", "happy": "月", "thinking": "…", "typing": "…", "reading": "夜", "sad": "夜", "confused": "?", "error": "✕" }
+        fallback_marks = { "normal": "月", "happy": "月", "thinking": "…", "typing": "…", "reading": "夜", "sad": "夜", "confused": "?", "error": "✕", "sleeping": "z" }
         self._fallback_label.setText(fallback_marks.get(state, "月")); self._fallback_label.show(); self.image_label.hide()
 
+    def set_pixmap_compuesto(self, pm):
+        """Muestra `pm` (el sprite girado/desplazado que compone la mascota de sprites)
+        en lugar del pixmap del estado, sin cambiar de estado. `_pixmap_actual` sigue
+        siendo el sprite sin tocar. None → vuelve a mostrar el del estado. No hace nada
+        si el estado es un vídeo o no tiene imagen."""
+        if self.image_label.isHidden() or self._pixmap_actual is None:
+            return
+        if pm is None or pm.isNull():
+            pm = self._pixmap_actual
+        self.image_label.setPixmap(pm)
+
+    def video_activo(self) -> bool:
+        """¿Se está mostrando un vídeo (pensando/escribiendo) en vez de una imagen?"""
+        return self.video_widget is not None and not self.video_widget.isHidden()
+
+    def etiqueta_flotante(self):
+        """La etiqueta de estado (月 EN LÍNEA) deja de ocupar su fila: queda encima
+        de la cara y la coloca quien la contiene (`state_tag.move`); la imagen y el
+        vídeo usan todo el alto. La mascota de sprites la pega a la figura (su lienzo
+        con margen no cabría debajo de la fila, y con la letra a más de 100 % menos)."""
+        if self._tag_flotante:
+            return self.state_tag
+        self._tag_flotante = True
+        fila = self._tag_row
+        self._tag_row = None
+        fila.removeWidget(self.state_tag)
+        self.layout().removeItem(fila)
+        fila.deleteLater()
+        self.state_tag.setParent(self)
+        self.state_tag.adjustSize()
+        self.state_tag.show()
+        self.state_tag.raise_()
+        return self.state_tag
+
     def set_state(self, state: str, auto_revert_ms: int = 0):
-        if state == self._current_state: return
+        if state == self._current_state:
+            # La misma cara pedida otra vez manda también en su vuelta a normal: si
+            # no, una vuelta pendiente de antes (sad 6 s) pisaría la cara de arrastre.
+            if auto_revert_ms > 0: self._revert_timer.start(auto_revert_ms)
+            else: self._revert_timer.stop()
+            return
         self._current_state = state; self._load_face(state)
         # Tinte de la etiqueta según el estado (error=rojo, normal/feliz=cyan)
         tag_color = COLORS["error"] if state == "error" else COLORS["accent"]
@@ -210,6 +272,9 @@ class LuneFaceWidget(QFrame):
             f"color:{tag_color};background:{COLORS['bg']};"
             f"border:1px solid {tag_color};padding:2px 6px;"
         )
+        if self._tag_flotante:
+            self.state_tag.adjustSize()             # sin fila que la redimensione
+            self.state_tag.raise_()
         if auto_revert_ms > 0: self._revert_timer.start(auto_revert_ms)
         else: self._revert_timer.stop()
         self.estado_cambiado.emit(state)

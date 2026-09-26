@@ -46,13 +46,49 @@ _OPCIONALES_RESPALDO = {
 }
 
 
+# Lo que requirements.txt ya pide y las tablas de arriba (o las de
+# servicios/actualizador.py) aún no traían: se añade si falta en ambas.
+_EXTRAS_NUCLEO = {
+    "Sonidos, alarmas y mascota (obligatorio)": {
+        "modulos": {"numpy": "numpy", "sounddevice": "sounddevice", "imageio_ffmpeg": "imageio-ffmpeg"},
+        "nota": "El mezclador de sonidos de la mascota, alarmas y bailes (numpy + sounddevice) y "
+                "un ffmpeg para leer mp3/ogg/m4a (imageio-ffmpeg; sin él solo .wav).",
+    },
+}
+if sys.platform == "win32":
+    _EXTRAS_NUCLEO["Windows: mascota y audio por proceso (obligatorio)"] = {
+        "modulos": {"win32gui": "pywin32", "comtypes": "comtypes"},
+        "nota": "Ventanas de la mascota (atravesar clics, ventana activa) y el audio por programa "
+                "para bailar con la música. Solo Windows.",
+    }
+_EXTRAS_OPCIONALES = {
+    "Voz de respaldo (gTTS)": {"modulos": {"gtts": "gtts"},
+                               "nota": "Si edge-tts falla, Lune habla con la voz de Google."},
+}
+
+
+def _con_extras(nucleo: dict, opcionales: dict):
+    """Añade a las tablas los paquetes de los extras que no aparezcan en ninguna."""
+    ya = {p.lower() for tabla in (nucleo, opcionales) for info in tabla.values()
+          for p in info["modulos"].values()}
+    salida = []
+    for tabla, extras in ((nucleo, _EXTRAS_NUCLEO), (opcionales, _EXTRAS_OPCIONALES)):
+        nueva = dict(tabla)
+        for nombre, info in extras.items():
+            faltan = {m: p for m, p in info["modulos"].items() if p.lower() not in ya}
+            if faltan:
+                nueva[nombre] = {**info, "modulos": faltan}
+        salida.append(nueva)
+    return salida[0], salida[1]
+
+
 def _tablas():
     try:
         sys.path.insert(0, str(RAIZ))
         from servicios import actualizador as A
-        return A.NUCLEO, A.OPCIONALES
+        return _con_extras(A.NUCLEO, A.OPCIONALES)
     except Exception:
-        return _NUCLEO_RESPALDO, _OPCIONALES_RESPALDO
+        return _con_extras(_NUCLEO_RESPALDO, _OPCIONALES_RESPALDO)
 
 
 def _instalado(modulos: dict) -> bool:

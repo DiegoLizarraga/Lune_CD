@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Lune</title>
 <link rel="stylesheet" href="styles.css" />
+<link rel="stylesheet" href="css/burbuja.css" />
+<link rel="stylesheet" href="css/mascota_anim.css" />
 <style>
   html, body { margin:0; height:100%; background:transparent; overflow:hidden;
     font-family:var(--font-body, system-ui, sans-serif); }
@@ -36,6 +38,15 @@
   <div id="bubble"><span class="who"><span class="jp">月</span> Lune</span><span id="btxt"></span></div>
   <div id="stage"><video id="v" autoplay loop muted playsinline></video></div>
 </div>
+<!-- APIs compartidas con companion_vrm.html (scripts clásicos): cola de eventos hacia
+     Python (luneEventos), efectos de sonido (luneSfx), packs de sonidos de reacción
+     (luneSonidos; ui/companion.py le carga el pack al terminar la página) y la burbuja
+     con máquina de escribir (comentarTipeado, burbujaTexto, burbujaFin, luneLado;
+     también define comentar, pensando y ocultarBurbuja con un temporizador compartido). -->
+<script src="lune_eventos.js"></script>
+<script src="lune_sfx.js"></script>
+<script src="lune_packs.js"></script>
+<script src="lune_burbuja.js"></script>
 <script>
   var V = 'assets/mascot/anime-videos/';
   // v10 — un estado por clip; los que aún no tienen video caen al idle.
@@ -45,9 +56,6 @@
               typing:'working', listening:'listening', talking:'talking',
               laughing:'laughing', bored:'bored' };
   var vid = document.getElementById('v');
-  var bub = document.getElementById('bubble');
-  var btxt = document.getElementById('btxt');
-  var bt = null;
 
   function put(src) {
     if (vid.getAttribute('src') !== src) {
@@ -56,24 +64,85 @@
       if (vid.play) vid.play().catch(function(){});
     }
   }
+  // Respaldo de un solo <video> hasta que cargue el módulo de clips con doble búfer
+  // (anim/lune_anim_video.js), que sustituye window.setEmocion y aplica la última
+  // emoción pedida (__luneEmocionPendiente). Si el módulo no carga, sigue este.
   window.setEmocion = function (s) {
+    window.__luneEmocionPendiente = s;
     var base = MAP[s] || 'composed';
     var src = V + 'lune-' + base + '.webm';
     var idle = V + 'lune-composed.webm';
     vid.onerror = function () { if (vid.getAttribute('src') !== idle) put(idle); };
     put(src);
   };
-  window.comentar = function (t) {
-    if (!t) return;
-    btxt.textContent = t;
-    bub.classList.add('on');
-    if (bt) clearTimeout(bt);
-    bt = setTimeout(function () { bub.classList.remove('on'); }, 14000);
-  };
-  window.pensando = function () { btxt.textContent = '…'; bub.classList.add('on'); };
-  window.ocultarBurbuja = function () { bub.classList.remove('on'); };
+
+  // Burbuja: si lune_burbuja.js no cargó, la de siempre (sin máquina de escribir).
+  if (!window.luneBurbuja) {
+    var bub = document.getElementById('bubble');
+    var btxt = document.getElementById('btxt');
+    var bt = null;
+    window.comentar = function (t) {
+      if (!t) return;
+      btxt.textContent = t;
+      bub.classList.add('on');
+      if (bt) clearTimeout(bt);
+      bt = setTimeout(function () { bub.classList.remove('on'); }, 14000);
+    };
+    window.pensando = function () { btxt.textContent = '…'; bub.classList.add('on'); };
+    window.ocultarBurbuja = function () { bub.classList.remove('on'); };
+  }
+  // Voz: la mascota de vídeo no tiene boca, pero la burbuja tiene que saber que suena
+  // para no mover la boca al teclear cuando la haya (misma API que companion_vrm.html).
+  window.luneSpeak = function (on) { if (window.luneBurbuja) window.luneBurbuja.setVoz(!!on); };
+  // Cola de eventos y sonidos: respaldo mudo si sus scripts no cargaron.
+  if (typeof window.luneEventos !== 'function') window.luneEventos = function () { return '[]'; };
+  if (typeof window.luneSfx !== 'function') window.luneSfx = function () { return Promise.resolve(null); };
 
   window.setEmocion('wave');   // saluda al aparecer
+</script>
+<script type="module">
+// Registro de módulos de la mascota animada (ui_web/anim/*.js): el equivalente del
+// bus del VRM. El bucle arranca al registrarse el primer módulo y se pausa con la
+// ventana oculta (luneSetFPS(0) desde Python). De serie:
+//   'video'  (lune_anim_video.js)  clips con doble búfer y fundido, rotación de idles,
+//            dormir (clip o sustituto) y capas de emoción de otros módulos;
+//   'fisica' (lune_anim_fisica.js) arrastre con balanceo, toque, sueño y mareo.
+// Sus eventos (arrastre {on}, dormir, despertar, mareo) van por ctx.emitir a la cola
+// window.luneEventos (lune_eventos.js) que Python vacía a 12 Hz.
+import { crearRegistroAnim } from './anim/lune_anim_modulos.js';
+import { instalar as instalarVideo, publicar as publicarVideo } from './anim/lune_anim_video.js';
+import { instalar as instalarFisica, publicar as publicarFisica } from './anim/lune_anim_fisica.js';
+
+const stage = document.getElementById('stage');
+const reg = crearRegistroAnim({
+  stage,
+  video: () => document.getElementById('v'),
+  burbuja: document.getElementById('bubble'),
+});
+let visible = true;
+
+const registrarBase = reg.registrar;
+reg.registrar = (mod) => {
+  const r = registrarBase(mod);
+  if (r && visible && !reg.corriendo()) reg.iniciar();
+  return r;
+};
+
+reg.registrar(instalarVideo);
+reg.registrar(instalarFisica);
+// window.setEmocion = (s) => reg.emocion(s): el módulo de vídeo pone el clip y todos
+// los módulos se enteran (alEmocion); aplica la emoción pendiente del script clásico
+// (el 'wave' del saludo). window.luneDrag / luneTouch / luneSleep → módulo 'fisica'.
+publicarVideo(window, reg);
+publicarFisica(window, reg);
+
+window.luneAnim = reg;                                   // luneAnim.registrar(instalar), luneAnim.estado({...})
+window.luneMod = (nombre, metodo, ...args) => reg.api(nombre, metodo, ...args);   // misma firma que en el VRM
+window.luneSetFPS = (n) => {
+  visible = Number(n) > 0;
+  if (!visible) reg.detener();
+  else if (reg.lista().length && !reg.corriendo()) reg.iniciar();
+};
 </script>
 </body>
 </html>

@@ -1,11 +1,24 @@
 """
 settings_panel.py — Panel de Configuración General de Lune CD.
-Gestiona APIs, modelos (nube y local) y personalidad (datos.json), además de
-las features y el avatar pack (config.json).
+Gestiona APIs, modelos (nube, local y API compatible con OpenAI) y personalidad
+(datos.json), además de las features, el avatar pack y la voz (config.json).
+
+Voz de salida (corte 2): motor, voz de edge-tts por país, velocidad y tono de
+−50 a +50, acento de gTTS y botón «Probar» (suena aunque la voz esté apagada).
+Se guarda en config (`voz.edge_voz`, `edge_rate`, `edge_pitch`, `gtts_tld`) y,
+si el personaje activo tiene voz propia en datos.json, también en ella (si no,
+la del personaje ganaría y el cambio no se notaría).
+
+Modelos 3D (corte 3): con «Avatar VRM 3D» elegido aparece el panel de modelos
+VRM (ui/vrm_panel_nativo.py: importar, usar con el personaje, seguimiento del
+cursor por modelo). Su señal `cambiado` sale como `vrm_cambiado` para que
+main.py recargue la mascota 3D; al guardar se escribe lo pendiente del panel.
 """
+import re
+
 from PyQt6.QtWidgets import (
     QFrame, QVBoxLayout, QHBoxLayout, QScrollArea, QLabel, QPushButton,
-    QLineEdit, QTextEdit, QCheckBox, QComboBox, QMessageBox,
+    QLineEdit, QTextEdit, QCheckBox, QComboBox, QMessageBox, QSlider,
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QFont
@@ -13,16 +26,94 @@ from PyQt6.QtGui import QFont
 from servicios import actualizador
 
 from nucleo import datos
+from nucleo.personajes import voz_de
 
 from servicios import ollama_client
 
 from servicios import voz_entrada
+from servicios import voces
 from servicios.voice import listar_salidas
 
 from lune_core.voz import kokoro_backend
 from nucleo.config import Config
 from ui.theme import COLORS, FONT_DISPLAY, FONT_MONO
 from ui import lune_face
+from ui.vrm_panel_nativo import VrmPanelNativo
+
+AJUSTE_VOZ_MAX = 50          # velocidad (%) y tono (Hz): de −50 a +50
+MULTILINGUES = "Multilingües"
+
+
+# ── Voz: funciones puras (se prueban sin ventana) ──────────────────────────────
+
+def texto_rate(n) -> str:
+    """Valor del deslizador → «+10%» (lo que entiende edge-tts)."""
+    return f"{int(n):+d}%"
+
+
+def texto_pitch(n) -> str:
+    """Valor del deslizador → «-5Hz»."""
+    return f"{int(n):+d}Hz"
+
+
+def numero_ajuste(valor, sufijo: str) -> int:
+    """«+10%» / «-5Hz» → entero limitado a ±AJUSTE_VOZ_MAX (0 si no vale)."""
+    m = re.fullmatch(r"([+-]?\d+)" + re.escape(sufijo), str(valor or "").strip())
+    n = int(m.group(1)) if m else 0
+    return max(-AJUSTE_VOZ_MAX, min(AJUSTE_VOZ_MAX, n))
+
+
+def items_voces(lista) -> list:
+    """
+    Voces de edge-tts → [(texto, id | None)] para el combo: una cabecera por
+    país (id None, no seleccionable) con México primero, las multilingües al
+    final, y cada voz como «Dalia (F) · es-MX-DaliaNeural».
+    """
+    grupos = {}
+    for v in lista or ():
+        if not isinstance(v, dict) or not v.get("id"):
+            continue
+        clave = MULTILINGUES if v.get("multilingue") else (v.get("pais") or "?")
+        grupos.setdefault(clave, []).append(v)
+    orden = sorted(grupos, key=lambda g: (g == MULTILINGUES, g != "México", g))
+    salida = []
+    for g in orden:
+        salida.append((f"── {g} ──", None))
+        for v in sorted(grupos[g], key=lambda x: (x.get("genero", ""), x.get("nombre", ""))):
+            salida.append((f"{v.get('nombre') or v['id']} ({v.get('genero') or '?'}) · {v['id']}", v["id"]))
+    return salida
+
+
+def voz_para_personaje(actual: dict, motor: str, edge_voz: str, kokoro_voz: str,
+                       rate: str, pitch: str, tld: str) -> dict:
+    """La voz propia del personaje con lo elegido en el panel (motor 'auto' = sin motor fijo)."""
+    nueva = dict(actual or {})
+    if motor in ("", "auto"):
+        nueva.pop("motor", None)
+    else:
+        nueva["motor"] = motor
+    if motor in ("", "auto", "edge"):
+        nueva["id"] = edge_voz
+    elif motor == "kokoro":
+        nueva["id"] = kokoro_voz
+    nueva["rate"], nueva["pitch"], nueva["tld"] = rate, pitch, tld
+    return nueva
+
+
+class ProbarCompatWorker(QThread):
+    """«Probar conexión» de la API compatible con lo escrito (aún sin guardar)."""
+    listo = pyqtSignal(object)      # {ok, mensaje, modelos, url, ms}
+
+    def __init__(self, url: str, clave: str, modelo: str):
+        super().__init__()
+        self.url, self.clave, self.modelo = url, clave, modelo
+
+    def run(self):
+        try:
+            from servicios.ai_manager import CompatProvider
+            self.listo.emit(CompatProvider(self.url, self.clave, self.modelo).probar())
+        except Exception as e:
+            self.listo.emit({"ok": False, "mensaje": f"No pude probar: {e}", "modelos": []})
 
 
 
@@ -82,16 +173,25 @@ class GitWorker(QThread):
 
 class SettingsPanel(QFrame):
     saved = pyqtSignal()
+    vrm_cambiado = pyqtSignal()     # el panel VRM importó, asignó o guardó el seguimiento
 
-    def __init__(self, config: Config = None, parent=None):
+    def __init__(self, config: Config = None, parent=None, voice=None):
         super().__init__(parent)
         self.config = config or Config()
+        self.voice = voice              # VoiceEngine de la app, para «Probar voz»
         self.setStyleSheet("QFrame{background:transparent;}")
         self._sondeo = None
+        self._prueba_compat = None
         self.datos_data = datos.cargar() or {
             "apis": {}, "modelos": {}, "bot": {"personaje_default": "Lune"}, "personajes": []
         }
         self._build()
+        # El panel se construye UNA vez (al arrancar la app) y mientras tanto otros
+        # escriben en datos.json/config (panel VRM, cambiar_voz, cambio de personaje…).
+        # Al guardar se relee datos.json y solo se escribe lo que cambiaste aquí,
+        # en el personaje que se estaba editando.
+        self._nombre_editado = self._personaje_activo().get("nombre")
+        self._inicial = self._valores_ui()
 
     # ── Personaje activo ───────────────────────────────────────────────────────
     def _indice_personaje_activo(self) -> int:
@@ -144,6 +244,10 @@ class SettingsPanel(QFrame):
         # ── SECCIÓN 2: LOCAL (Ollama) ──
         layout.addWidget(self._create_section_title("Red Neuronal · Local (Ollama)"))
         layout.addWidget(self._build_ollama_group(modelos))
+
+        # ── SECCIÓN 2a: API COMPATIBLE CON OPENAI (LM Studio, Groq…) ──
+        layout.addWidget(self._create_section_title("Red Neuronal · API compatible con OpenAI"))
+        layout.addWidget(self._build_compat_group(modelos, apis))
 
         # ── SECCIÓN 2b: NOTAS (memoria larga / RAG) ──
         layout.addWidget(self._create_section_title("Notas · memoria larga (RAG)"))
@@ -241,6 +345,15 @@ class SettingsPanel(QFrame):
         fl_av.addWidget(aviso_vrm)
         layout.addWidget(frame_av)
 
+        # Modelos 3D: biblioteca mínima y seguimiento del cursor por modelo. Va
+        # fuera del marco del avatar (su estilo QFrame{padding} se heredaría) y
+        # solo se ve con «Avatar VRM 3D» elegido.
+        self.vrm_panel = VrmPanelNativo(self.config, self)
+        self.vrm_panel.cambiado.connect(self.vrm_cambiado)
+        layout.addWidget(self.vrm_panel)
+        self.render_combo.currentIndexChanged.connect(self._visibilidad_vrm)
+        self._visibilidad_vrm()
+
         # ── SECCIÓN 6b: RED DE LUNE (host y terminales) ──
         layout.addWidget(self._create_section_title("Red de Lune · host y terminales"))
         layout.addWidget(self._build_hub_group())
@@ -322,6 +435,68 @@ class SettingsPanel(QFrame):
                         "Temperatura (0 = preciso, 1 = creativo)",
                         str(modelos.get("temperatura", 0.7)), False)
         return frame
+
+    # ── Grupo de la API compatible con OpenAI ──────────────────────────────────
+    def _build_compat_group(self, modelos: dict, apis: dict) -> QFrame:
+        frame = self._create_group_frame()
+        fl = QVBoxLayout(frame); fl.setSpacing(10)
+        info = QLabel(
+            "Cualquier servidor con /v1/chat/completions: LM Studio, llama.cpp, Groq, OpenAI, "
+            "Together, Mistral… Aparece como tercera pestaña en «Red neuronal». Deja la URL "
+            "vacía para apagarlo. La clave es opcional (LM Studio no la pide) y el modelo "
+            "también: sin él se usa el primero que ofrezca el servidor."
+        )
+        info.setWordWrap(True); info.setFont(QFont("Segoe UI", 9))
+        info.setStyleSheet(f"color:{COLORS['text_muted']};border:none;")
+        fl.addWidget(info)
+        self._add_input(fl, "compat_url", "URL base (p. ej. http://localhost:1234/v1)",
+                        str(modelos.get("compat_url", "") or ""), False)
+        self._add_input(fl, "compat_key", "Clave de la API (opcional)",
+                        str(modelos.get("compat_key", "") or apis.get("compat_key", "") or ""), True)
+        self._add_input(fl, "compat_model", "Modelo (vacío = el primero que ofrezca)",
+                        str(modelos.get("compat_model", "") or ""), False)
+        fila = QHBoxLayout(); fila.setSpacing(8)
+        self.btn_probar_compat = QPushButton("PROBAR CONEXIÓN")
+        self.btn_probar_compat.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_probar_compat.setFont(QFont(FONT_MONO, 9, QFont.Weight.Bold))
+        self.btn_probar_compat.setFixedHeight(36)
+        self.btn_probar_compat.setStyleSheet(self._estilo_boton())
+        self.btn_probar_compat.clicked.connect(self._probar_compat)
+        self.lbl_compat = QLabel("Prueba lo escrito aquí sin gastar tokens (solo pide /models).")
+        self.lbl_compat.setWordWrap(True); self.lbl_compat.setFont(QFont(FONT_MONO, 9))
+        self.lbl_compat.setStyleSheet(f"color:{COLORS['text_muted']};border:none;")
+        fila.addWidget(self.btn_probar_compat); fila.addWidget(self.lbl_compat, 1)
+        fl.addLayout(fila)
+        return frame
+
+    def _probar_compat(self):
+        url = self.fields["compat_url"].text().strip().rstrip("/")
+        if not url:
+            self.lbl_compat.setText("Escribe primero la URL del servidor.")
+            self.lbl_compat.setStyleSheet(f"color:{COLORS['warning']};border:none;")
+            return
+        if self._prueba_compat is not None and self._prueba_compat.isRunning():
+            return
+        self.btn_probar_compat.setEnabled(False)
+        self.lbl_compat.setText(f"Probando {url}…")
+        self.lbl_compat.setStyleSheet(f"color:{COLORS['text_muted']};border:none;")
+        self._prueba_compat = ProbarCompatWorker(url, self.fields["compat_key"].text().strip(),
+                                                 self.fields["compat_model"].text().strip())
+        self._prueba_compat.listo.connect(self._on_compat_probado)
+        self._prueba_compat.start()
+
+    def _on_compat_probado(self, r):
+        self.btn_probar_compat.setEnabled(True)
+        r = r if isinstance(r, dict) else {}
+        texto = str(r.get("mensaje") or ("Conectado." if r.get("ok") else "No respondió."))
+        if r.get("ms") is not None:
+            texto += f" ({r['ms']} ms)"
+        modelos = [m if isinstance(m, str) else str((m or {}).get("id", "")) for m in (r.get("modelos") or [])]
+        if modelos:
+            texto += "\nModelos: " + ", ".join(modelos[:8]) + (" …" if len(modelos) > 8 else "")
+        self.lbl_compat.setText(texto)
+        self.lbl_compat.setStyleSheet(
+            f"color:{COLORS['success'] if r.get('ok') else COLORS['warning']};border:none;")
 
     # ── Grupo de notas (RAG) ───────────────────────────────────────────────────
     def _build_notas_group(self) -> QFrame:
@@ -613,15 +788,20 @@ class SettingsPanel(QFrame):
         lbl_m.setFont(QFont("Segoe UI", 10)); lbl_m.setStyleSheet(f"color:{COLORS['text']};border:none;padding:0;")
         self.voz_motor_combo = QComboBox()
         for texto, valor in (("Automática (edge-tts)", "auto"),
-                             ("edge-tts (voz mexicana, necesita internet)", "edge"),
+                             ("edge-tts (la voz de abajo, necesita internet)", "edge"),
                              ("gTTS (Google, necesita internet)", "gtts"),
                              ("Kokoro (100% local, sin internet)", "kokoro")):
             self.voz_motor_combo.addItem(texto, valor)
-        actual_m = self.config.get("voz", "motor_salida", "auto")
+        # El motor que manda: el de la voz propia del personaje o el de config.
+        actual_m = (voz_de(self._personaje_activo()).get("motor")
+                    or self.config.get("voz", "motor_salida", "auto"))
         idx = self.voz_motor_combo.findData(actual_m)
         self.voz_motor_combo.setCurrentIndex(idx if idx >= 0 else 0)
         self.voz_motor_combo.setStyleSheet(self._estilo_combo())
         fl.addWidget(lbl_m); fl.addWidget(self.voz_motor_combo)
+
+        # Voz de edge-tts, velocidad, tono, acento de gTTS y «Probar».
+        self._build_voz_salida(fl)
 
         carpeta_k = self.config.get("voz", "kokoro_carpeta", "modelos_voz")
         if kokoro_backend.disponible(carpeta_k):
@@ -638,7 +818,12 @@ class SettingsPanel(QFrame):
         self.kokoro_voz_combo = QComboBox()
         for clave, nombre in kokoro_backend.VOCES_ES.items():
             self.kokoro_voz_combo.addItem(nombre, clave)
-        idx_v = self.kokoro_voz_combo.findData(self.config.get("voz", "kokoro_voz", "ef_dora"))
+        # La de Kokoro que suena: la del personaje si trae una; si no, la de config.
+        try:
+            kokoro_actual = voces.resolver_voz(self.config, self._personaje_activo(), motor="kokoro").id
+        except Exception:
+            kokoro_actual = self.config.get("voz", "kokoro_voz", "ef_dora")
+        idx_v = self.kokoro_voz_combo.findData(kokoro_actual)
         self.kokoro_voz_combo.setCurrentIndex(idx_v if idx_v >= 0 else 0)
         self.kokoro_voz_combo.setStyleSheet(self._estilo_combo())
         fl.addWidget(lbl_v); fl.addWidget(self.kokoro_voz_combo)
@@ -683,6 +868,124 @@ class SettingsPanel(QFrame):
         self.lbl_mic_prueba.setText(r.get("mensaje", ""))
         self.lbl_mic_prueba.setStyleSheet(
             f"color:{COLORS['success'] if r.get('ok') else COLORS['warning']};border:none;")
+
+    # ── Voz de salida elegible (edge-tts, gTTS) ────────────────────────────────
+    def _personaje_activo(self) -> dict:
+        personajes = self.datos_data.get("personajes") or [{}]
+        return personajes[self._indice_personaje_activo()]
+
+    def _build_voz_salida(self, fl):
+        """Voz de edge-tts por país, velocidad y tono (−50…+50), acento de gTTS y Probar."""
+        personaje = self._personaje_activo()
+        actual = voces.resolver_voz(self.config, personaje)
+        propia = voz_de(personaje)
+        if propia:
+            nota = QLabel(f"«{personaje.get('nombre', 'Lune')}» tiene voz propia en datos.json: "
+                          "lo que elijas aquí se guarda en su voz.")
+            nota.setWordWrap(True); nota.setFont(QFont("Segoe UI", 9))
+            nota.setStyleSheet(f"color:{COLORS['text_muted']};border:none;")
+            fl.addWidget(nota)
+
+        lbl = QLabel("Voz de edge-tts")
+        lbl.setFont(QFont("Segoe UI", 10)); lbl.setStyleSheet(f"color:{COLORS['text']};border:none;padding:0;")
+        self.edge_voz_combo = QComboBox()
+        self.edge_voz_combo.setStyleSheet(self._estilo_combo())
+        # Sin red usa la lista embebida; si la caché está vieja, se renueva en un hilo.
+        self._rellenar_voces(voces.listar_edge(), actual.id if voces.es_id_edge(actual.id)
+                             else voces.resolver_voz(self.config, personaje, motor="edge").id)
+        fl.addWidget(lbl); fl.addWidget(self.edge_voz_combo)
+
+        self.voz_rate_slider, self.lbl_voz_rate = self._slider_voz(
+            fl, "Velocidad", numero_ajuste(actual.rate, "%"), texto_rate)
+        self.voz_pitch_slider, self.lbl_voz_pitch = self._slider_voz(
+            fl, "Tono", numero_ajuste(actual.pitch, "Hz"), texto_pitch)
+
+        lbl_t = QLabel("Acento de gTTS")
+        lbl_t.setFont(QFont("Segoe UI", 10)); lbl_t.setStyleSheet(f"color:{COLORS['text']};border:none;padding:0;")
+        self.gtts_tld_combo = QComboBox()
+        for tld, pais in voces.GTTS_TLD.items():
+            self.gtts_tld_combo.addItem(f"{pais} ({tld})", tld)
+        idx = self.gtts_tld_combo.findData(actual.tld)
+        self.gtts_tld_combo.setCurrentIndex(idx if idx >= 0 else 0)
+        self.gtts_tld_combo.setStyleSheet(self._estilo_combo())
+        fl.addWidget(lbl_t); fl.addWidget(self.gtts_tld_combo)
+
+        fila = QHBoxLayout(); fila.setSpacing(8)
+        self.btn_probar_voz = QPushButton("PROBAR VOZ")
+        self.btn_probar_voz.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_probar_voz.setFont(QFont(FONT_MONO, 9, QFont.Weight.Bold)); self.btn_probar_voz.setFixedHeight(32)
+        self.btn_probar_voz.setStyleSheet(self._estilo_boton())
+        self.btn_probar_voz.clicked.connect(self._probar_voz)
+        self.lbl_probar_voz = QLabel("Suena aunque la voz esté apagada, con lo elegido aquí (sin guardar).")
+        self.lbl_probar_voz.setWordWrap(True); self.lbl_probar_voz.setFont(QFont("Segoe UI", 9))
+        self.lbl_probar_voz.setStyleSheet(f"color:{COLORS['text_muted']};border:none;")
+        if self.voice is None:
+            self.btn_probar_voz.setEnabled(False)
+            self.lbl_probar_voz.setText("Probar necesita el motor de voz de la app.")
+        fila.addWidget(self.btn_probar_voz); fila.addWidget(self.lbl_probar_voz, 1)
+        fl.addLayout(fila)
+
+    def _rellenar_voces(self, lista, seleccion: str):
+        combo = self.edge_voz_combo
+        combo.clear()
+        modelo = combo.model()
+        for texto, vid in items_voces(lista):
+            combo.addItem(texto, vid)
+            if vid is None:                                   # cabecera de país
+                item = modelo.item(combo.count() - 1) if hasattr(modelo, "item") else None
+                if item is not None:
+                    item.setEnabled(False)
+        if seleccion and combo.findData(seleccion) < 0:       # voz fuera de la lista: se conserva
+            combo.addItem(f"{seleccion} (personalizada)", seleccion)
+        idx = combo.findData(seleccion or voces.VOZ_POR_DEFECTO)
+        if idx < 0:
+            idx = combo.findData(voces.VOZ_POR_DEFECTO)
+        combo.setCurrentIndex(max(idx, 0))
+
+    def _slider_voz(self, fl, titulo: str, valor: int, formato):
+        lbl = QLabel(titulo)
+        lbl.setFont(QFont("Segoe UI", 10)); lbl.setStyleSheet(f"color:{COLORS['text']};border:none;padding:0;")
+        fila = QHBoxLayout(); fila.setSpacing(10)
+        slider = QSlider(Qt.Orientation.Horizontal)
+        slider.setRange(-AJUSTE_VOZ_MAX, AJUSTE_VOZ_MAX); slider.setSingleStep(1); slider.setPageStep(10)
+        slider.setValue(int(valor))
+        valor_lbl = QLabel(formato(valor)); valor_lbl.setFixedWidth(60)
+        valor_lbl.setFont(QFont(FONT_MONO, 9)); valor_lbl.setStyleSheet(f"color:{COLORS['accent']};border:none;")
+        slider.valueChanged.connect(lambda v, l=valor_lbl, f=formato: l.setText(f(v)))
+        fila.addWidget(slider, 1); fila.addWidget(valor_lbl)
+        fl.addWidget(lbl); fl.addLayout(fila)
+        return slider, valor_lbl
+
+    def params_voz_ui(self) -> dict:
+        """Lo elegido en el panel como {motor, id, rate, pitch, tld} (para Probar y guardar)."""
+        motor = self.voz_motor_combo.currentData() or "auto"
+        edge_voz = self.edge_voz_combo.currentData() or voces.VOZ_POR_DEFECTO
+        if motor == "kokoro":
+            vid = self.kokoro_voz_combo.currentData() or "ef_dora"
+        elif motor == "gtts":
+            vid = ""
+        else:
+            vid = edge_voz
+        return {"motor": motor, "id": vid, "edge_voz": edge_voz,
+                "rate": texto_rate(self.voz_rate_slider.value()),
+                "pitch": texto_pitch(self.voz_pitch_slider.value()),
+                "tld": self.gtts_tld_combo.currentData() or voces.TLD_POR_DEFECTO}
+
+    def _probar_voz(self):
+        if self.voice is None:
+            return
+        try:
+            ok = self.voice.probar_voz(self.params_voz_ui())
+        except Exception as e:
+            ok, error = False, str(e)
+        else:
+            error = getattr(self.voice, "ultimo_error", "") or ""
+        if ok:
+            self.lbl_probar_voz.setText("Probando…")
+            self.lbl_probar_voz.setStyleSheet(f"color:{COLORS['success']};border:none;")
+        else:
+            self.lbl_probar_voz.setText(error or "No pude probar la voz (sin motor o sin salida de audio).")
+            self.lbl_probar_voz.setStyleSheet(f"color:{COLORS['warning']};border:none;")
 
     # ── Grupo de actualizaciones ───────────────────────────────────────────────
     def _build_update_group(self) -> QFrame:
@@ -856,6 +1159,12 @@ class SettingsPanel(QFrame):
             self.ollama_combo.setCurrentText(actual)
 
     # ── Helpers de UI ──────────────────────────────────────────────────────────
+    def _visibilidad_vrm(self, *_):
+        """El panel de modelos 3D solo con «Avatar VRM 3D» en el combo."""
+        panel = getattr(self, "vrm_panel", None)
+        if panel is not None:
+            panel.setVisible(self.render_combo.currentData() == "vrm")
+
     def _aviso_vrm(self) -> QLabel:
         """Estado del avatar 3D: WebEngine instalado y modelo .vrm presente."""
         try:
@@ -883,6 +1192,12 @@ class SettingsPanel(QFrame):
                 f"border-radius:3px;padding:8px 12px;color:{COLORS['text']};}}"
                 f"QComboBox QAbstractItemView{{background:{COLORS['surface2']};color:{COLORS['text']};"
                 f"selection-background-color:{COLORS['accent']};}}")
+
+    def _estilo_boton(self):
+        return (f"QPushButton{{background:{COLORS['surface2']};color:{COLORS['accent']};"
+                f"border:2px solid {COLORS['cyan_dark']};border-radius:3px;padding:0 14px;letter-spacing:1px;}}"
+                f"QPushButton:hover{{background:{COLORS['surface3']};border-color:{COLORS['accent']};}}"
+                f"QPushButton:disabled{{color:{COLORS['text_dim']};border-color:{COLORS['border']};}}")
 
     def _create_section_title(self, text):
         lbl = QLabel(text); lbl.setFont(QFont(FONT_MONO, 11, QFont.Weight.Bold))
@@ -924,87 +1239,190 @@ class SettingsPanel(QFrame):
             return defecto
 
     # ── Guardado ───────────────────────────────────────────────────────────────
-    def _save(self):
-        d = self.datos_data
-        d.setdefault("apis", {}); d.setdefault("modelos", {}); d.setdefault("bot", {})
-        if not d.get("personajes"):
-            d["personajes"] = [{}]
+    # Cada campo del panel es una clave de _valores_ui():
+    #   ("datos", sección, clave)  → datos.json
+    #   ("personaje", campo)       → el personaje que se estaba editando
+    #   ("voz_salida", campo)      → su voz propia o, si no tiene, config.voz (A1)
+    #   ("cfg", sección, clave)    → config.json
+    #   ("autoinicio",)            → arrancar con Windows
+    # Al guardar solo se escribe lo que cambió desde que se cargó (o desde el
+    # último guardado): así no se deshace lo que otros escribieron mientras tanto.
+    _VOZ_A_CONFIG = {"motor": "motor_salida", "edge_voz": "edge_voz", "kokoro_voz": "kokoro_voz",
+                     "rate": "edge_rate", "pitch": "edge_pitch", "tld": "gtts_tld"}
 
-        # APIs
-        d["apis"]["openrouter_key"] = self.fields["openrouter_api_key"].text().strip()
-        d["apis"]["telegram_token"] = self.fields["telegram_token"].text().strip()
-        d["apis"]["telegram_admin_id"] = self.fields["telegram_admin_id"].text().strip()
-
-        # Modelos: nube y local
-        d["modelos"]["openrouter_model"] = self.fields["openrouter_model"].text().strip() or "openrouter/auto"
-        d["modelos"]["ollama_url"] = ollama_client.normalizar_url(self.fields["ollama_url"].text())
-        d["modelos"]["ollama_model"] = self.ollama_combo.currentText().strip()
-        d["modelos"]["ollama_keep_alive"] = self.fields["ollama_keep_alive"].text().strip() or "30m"
-        d["modelos"]["ollama_num_ctx"] = self._entero(self.fields["ollama_num_ctx"].text(), 8192)
-        d["modelos"]["ollama_timeout"] = self._entero(self.fields["ollama_timeout"].text(), 300)
-        d["modelos"]["temperatura"] = self._flotante(self.fields["temperatura"].text(), 0.7)
-
-        # Notas (RAG)
-        n = self.config.config.setdefault("notas", {})
-        n["activo"] = self.notas_check.isChecked()
-        n["carpeta"] = self.fields["notas_carpeta"].text().strip() or "notas"
-        n["modelo_embeddings"] = self.fields["notas_modelo"].text().strip() or "nomic-embed-text"
-        n["top_k"] = self._entero(self.fields["notas_topk"].text(), 3)
-
-        # Red de Lune (hub)
-        h = d.setdefault("hub", {})
-        h["modo"] = self.hub_modo_combo.currentData() or "local"
-        h["puerto"] = self._entero(self.fields["hub_puerto"].text(), 7777)
-        h["url_host"] = self.fields["hub_url_host"].text().strip().rstrip("/")
-        h["token"] = self.fields["hub_token"].text().strip()
-
-        # Rol y nombre de este dispositivo (config.json). El rol manda sobre el
-        # modo del hub: host/interaccion/hibrido → host/terminal/local.
+    def _modo_hub_ui(self) -> str:
+        """Modo del hub según el panel: el rol del dispositivo manda (host/interaccion/
+        hibrido → host/terminal/local); sin combo de rol, el del combo de modo."""
         if hasattr(self, "red_rol_combo"):
             from servicios.red_service import rol_a_modo
-            r = self.config.config.setdefault("red", {})
-            r["rol"] = self.red_rol_combo.currentData() or "hibrido"
-            r["nombre"] = self.fields["red_nombre"].text().strip()
-            h["modo"] = rol_a_modo(r["rol"])   # el rol define el modo de transporte
-            self.hub_modo_combo.setCurrentIndex(max(0, self.hub_modo_combo.findData(h["modo"])))
+            return rol_a_modo(self.red_rol_combo.currentData() or "hibrido")
+        return self.hub_modo_combo.currentData() or "local"
 
-        # Personalidad: SOLO el personaje activo
-        idx = self._indice_personaje_activo()
-        nombre_bot = self.fields["bot_nombre"].text().strip() or "Lune"
-        d["personajes"][idx]["nombre"] = nombre_bot
-        d["personajes"][idx]["systemPrompt"] = self.fields["bot_system"].toPlainText().strip()
-        d["personajes"][idx]["fraseInicial"] = self.fields["bot_saludo"].toPlainText().strip()
-        d["bot"]["personaje_default"] = nombre_bot
-        d["bot"]["max_historial"] = self._entero(self.fields["max_historial"].text(), 20)
+    def _valores_ui(self) -> dict:
+        f = self.fields
+        pv = self.params_voz_ui()
+        v = {
+            ("datos", "apis", "openrouter_key"): f["openrouter_api_key"].text().strip(),
+            ("datos", "apis", "telegram_token"): f["telegram_token"].text().strip(),
+            ("datos", "apis", "telegram_admin_id"): f["telegram_admin_id"].text().strip(),
+            ("datos", "modelos", "openrouter_model"): f["openrouter_model"].text().strip() or "openrouter/auto",
+            ("datos", "modelos", "ollama_url"): ollama_client.normalizar_url(f["ollama_url"].text()),
+            ("datos", "modelos", "ollama_model"): self.ollama_combo.currentText().strip(),
+            ("datos", "modelos", "ollama_keep_alive"): f["ollama_keep_alive"].text().strip() or "30m",
+            ("datos", "modelos", "ollama_num_ctx"): self._entero(f["ollama_num_ctx"].text(), 8192),
+            ("datos", "modelos", "ollama_timeout"): self._entero(f["ollama_timeout"].text(), 300),
+            ("datos", "modelos", "temperatura"): self._flotante(f["temperatura"].text(), 0.7),
+            # API compatible con OpenAI (vacía = apagada; AIManager la quita)
+            ("datos", "modelos", "compat_url"): f["compat_url"].text().strip().rstrip("/"),
+            ("datos", "modelos", "compat_key"): f["compat_key"].text().strip(),
+            ("datos", "modelos", "compat_model"): f["compat_model"].text().strip(),
+            ("datos", "hub", "modo"): self._modo_hub_ui(),
+            ("datos", "hub", "puerto"): self._entero(f["hub_puerto"].text(), 7777),
+            ("datos", "hub", "url_host"): f["hub_url_host"].text().strip().rstrip("/"),
+            ("datos", "hub", "token"): f["hub_token"].text().strip(),
+            ("datos", "bot", "max_historial"): self._entero(f["max_historial"].text(), 20),
+            # Personalidad: SOLO el personaje que se estaba editando
+            ("personaje", "nombre"): f["bot_nombre"].text().strip() or "Lune",
+            ("personaje", "systemPrompt"): f["bot_system"].toPlainText().strip(),
+            ("personaje", "fraseInicial"): f["bot_saludo"].toPlainText().strip(),
+            # Voz de salida (lo que suena: la del personaje si trae una; si no, la global)
+            ("voz_salida", "motor"): pv["motor"],
+            ("voz_salida", "edge_voz"): pv["edge_voz"],
+            ("voz_salida", "kokoro_voz"): self.kokoro_voz_combo.currentData() or "ef_dora",
+            ("voz_salida", "rate"): pv["rate"],
+            ("voz_salida", "pitch"): pv["pitch"],
+            ("voz_salida", "tld"): pv["tld"],
+            # Notas (RAG)
+            ("cfg", "notas", "activo"): self.notas_check.isChecked(),
+            ("cfg", "notas", "carpeta"): f["notas_carpeta"].text().strip() or "notas",
+            ("cfg", "notas", "modelo_embeddings"): f["notas_modelo"].text().strip() or "nomic-embed-text",
+            ("cfg", "notas", "top_k"): self._entero(f["notas_topk"].text(), 3),
+            # Avatar, voz de entrada y del motor, interfaz
+            ("cfg", "avatar", "pack"): self.pack_combo.currentText(),
+            ("cfg", "avatar", "render"): self.render_combo.currentData() or "sprites",
+            ("cfg", "voz", "modelo_whisper"): self.whisper_combo.currentText(),
+            ("cfg", "voz", "idioma"): f["voz_idioma"].text().strip(),
+            ("cfg", "voz", "dispositivo_entrada"): self.mic_combo.currentData() or "",
+            ("cfg", "voz", "dispositivo_salida"): self.salida_combo.currentData() or "",
+            ("cfg", "voz", "kokoro_velocidad"): self._flotante(f["kokoro_velocidad"].text(), 1.0),
+            ("cfg", "voz", "rvc_activo"): self.rvc_check.isChecked(),
+            ("cfg", "voz", "rvc_modelo"): f["rvc_modelo"].text().strip(),
+            ("cfg", "voz", "rvc_transpose"): self._entero(f["rvc_transpose"].text(), 0),
+            ("cfg", "interfaz", "modo"): self.interfaz_combo.currentData() or "web",
+            ("autoinicio",): self.autoinicio_check.isChecked(),
+        }
+        for clave, chk in self.feature_checks.items():
+            v[("cfg", "features", clave)] = chk.isChecked()
+        if hasattr(self, "red_rol_combo"):
+            v[("cfg", "red", "rol")] = self.red_rol_combo.currentData() or "hibrido"
+            v[("cfg", "red", "nombre")] = f["red_nombre"].text().strip()
+        return v
+
+    @staticmethod
+    def _buscar_personaje(d: dict, nombre) -> int:
+        """Índice del personaje `nombre` en `d` (sin distinguir mayúsculas), o -1."""
+        nl = str(nombre or "").lower()
+        for i, p in enumerate(d.get("personajes") or []):
+            if isinstance(p, dict) and nl and (p.get("nombre") or "").lower() == nl:
+                return i
+        return -1
+
+    @staticmethod
+    def _voz_con_cambios(actual: dict, cambios: dict, ui: dict) -> dict:
+        """La voz propia del personaje con SOLO lo que se cambió en el panel. El id va
+        con el motor: si cambió el motor o la voz de ese motor, se toma la del combo."""
+        nueva = dict(actual or {})
+        motor = ui.get("motor") or "auto"
+        if "motor" in cambios:
+            if motor in ("", "auto"):
+                nueva.pop("motor", None)
+            else:
+                nueva["motor"] = motor
+        if motor in ("", "auto", "edge") and ({"motor", "edge_voz"} & set(cambios)):
+            nueva["id"] = ui["edge_voz"]
+        elif motor == "kokoro" and ({"motor", "kokoro_voz"} & set(cambios)):
+            nueva["id"] = ui["kokoro_voz"]
+        for k in ("rate", "pitch", "tld"):
+            if k in cambios:
+                nueva[k] = ui[k]
+        return nueva
+
+    def _save(self):
+        actual = self._valores_ui()
+        cambios = {k: v for k, v in actual.items() if self._inicial.get(k, actual) != v}
+        # datos.json FRESCO: lo que escribieron otros (el panel VRM, cambiar_voz,
+        # patata, la otra interfaz…) no se pisa con la copia de cuando se abrió esto.
+        d = datos.cargar() or {"apis": {}, "modelos": {}, "bot": {}, "personajes": []}
+        for sec in ("apis", "modelos", "bot", "hub"):
+            if not isinstance(d.get(sec), dict):
+                d[sec] = {}
+        for clave, valor in cambios.items():
+            if clave[0] == "datos":
+                d[clave[1]][clave[2]] = valor
+        # Clave de la API compatible vaciada: fuera también el alias apis.compat_key
+        # (si no, datos.compat_key() la seguiría usando).
+        if ("datos", "modelos", "compat_key") in cambios and not actual[("datos", "modelos", "compat_key")]:
+            d["apis"].pop("compat_key", None)
+
+        # Personalidad y voz: el personaje que se estaba editando (aunque ya no sea el activo).
+        del_personaje = {k[1]: v for k, v in cambios.items() if k[0] == "personaje"}
+        de_voz = {k[1]: v for k, v in cambios.items() if k[0] == "voz_salida"}
+        idx = self._buscar_personaje(d, self._nombre_editado)
+        if idx < 0 and del_personaje and not self._nombre_editado and not d.get("personajes"):
+            d["personajes"] = [{}]              # datos.json sin personajes: se crea el primero
+            idx = 0
+        personaje = d["personajes"][idx] if idx >= 0 else None
+        if personaje is not None:
+            viejo = personaje.get("nombre")
+            for campo, valor in del_personaje.items():
+                personaje[campo] = valor
+            nuevo = personaje.get("nombre")
+            activo = str(d["bot"].get("personaje_default") or "")
+            if "nombre" in del_personaje and (not activo or activo.lower() == str(viejo or "").lower()):
+                d["bot"]["personaje_default"] = nuevo      # renombrar el activo lo deja activo
+            self._nombre_editado = nuevo
+
+        # Voz de salida: si el personaje trae voz propia, el cambio va a ella y la
+        # global no se toca (si no, la del personaje ganaría y no se notaría); si no,
+        # a config.voz.
+        propia = voz_de(personaje) if personaje is not None else {}
+        cfg_voz = {}
+        if de_voz:
+            ui_voz = {k[1]: v for k, v in actual.items() if k[0] == "voz_salida"}
+            if propia:
+                personaje["voz"] = self._voz_con_cambios(propia, de_voz, ui_voz)
+            else:
+                cfg_voz = {self._VOZ_A_CONFIG[k]: v for k, v in de_voz.items()}
 
         datos.guardar(d)
+        self.datos_data = d
 
-        # Features, avatar y voz de entrada en config.json
-        for clave, chk in self.feature_checks.items():
-            self.config.config.setdefault("features", {})[clave] = chk.isChecked()
-        av = self.config.config.setdefault("avatar", {})
-        av["pack"] = self.pack_combo.currentText()
-        av["render"] = self.render_combo.currentData() or "sprites"
-        voz = self.config.config.setdefault("voz", {})
-        voz["modelo_whisper"] = self.whisper_combo.currentText()
-        voz["idioma"] = self.fields["voz_idioma"].text().strip()
-        voz["dispositivo_entrada"] = self.mic_combo.currentData() or ""
-        voz["dispositivo_salida"] = self.salida_combo.currentData() or ""
-        voz["motor_salida"] = self.voz_motor_combo.currentData() or "auto"
-        voz["kokoro_voz"] = self.kokoro_voz_combo.currentData() or "ef_dora"
-        voz["kokoro_velocidad"] = self._flotante(self.fields["kokoro_velocidad"].text(), 1.0)
-        voz["rvc_activo"] = self.rvc_check.isChecked()
-        voz["rvc_modelo"] = self.fields["rvc_modelo"].text().strip()
-        voz["rvc_transpose"] = self._entero(self.fields["rvc_transpose"].text(), 0)
-        # Modo de interfaz (web · nativo); se aplica al reiniciar.
-        self.config.config.setdefault("interfaz", {})["modo"] = self.interfaz_combo.currentData() or "web"
+        # Seguimiento del cursor que el panel VRM aún no escribió (espera 250 ms).
+        panel = getattr(self, "vrm_panel", None)
+        if panel is not None:
+            try:
+                panel.guardar_ya()
+            except Exception:
+                pass
+
+        # config.json: solo lo cambiado (features, avatar, voz de entrada, notas, red…)
+        for clave, valor in cambios.items():
+            if clave[0] == "cfg":
+                self.config.config.setdefault(clave[1], {})[clave[2]] = valor
+        for clave, valor in cfg_voz.items():
+            self.config.config.setdefault("voz", {})[clave] = valor
+        # El rol manda sobre el modo del hub: el combo de modo lo refleja.
+        self.hub_modo_combo.setCurrentIndex(
+            max(0, self.hub_modo_combo.findData(actual[("datos", "hub", "modo")])))
         # Autoinicio con Windows (clave Run del usuario; ver servicios/autoinicio.py)
-        try:
-            from servicios import autoinicio as _auto
-            _auto.establecer(self.autoinicio_check.isChecked())
-        except Exception:
-            pass
+        if ("autoinicio",) in cambios:
+            try:
+                from servicios import autoinicio as _auto
+                _auto.establecer(actual[("autoinicio",)])
+            except Exception:
+                pass
         self.config.save()
+        self._inicial = actual
 
         # Aplicar cambios en caliente
         lune_face.set_anim_video(self.config.feature("animaciones_video", True))

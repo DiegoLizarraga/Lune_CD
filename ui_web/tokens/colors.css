@@ -87,3 +87,30 @@
   --surface-cloud:  var(--blue-500);   /* "Nube" / cloud provider */
   --surface-local:  var(--cyan-500);   /* "Local" / offline provider */
 }
+
+/* ============================================================
+   CANALES RGB — contrato de tokens para transparencias
+   Mismos colores que arriba, escritos como "R G B" para poder
+   usarlos con alfa:  rgb(var(--cyan-500-rgb) / .6)
+   Siempre con respaldo: rgb(var(--cyan-500-rgb, 0 229 255) / .6)
+   El tema (HSV) redefine estos canales junto con los hex; los
+   CSS nuevos (burbuja, grande, alarma, mascota animada) usan
+   SOLO estos nombres en vez de rgba() con números literales.
+   tests/test_js_modulos.py comprueba que coinciden con los hex.
+   ============================================================ */
+:root {
+  --cyan-300-rgb:   125 245 255;  /* #7DF5FF */
+  --cyan-400-rgb:   54 236 255;   /* #36ECFF */
+  --cyan-500-rgb:   0 229 255;    /* #00E5FF */
+  --cyan-600-rgb:   0 190 219;    /* #00BEDB */
+  --cyan-700-rgb:   0 145 171;    /* #0091AB */
+
+  --blue-300-rgb:   110 155 255;  /* #6E9BFF */
+  --blue-400-rgb:   61 116 255;   /* #3D74FF */
+  --blue-500-rgb:   30 85 255;    /* #1E55FF */
+  --blue-600-rgb:   19 64 219;    /* #1340DB */
+  --blue-700-rgb:   14 47 168;    /* #0E2FA8 */
+
+  --yellow-500-rgb: 255 224 0;    /* #FFE000 */
+  --ink-950-rgb:    5 7 15;       /* #05070F */
+}

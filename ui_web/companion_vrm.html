@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Lune VRM</title>
 <link rel="stylesheet" href="styles.css" />
+<link rel="stylesheet" href="css/burbuja.css" />
 <style>
   html, body { margin:0; height:100%; background:transparent; overflow:hidden;
     font-family:var(--font-body, system-ui, sans-serif); }
@@ -52,6 +53,42 @@
   </div>
 </div>
 
+<!-- APIs compartidas con companion.html (scripts clásicos, antes del módulo):
+     cola de eventos hacia Python (luneEventos), efectos de sonido (luneSfx), packs de
+     sonidos de reacción (luneSonidos; ui/companion.py le carga el pack al terminar la
+     página) y la burbuja con máquina de escribir (comentarTipeado, burbujaTexto,
+     burbujaFin, luneLado). -->
+<script src="lune_eventos.js"></script>
+<script src="lune_sfx.js"></script>
+<script src="lune_packs.js"></script>
+<script src="lune_burbuja.js"></script>
+<script>
+  // Calibración del modelo (luz, altura, pesos de seguimiento, invertir*): Python puede
+  // llamarla antes de que cargue el módulo. Se guarda la última y el módulo la aplica.
+  window.luneParams = function (j) { window.__luneParamsPendiente = j; return null; };
+
+  // Si el módulo principal no llega a ejecutarse (404 o error de sintaxis en lune_vrm.js,
+  // lune_modulos.js o three), su propio aviso nunca se registra: este lo cubre. En captura
+  // para ver también el 'error' del <script> (no burbujea). Como texto, nunca innerHTML.
+  window.addEventListener('error', function (e) {
+    if (window.setEmocion) return;                       // el módulo ya arrancó: avisa él
+    var t = e.target;
+    if (t && t !== window && t.tagName !== 'SCRIPT') return;   // otra hoja/imagen: no tapa nada
+    var a = document.getElementById('aviso');
+    if (!a) return;
+    var caja = document.createElement('div');
+    var b = document.createElement('b'); b.textContent = 'No se pudo cargar el visor 3D.';
+    caja.appendChild(b);
+    var detalle = e.message || (t && t.src) || '';
+    if (detalle) {
+      caja.appendChild(document.createElement('br'));
+      var s = document.createElement('small'); s.textContent = String(detalle).slice(0, 300);
+      caja.appendChild(s);
+    }
+    a.replaceChildren(caja); a.classList.add('on'); document.title = 'Lune VRM error';
+  }, true);
+</script>
+
 <!-- three.js y @pixiv/three-vrm empaquetados en ui_web/vendor (sin red). -->
 <script type="importmap">
 {
@@ -69,36 +106,46 @@ const params = new URLSearchParams(location.search);
 const SRC = params.get('src') || '/vrm/actual.vrm';
 const ENC = params.get('enc') === 'cuerpo' ? 'cuerpo' : 'retrato';
 
-const bub = document.getElementById('bubble'), btxt = document.getElementById('btxt');
 const zzz = document.getElementById('zzz'), aviso = document.getElementById('aviso');
-let bt = null;
 
-function mostrarAviso(html) { aviso.innerHTML = html; aviso.classList.add('on'); document.title = 'Lune VRM error'; }
+// El aviso va como TEXTO (textContent), nunca innerHTML: el mensaje de error puede
+// traer cadenas del propio .vrm (metadatos, nombres) y la ruta viene de la URL.
+function mostrarAviso(titulo, detalle, ruta) {
+  const caja = document.createElement('div');
+  const b = document.createElement('b'); b.textContent = titulo; caja.appendChild(b);
+  if (ruta) {
+    caja.appendChild(document.createElement('br'));
+    const c = document.createElement('code'); c.textContent = String(ruta); caja.appendChild(c);
+  }
+  if (detalle) {
+    caja.appendChild(document.createElement('br'));
+    const s = document.createElement('small'); s.textContent = String(detalle).slice(0, 300); caja.appendChild(s);
+  }
+  aviso.replaceChildren(caja);
+  aviso.classList.add('on'); document.title = 'Lune VRM error';
+}
 // Solo los fallos de arranque (módulos, WebGL) tapan el escenario; un error puntual
 // con el modelo ya cargado se registra y no se pinta encima del avatar.
 window.addEventListener('error', (e) => {
   if (window.luneReady) { console.warn('lune_vrm', e.message || e.error); return; }
-  mostrarAviso(`<div><b>No se pudo cargar el visor 3D.</b><br><small>${String(e.message || e.error || '').slice(0, 200)}</small></div>`);
+  mostrarAviso('No se pudo cargar el visor 3D.', String(e.message || e.error || '').slice(0, 200));
 });
 
-// Frases cortas de Lune para eventos de mascota (sin usar el modelo).
-const FRASES = {
-  arrastre: ['Eh, eh, ¿a dónde me llevas?', '¿Me mudas de sitio otra vez?', 'Vale, pero con cuidado.', 'Ay… no me sueltes.'],
-  caricia: ['…Está bien, un poco más.', 'Eso. Justo ahí.', 'No te acostumbres.'],
-  dormir: ['zzz…'],
-  despertar: ['¿Eh? Ya, ya estoy.', 'No estaba dormida. Pensaba.'],
-};
-const frase = (k) => FRASES[k][Math.floor(Math.random() * FRASES[k].length)];
-
+// Los comentarios de la mascota (arrastre, soltar, caricia, dormir, despertar, mareo)
+// los decide Python (lune_core/frases_mascota.py) con los eventos de window.luneEventos:
+// aquí solo lo visual.
 const mascota = crearMascota({
   canvas: document.getElementById('c'), src: SRC + (SRC.includes('?') ? '&' : '?') + 'v=' + (params.get('v') || '0'),
   encuadre: ENC,
   onEvento: (tipo, dato) => {
     if (tipo === 'listo') { aviso.classList.remove('on'); document.title = 'Lune VRM listo'; window.luneReady = true; }
-    else if (tipo === 'error') { mostrarAviso(`<div><b>No pude abrir el modelo.</b><br><code>${SRC}</code><br><small>${dato}</small></div>`); }
-    else if (tipo === 'arrastre' && dato && Math.random() < 0.45) window.comentar(frase('arrastre'), 3500);
-    else if (tipo === 'caricia' && dato && Math.random() < 0.6) window.comentar(frase('caricia'), 3500);
-    else if (tipo === 'dormir') { zzz.classList.toggle('on', !!dato); if (!dato && Math.random() < 0.7) window.comentar(frase('despertar'), 3000); else if (dato) window.ocultarBurbuja(); }
+    else if (tipo === 'error') { mostrarAviso('No pude abrir el modelo.', dato, SRC); }
+    else if (tipo === 'dormir') {
+      zzz.classList.toggle('on', !!dato);
+      // Al dormirse se quita lo que quede en la burbuja (la respuesta de la IA). La
+      // frase de dormir la pone Python DESPUÉS, al leer el evento 'dormir' de la cola.
+      if (dato && typeof window.ocultarBurbuja === 'function') window.ocultarBurbuja();
+    }
   },
 });
 
@@ -106,8 +153,9 @@ const mascota = crearMascota({
 window.luneReady = false;
 window.setEmocion = (s) => mascota.setEstado(s);                 // mismo nombre que companion.html
 window.luneSetEmotion = (s) => mascota.setEstado(s);             // compat con el visor anterior
-window.luneSpeak = (on) => mascota.setHablando(!!on);
-window.luneCursor = (nx, ny, px, py, dentro) => mascota.cursor(nx, ny, px, py, dentro);
+// La voz manda sobre la boca; mientras suena, la máquina de escribir no la toca.
+window.luneSpeak = (on) => { mascota.setHablando(!!on); if (window.luneBurbuja) window.luneBurbuja.setVoz(!!on); };
+window.luneCursor = (nx, ny, px, py, dentro) => mascota.cursor(nx, ny, px, py, dentro);   // → bool
 window.luneDrag = (on, vx, vy) => mascota.drag(!!on, vx, vy);
 window.luneSleep = (on) => mascota.dormir(!!on);
 window.luneTouch = () => mascota.tocar();
@@ -115,15 +163,29 @@ window.luneEncuadre = (m) => mascota.encuadrar(m);
 window.luneCargarModelo = (url) => { window.luneReady = false; document.title = 'Lune VRM'; mascota.cargar(url); };
 window.luneSetFPS = (n) => mascota.setFPS(n);
 window.luneMeta = () => JSON.stringify(mascota.meta());
-window.comentar = (t, ms) => {
-  if (!t) return;
-  btxt.textContent = t;
-  bub.classList.add('on');
-  if (bt) clearTimeout(bt);
-  bt = setTimeout(() => bub.classList.remove('on'), ms || 14000);
-};
-window.pensando = () => { btxt.textContent = '…'; bub.classList.add('on'); if (bt) clearTimeout(bt); bt = null; };
-window.ocultarBurbuja = () => { bub.classList.remove('on'); };
+// Calibración del modelo (lista blanca de ui_web/vrm/lune_params.js) → JSON de lo aplicado.
+// Si Python la llamó antes de que cargara este módulo, se aplica ahora la última.
+const paramsPendientes = window.__luneParamsPendiente;
+window.__luneParamsPendiente = null;
+window.luneParams = (j) => mascota.luneParams(j);
+if (paramsPendientes != null) mascota.luneParams(paramsPendientes);
+// Bus de módulos del avatar (ui_web/vrm/lune_modulos.js): luneMod('baileProc', 'play', …).
+window.luneMod = (nombre, metodo, ...args) => mascota.mod(nombre, metodo, ...args);
+window.luneMascota = mascota;                                    // para registrar módulos: luneMascota.registrar(instalar)
+
+// Cola de eventos hacia Python (lune_eventos.js; companion.py la vacía a 12 Hz). Si
+// ese script no cargó, una cola vacía para que el sondeo no falle.
+if (typeof window.luneEventos !== 'function') window.luneEventos = () => '[]';
+// Efectos de sonido (lune_sfx.js); sin el script, no suena nada pero no rompe.
+if (typeof window.luneSfx !== 'function') window.luneSfx = () => Promise.resolve(null);
+
+// Burbuja: la de lune_burbuja.js (temporizador compartido con comentarTipeado y el
+// streaming). Mismo comportamiento que antes: comentar(t, ms = 14 s), pensando() '…'.
+const burbuja = window.luneBurbuja;
+if (burbuja) burbuja.onBoca = (on) => mascota.setHablando(!!on);   // la boca se mueve al teclear
+window.comentar = (t, ms) => burbuja && burbuja.comentar(t, ms);
+window.pensando = () => burbuja && burbuja.pensando();
+window.ocultarBurbuja = () => burbuja && burbuja.ocultar();
 </script>
 </body>
 </html>

@@ -21,8 +21,24 @@ Estructura de un personaje (en datos.json -> "personajes"):
   "escenario": "...",         # opcional (scenario)
   "ejemplos": "...",          # opcional (mes_example)
   "avatar_pack": "default",   # opcional: pack de lune_face/packs
-  "vrm": "nombre.vrm"         # opcional: su modelo 3D (en modelo_vrm/ o ruta absoluta; ver nucleo/vrm.py)
+  "vrm": "nombre.vrm",        # opcional: su modelo 3D (en modelo_vrm/ o ruta absoluta; ver nucleo/vrm.py)
+  "voz": {                    # opcional: su voz (ver voz_de() y servicios/voces.py)
+    "motor": "edge",          #   auto · edge · gtts · kokoro (si falta, manda el de config)
+    "id": "es-AR-ElenaNeural",  # ShortName de edge-tts o voz de Kokoro (ef_dora…)
+    "rate": "+0%",            #   velocidad, -50%…+50% (también vale un número: -10)
+    "pitch": "+0Hz",          #   tono, -50Hz…+50Hz
+    "volumen": "+0%",         #   opcional
+    "tld": "com.mx"           #   opcional: acento de gTTS (com.mx · es · us · com)
+  },
+  "frases_mascota": {         # opcional: frases de la mascota por evento (ver lune_core/frases_mascota.py)
+    "arrastre": ["¡Eh, que me mareo!"],     # eventos: arrastre, soltar, caricia, dormir,
+    "caricia": ["Jeje~"]                    #   despertar, mareo, aparecer, pudor
+  }                           # las que falten salen de FRASES_BASE
 }
+
+La voz del personaje manda sobre la de config (voz.edge_voz, edge_rate…), que a
+su vez manda sobre la de por defecto (es-MX-DaliaNeural). La lee también el bot
+de Telegram (telegram-bot-or/voz.js), así que suena igual en los dos sitios.
 """
 import json
 import base64
@@ -70,10 +86,25 @@ def get_activo() -> Dict:
     return get(activo_nombre())
 
 
-def set_activo(nombre: str):
+def set_activo(nombre: str) -> str:
+    """
+    Activa un personaje que EXISTE en datos.json (sin distinguir mayúsculas) y
+    devuelve su nombre tal como está guardado. Si no existe lanza ValueError y no
+    toca nada: antes se guardaba cualquier cosa («/personaje Luen») y luego la
+    voz, las frases o el .vrm del personaje «activo» fallaban por no encontrarlo.
+    """
     data = _load()
-    data.setdefault("bot", {})["personaje_default"] = nombre
+    nl = (nombre or "").strip().lower()
+    elegido = next((p for p in data.get("personajes", [])
+                    if isinstance(p, dict) and nl and (p.get("nombre") or "").lower() == nl), None)
+    if elegido is None:
+        nombres = ", ".join(p.get("nombre", "") for p in data.get("personajes", [])
+                            if isinstance(p, dict) and p.get("nombre")) or "ninguno"
+        raise ValueError(f"No existe el personaje «{str(nombre or '').strip()[:60]}». "
+                         f"Personajes: {nombres}.")
+    data.setdefault("bot", {})["personaje_default"] = elegido["nombre"]
     _save(data)
+    return elegido["nombre"]
 
 
 def eliminar(nombre: str) -> bool:
@@ -89,6 +120,53 @@ def eliminar(nombre: str) -> bool:
         data.setdefault("bot", {})["personaje_default"] = nuevos[0]["nombre"] if nuevos else "Lune"
     _save(data)
     return True
+
+
+# ── Voz del personaje ────────────────────────────────────────────────────────────
+
+CAMPOS_VOZ = ("motor", "id", "rate", "pitch", "volumen", "tld")
+
+
+def voz_de(p: Optional[Dict]) -> Dict:
+    """
+    La voz de un personaje, limpia: solo los CAMPOS_VOZ que tengan valor (texto
+    sin espacios o, en rate/pitch/volumen, un número). Admite la forma corta
+    `"voz": "es-AR-ElenaNeural"`. Devuelve {} si no trae voz propia. No valida
+    que la voz exista: eso lo hace servicios/voces.resolver_voz.
+    """
+    if not isinstance(p, dict):
+        return {}
+    v = p.get("voz")
+    if isinstance(v, str):
+        v = {"id": v}
+    if not isinstance(v, dict):
+        return {}
+    limpia = {}
+    for clave in CAMPOS_VOZ:
+        valor = v.get(clave)
+        if isinstance(valor, bool) or valor is None:
+            continue
+        if isinstance(valor, (int, float)) and clave in ("rate", "pitch", "volumen"):
+            limpia[clave] = valor
+        elif isinstance(valor, str) and valor.strip():
+            limpia[clave] = valor.strip()
+    return limpia
+
+
+def set_voz(nombre: str, voz: Optional[Dict]) -> bool:
+    """Guarda (o quita, con None o {}) la voz de un personaje. False si no existe."""
+    data = _load()
+    nl = (nombre or "").lower()
+    for p in data.get("personajes", []):
+        if p.get("nombre", "").lower() == nl:
+            limpia = voz_de({"voz": voz}) if voz else {}
+            if limpia:
+                p["voz"] = limpia
+            else:
+                p.pop("voz", None)
+            _save(data)
+            return True
+    return False
 
 
 def guardar_personaje(personaje: Dict) -> str:

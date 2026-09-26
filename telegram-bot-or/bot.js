@@ -408,7 +408,8 @@ bot.on("message:text", async (ctx) => {
 async function enviarRespuesta(ctx, texto) {
   if (ctx.session.vozActiva) {
     await ctx.replyWithChatAction("record_voice");
-    const audioPath = await textToVoice(texto, ctx.from.id);
+    // La voz del personaje elegido con /usar (no siempre la del por defecto).
+    const audioPath = await textToVoice(texto, ctx.from.id, ctx.session.personajeActivo);
     if (audioPath) {
       const { InputFile } = await import("grammy");
       await ctx.replyWithVoice(new InputFile(createReadStream(audioPath), "voz.ogg"));

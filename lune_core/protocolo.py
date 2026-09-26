@@ -67,13 +67,15 @@ class Tipo(str, Enum):
     ERROR = "error"                       # S→C {code, message, terminal}
 
     # ── Entrada del usuario (desde un terminal) ──
-    INPUT_TEXT = "input:text"             # {text, session_id?, attachments?, images?}
+    # {text, session_id?, attachments?, images?, provider?, origen?, efimero?}
+    # origen 'no_confiable' solo baja la confianza del turno; efimero: no se guarda.
+    INPUT_TEXT = "input:text"
     INPUT_VOICE = "input:voice"           # {audio_b64, format, session_id?}
 
     # ── Salida del personaje (desde el host) ──
     OUTPUT_DELTA = "output:chat:delta"    # {text}  (streaming)
     OUTPUT_ACT = "output:chat:act"        # {emotion, intensity, motion?}
-    OUTPUT_DONE = "output:chat:done"      # {text, usage}
+    OUTPUT_DONE = "output:chat:done"      # {text, usage, acts, tools}
     OUTPUT_VOICE = "output:voice"         # {audio_b64, format, seq, text}
 
     # ── Memoria compartida ──
@@ -87,9 +89,18 @@ class Tipo(str, Enum):
     # ── Estado del host ──
     HOST_STATUS = "host:status"           # {busy, model, tokens_s, peers}
 
-    # ── Herramientas (9.5) ──
-    TOOL_APPROVAL_REQUEST = "tool:approval:request"    # {id, tool, args, why, risk}
-    TOOL_APPROVAL_RESPONSE = "tool:approval:response"  # {id, approved, reason?}
+    # ── Herramientas (9.5; corte 2 de Mate-Engine) ──
+    # El host pide permiso SOLO al terminal que hizo la petición, y solo si ese
+    # terminal anunció que emite TOOL_APPROVAL_RESPONSE (ANNOUNCE.events). Solo
+    # cuenta la respuesta de ese mismo terminal; sin respuesta en 60 s, rechazada.
+    TOOL_APPROVAL_REQUEST = "tool:approval:request"    # S→C {id, tool, args, why, risk, …pendiente}
+    TOOL_APPROVAL_RESPONSE = "tool:approval:response"  # C→S {id, approved: bool, reason?}
+    TOOL_APPROVAL_CLOSE = "tool:approval:close"        # S→C {id, motivo}  (caducó o se canceló)
+    TOOL_RESULT = "tool:result"                        # S→C {ok, mensaje, herramienta, estado, args, pendiente_id}
+
+    # ── Mascota y alarmas ──
+    MASCOTA_ACCION = "mascota:accion"     # {accion, args}  (bailar, dormir, sentarse…)
+    ALARMA = "alarm:fire"                 # {id, texto, tipo: "alarma"|"temporizador"}
 
 
 class CodigoError(str, Enum):

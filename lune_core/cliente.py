@@ -24,6 +24,11 @@ from .protocolo import Evento, Fuente, Tipo
 
 OnEvento = Callable[[Evento], None]
 
+# Lo que consume el sink de chat_remoto(); el resto de eventos de un turno
+# (aprobaciones, resultados de herramientas) va a on_evento.
+TIPOS_STREAM_CHAT = frozenset({Tipo.OUTPUT_DELTA.value, Tipo.OUTPUT_ACT.value,
+                               Tipo.OUTPUT_DONE.value})
+
 
 def _log(msg: str):
     try:
@@ -163,8 +168,11 @@ class Cliente:
                 if fut is not None and not fut.done():
                     fut.set_result(ev)
                     continue
-                # Streaming (chat): varios eventos con el mismo parent_id.
-                sink = self._streams.get(ev.meta.parent_id) if ev.meta.parent_id else None
+                # Streaming (chat): varios eventos con el mismo parent_id. Solo los
+                # del chat; lo demás de ese turno (tool:approval:request, tool:result…)
+                # sigue a on_evento, que es quien sabe preguntar al humano.
+                sink = (self._streams.get(ev.meta.parent_id)
+                        if ev.meta.parent_id and ev.type in TIPOS_STREAM_CHAT else None)
                 if sink is not None:
                     try:
                         sink(ev)
@@ -232,19 +240,25 @@ class Cliente:
     async def chat_remoto(self, texto: str, imagenes: Optional[list] = None,
                           on_delta: Optional[Callable[[str], None]] = None,
                           on_act: Optional[Callable[[dict], None]] = None,
-                          provider: Optional[str] = None, timeout: float = 180.0) -> dict:
+                          provider: Optional[str] = None, timeout: float = 180.0, *,
+                          origen: Optional[str] = None, efimero: bool = False) -> dict:
         """
         Envía input:text al host y recoge el streaming (delta/act) hasta done.
         Devuelve {"text", "usage", "tools"}. `on_delta` recibe cada trozo nuevo.
+        origen 'no_confiable' si el texto lleva cosas de terceros (el host solo
+        puede bajar la confianza, nunca subirla); efimero: el host no lo guarda.
         """
         if not self.conectado:
             raise ConnectionError("el cliente no está listo")
         loop = asyncio.get_running_loop()
         fin: asyncio.Future = loop.create_future()
         acumulado = {"text": "", "usage": {}, "tools": []}
-        ev = P.nuevo_evento(Tipo.INPUT_TEXT,
-                            {"text": texto, "images": imagenes or [], "provider": provider},
-                            self.fuente)
+        datos = {"text": texto, "images": imagenes or [], "provider": provider}
+        if origen:
+            datos["origen"] = origen
+        if efimero:
+            datos["efimero"] = True
+        ev = P.nuevo_evento(Tipo.INPUT_TEXT, datos, self.fuente)
 
         def sink(e: Evento):
             if e.type == Tipo.OUTPUT_DELTA.value:
@@ -361,10 +375,12 @@ class ClienteEnHilo:
     def chat_remoto_sync(self, texto: str, imagenes: Optional[list] = None,
                          on_delta: Optional[Callable[[str], None]] = None,
                          on_act: Optional[Callable[[dict], None]] = None,
-                         provider: Optional[str] = None, timeout: float = 180.0) -> dict:
+                         provider: Optional[str] = None, timeout: float = 180.0, *,
+                         origen: Optional[str] = None, efimero: bool = False) -> dict:
         """Chat con el host desde código síncrono (el hilo del AIWorker)."""
         return asyncio.run_coroutine_threadsafe(
-            self.cliente.chat_remoto(texto, imagenes, on_delta, on_act, provider, timeout),
+            self.cliente.chat_remoto(texto, imagenes, on_delta, on_act, provider, timeout,
+                                     origen=origen, efimero=efimero),
             self._loop).result(timeout + 5)
 
     def detener(self):

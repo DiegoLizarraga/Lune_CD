@@ -126,6 +126,28 @@ def test_ruta_modelo_acepta_rutas_absolutas(carpeta, tmp_path):
     assert vrm.ruta_modelo(None, personaje={"vrm": str(fuera)}) == fuera
 
 
+def test_rutas_de_red_no_se_tocan(carpeta, tmp_path, monkeypatch):
+    """Revisión S2: una ruta UNC (o de dispositivo) nunca llega a is_file()/stat: Windows
+    mandaría el hash NTLM al equipo de la ruta. Tampoco se usa su nombre."""
+    from nucleo import vrm
+    (carpeta / "z.vrm").write_bytes(vrm1())                          # aunque el nombre exista dentro
+    tocadas = []
+    real_is_file, real_stat = Path.is_file, Path.stat
+    monkeypatch.setattr(Path, "is_file", lambda self: (tocadas.append(str(self)), real_is_file(self))[1])
+    monkeypatch.setattr(Path, "stat", lambda self, **k: (tocadas.append(str(self)), real_stat(self, **k))[1])
+    for red in ("\\\\atacante\\s\\z.vrm", "//atacante/s/z.vrm", "\\/atacante\\s\\z.vrm",
+                "\\\\?\\UNC\\atacante\\s\\z.vrm"):
+        assert vrm.resolver(red) is None
+        with pytest.raises(ValueError):
+            vrm.ruta_ajustes(red)
+        with pytest.raises(ValueError):
+            vrm.guardar_ajustes_modelo(red, {"luz": 2})
+        with pytest.raises(ValueError):
+            vrm.importar_modelo(red)
+        assert vrm._apunta_a(red, "z.vrm") is False
+    assert not any("atacante" in t for t in tocadas), tocadas
+
+
 def test_sin_modelos_devuelve_none(tmp_path, monkeypatch):
     from nucleo import vrm
     monkeypatch.setattr(vrm, "CARPETA", tmp_path / "vacia")
@@ -587,3 +609,22 @@ def test_main_nativo_conecta_la_voz_con_la_boca():
     assert "_hablando = pyqtSignal(bool)" in src
     assert "self.voice.al_hablar = self._hablando.emit" in src
     assert "def _on_hablando" in src and "ov.recrear.connect(self._mascota_recrear)" in src
+
+
+def test_letra_de_unidad_de_red_no_se_toca(carpeta, monkeypatch):
+    """Una letra mapeada a un recurso de red (GetDriveTypeW = 4) tampoco se mira."""
+    from nucleo import vrm
+    monkeypatch.setattr(vrm, "ruta_local", lambda r: False)
+    tocadas = []
+    real = Path.is_file
+    monkeypatch.setattr(Path, "is_file", lambda self: (tocadas.append(str(self)), real(self))[1])
+    assert vrm.resolver(r"Z:\modelos\a_luna.vrm") is None
+    assert not any(t.startswith("Z:") for t in tocadas)
+
+
+def test_ruta_local_distingue_unidades():
+    from nucleo import vrm
+    assert vrm.ruta_local(str(Path(__file__).resolve())) is True
+    assert vrm.ruta_local(r"\\servidor\recurso\a.vrm") is False
+    assert vrm.ruta_local("//servidor/recurso/a.vrm") is False
+    assert vrm.ruta_local("a.vrm") is False

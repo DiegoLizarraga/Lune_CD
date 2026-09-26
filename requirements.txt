@@ -12,6 +12,24 @@ zeroconf>=0.130          # descubrir dispositivos Lune en la red local
 # ── SISTEMA: Optimizador e info de hardware ──────────────────────
 psutil>=5.9.0
 
+# ── WINDOWS: ventanas, mascota y audio por proceso ───────────────
+# pywin32: win32gui/win32con (fantasma de la mascota, ventana activa).
+# comtypes: sesiones de audio WASAPI por proceso (bailar con la música),
+#           sin pycaw. Solo existen en Windows.
+pywin32>=306 ; sys_platform == "win32"
+comtypes>=1.2.0 ; sys_platform == "win32"
+
+# ── AUDIO Y MASCOTA (serie 10.3+) ────────────────────────────────
+# numpy: mezclador de sonidos propio (servicios/mezclador.py) y los
+#        efectos que genera scripts/generar_sfx.py.
+# sounddevice: salida del mezclador (alarmas, comida, bailes); si falla,
+#              el mezclador cae a winsound sin mezcla.
+# imageio-ffmpeg: trae un ffmpeg para decodificar mp3/ogg/flac/m4a de
+#                 alarmas y bailes (sin él solo se leen .wav).
+numpy>=1.26
+sounddevice>=0.4.6
+imageio-ffmpeg>=0.4.9
+
 # ── VOZ DE SALIDA: edge-tts es la principal (voz mexicana natural).
 #    gTTS queda como respaldo automático si edge-tts falla.
 edge-tts>=6.1.0
@@ -27,9 +45,9 @@ python-docx>=1.1.0
 # Instálalos a mano según lo que quieras usar.
 # ══════════════════════════════════════════════════════════════════
 #
-# VOZ DE ENTRADA (dictado con Whisper, 100% local).
-# Pesa bastante; recomendado en el equipo con GPU:
-#     pip install faster-whisper sounddevice
+# VOZ DE ENTRADA (dictado con Whisper, 100% local). sounddevice ya viene
+# arriba (lo usa el mezclador). Pesa bastante; recomendado en el equipo con GPU:
+#     pip install faster-whisper
 #
 # VOZ DE SALIDA 100% LOCAL (Kokoro, sin internet). Ligera (ONNX, sin PyTorch),
 # pero necesita espeak-ng del sistema para el español y los pesos aparte
@@ -40,7 +58,9 @@ python-docx>=1.1.0
 # modelo de voz .pth entrenado aparte:
 #     pip install rvc-python
 #
-# AVATAR 3D (VRM) en la mascota flotante. Debe coincidir con tu versión de PyQt6:
+# PIEL WEB, MASCOTA ANIMADA Y AVATAR 3D (VRM): QtWebEngine. Sin él, Lune
+# arranca con la interfaz nativa y la mascota de sprites. Debe coincidir con
+# tu versión de PyQt6 (p. ej. PyQt6 6.9 → PyQt6-WebEngine 6.9):
 #     pip install PyQt6-WebEngine
 #
 # TESTS (desarrollo):

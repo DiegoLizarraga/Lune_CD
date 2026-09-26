@@ -49,9 +49,29 @@ const CFG_DEMO = {
   voz:false, memoria:true, acciones_ia:true,
   mascota_render:'animado', interfaz_modo:'web',
   vrm_webengine:false, vrm_modelos:[], vrm_archivo:'', vrm_tamano:'normal', vrm_encuadre:'retrato', vrm_fantasma_auto:true, dormir_min:10,
+  seguir_cursor:true,
   autoinicio:false, aburrimiento_min:10,
   dispositivo_entrada:'', dispositivo_salida:'', modelo_whisper:'base', voz_idioma:'es',
+  // Voz de salida (VozCard) y sonidos de la mascota (PackSonidosCard)
+  motor_salida:'auto', edge_voz:'es-MX-DaliaNeural', edge_rate:'+0%', edge_pitch:'+0Hz', gtts_tld:'com.mx', kokoro_voz:'ef_dora',
+  pack_sonidos:'default', volumen_sfx:0.7,
+  // API compatible con OpenAI (CompatCard) y parámetros del modelo (AvanzadoCard)
+  compat_url:'', compat_key:'', compat_model:'',
+  preset_muestreo:'equilibrado', temperatura:0.7, top_p:null, top_k:null, min_p:null, repeat_penalty:null,
+  num_predict:0, seed:-1, ollama_num_ctx:8192,
 };
+/* Campo de clave (OpenRouter, Telegram). get_config trae una máscara, no la clave: con
+   LuneIA.CampoClave (extra/ia_avanzada.jsx) lo que se teclea SUSTITUYE la máscara entera en vez de
+   añadirse detrás; sin tocarlo se manda la máscara y el puente conserva la guardada. Sin ese
+   módulo, un Input de contraseña normal (el puente también ignora «máscara + lo tecleado»). */
+function CampoClaveAjustes(props) {
+  const L = window.LuneIA;
+  if (L && typeof L.CampoClave === 'function') return <L.CampoClave {...props} />;
+  const { Input } = window.LUNE;
+  return <Input id={props.id} label={props.label} type="password" autoComplete="off" spellCheck={false}
+    value={props.value} onChange={props.onChange} hint={props.hint} />;
+}
+
 const AUDIO_DEMO = { entradas:[], salidas:[], faltan:[], modelos_whisper:['tiny','base','small','medium','large-v3'], modelos_descargados:[] };
 
 /* Guía de Ollama: en este equipo o en otro de la red (el "?" junto a Ollama). */
@@ -200,6 +220,16 @@ function SettingsPanel({ voiceOn, onVoice, fx = { bg:true, sweep:true, micro:tru
 
   const c = cfg || CFG_DEMO;
 
+  // «Probar conexión» de la API compatible prueba lo que está escrito, aún sin guardar.
+  React.useEffect(() => {
+    if (!cfg || !window.lune || typeof window.lune.compat_borrador !== 'function') return;
+    try {
+      window.lune.compat_borrador(JSON.stringify({
+        compat_url: cfg.compat_url || '', compat_key: cfg.compat_key || '', compat_model: cfg.compat_model || '',
+      }));
+    } catch (e) {}
+  }, [cfg && cfg.compat_url, cfg && cfg.compat_key, cfg && cfg.compat_model]);
+
   // ── Audio: dispositivos reales del equipo y pruebas de micrófono/salida ──
   const [audio, setAudio] = React.useState(AUDIO_DEMO);
   const [micMsg, setMicMsg] = React.useState('');
@@ -237,7 +267,7 @@ function SettingsPanel({ voiceOn, onVoice, fx = { bg:true, sweep:true, micro:tru
 
         <Card eyebrow={<><window.IconCloud width={13} height={13}/> Red Neuronal · Nube</>} title="OpenRouter" tone="blue" tick>
           <div className="ln-settings-grid">
-            <Input label="API Key de OpenRouter" type="password" value={c.openrouter_key||''} onChange={set('openrouter_key')} hint="Se guarda localmente en datos.json" />
+            <CampoClaveAjustes id="f-or-key" label="API Key de OpenRouter" value={c.openrouter_key||''} onChange={set('openrouter_key')} hint="Se guarda localmente en datos.json" />
             <Input label="Modelo" value={c.openrouter_model||''} onChange={set('openrouter_model')} hint="openrouter/auto enruta solo" />
           </div>
         </Card>
@@ -254,8 +284,12 @@ function SettingsPanel({ voiceOn, onVoice, fx = { bg:true, sweep:true, micro:tru
         </Card>
         {ayudaOllama && <AyudaOllama onClose={()=>setAyudaOllama(false)} />}
 
+        {/* Tercer proveedor (LM Studio, Groq, OpenAI…) y parámetros del modelo (extra/ia_avanzada.jsx) */}
+        {window.CompatCard && <window.CompatCard cfg={c} set={set} />}
+        {window.AvanzadoCard && <window.AvanzadoCard cfg={c} set={set} />}
+
         <Card eyebrow={<><window.IconTelegram width={13} height={13}/> Integración</>} title="Telegram" tone="blue">
-          <Input label="Token del Bot" type="password" value={c.telegram_token||''} onChange={set('telegram_token')} hint="@BotFather → /newbot" />
+          <CampoClaveAjustes id="f-tg-token" label="Token del Bot" value={c.telegram_token||''} onChange={set('telegram_token')} hint="@BotFather → /newbot" />
         </Card>
 
         <Card eyebrow={<><window.IconBrain width={13} height={13}/> Comportamiento</>} title="Personalidad">
@@ -264,11 +298,14 @@ function SettingsPanel({ voiceOn, onVoice, fx = { bg:true, sweep:true, micro:tru
           <Input label="System Prompt" textarea rows={3} value={c.system_prompt||''} onChange={set('system_prompt')} />
           <div style={{height:18}} />
           <div className="ln-toggle-row">
-            <Switch label="Voz (edge-tts · es-MX)" checked={voiceOn} onChange={onVoice} />
+            <Switch label="Voz (Lune lee sus respuestas)" checked={voiceOn} onChange={onVoice} />
             <Switch label="Memoria persistente" checked={!!c.memoria} onChange={setBl('memoria')} accent="blue" />
             <Switch label="Herramientas de escritorio" checked={!!c.acciones_ia} onChange={setBl('acciones_ia')} />
           </div>
         </Card>
+
+        {/* Qué voz, velocidad, tono y motor (extra/voz.jsx); el interruptor de arriba la enciende. */}
+        {window.VozCard && <window.VozCard cfg={c} set={set} />}
 
         <Card eyebrow={<><window.IconMic width={13} height={13}/> Audio</>} title="Micrófono y salida" tone="cyan">
           <p className="ln-card-nota">
@@ -339,7 +376,7 @@ function SettingsPanel({ voiceOn, onVoice, fx = { bg:true, sweep:true, micro:tru
 
         <Card eyebrow={<><window.IconMoon width={13} height={13}/> Escritorio</>} title="Mascota" tone="cyan">
           <p style={{margin:'0 0 12px', font:'var(--text-data)', fontSize:12, color:'var(--text-dim)'}}>
-            Cómo se dibuja Lune cuando la sacas al escritorio (menú → Mascota). Mientras está fuera, la barra lateral no la dibuja. Haz clic sobre ella para que comente tu pantalla.
+            Cómo se dibuja Lune cuando la sacas al escritorio (menú → Mascota). Mientras está fuera, la barra lateral no la dibuja. Haz clic sobre ella para que comente tu pantalla, o doble clic para escribirle.
           </p>
           <div className="ln-seg-row">
             <Button variant={c.mascota_render==='animado'?'primary':'ghost'} size="sm" onClick={()=>set('mascota_render')('animado')}>Imágenes animadas</Button>
@@ -350,6 +387,13 @@ function SettingsPanel({ voiceOn, onVoice, fx = { bg:true, sweep:true, micro:tru
           </div>
           {c.mascota_render==='vrm' && <VrmOpciones c={c} set={set} setBl={setBl} setCfg={setCfg} />}
         </Card>
+
+        {/* Biblioteca de modelos 3D (extra/vrm_biblioteca.jsx): rejilla, ficha, calibración en vivo,
+            seguimiento del cursor y borrar. Solo con la mascota en VRM. */}
+        {c.mascota_render==='vrm' && window.VrmBiblioteca && <window.VrmBiblioteca cfg={c} set={set} />}
+
+        {/* Sonidos de reacción de la mascota y su volumen (extra/voz.jsx) */}
+        {window.PackSonidosCard && <window.PackSonidosCard cfg={c} set={set} />}
 
         <Card eyebrow={<><window.IconCpu width={13} height={13}/> Rendimiento</>} title="Modo de interfaz" tone="yellow">
           <p style={{margin:'0 0 12px', font:'var(--text-data)', fontSize:12, color:'var(--text-dim)'}}>

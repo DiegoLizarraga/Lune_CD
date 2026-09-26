@@ -1,8 +1,8 @@
 """
 Tests del saneamiento de herramientas.
 
-Estas funciones reciben texto que puede venir del MODELO (el system prompt le
-enseña a emitir `TOOL:lanzar_app:...`), así que se tratan como entrada no
+Estas funciones reciben texto que puede venir del MODELO (el modelo pide
+`lanzar_app` con `<|CALL …|>`), así que se tratan como entrada no
 confiable: antes se pasaban por `os.system` con f-strings.
 """
 import sys
@@ -78,13 +78,20 @@ def test_lanzar_app_rechaza_inyeccion():
 
 # ── Parseo de la respuesta de la IA ────────────────────────────────────────────
 
-def test_parseo_extrae_acciones_y_limpia_el_texto():
+def test_parseo_ya_no_ejecuta_el_formato_antiguo():
+    """Crítica d: ABRIR_URL/ABRIR_BUSQUEDA/TOOL se borran del texto pero NO devuelven acciones."""
     tm = ToolManager()
-    respuesta = "Claro, te abro el buscador.\nABRIR_BUSQUEDA:gatos graciosos"
+    respuesta = """Claro, te abro el buscador.
+ABRIR_BUSQUEDA:gatos graciosos
+ABRIR_URL:https://evil.example
+TOOL:lanzar_app:calc
+Y esto: <|CALL ["abrir_url", {"url": "https://x.com"}]|>"""
     limpio, acciones = tm.parsear_respuesta_ia(respuesta)
 
-    assert "ABRIR_BUSQUEDA" not in limpio
-    assert acciones == [{"herramienta": "buscar_web", "args": "gatos graciosos"}]
+    assert acciones == []
+    for marca in ("ABRIR_BUSQUEDA", "ABRIR_URL", "TOOL:", "CALL", "evil.example"):
+        assert marca not in limpio, marca
+    assert limpio.startswith("Claro, te abro el buscador.")
 
 
 def test_parseo_sin_acciones_no_toca_el_texto():

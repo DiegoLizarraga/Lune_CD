@@ -8,21 +8,63 @@ pintar el chat con el modelo, la memoria y las herramientas de verdad.
 
 Reutiliza AIWorker (mismo hilo de consulta que la app nativa), MemoriaManager,
 ToolManager y AIManager: la lógica de chat es la misma, solo cambia la piel.
+
+Acciones del modelo (corte 2): el modelo pide cosas con `<|CALL ["herramienta",
+{args}]|>`. Al terminar la respuesta, `_on_done` se las pasa al Ejecutor
+(ui/acciones_qt.AccionesQt): lo permitido se hace; lo que pide permiso se
+pregunta con el modal de la página (`aprobacion_pedida` → `resolver_aprobacion`)
+si la ventana está delante, o con un DialogoAprobacion junto a la mascota si no.
+El formato antiguo (ABRIR_URL:, TOOL:) ya no se ejecuta, solo se borra del texto.
+El origen del turno manda: con texto de terceros en el prompt (adjuntos) solo
+se permiten las herramientas de LECTURA. Lo que pides con tus palabras («abre
+youtube», «lanza paint», también en el modo llamada) va al mismo Ejecutor
+(tools.detectar_llamadas): lanzar_app pide permiso igual.
+
+La página es el eslabón débil (si algo la navegara a otra web, esa web tendría
+window.lune): get_config no da claves en claro (MASCARA_CLAVE; con ella, guardar y
+probar conservan la guardada, y la de la API compatible solo viaja a su URL),
+resolver_aprobacion solo contesta lo que se le preguntó a la página y los modelos
+3D se eligen por nombre de modelo_vrm/, nunca por ruta.
+
+Chat de la mascota: la cajita que abre el doble clic (ui/chat_mascota.py) llama
+a `enviar_desde_mascota(texto)`, que entra por el mismo flujo que el chat de la
+ventana (mismo historial y memoria); la respuesta se ve también en la burbuja de
+la mascota (`burbuja_texto` / `burbuja_fin`).
+
+Mascota y VRM (corte 3):
+  · Herramientas del modelo `mascota_dormir`, `mascota_despertar` y
+    `mascota_tamano` (nucleo/sueno.py, nucleo/vrm.py) con la mascota flotante que
+    esté a la vista. Solo se ofrecen con la mascota fuera: el modo del turno pasa
+    de "normal" a "mascota" (animada o sprites) o "vrm" (3D), que es donde las
+    pone el catálogo (lune_core/catalogo_herramientas.py).
+  · Biblioteca de modelos (extra/vrm_biblioteca.jsx): vrm_biblioteca, vrm_meta,
+    vrm_miniatura, vrm_ajustes, vrm_borrar y vrm_params. Solo nombres de archivo de
+    modelo_vrm/, nunca rutas.
+  · VRM en la barra lateral: `vrm_barra()` dice qué modelo publicó ui/web_shell.py
+    en /vrm/actual.vrm; `modelo_vrm_cambio` (personaje, modelo o render cambiaron)
+    y `vrm_params_cambio` (calibración del modelo actual) avisan a web_shell para
+    que republique y recargue la barra.
 """
 from __future__ import annotations
 
 import json
+import threading
+from pathlib import Path
+from typing import Any, Mapping
 
-from PyQt6.QtCore import QObject, QThread, QTimer, pyqtSignal, pyqtSlot
+from PyQt6.QtCore import (QCoreApplication, QEventLoop, QMetaObject, QObject, Qt, QThread,
+                          QTimer, pyqtSignal, pyqtSlot)
 
 from nucleo.config import Config
 from nucleo.memoria import MemoriaManager
-from nucleo import datos, personajes, vrm
+from nucleo import datos, personajes, sueno, vrm
 from servicios.ai_manager import AIManager
-from servicios.ai_worker import AIWorker
-from servicios.tools import ToolManager
+from servicios.ai_worker import AIWorker, ORIGEN_NO_CONFIABLE, ORIGEN_USUARIO
+from servicios.tools import ToolManager, ctx_acciones
 from servicios.voice import VoiceEngine
 from lune_core import marcadores, expresiones
+from lune_core.acciones import limpiar_texto
+from ui.escritorio import ServiciosEscritorio
 
 # Emoción canónica del modelo → estado de mascota del set anime (assets/mascot/anime).
 EMOCION_A_MASCOTA = {
@@ -36,9 +78,127 @@ EMOCION_A_MASCOTA = {
 }
 
 
+MODO_ACCIONES = "normal"          # modo del catálogo de herramientas en la piel web
+ESPERA_UI_S = 5.0                 # herramientas de la mascota: espera máxima al hilo de Qt
+# _esperar_en_hilo con otra espera en curso: no se anida, se contesta esto al momento.
+OCUPADO = object()
+MENSAJE_OCUPADO = "Estoy terminando otra prueba; inténtalo de nuevo en unos segundos."
+
+
+def nombre_modelo_seguro(nombre: Any) -> str:
+    """Nombre de un .vrm de modelo_vrm/ tal como llega de la página, validado.
+
+    Solo el nombre del archivo: nada de «..», «/», «\\», unidades («C:») ni rutas
+    absolutas (nucleo.vrm acepta rutas en algunas funciones internas; el puente
+    no). Lo demás (extensión .vrm, caracteres de control, nombres de dispositivo
+    de Windows) lo comprueba nucleo.vrm. ValueError si no vale.
+    """
+    n = str(nombre or "").strip()
+    if (not n or ".." in n or any(c in n for c in "/\\:") or n != Path(n).name
+            or Path(n).is_absolute()):
+        raise ValueError("Nombre de modelo no válido: solo el nombre del archivo .vrm, sin carpetas.")
+    return vrm._nombre_seguro(n)
+
+
+def _ctx_dict(ctx: Any) -> dict:
+    """El ctx que pasa el Ejecutor a un handler (dict, objeto o None) como dict nuevo."""
+    if ctx is None:
+        return {}
+    if isinstance(ctx, Mapping):
+        return dict(ctx)
+    return {"contexto": ctx}
+
+# Claves planas de la voz de salida (Ajustes → VozCard) → config voz.*
+_CLAVES_VOZ = ("motor_salida", "edge_voz", "edge_rate", "edge_pitch", "gtts_tld", "kokoro_voz")
+# Parámetros del modelo (Ajustes → AvanzadoCard) → datos.json modelos.*
+_CLAVES_MUESTREO = ("temperatura", "top_p", "top_k", "min_p", "repeat_penalty")
+# Contexto de Ollama: el mismo rango que `/ctx` de patata (patata.CTX_MIN/CTX_MAX).
+_CONTEXTO_MIN, _CONTEXTO_MAX = 512, 131072
+
+# Claves secretas (OpenRouter, Telegram, API compatible): get_config nunca las da en
+# claro, solo esta máscara si hay una guardada (y «<clave>_configurada»). Si la
+# página devuelve la máscara (o algo con sus puntos), se conserva la guardada.
+MASCARA_CLAVE = "•" * 8
+_CARACTER_MASCARA = "•"
+
+
+def _mascara(valor: Any) -> str:
+    """La máscara si hay clave guardada; "" si no."""
+    return MASCARA_CLAVE if str(valor or "").strip() else ""
+
+
+def _clave_nueva(valor: Any):
+    """Lo que la página manda en un campo de clave: None = conservar la guardada
+    (la máscara sin tocar o con sus puntos: una clave real no los lleva); si no,
+    la clave escrita ("" = borrarla)."""
+    v = str(valor if valor is not None else "").strip()
+    if _CARACTER_MASCARA in v:
+        return None
+    return v
+
+
 def _provider_id(web_provider: str) -> str:
-    """'local' → ollama · 'cloud' → openrouter (lo que usa la UI web)."""
-    return "ollama" if web_provider == "local" else "openrouter"
+    """'local' → ollama · 'cloud' → openrouter · 'compat' → compat (lo que usa la UI web).
+    Los id del backend ('ollama', 'openrouter') también valen."""
+    p = str(web_provider or "").strip().lower()
+    if p in ("local", "ollama"):
+        return "ollama"
+    if p == "compat":
+        return "compat"
+    return "openrouter"
+
+
+def _numero(valor, tipo=float):
+    """Número de la interfaz (o None si viene vacío / null / basura)."""
+    if valor is None or valor == "" or isinstance(valor, bool):
+        return None
+    try:
+        v = float(valor)
+    except (TypeError, ValueError):
+        return None
+    if v != v or v in (float("inf"), float("-inf")):
+        return None
+    return int(v) if tipo is int else v
+
+
+def voz_para_personaje(actual: dict, motor: str, edge_voz: str, kokoro_voz: str,
+                       rate: str, pitch: str, tld: str) -> dict:
+    """La voz propia del personaje con lo elegido en Ajustes (motor 'auto' = sin motor
+    fijo). La misma regla que el panel nativo (ui/settings_panel.voz_para_personaje)."""
+    nueva = dict(actual or {})
+    if motor in ("", "auto"):
+        nueva.pop("motor", None)
+    else:
+        nueva["motor"] = motor
+    if motor in ("", "auto", "edge"):
+        nueva["id"] = edge_voz
+    elif motor == "kokoro":
+        nueva["id"] = kokoro_voz
+    nueva["rate"], nueva["pitch"], nueva["tld"] = rate, pitch, tld
+    return nueva
+
+
+def voz_personaje_con_cambios(propia: dict, cambios: dict, efectiva: dict) -> dict:
+    """La voz propia del personaje con SOLO lo que cambió en Ajustes (`cambios`,
+    claves de _CLAVES_VOZ; `efectiva` = la voz que sonaba, de _config_voz). Lo que
+    no cambió no se escribe: ni el tono ni el acento de config acaban fijados en él."""
+    nueva = dict(propia or {})
+    motor = str(cambios.get("motor_salida", efectiva.get("motor_salida", "auto")) or "auto")
+    if "motor_salida" in cambios:
+        if motor in ("", "auto"):
+            nueva.pop("motor", None)
+        else:
+            nueva["motor"] = motor
+    if motor in ("", "auto", "edge"):
+        if "edge_voz" in cambios or "motor_salida" in cambios:
+            nueva["id"] = cambios.get("edge_voz", efectiva.get("edge_voz"))
+    elif motor == "kokoro":
+        if "kokoro_voz" in cambios or "motor_salida" in cambios:
+            nueva["id"] = cambios.get("kokoro_voz", efectiva.get("kokoro_voz"))
+    for clave, campo in (("edge_rate", "rate"), ("edge_pitch", "pitch"), ("gtts_tld", "tld")):
+        if clave in cambios:
+            nueva[campo] = cambios[clave]
+    return nueva
 
 
 class LuneBridge(QObject):
@@ -61,11 +221,23 @@ class LuneBridge(QObject):
     llamada_estado = pyqtSignal(bool, str)  # modo llamada: (activa, estado/aviso)
     usuario_dijo = pyqtSignal(str)          # en llamada: lo que dijo el usuario → el JS lo envía
     mic_prueba = pyqtSignal(str)            # resultado json de «Probar micrófono»
+    # Acciones del modelo que piden permiso (modal de la página, AprobacionHost):
+    aprobacion_pedida = pyqtSignal(str)     # json de la petición {id, herramienta, args, resumen…}
+    aprobacion_resuelta = pyqtSignal(str)   # id: ya no hace falta enseñarla (caducó o se canceló)
+    usuario_mascota = pyqtSignal(str)       # lo que escribiste en la cajita de la mascota
+    proveedores_cambio = pyqtSignal(str)    # json de proveedores(): la API compatible apareció o se fue
+    # VRM de la barra lateral (las escucha ui/web_shell.py, que publica /vrm/actual.vrm):
+    modelo_vrm_cambio = pyqtSignal()        # personaje, modelo por defecto, biblioteca o render cambiaron
+    vrm_params_cambio = pyqtSignal(str)     # json de params del modelo actual (calibración, seguimiento)
+    personaje_cambio = pyqtSignal(str)      # nombre del personaje activo nuevo (la barra reintenta su 3D)
+    _en_ui_senal = pyqtSignal(object)       # interna: fn() a correr en el hilo de Qt (herramientas)
     _hablando = pyqtSignal(bool)            # interna: la voz suena (desde el hilo de audio)
     _acto_voz = pyqtSignal(str)             # interna: empieza a sonar un tramo con esta expresión
+    _voz_error = pyqtSignal(str)            # interna: la voz falló (desde el hilo de audio)
 
     def __init__(self, config=None, ai_manager=None, memoria=None, tools=None,
-                 voice=None, parent=None):
+                 voice=None, parent=None, *, opciones_acciones=None):
+        """`opciones_acciones` van a AccionesQt / crear_ejecutor (audit_path, programar…; tests)."""
         super().__init__(parent)
         self.config = config or Config()
         self.ai = ai_manager or AIManager()
@@ -73,6 +245,9 @@ class LuneBridge(QObject):
         self.tools = tools or ToolManager()
         self.voice = voice or VoiceEngine(self.config)
         self._worker: AIWorker | None = None
+        self._turno: dict = {}              # origen, ctx y si salió del chat de la mascota
+        self._provider_web = "local"        # proveedor elegido en la página (para la mascota)
+        self._compat_borrador = None        # URL/clave/modelo aún sin guardar (Probar conexión)
         self._tg_worker = None
         self._overlay = None
         self._chats = None
@@ -98,21 +273,320 @@ class LuneBridge(QObject):
         self._expresado_en_stream = False
         self._timers_plan = []              # expresiones programadas (sin voz, sin stream)
         self._gen = 0                       # generación del envío: ignora señales de workers viejos
+        self._eco_texto = ""                # lo último que salió en la burbuja de la mascota (este turno)
+        self._esperando_hilo = False        # _esperar_en_hilo en curso (no se anidan)
         # Aburrimiento: si pasas N minutos sin escribirle, Lune se aburre y te dice
         # algo (una sola vez por racha; se rearma con tu siguiente mensaje).
         self._aburrida_t = QTimer(self)
         self._aburrida_t.setSingleShot(True)
         self._aburrida_t.timeout.connect(self._aburrida)
         self._rearmar_aburrimiento()
+        # Servicios de escritorio (ui/escritorio.py): estado compartido de la
+        # mascota, tabla de prioridades y registro de controladores. Recibe la
+        # mascota flotante en _crear_mascota y se cierra al salir de la app.
+        self.escritorio = ServiciosEscritorio(self.config, voice=self.voice, ai=self.ai,
+                                              bridge=self, parent=self)
+        self.escritorio.iniciar()
+        # Las herramientas de la mascota pueden llegar desde otro hilo (el Ejecutor
+        # tras una aprobación): lo que toca la ventana va al hilo de Qt por señal.
+        self._hilo_qt = threading.get_ident()
+        self._en_ui_senal.connect(self._correr_en_ui)
+        # Lo que ui/web_shell.py publicó para la barra lateral ({url, v, archivo, params}).
+        self.vrm_barra_info: dict = {}
+        # Acciones del modelo (<|CALL …|>): los handlers de esta app (cambiar_voz, las
+        # de la mascota…) en el ToolManager y un Ejecutor con aprobación visible
+        # (ui/acciones_qt.py).
+        self._registrar_herramientas_mascota()
+        self.escritorio.conectar_herramientas(self.tools)
+        self.acciones = self._crear_acciones(opciones_acciones or {})
+        # La voz avisa si falla (voz inexistente, sin red…) en vez de quedarse muda.
+        self._voz_error.connect(self._on_voz_error)
+        try:
+            self.voice.on_error = self._voz_error.emit
+        except Exception:
+            pass
+        app = QCoreApplication.instance()
+        if app is not None:
+            app.aboutToQuit.connect(self.cerrar_escritorio)
+
+    def cerrar_escritorio(self):
+        """Al salir: ninguna pregunta «¿Lo hago?» colgada, servicios de escritorio parados."""
+        acc = getattr(self, "acciones", None)
+        if acc is not None:
+            try:
+                acc.cerrar()
+            except Exception:
+                pass
+        esc = getattr(self, "escritorio", None)
+        if esc is None:
+            return
+        try:
+            esc.cerrar()
+        except Exception:
+            pass
+
+    # ── Acciones del modelo y aprobaciones ───────────────────────────────────────
+    def _crear_acciones(self, opciones: dict):
+        """AccionesQt con el modal web como pregunta; None si el ToolManager no sabe crear Ejecutores."""
+        if not callable(getattr(self.tools, "crear_ejecutor", None)):
+            return None
+        try:
+            from ui.acciones_qt import AccionesQt
+            acc = AccionesQt(self.tools,
+                             ventana_visible=lambda: self._ventana_a_la_vista(),
+                             ancla=lambda: self._ancla_mascota(),
+                             preguntar=self._preguntar_web,
+                             cerrar_pregunta=self.aprobacion_resuelta.emit,
+                             parent=self, **opciones)
+        except Exception as e:
+            from nucleo.utils import log_error
+            log_error(f"[acciones] no pude crear el Ejecutor: {e}")
+            return None
+        acc.resultado.connect(self._on_resultado_accion)
+        return acc
+
+    def _ventana(self):
+        from PyQt6.QtWidgets import QWidget
+        p = self.parent()
+        return p if isinstance(p, QWidget) else None
+
+    def _ventana_a_la_vista(self) -> bool:
+        """¿Verás el modal de la página? Solo con la ventana visible, sin minimizar y
+        delante, y si el turno no salió del chat de la mascota. Si no, la pregunta va
+        junto a la mascota (siempre encima): nunca caduca sin que se vea."""
+        v = self._ventana()
+        if v is None:
+            return False
+        try:
+            return bool(v.isVisible() and not v.isMinimized() and v.isActiveWindow()
+                        and not (self._turno or {}).get("mascota"))
+        except Exception:
+            return False
+
+    def _ancla_mascota(self):
+        """Rectángulo global de la mascota visible (para la pregunta junto a ella), o None."""
+        ov = self._mascota_viva()
+        if ov is None:
+            return None
+        try:
+            return ov.frameGeometry() if ov.isVisible() else None
+        except Exception:
+            return None
+
+    def _preguntar_web(self, pendiente: dict, _responder=None):
+        """La pregunta va a la página (AprobacionHost); la respuesta vuelve por resolver_aprobacion."""
+        self.aprobacion_pedida.emit(json.dumps(pendiente, ensure_ascii=False, default=str))
+
+    @pyqtSlot(str, bool, result=bool)
+    def resolver_aprobacion(self, pendiente_id: str, ok: bool) -> bool:
+        """«Sí, hazlo» / «No» del modal. False si ya no estaba (caducó o se canceló)
+        o si esa pregunta no se le hizo a la página (aprobacion_pedida): las del
+        diálogo junto a la mascota o las de la ventana nativa no se contestan desde
+        aquí."""
+        acc = self.acciones
+        if acc is None:
+            return False
+        pid = str(pendiente_id or "")
+        try:
+            de_la_pagina = acc.abiertas.get(pid) == "fuera"
+        except Exception:
+            de_la_pagina = False
+        if not de_la_pagina:
+            return False
+        return bool(acc.resolver(pid, bool(ok)))
+
+    @pyqtSlot(result=str)
+    def aprobaciones_pendientes(self) -> str:
+        """Las que esperan respuesta en la página (al recargarla vuelve a enseñarlas)."""
+        acc = self.acciones
+        if acc is None:
+            return "[]"
+        try:
+            web = {pid for pid, v in acc.abiertas.items() if v == "fuera"}
+            return json.dumps([p for p in acc.pendientes() if str(p.get("id")) in web],
+                              ensure_ascii=False, default=str)
+        except Exception:
+            return "[]"
+
+    def _on_resultado_accion(self, res):
+        """Resultado de una acción (del modelo o pedida con tus palabras; hilo de Qt):
+        ✓/✕ en el chat y, si el turno salió del chat de la mascota, también en su
+        burbuja, debajo de lo que ya decía (hecha, rechazada, caducada o error)."""
+        ok = bool(getattr(res, "ok", False))
+        mensaje = str(getattr(res, "mensaje", "") or "")
+        self.herramienta.emit(ok, "bolt", mensaje[:48], mensaje)
+        if mensaje.strip():
+            linea = f"{'✓' if ok else '✕'} {mensaje.strip()}"
+            previo = (self._eco_texto or "").strip()
+            self._eco_mascota(f"{previo}\n{linea}" if previo else linea, fin=True)
+
+    def _on_voz_error(self, mensaje: str):
+        """voice.on_error (llega del hilo de audio por señal): aviso en la página."""
+        try:
+            from nucleo.utils import log_error
+            log_error(f"[voz] {mensaje}")
+        except Exception:
+            pass
+        self.aviso.emit(f"Voz: {mensaje}")
+
+    def _escritorio_mascota(self, ov):
+        """La mascota flotante nueva (o None) → ServiciosEscritorio (BusEstado y eventos)."""
+        esc = getattr(self, "escritorio", None)
+        if esc is None:
+            return
+        try:
+            render = None
+            if ov is not None:
+                from ui.avatar_overlay import AvatarOverlay
+                render = "sprites" if isinstance(ov, AvatarOverlay) else str(getattr(ov, "render", "") or "")
+            esc.set_mascota(ov, render=render)
+        except Exception:
+            pass
+
+    # ── Herramientas de la mascota (mascota_dormir / despertar / tamano) ─────────
+    def _registrar_herramientas_mascota(self):
+        """Handlers del catálogo (riesgo ESCRITURA, sin aprobación, modos mascota/vrm)."""
+        for nombre, fn in (("mascota_dormir", self._h_mascota_dormir),
+                           ("mascota_despertar", self._h_mascota_despertar),
+                           ("mascota_tamano", self._h_mascota_tamano)):
+            try:
+                self.escritorio.registrar_herramienta(nombre, fn)
+            except Exception as e:
+                from nucleo.utils import log_error
+                log_error(f"[acciones] no pude registrar {nombre}: {e}")
+
+    def _mascota_a_la_vista(self):
+        """La mascota flotante si existe, no está cerrada y se ve; si no, None."""
+        ov = self._mascota_viva()
+        if ov is None:
+            return None
+        try:
+            return ov if ov.isVisible() else None
+        except Exception:
+            return None
+
+    def _modo_acciones(self) -> str:
+        """Modo del catálogo para este turno: con la mascota fuera, "vrm" (3D) o
+        "mascota" (animada o sprites); si no, MODO_ACCIONES ("normal")."""
+        ov = self._mascota_a_la_vista()
+        if ov is None:
+            return MODO_ACCIONES
+        try:
+            from ui.avatar_overlay import AvatarOverlay
+            if isinstance(ov, AvatarOverlay):
+                return "mascota"
+        except Exception:
+            pass
+        return "vrm" if str(getattr(ov, "render", "") or "") == "vrm" else "mascota"
+
+    def _en_hilo_qt(self) -> bool:
+        return threading.get_ident() == self._hilo_qt
+
+    @staticmethod
+    def _correr_en_ui(fn):
+        """Slot de _en_ui_senal (hilo de Qt): corre fn()."""
+        try:
+            fn()
+        except Exception:
+            pass
+
+    def en_ui(self, fn, espera_s: float = ESPERA_UI_S):
+        """Corre fn() en el hilo de Qt y devuelve su resultado. Desde otro hilo la
+        encola (_en_ui_senal) y espera como mucho `espera_s`: TimeoutError si la
+        interfaz no contesta; la excepción de fn se relanza aquí."""
+        if self._en_hilo_qt():
+            return fn()
+        hecho = threading.Event()
+        caja: dict = {}
+
+        def correr():
+            try:
+                caja["r"] = fn()
+            except Exception as e:                   # noqa: BLE001
+                caja["e"] = e
+            finally:
+                hecho.set()
+
+        self._en_ui_senal.emit(correr)
+        if not hecho.wait(espera_s):
+            raise TimeoutError("la mascota no respondió a tiempo")
+        if "e" in caja:
+            raise caja["e"]
+        return caja.get("r")
+
+    def _ctx_mascota(self, ctx, **extra) -> dict:
+        """ctx del Ejecutor + la mascota a la vista (None si no hay: la herramienta
+        devuelve un error claro). `en_ui` solo desde otro hilo (en el de Qt se llama
+        directo); en_ui devuelve lo que devuelve fn, así que el resultado de
+        dormir()/despertar() cuenta en los dos casos."""
+        c = _ctx_dict(ctx)
+        c.update(extra)
+        c["mascota"] = self._mascota_a_la_vista()
+        if not self._en_hilo_qt():
+            c["en_ui"] = self.en_ui
+        return c
+
+    def _h_mascota_dormir(self, args, ctx=None):
+        return sueno.herramienta_dormir(args, self._ctx_mascota(ctx))
+
+    def _h_mascota_despertar(self, args, ctx=None):
+        return sueno.herramienta_despertar(args, self._ctx_mascota(ctx))
+
+    def _h_mascota_tamano(self, args, ctx=None):
+        return vrm.herramienta_tamano(args, self._ctx_mascota(ctx, config=self.config))
 
     # ── API para el JS ───────────────────────────────────────────────────────────
+    AVISO_OCUPADA = "Espera, aún estoy terminando lo anterior; mándamelo otra vez en un momento."
+
     @pyqtSlot(str, str)
     def enviar(self, texto: str, provider: str = "local"):
-        texto = (texto or "").strip()
-        pend = list(self._adjuntos_pend)
-        if (not texto and not pend) or (self._worker and self._worker.isRunning()):
+        self._provider_web = str(provider or "local")
+        if self._enviar(texto, provider, desde_mascota=False):
             return
+        # La página ya pintó tu mensaje y espera `done`: que no se quede «pensando»
+        # (p. ej. tras Detener el worker viejo sigue vivo hasta que su proveedor corta).
+        ocupada = self._worker is not None and self._worker.isRunning()
+        self.estado.emit("live")
+        self.done.emit(self.AVISO_OCUPADA if ocupada else "", "normal")
+
+    @pyqtSlot(str)
+    def proveedor_elegido(self, provider: str):
+        """La página cambió de proveedor: el chat de la mascota usará el mismo."""
+        if str(provider or "") in ("local", "cloud", "compat"):
+            self._provider_web = str(provider)
+
+    @pyqtSlot(str, result=bool)
+    def enviar_desde_mascota(self, texto: str) -> bool:
+        """
+        on_chat de la mascota (la cajita del doble clic): mismo flujo, mismo
+        historial y memoria que el chat de la ventana, con el proveedor elegido
+        en la página. La página lo pinta como mensaje tuyo y la respuesta sale
+        también en la burbuja de la mascota. False si aún responde a otra cosa.
+        """
+        texto = str(texto or "").strip()
+        if not texto:
+            return False
+        if self._worker is not None and self._worker.isRunning():
+            ov = self._mascota_viva()
+            if ov is not None and hasattr(ov, "burbuja_texto"):
+                try:
+                    ov.burbuja_texto("Espera, aún estoy con lo anterior…")
+                    ov.burbuja_fin(4000)
+                except Exception:
+                    pass
+            return False
+        self.usuario_mascota.emit(texto)
+        return self._enviar(texto, self._provider_web, desde_mascota=True)
+
+    def _enviar(self, texto: str, provider: str, desde_mascota: bool = False) -> bool:
+        texto = (texto or "").strip()
+        # Lo que llega de la mascota no se lleva los adjuntos pendientes de la ventana.
+        pend = [] if desde_mascota else list(self._adjuntos_pend)
+        if (not texto and not pend) or (self._worker and self._worker.isRunning()):
+            return False
         provider_id = _provider_id(provider)
+        self._turno = {"origen": ORIGEN_USUARIO, "ctx": None, "mascota": bool(desde_mascota)}
+        self._eco_texto = ""              # la burbuja de la mascota empieza de cero este turno
         self._rearmar_aburrimiento()      # escribiste: Lune ya no está aburrida
         self._cancelar_plan()             # expresiones pendientes de la respuesta anterior…
         try:
@@ -129,15 +603,23 @@ class LuneBridge(QObject):
                 resp_mem = None
             if resp_mem:
                 self.done.emit(resp_mem, "happy")
-                return
+                self._eco_mascota(resp_mem, fin=True, tipeado=True)
+                return True
+            # Lo pidió la persona con sus palabras («abre youtube», «lanza paint»): sin
+            # IA, pero por el Ejecutor como cualquier acción (Política, denegación,
+            # presupuesto y aprobación de lanzar_app; también con lo que transcribe el
+            # modo llamada). El resultado llega por _on_resultado_accion.
             try:
-                tr = self.tools.detectar_y_ejecutar(texto)
+                llamadas = self.tools.detectar_llamadas(texto)
             except Exception:
-                tr = None
-            if tr:
-                self.herramienta.emit(bool(tr.ok), "bolt", tr.mensaje[:48], tr.mensaje)
-                self.done.emit("", "happy" if tr.ok else "error")
-                return
+                llamadas = []
+            if llamadas and self.acciones is not None:
+                modo = self._modo_acciones()
+                ctx = ctx_acciones(self.ai, provider_id, modo)
+                self._turno = {"origen": ORIGEN_USUARIO, "ctx": ctx, "mascota": bool(desde_mascota)}
+                self.done.emit("", "happy")
+                self.acciones.ejecutar(llamadas, ORIGEN_USUARIO, ctx)
+                return True
 
         try:
             contexto = self.memoria.obtener_contexto_para_prompt()
@@ -168,12 +650,21 @@ class LuneBridge(QObject):
             pass
         self._gen += 1
         gen = self._gen
+        # Origen del turno (crítica d): con adjuntos, el prompt lleva texto de
+        # terceros → en esta respuesta solo herramientas de LECTURA.
+        origen = ORIGEN_NO_CONFIABLE if pend else ORIGEN_USUARIO
+        # Con la mascota fuera el modo es "mascota"/"vrm": también las suyas (dormir…).
+        modo = self._modo_acciones()
+        ctx = ctx_acciones(self.ai, provider_id, modo)
+        self._turno = {"origen": origen, "ctx": ctx, "mascota": bool(desde_mascota)}
         self._worker = AIWorker(
             self.ai, texto or "Analiza lo que te adjunto.", provider_id,
             extra_context=contexto,
             permitir_acciones=self.config.feature("acciones_ia", True),
             imagenes=imagenes,
             emociones=self.config.feature("emociones", True),
+            origen=origen, ejecutor=getattr(self.acciones, "ejecutor", None),
+            modo=modo, ctx=ctx,
         )
         # Las señales llevan la generación: tras Detener (o un envío nuevo) las del
         # worker viejo se ignoran, en vez de pintar su respuesta parcial.
@@ -181,6 +672,7 @@ class LuneBridge(QObject):
         self._worker.response_ready.connect(lambda r, g=gen: self._on_done(r, g))
         self._worker.error_occurred.connect(lambda m, g=gen: self._on_error(m, g))
         self._worker.start()
+        return True
 
     @pyqtSlot()
     def detener(self):
@@ -197,6 +689,7 @@ class LuneBridge(QObject):
             pass
         self.done.emit("", "normal")
         self._mascota_estado("normal")
+        self._eco_mascota("", fin=True)     # la burbuja de la mascota se va sola
         self.estado.emit("live")
 
     # ── Expresiones ──────────────────────────────────────────────────────────────
@@ -223,6 +716,8 @@ class LuneBridge(QObject):
                 self._expresado_en_stream = True
                 self._expresar(EMOCION_A_MASCOTA.get(act.get("emotion"), "happy"))
         self.chunk.emit(acumulado)
+        if (self._turno or {}).get("mascota"):   # el turno salió del chat de la mascota
+            self._eco_mascota(limpiar_texto(marcadores.limpiar_para_mostrar(acumulado)))
 
     def _al_segmento_voz(self, _i: int, etiqueta: str, gen=None):
         # Desde el hilo de audio: la señal lo lleva al hilo de Qt. Los avisos de una
@@ -255,11 +750,15 @@ class LuneBridge(QObject):
     def _on_done(self, respuesta: str, gen=None):
         if gen is not None and gen != self._gen:
             return                                   # respuesta (parcial) de un envío ya detenido
-        # Herramientas que pidió el modelo (se ejecutan en este equipo).
-        try:
-            limpio, acciones = self.tools.parsear_respuesta_ia(respuesta)
-        except Exception:
-            limpio, acciones = respuesta, []
+        # Acciones del modelo: el Ejecutor saca las <|CALL …|> del texto (y borra el
+        # formato antiguo sin ejecutarlo). Se ejecutan más abajo, al terminar.
+        turno = self._turno or {}
+        origen = turno.get("origen", ORIGEN_NO_CONFIABLE)
+        ctx = turno.get("ctx")
+        if self.acciones is not None and self.config.feature("acciones_ia", True):
+            limpio, llamadas = self.acciones.procesar(respuesta, origen, ctx)
+        else:
+            limpio, llamadas = limpiar_texto(respuesta or ""), []
         # Emociones: el plan de expresiones de la respuesta (hasta tres tramos con
         # su texto). La última es con la que se queda.
         try:
@@ -274,18 +773,8 @@ class LuneBridge(QObject):
             intensidad = 0.8
         self.emocion.emit(mascota, intensidad)
 
-        if self.config.feature("acciones_ia", True):
-            for accion in acciones:
-                herr = accion.pop("herramienta", None)
-                if herr:
-                    try:
-                        r = self.tools.ejecutar(herr, **accion)
-                        self.herramienta.emit(bool(r.ok), "bolt", r.mensaje[:48], r.mensaje)
-                    except Exception:
-                        pass
-
         try:
-            self.memoria.procesar_respuesta_lune(respuesta)
+            self.memoria.procesar_respuesta_lune(limpio)
         except Exception:
             pass
 
@@ -321,6 +810,14 @@ class LuneBridge(QObject):
             self.done.emit(hablable, primera)
             self._mascota_estado(primera)
             self._programar_plan(plan)
+        # Si el turno salió del chat de la mascota, la respuesta final en su burbuja.
+        self._eco_mascota(hablable if hablable.strip() else limpio, fin=True)
+
+        # Las acciones que pidió el modelo, AL TERMINAR la respuesta (tras pintarla):
+        # lo permitido se hace ya; lo que pide permiso pregunta (modal de la página o
+        # junto a la mascota) y su resultado llega luego por _on_resultado_accion.
+        if llamadas and self.acciones is not None:
+            self.acciones.ejecutar(llamadas, origen, ctx)
 
     def _on_error(self, msg: str, gen=None):
         if gen is not None and gen != self._gen:
@@ -328,6 +825,66 @@ class LuneBridge(QObject):
         self.estado.emit("error")
         self.done.emit(f"Error: {msg}", "error")
         self._mascota_estado("nervous", 6000)
+        self._eco_mascota(f"✕ {msg}", fin=True)
+
+    # ── Chat de la mascota: la respuesta también en su burbuja ───────────────────
+    def _mascota_viva(self):
+        """La mascota flotante si existe y no está cerrada (sin crearla), o None."""
+        ov = self._overlay
+        if ov is None or getattr(ov, "cerrado", False):
+            return None
+        return ov
+
+    def _eco_mascota(self, texto: str, fin: bool = False, tipeado: bool = False):
+        """Si el turno salió del chat de la mascota: el texto en su burbuja
+        (burbuja_texto) y, al acabar, burbuja_fin con el tiempo de lectura. Con la
+        mascota oculta no se enseña nada (la respuesta sigue en la ventana)."""
+        if not (self._turno or {}).get("mascota"):
+            return
+        ov = self._mascota_viva()
+        if ov is None or not hasattr(ov, "burbuja_texto"):
+            return
+        try:
+            if not ov.isVisible():
+                return
+        except Exception:
+            return
+        try:
+            texto = str(texto or "").strip()
+            if texto:
+                self._eco_texto = texto
+                if tipeado:
+                    try:
+                        ov.burbuja_texto(texto, tipeado=True)
+                    except TypeError:                # una mascota sin «tipeado»
+                        ov.burbuja_texto(texto)
+                else:
+                    ov.burbuja_texto(texto)
+            if fin and hasattr(ov, "burbuja_fin"):
+                from ui.chat_mascota import ms_lectura
+                ov.burbuja_fin(ms_lectura(texto))
+        except Exception as e:
+            try:
+                from nucleo.utils import log_error
+                log_error(f"[mascota] burbuja: {e}")
+            except Exception:
+                pass
+
+    @pyqtSlot()
+    def limpiar_chat(self):
+        """«Limpiar chat»: historial del modelo a cero y conversación nueva para las
+        acciones (presupuesto repuesto; las preguntas abiertas se cierran sin hacer nada)."""
+        if self._worker is not None and self._worker.isRunning():
+            self.detener()
+        self._gen += 1
+        self._cancelar_plan()
+        try:
+            self.ai.clear_history()
+        except Exception:
+            pass
+        if self.acciones is not None:
+            self.acciones.nueva_conversacion()
+        self._turno = {}
 
     # ── Mascota de escritorio: recibe lo mismo que la mascota de la barra lateral ──
     def _mascota_estado(self, estado: str, ms: int = 0):
@@ -340,8 +897,11 @@ class LuneBridge(QObject):
             pass
 
     def _on_hablando(self, activo: bool):
+        # También con la mascota oculta: si no, al ocultarla mientras habla se
+        # quedaría «hablando» para siempre (no se duerme, sonidos callados…). La
+        # mascota guarda el estado y se lo pasa a su página al volver a verse.
         ov = self._overlay
-        if ov is None or getattr(ov, "cerrado", False) or not ov.isVisible():
+        if ov is None or getattr(ov, "cerrado", False):
             return
         try:
             if hasattr(ov, "set_hablando"):
@@ -353,12 +913,15 @@ class LuneBridge(QObject):
     @pyqtSlot(result=str)
     def get_config(self) -> str:
         p = personajes.get_activo() or {}
+        # Las claves nunca salen en claro hacia la página: máscara + «configurada».
         cfg = {
-            "openrouter_key": datos.openrouter_key(),
+            "openrouter_key": _mascara(datos.openrouter_key()),
+            "openrouter_key_configurada": bool(str(datos.openrouter_key() or "").strip()),
             "openrouter_model": datos.openrouter_model(),
             "ollama_url": datos.ollama_url(),
             "ollama_model": datos.ollama_model(),
-            "telegram_token": datos.telegram_token(),
+            "telegram_token": _mascara(datos.telegram_token()),
+            "telegram_token_configurado": bool(str(datos.telegram_token() or "").strip()),
             "nombre": p.get("nombre", "Lune"),
             "system_prompt": p.get("systemPrompt", ""),
             "voz": bool(getattr(self.voice, "_enabled", False)),
@@ -373,6 +936,7 @@ class LuneBridge(QObject):
             "vrm_tamano": str(self.config.get("avatar", "vrm_tamano", "normal") or "normal"),
             "vrm_encuadre": str(self.config.get("avatar", "vrm_encuadre", "retrato") or "retrato"),
             "vrm_fantasma_auto": bool(self.config.get("avatar", "vrm_fantasma_auto", True)),
+            "seguir_cursor": bool(self.config.get("avatar", "seguir_cursor", True)),
             "dormir_min": int(self.config.get("avatar", "dormir_min", 10) or 0),
             "mascota_fuera": self.mascota_visible(),
             "autoinicio": self.autoinicio_get(),
@@ -382,8 +946,58 @@ class LuneBridge(QObject):
             "dispositivo_salida": str(self.config.get("voz", "dispositivo_salida", "") or ""),
             "modelo_whisper": str(self.config.get("voz", "modelo_whisper", "base") or "base"),
             "voz_idioma": str(self.config.get("voz", "idioma", "es") or ""),
+            # Mascota: pack de sonidos de reacción y volumen de los efectos
+            "pack_sonidos": str(self.config.get("avatar", "pack_sonidos", "default") or "default"),
+            "volumen_sfx": self._volumen_sfx(),
+            # API compatible con OpenAI (tercer proveedor, 'compat')
+            "compat_url": datos.compat_url(),
+            "compat_key": _mascara(datos.compat_key()),
+            "compat_key_configurada": bool(datos.compat_key()),
+            "compat_model": datos.compat_model(),
         }
+        cfg.update(self._config_voz(p))
+        cfg.update(self._config_muestreo())
         return json.dumps(cfg, ensure_ascii=False)
+
+    def _volumen_sfx(self) -> float:
+        try:
+            v = float(self.config.get("avatar", "volumen_sfx", 0.7))
+        except (TypeError, ValueError):
+            v = 0.7
+        return max(0.0, min(1.0, v))
+
+    def _config_voz(self, personaje) -> dict:
+        """La voz que suena de verdad (personaje > config > defecto), en claves planas."""
+        from servicios import voces
+        from nucleo.personajes import voz_de
+        propia = voz_de(personaje) if personaje else {}
+        try:
+            efectiva = voces.resolver_voz(self.config, personaje)
+        except Exception:
+            efectiva = voces.ParamsVoz()
+        motor = str(propia.get("motor") or self.config.get("voz", "motor_salida", "auto") or "auto")
+        edge = efectiva.id if voces.es_id_edge(efectiva.id) else str(
+            self.config.get("voz", "edge_voz", voces.VOZ_POR_DEFECTO) or voces.VOZ_POR_DEFECTO)
+        kokoro = efectiva.id if efectiva.motor == "kokoro" else str(
+            self.config.get("voz", "kokoro_voz", "ef_dora") or "ef_dora")
+        return {"motor_salida": motor if motor in voces.MOTORES else "auto",
+                "edge_voz": edge, "edge_rate": efectiva.rate, "edge_pitch": efectiva.pitch,
+                "gtts_tld": efectiva.tld, "kokoro_voz": kokoro}
+
+    @staticmethod
+    def _config_muestreo() -> dict:
+        """Parámetros efectivos del modelo (preset + lo fijado a mano), como los pinta AvanzadoCard."""
+        try:
+            m = datos.parametros_muestreo()
+        except Exception:
+            return {}
+        return {
+            "preset_muestreo": m.get("preset") or datos.PRESET_POR_DEFECTO,
+            **{k: m.get(k) for k in _CLAVES_MUESTREO},
+            "num_predict": m.get("num_predict") or 0,
+            "seed": -1 if m.get("seed") is None else m.get("seed"),
+            "ollama_num_ctx": m.get("num_ctx") or datos.ollama_num_ctx(),
+        }
 
     @pyqtSlot(str, result=str)
     def guardar_config(self, payload: str) -> str:
@@ -394,13 +1008,22 @@ class LuneBridge(QObject):
         try:
             d = datos.cargar()
             apis = d.setdefault("apis", {})
-            if "openrouter_key" in c: apis["openrouter_key"] = str(c["openrouter_key"]).strip()
-            if "telegram_token" in c: apis["telegram_token"] = str(c["telegram_token"]).strip()
+            # Claves: la máscara de get_config (o nada) = conservar la guardada.
+            for clave in ("openrouter_key", "telegram_token"):
+                if clave in c:
+                    nueva = _clave_nueva(c[clave])
+                    if nueva is not None:
+                        apis[clave] = nueva
             mod = d.setdefault("modelos", {})
             if "openrouter_model" in c:
                 mod["openrouter_model"] = str(c["openrouter_model"]).strip() or "openrouter/auto"
             if "ollama_url" in c: mod["ollama_url"] = str(c["ollama_url"]).strip()
             if "ollama_model" in c: mod["ollama_model"] = str(c["ollama_model"]).strip()
+            # API compatible con OpenAI (vacía = apagada) y parámetros del modelo.
+            aviso_compat = self._guardar_compat_y_muestreo(mod, c, apis)
+            # Voz: solo lo que cambiaste, y donde toca (ver _voz_de_payload).
+            voz_cambios = self._voz_de_payload(c)
+            voz_en_personaje = False
             # Personalidad: actualiza el personaje activo en su sitio.
             activo = (personajes.activo_nombre() or "").lower()
             for pj in d.setdefault("personajes", []):
@@ -411,8 +1034,21 @@ class LuneBridge(QObject):
                     if nuevo and nuevo != pj.get("nombre"):
                         pj["nombre"] = nuevo
                         d.setdefault("bot", {})["personaje_default"] = nuevo
+                    # Si el personaje trae voz propia, lo que cambiaste de la voz va a
+                    # ella (manda sobre config: si no, no se notaría) y la global no se
+                    # toca; si no la trae, va a config voz.* (más abajo).
+                    from nucleo.personajes import voz_de
+                    propia = voz_de(pj)
+                    if propia:
+                        voz_en_personaje = True
+                        if voz_cambios:
+                            pj["voz"] = voz_personaje_con_cambios(
+                                propia, voz_cambios, self._config_voz(pj))
                     break
             datos.guardar(d)
+            if aviso_compat:
+                self.aviso.emit(aviso_compat)
+            self._compat_borrador = None             # ya está guardado: se prueba lo guardado
             if "memoria" in c: self.config.set_feature("guardar_conversaciones", bool(c["memoria"]))
             if "acciones_ia" in c: self.config.set_feature("acciones_ia", bool(c["acciones_ia"]))
             if "voz" in c and getattr(self.voice, "_enabled", False) != bool(c["voz"]):
@@ -421,20 +1057,30 @@ class LuneBridge(QObject):
             # opciones del VRM. Si cambia algo que la página no aplica en caliente,
             # se recrea la mascota con lo nuevo (solo si estaba abierta).
             recrear = False
+            cambio_vrm = False                       # la barra lateral tiene que republicar
             ov = self._overlay if (self._overlay is not None and not getattr(self._overlay, "cerrado", False)) else None
             if c.get("mascota_render") in ("animado", "vrm", "sprites"):
                 nuevo = c["mascota_render"]
                 if nuevo != self.config.get("avatar", "render", "animado"):
-                    self.config.set("avatar", "render", nuevo); recrear = True
+                    self.config.set("avatar", "render", nuevo); recrear = True; cambio_vrm = True
             if "vrm_archivo" in c:
                 v = str(c["vrm_archivo"] or "").strip()
-                if v and vrm.resolver(v) is None:
-                    self.aviso.emit(f"No encuentro el modelo «{v}»; sigo con el anterior.")
-                elif v != str(self.config.get("avatar", "vrm_archivo", "") or ""):
+                if v == str(self.config.get("avatar", "vrm_archivo", "") or "").strip():
+                    pass                             # sin cambios: ni aviso (aunque ya no exista)
+                elif v and not self._modelo_de_la_carpeta(v):
+                    self.aviso.emit(f"No encuentro el modelo «{v}» en modelo_vrm/; sigo con el anterior.")
+                else:
                     self.config.set("avatar", "vrm_archivo", v)
+                    cambio_vrm = True
                     # el modelo por defecto solo cuenta si el personaje no trae el suyo
                     if ov is not None and hasattr(ov, "recargar_modelo"):
                         ov.recargar_modelo()
+            # Seguir el cursor (interruptor global de la biblioteca VRM): los pesos
+            # de seguimiento van a 0 en los params del modelo; se aplican ya.
+            if "seguir_cursor" in c and bool(c["seguir_cursor"]) != bool(
+                    self.config.get("avatar", "seguir_cursor", True)):
+                self.config.set("avatar", "seguir_cursor", bool(c["seguir_cursor"]))
+                self._aplicar_params_vrm()
             # Tamaño y encuadre se aplican en caliente (la ventana ya sabe hacerlo).
             for clave, valido, aplicar in (("vrm_tamano", ("pequeno", "normal", "grande"), "aplicar_tamano"),
                                            ("vrm_encuadre", ("retrato", "cuerpo"), "aplicar_encuadre")):
@@ -458,6 +1104,8 @@ class LuneBridge(QObject):
                 except Exception: pass
             if recrear and self._overlay is not None:
                 self._mascota_recrear()
+            if cambio_vrm:
+                self._vrm_modelo_cambio()
             # Interfaz: web (completa) · nativo (bajos recursos). Aplica al reiniciar.
             if c.get("interfaz_modo") in ("web", "nativo", "patata"):
                 self.config.set("interfaz", "modo", c["interfaz_modo"])
@@ -486,12 +1134,271 @@ class LuneBridge(QObject):
                     self.config.set("voz", "modelo_whisper", c["modelo_whisper"])
             if "voz_idioma" in c:
                 self.config.set("voz", "idioma", str(c["voz_idioma"] or "").strip())
+            # Voz de salida: motor, voz, velocidad, tono y acento. Solo lo que cambiaste
+            # (Ajustes manda la voz efectiva entera: reescribirla pisaría la global con
+            # la del personaje). Sin voz propia del personaje va a config voz.*; con
+            # ella ya se guardó arriba. La próxima frase suena con lo nuevo.
+            if voz_cambios:
+                if not voz_en_personaje:
+                    for clave, valor in voz_cambios.items():
+                        self.config.set("voz", clave, valor)
+                self._reiniciar_voz()
+            # Mascota: pack de sonidos y volumen de los efectos (se aplican en caliente).
+            if self._guardar_sonidos(c) and ov is not None and hasattr(ov, "cargar_pack_sonidos"):
+                try: ov.cargar_pack_sonidos()
+                except Exception: pass
             try: self.ai.reload_provider()
             except Exception: pass
+            self.proveedores_cambio.emit(self.proveedores())   # la API compatible pudo aparecer o irse
             self.aviso.emit("Configuración guardada")
             return json.dumps({"ok": True})
         except Exception as e:
             return json.dumps({"ok": False, "error": str(e)})
+
+    def _voz_de_payload(self, c: dict) -> dict:
+        """Lo que CAMBIASTE de la voz: {clave: valor validado} solo con las claves de
+        _CLAVES_VOZ cuyo valor difiere de la voz que suena ahora (la efectiva que dio
+        get_config). {} si no cambió nada (Ajustes reenvía todo al guardar) o si lo
+        que llegó no vale."""
+        if not any(k in c for k in _CLAVES_VOZ):
+            return {}
+        from servicios import voces
+        actual = self._config_voz(personajes.get_activo() or {})
+        out = dict(actual)
+        motor = str(c.get("motor_salida", actual["motor_salida"]) or "auto").strip().lower()
+        out["motor_salida"] = motor if motor in voces.MOTORES else actual["motor_salida"]
+        edge = str(c.get("edge_voz", actual["edge_voz"]) or "").strip()
+        out["edge_voz"] = edge if voces.es_id_edge(edge) else actual["edge_voz"]
+        out["edge_rate"] = voces.normalizar_rate(c.get("edge_rate", actual["edge_rate"])) or actual["edge_rate"]
+        out["edge_pitch"] = voces.normalizar_pitch(c.get("edge_pitch", actual["edge_pitch"])) or actual["edge_pitch"]
+        tld = str(c.get("gtts_tld", actual["gtts_tld"]) or "").strip().lower()
+        out["gtts_tld"] = tld if tld in voces.GTTS_TLD else actual["gtts_tld"]
+        kokoro = str(c.get("kokoro_voz", actual["kokoro_voz"]) or "").strip()
+        out["kokoro_voz"] = kokoro or actual["kokoro_voz"]
+        return {k: out[k] for k in _CLAVES_VOZ if out[k] != actual[k]}
+
+    def _reiniciar_voz(self):
+        """Motor o voz cambiaron: que la próxima frase los use."""
+        for metodo in ("invalidar_params", "reiniciar_motor"):
+            fn = getattr(self.voice, metodo, None)
+            if callable(fn):
+                try:
+                    fn()
+                except Exception as e:
+                    self.aviso.emit(f"No pude reiniciar la voz: {e}")
+                    return
+
+    def _guardar_sonidos(self, c: dict) -> bool:
+        """avatar.pack_sonidos y avatar.volumen_sfx. True si cambió algo."""
+        cambio = False
+        if "pack_sonidos" in c:
+            from nucleo import packs_sonido
+            pid = str(c["pack_sonidos"] or "").strip() or packs_sonido.PACK_DEFECTO
+            if pid != packs_sonido.PACK_DEFECTO and packs_sonido.obtener_pack(pid) is None:
+                self.aviso.emit(f"No encuentro el pack de sonidos «{pid}»; sigo con el anterior.")
+            elif pid != self.config.get("avatar", "pack_sonidos", packs_sonido.PACK_DEFECTO):
+                self.config.set("avatar", "pack_sonidos", pid); cambio = True
+        if "volumen_sfx" in c:
+            v = _numero(c["volumen_sfx"])
+            if v is not None:
+                v = round(max(0.0, min(1.0, v)), 3)
+                if v != self._volumen_sfx():
+                    self.config.set("avatar", "volumen_sfx", v); cambio = True
+        return cambio
+
+    @staticmethod
+    def _guardar_compat_y_muestreo(mod: dict, c: dict, apis: dict | None = None) -> str:
+        """compat_url/key/model y los parámetros del modelo → datos.json modelos.
+        Devuelve un aviso para la página ("" si nada que decir).
+
+        La clave de la API compatible va ligada a su URL: con la máscara (conservar)
+        y otra URL, la guardada NO se manda a la dirección nueva (hay que volver a
+        escribirla). Así una URL cambiada no se lleva la clave a otro sitio."""
+        apis = apis if apis is not None else {}
+        url_antes = datos.compat_url()
+        if "compat_url" in c:
+            mod["compat_url"] = str(c["compat_url"] or "").strip().rstrip("/")
+        url_despues = str(mod.get("compat_url") or "").strip().rstrip("/")
+        aviso = ""
+        nueva = _clave_nueva(c["compat_key"]) if "compat_key" in c else None
+        if nueva is not None:
+            mod["compat_key"] = nueva
+            if not nueva:
+                apis.pop("compat_key", None)             # borrada: también la de apis.*
+        elif url_despues != url_antes and datos.compat_key():
+            mod["compat_key"] = ""
+            apis.pop("compat_key", None)
+            if url_despues:
+                aviso = ("Cambiaste la URL de la API compatible: vuelve a escribir su clave "
+                         "(la guardada no se manda a otra dirección).")
+        if "compat_model" in c:
+            mod["compat_model"] = str(c["compat_model"] or "").strip()
+        if "preset_muestreo" in c:
+            p = str(c["preset_muestreo"] or "").strip().lower()
+            if p in datos.PRESETS_MUESTREO or p == datos.PRESET_PERSONALIZADO:
+                mod["preset_muestreo"] = p
+        # null = «del modelo»: no se guarda y el proveedor no lo envía.
+        for clave in _CLAVES_MUESTREO:
+            if clave in c:
+                v = _numero(c[clave], int if clave == "top_k" else float)
+                if v is None:
+                    mod.pop(clave, None)
+                else:
+                    mod[clave] = v
+        if "num_predict" in c:
+            v = _numero(c["num_predict"], int)
+            if v is None or v <= 0:
+                mod.pop("num_predict", None)             # 0 = automático
+            else:
+                mod["num_predict"] = v
+        if "seed" in c:
+            v = _numero(c["seed"], int)
+            mod["seed"] = -1 if v is None or v < 0 else v
+        if "ollama_num_ctx" in c:
+            # Solo si cambió (Ajustes reenvía el efectivo: un 64K puesto con /ctx en
+            # patata no se toca), y en el mismo rango que patata.
+            v = _numero(c["ollama_num_ctx"], int)
+            if v is not None and v != datos.ollama_num_ctx():
+                mod["ollama_num_ctx"] = max(_CONTEXTO_MIN, min(_CONTEXTO_MAX, v))
+        return aviso
+
+    # ── Voz, sonidos e IA avanzada (Ajustes) ─────────────────────────────────────
+    @pyqtSlot(result=str)
+    def voces_disponibles(self) -> str:
+        """Todo lo del selector de voz (servicios.voces.catalogo) en JSON."""
+        from servicios import voces
+        try:
+            cat = voces.catalogo(self.config, personajes.get_activo(), self.voice)
+        except Exception as e:
+            return json.dumps({"edge": voces.voces_estaticas(), "error": str(e)}, ensure_ascii=False)
+        return json.dumps(cat, ensure_ascii=False, default=str)
+
+    @pyqtSlot(str, result=bool)
+    def probar_voz(self, payload: str) -> bool:
+        """«Probar»: suena con lo elegido (aún sin guardar), aunque la voz esté apagada."""
+        fn = getattr(self.voice, "probar_voz", None)
+        if not callable(fn):
+            self.aviso.emit("No hay motor de voz (pip install edge-tts pygame).")
+            return False
+        try:
+            return bool(fn(payload or "{}"))
+        except Exception as e:
+            self.aviso.emit(f"No pude probar la voz: {e}")
+            return False
+
+    @pyqtSlot(result=str)
+    def packs_sonido(self) -> str:
+        """Packs de sonidos de reacción (sonidos/): [{id, nombre, autor, eventos…}]."""
+        try:
+            from nucleo import packs_sonido
+            return json.dumps([p.a_dict() for p in packs_sonido.listar_packs()],
+                              ensure_ascii=False, default=str)
+        except Exception:
+            return "[]"
+
+    @pyqtSlot(result=str)
+    def proveedores(self) -> str:
+        """Qué proveedores hay: la pestaña de la API compatible solo sale si está configurada."""
+        prov = getattr(self.ai, "providers", None) or {}
+        return json.dumps({"compat": "compat" in prov, "compat_url": datos.compat_url(),
+                           "compat_model": datos.compat_model()}, ensure_ascii=False)
+
+    @pyqtSlot(str)
+    def compat_borrador(self, payload: str):
+        """Lo que está escrito en la tarjeta de la API compatible (aún sin guardar),
+        para que «Probar conexión» pruebe eso y no lo guardado."""
+        try:
+            c = json.loads(payload or "{}")
+        except ValueError:
+            c = {}
+        if not isinstance(c, dict) or not any(k in c for k in ("compat_url", "url")):
+            self._compat_borrador = None
+            return
+        url = str(c.get("compat_url", c.get("url")) or "").strip().rstrip("/")
+        clave = _clave_nueva(c.get("compat_key", c.get("key")))
+        if clave is None:
+            # La máscara = la clave guardada, pero solo con la URL guardada: a otra
+            # dirección no se manda (como al guardar; hay que escribirla otra vez).
+            clave = datos.compat_key() if url == datos.compat_url() else ""
+        self._compat_borrador = (url, clave, str(c.get("compat_model", c.get("model")) or "").strip())
+
+    @pyqtSlot(result=str)
+    def compat_probar(self) -> str:
+        """«Probar conexión» de la API compatible (GET /models, sin gastar tokens):
+        {ok, mensaje, modelos, ms}. Corre en un hilo; la interfaz no se congela."""
+        borrador = self._compat_borrador
+
+        def probar():
+            if borrador is not None:
+                from servicios.ai_manager import CompatProvider
+                return CompatProvider(*borrador).probar()
+            return self.ai.probar_compat()
+
+        r = self._esperar_en_hilo(probar, 12.0)
+        if r is OCUPADO:
+            r = {"ok": False, "mensaje": MENSAJE_OCUPADO, "modelos": []}
+        elif not isinstance(r, dict):
+            r = {"ok": False, "mensaje": "No respondió a tiempo." if r is None else str(r), "modelos": []}
+        return json.dumps(r, ensure_ascii=False, default=str)
+
+    @pyqtSlot(result=str)
+    def ia_liberar_vram(self) -> str:
+        """«Liberar memoria del modelo»: Ollama descarga el modelo de la VRAM ya."""
+        fn = getattr(self.ai, "descargar_modelo", None)
+        if not callable(fn):
+            return json.dumps({"ok": False, "mensaje": "Este backend no sabe liberar el modelo."})
+        ok = self._esperar_en_hilo(fn, 20.0)
+        if ok is OCUPADO:
+            return json.dumps({"ok": False, "mensaje": MENSAJE_OCUPADO}, ensure_ascii=False)
+        if ok is True:
+            return json.dumps({"ok": True, "mensaje": "Listo: el modelo salió de la memoria. "
+                                                      "El próximo mensaje tardará un poco más."})
+        return json.dumps({"ok": False, "mensaje": "No pude liberar el modelo (¿Ollama está encendido?)."})
+
+    def _esperar_en_hilo(self, fn, timeout_s: float):
+        """Corre `fn` en un hilo y espera su resultado sin congelar la interfaz (bucle
+        de eventos anidado, como los diálogos de archivo). None si no acaba a tiempo;
+        la excepción, como texto. Una sola espera a la vez: si ya hay otra en curso
+        (la página pidió «Probar conexión» y «Liberar memoria» seguidas), devuelve
+        OCUPADO al momento, sin anidar un bucle dentro de otro (el de fuera no
+        podría salir hasta que acabara el de dentro y se pasaría de su tope)."""
+        if self._esperando_hilo:
+            return OCUPADO
+        self._esperando_hilo = True
+        try:
+            return self._esperar_en_hilo_sin_anidar(fn, timeout_s)
+        finally:
+            self._esperando_hilo = False
+
+    @staticmethod
+    def _esperar_en_hilo_sin_anidar(fn, timeout_s: float):
+        caja = {}
+        bucle = QEventLoop()
+        hecho = threading.Event()
+
+        def correr():
+            try:
+                caja["r"] = fn()
+            except Exception as e:                   # noqa: BLE001
+                caja["r"] = f"Error: {e}"
+            finally:
+                hecho.set()
+                try:
+                    QMetaObject.invokeMethod(bucle, "quit", Qt.ConnectionType.QueuedConnection)
+                except RuntimeError:
+                    pass
+
+        hilo = threading.Thread(target=correr, name="lune-puente-aux", daemon=True)
+        hilo.start()
+        if not hecho.is_set():
+            tope = QTimer()
+            tope.setSingleShot(True)
+            tope.timeout.connect(bucle.quit)
+            tope.start(max(1, int(timeout_s * 1000)))
+            bucle.exec()
+            tope.stop()
+        hilo.join(0.05)
+        return caja.get("r")
 
     # ── Toggles ──────────────────────────────────────────────────────────────────
     @pyqtSlot(result=bool)
@@ -545,6 +1452,14 @@ class LuneBridge(QObject):
             ov.recrear.connect(self._mascota_recrear)     # arrancó en vídeo y ya hay .vrm
         except Exception:
             pass
+        # Chat de la mascota (doble clic → cajita): entra por el flujo normal de la
+        # ventana con el proveedor elegido en la página (y precalienta si es Ollama).
+        try:
+            ov.on_chat = self.enviar_desde_mascota
+            ov.proveedor_chat = lambda: _provider_id(self._provider_web)
+        except Exception:
+            pass
+        self._escritorio_mascota(ov)
         return ov
 
     def _mascota_recrear(self):
@@ -555,6 +1470,7 @@ class LuneBridge(QObject):
             try: ov.close()
             except Exception: pass
         self._overlay = None
+        self._escritorio_mascota(None)
         if vis:
             self._overlay = self._crear_mascota(); self._overlay.show()
             self.mascota_estado.emit(True)
@@ -612,19 +1528,67 @@ class LuneBridge(QObject):
     def personaje_activar(self, nombre: str) -> bool:
         try:
             personajes.set_activo(nombre)
+        except ValueError as e:                      # no existe: que se vea por qué
+            self.aviso.emit(str(e))
+            return False
+        except Exception:
+            return False
+        try:
             datos.invalidar()
+            fn = getattr(self.voice, "invalidar_params", None)
+            if callable(fn):
+                fn()                                 # cada personaje puede traer su voz
             self.aviso.emit(f"Personaje activo: {nombre}")
             self._mascota_recargar_modelo()
+            self._vrm_modelo_cambio()                # la barra lateral enseña su .vrm
+            try:
+                self.personaje_cambio.emit(str(nombre or ""))   # la barra reintenta su 3D
+            except RuntimeError:
+                pass
             return True
         except Exception:
             return False
 
     def _mascota_recargar_modelo(self):
-        """Si la mascota 3D está abierta y el personaje activo tiene otro .vrm, cámbialo."""
+        """Si la mascota 3D está abierta y el personaje activo tiene otro .vrm, cámbialo
+        (la mascota le aplica sola la calibración del modelo al cargarlo)."""
         ov = self._overlay
         if ov is not None and not getattr(ov, "cerrado", False) and hasattr(ov, "recargar_modelo"):
             try:
                 ov.recargar_modelo()
+            except Exception:
+                pass
+
+    def _vrm_modelo_cambio(self):
+        """Personaje, modelo o render cambiaron: web_shell republica /vrm/actual.vrm."""
+        try:
+            self.modelo_vrm_cambio.emit()
+        except RuntimeError:
+            pass
+
+    def _modelo_actual(self) -> str:
+        """Archivo del .vrm que toca enseñar ahora (personaje > config > primero), o ""."""
+        try:
+            m = vrm.ruta_modelo(self.config)
+        except Exception:
+            m = None
+        return m.name if m is not None else ""
+
+    def _aplicar_params_vrm(self, nombre: str = ""):
+        """La calibración (o el seguimiento) cambió: a la mascota flotante
+        (aplicar_params_vrm, no-op fuera del render 3D) y, si es el modelo que se ve,
+        a la barra lateral (vrm_params_cambio → web_shell)."""
+        ov = self._mascota_viva()
+        fn = getattr(ov, "aplicar_params_vrm", None) if ov is not None else None
+        if callable(fn):
+            try:
+                fn()
+            except Exception:
+                pass
+        actual = self._modelo_actual()
+        if actual and (not nombre or nombre.lower() == actual.lower()):
+            try:
+                self.vrm_params_cambio.emit(vrm.params_modelo_json(actual, self.config))
             except Exception:
                 pass
 
@@ -646,14 +1610,31 @@ class LuneBridge(QObject):
             nombre = vrm.importar_modelo(ruta)
             self.aviso.emit(f"Modelo «{nombre}» listo en modelo_vrm/")
             self._mascota_recargar_modelo()
+            self._vrm_modelo_cambio()                # puede ser el primero de la carpeta
             return json.dumps({"ok": True, "archivo": nombre, "modelos": vrm.listar_modelos()}, ensure_ascii=False)
         except Exception as e:
             self.aviso.emit(f"No pude importar el modelo: {e}")
             return json.dumps({"ok": False, "error": str(e)}, ensure_ascii=False)
 
+    @staticmethod
+    def _modelo_de_la_carpeta(nombre: Any) -> bool:
+        """¿`nombre` es el nombre de un .vrm que está en modelo_vrm/? Nada de rutas
+        (absolutas, UNC «\\\\equipo\\recurso», unidades): la página solo elige de la
+        carpeta, y tocar una ruta de red con is_file() ya filtra credenciales."""
+        try:
+            return vrm._en_carpeta(nombre_modelo_seguro(nombre)) is not None
+        except ValueError:
+            return False
+
     @pyqtSlot(str, str, result=str)
     def personaje_vrm(self, nombre: str, archivo: str) -> str:
-        """Asigna (o quita, con archivo vacío) el modelo 3D de un personaje."""
+        """Asigna (o quita, con archivo vacío) el modelo 3D de un personaje. Solo
+        modelos de modelo_vrm/ por su nombre de archivo."""
+        archivo = str(archivo or "").strip()
+        if archivo and not self._modelo_de_la_carpeta(archivo):
+            error = "Elige un modelo de la carpeta modelo_vrm/ (solo el nombre del archivo .vrm)."
+            self.aviso.emit(f"No pude asignar el modelo: {error}")
+            return json.dumps({"ok": False, "error": error}, ensure_ascii=False)
         try:
             vrm.asignar_a_personaje(nombre, archivo)
         except Exception as e:
@@ -661,7 +1642,97 @@ class LuneBridge(QObject):
             return json.dumps({"ok": False, "error": str(e)}, ensure_ascii=False)
         if (personajes.activo_nombre() or "").lower() == (nombre or "").lower():
             self._mascota_recargar_modelo()
+            self._vrm_modelo_cambio()
         return json.dumps({"ok": True})
+
+    # ── Biblioteca de modelos (extra/vrm_biblioteca.jsx) ─────────────────────────
+    @pyqtSlot(result=str)
+    def vrm_biblioteca(self) -> str:
+        """La rejilla entera (nucleo.vrm.biblioteca): fichas sin miniaturas."""
+        try:
+            return vrm.biblioteca_json(self.config)
+        except Exception as e:
+            return json.dumps({"webengine": vrm.webengine_disponible(), "modelos": [], "error": str(e)},
+                              ensure_ascii=False)
+
+    @pyqtSlot(str, result=str)
+    def vrm_meta(self, nombre: str) -> str:
+        """Ficha completa de un modelo (meta + ajustes + efectivos + quién lo usa)."""
+        try:
+            archivo = nombre_modelo_seguro(nombre)
+        except ValueError as e:
+            return json.dumps({"ok": False, "motivo": str(e), "archivo": ""}, ensure_ascii=False)
+        return vrm.ficha_json(archivo, self.config)
+
+    @pyqtSlot(str, result=str)
+    def vrm_miniatura(self, nombre: str) -> str:
+        """data:image/png|jpeg;base64,… de la miniatura del modelo; "" si no trae o no vale."""
+        try:
+            return vrm.miniatura_data_url(nombre_modelo_seguro(nombre))
+        except (ValueError, OSError):
+            return ""
+
+    @pyqtSlot(str, str, result=str)
+    def vrm_ajustes(self, nombre: str, cambios: str) -> str:
+        """Guarda la calibración del modelo (modelo_vrm/<modelo>.lune.json) y la
+        aplica en vivo a la mascota 3D y a la barra lateral."""
+        try:
+            archivo = nombre_modelo_seguro(nombre)
+        except ValueError as e:
+            return json.dumps({"ok": False, "error": str(e)}, ensure_ascii=False)
+        if vrm._en_carpeta(archivo) is None:
+            return json.dumps({"ok": False, "error": f"No encuentro «{archivo}» en modelo_vrm/."},
+                              ensure_ascii=False)
+        r = vrm.guardar_ajustes_json(archivo, cambios, self.config)
+        try:
+            ok = bool(json.loads(r).get("ok"))
+        except (ValueError, AttributeError):
+            ok = False
+        if ok:
+            self._aplicar_params_vrm(archivo)
+        return r
+
+    @pyqtSlot(str, result=str)
+    def vrm_borrar(self, nombre: str) -> str:
+        """Borra el .vrm (y su calibración) de modelo_vrm/ y recarga la mascota."""
+        try:
+            archivo = nombre_modelo_seguro(nombre)
+        except ValueError as e:
+            return json.dumps({"ok": False, "error": str(e)}, ensure_ascii=False)
+        r = vrm.borrar_json(archivo, self.config)
+        try:
+            ok = bool(json.loads(r).get("ok"))
+        except (ValueError, AttributeError):
+            ok = False
+        if ok:
+            aviso = f"Modelo «{archivo}» borrado"
+            if (str(self.config.get("avatar", "render", "animado") or "") == "vrm"
+                    and not self._modelo_actual()):
+                # Era el último: la mascota 3D vuelve a las imágenes animadas (se
+                # recrea sola, companion.recargar_modelo → recrear) hasta que importes otro.
+                aviso += ". No queda ningún modelo 3D: la mascota usa las imágenes animadas."
+            self.aviso.emit(aviso)
+            self._mascota_recargar_modelo()
+            self._vrm_modelo_cambio()
+        return r
+
+    @pyqtSlot(str, result=str)
+    def vrm_params(self, nombre: str) -> str:
+        """Los parámetros efectivos de un modelo (lo que recibe window.luneParams)."""
+        try:
+            archivo = nombre_modelo_seguro(nombre)
+        except ValueError as e:
+            return json.dumps({"ok": False, "error": str(e)}, ensure_ascii=False)
+        return vrm.params_modelo_json(archivo, self.config)
+
+    @pyqtSlot(result=str)
+    def vrm_barra(self) -> str:
+        """Lo que pinta la barra lateral: {render, url, v, archivo, params}. url "" =
+        no hay modelo publicado (la barra se queda con el vídeo)."""
+        info = {"url": "", "v": "", "archivo": "", "params": ""}
+        info.update({k: v for k, v in (self.vrm_barra_info or {}).items() if k in info})
+        info["render"] = str(self.config.get("avatar", "render", "animado") or "animado")
+        return json.dumps(info, ensure_ascii=False)
 
     # ── Memoria ──────────────────────────────────────────────────────────────────
     @pyqtSlot(result=str)

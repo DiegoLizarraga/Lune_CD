@@ -1,0 +1,21 @@
+Efectos de sonido de Lune CD
+============================
+
+Estos WAV (44.1 kHz, 16 bits, mono) NO se editan a mano: los genera
+
+    python scripts/generar_sfx.py
+
+sintetizándolos con numpy (nada copiado de otros proyectos). Para cambiar un
+sonido, toca su receta en ese script y vuelve a ejecutarlo; el resultado es
+determinista, así que solo cambian los archivos cuya receta cambió.
+
+Sonidos:
+  alarma_1..3        pitidos 880/660 Hz para sonar en bucle (~1.4 s)
+  drag_start/stop    levantar y soltar a la mascota
+  comida_aparece     aparece un plato
+  comida_capa_1..2   se añade una capa a la comida
+  trago_1..3         beber
+  mordisco_1..3      morder
+  blip               letra a letra en los globos de texto
+  menu_abrir/cerrar  abrir y cerrar menús
+  menu_boton         pulsar un botón de menú

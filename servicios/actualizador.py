@@ -66,6 +66,14 @@ OPCIONALES: Dict[str, Dict] = {
         "modulos": {"kokoro_onnx": "kokoro-onnx"},
         "nota": "Lune habla sin internet. Además necesita espeak-ng y los pesos en modelos_voz/.",
     },
+    "Mascota: giro y recorte de sprites": {
+        "modulos": {"numpy": "numpy"},
+        "nota": "Para que la mascota de imágenes se incline al arrastrarla con la silueta exacta.",
+    },
+    "Mascota: modo fantasma (Windows)": {
+        "modulos": {"win32gui": "pywin32"},
+        "nota": "Deja pasar los clics a través de la mascota y la mantiene sobre los juegos.",
+    },
     "Conversión de voz RVC (experimental)": {
         "modulos": {"rvc_python": "rvc-python"},
         "nota": "Cambia el timbre de la voz con un modelo .pth. Muy pesado (arrastra torch).",

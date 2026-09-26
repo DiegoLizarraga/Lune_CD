@@ -7,10 +7,37 @@ todos por el hub: reciben el mismo cerebro, la misma memoria y —si el host las
 tiene activadas— las mismas herramientas de escritorio (9.5).
 
 Atiende:
-    input:text {text, images?, provider?}
+    input:text {text, images?, provider?, session_id?, origen?}
       → output:chat:delta {text}     (varias veces, streaming)
       → output:chat:act   {emotion, intensity, motion?}   (por cada <|ACT|>)
       → output:chat:done  {text, usage, acts, tools}
+    tool:approval:response {id, approved}   (solo del terminal al que se preguntó)
+
+Herramientas (corte 2 de Mate-Engine): el modelo las pide con
+`<|CALL ["herramienta", {args}]|>` y las procesa un Ejecutor
+(lune_core/acciones.py) por terminal, con su presupuesto y su auditoría. El
+formato antiguo (`ABRIR_URL:`/`TOOL:`) ya no se ejecuta.
+  · Origen del turno: 'usuario' solo si el terminal es de la persona (app, web,
+    overlay), no trae imágenes, no se le añadieron notas (RAG) y no se declaró
+    `origen` distinto. El bot de Telegram (kind «bot»), un kind desconocido o
+    texto de terceros → 'no_confiable': solo herramientas de LECTURA.
+  · Aprobaciones: tool:approval:request va SOLO al terminal que preguntó, y
+    solo si anunció que emite tool:approval:response. Solo cuenta su respuesta.
+    Sin canal de aprobación, lo que la necesita se rechaza con un mensaje claro
+    y al modelo ni se le ofrece (reglas del prompt sin esas herramientas).
+    Sin respuesta en 60 s, rechazada (tool:approval:close). La petición, el
+    cierre y el tool:result llevan como parent_id el input:text de SU turno
+    (no el último), para que el terminal los enrute aunque ya escribiera otro.
+  · Taint (revisión S1): el AIManager es UNO para todos los terminales, así que
+    lo que entra por un turno no confiable (el bot de Telegram, notas, imágenes)
+    queda marcado en el historial y contamina los turnos de los demás mientras
+    siga en la ventana: ahí todo lo que no sea de LECTURA pide permiso, y en un
+    terminal que no puede aprobar se rechaza (y el prompt solo ofrece lectura).
+  · Los resultados inmediatos van en output:chat:done.tools; los que llegan
+    tras una aprobación, en tool:result. Los fallos y rechazos inmediatos se
+    cuentan también en el texto del done (los terminales descartan `tools`).
+  · Un session_id distinto del anterior del mismo terminal = conversación nueva
+    (presupuesto repuesto).
 
 Reutiliza el AIManager de la app (mismos proveedores y ajustes), la memoria del
 host (para el contexto y para persistir) y, opcionalmente, el ToolManager y el
@@ -19,58 +46,132 @@ servicio de notas (RAG). Es el equivalente de ServicioMemoria para el chat.
 from __future__ import annotations
 
 import asyncio
+import inspect
+import threading
 import time
-from typing import Optional
+from collections import OrderedDict
+from dataclasses import dataclass, field
+from typing import Any, Callable, Dict, List, Optional
 
 from .hub import Hub, Peer
-from .protocolo import Evento, Tipo
+from .protocolo import Evento, Tipo, nuevo_evento
 from . import marcadores
-from .prompt import GRAMATICA_EMOCIONES
+from .acciones import Ejecutor, ResultadoAccion, RECHAZADA, limpiar_texto
+from .catalogo_herramientas import ORIGEN_NO_CONFIABLE, ORIGEN_USUARIO
+from .herramientas import Riesgo, Sesion, registro_por_defecto
+from .prompt import GRAMATICA_EMOCIONES, bloque_contexto
+from .reglas_prompt import reglas_herramientas
 
-# Mismas reglas que inyecta la app (ai_worker.py), aquí sin depender de Qt.
-REGLAS_HERRAMIENTAS = (
-    "\n\n=========================================\n"
-    "REGLAS DE HERRAMIENTAS DE ESCRITORIO:\n"
-    "Puedes ejecutar acciones en el PC del usuario si lo consideras necesario. "
-    "Para hacerlo, DEBES incluir uno de los siguientes comandos exactamente al FINAL de tu respuesta:\n\n"
-    "1. Para buscar en Google o Youtube:\n   ABRIR_BUSQUEDA:[términos]\n"
-    "2. Para abrir una URL:\n   ABRIR_URL:[url completa con https://]\n"
-    "3. Para lanzar una app:\n   TOOL:lanzar_app:[nombre_del_programa]\n"
-    "4. Para verificar info del PC:\n   TOOL:sistema_info:\n"
-)
+# Kinds de terminal que escribe la propia persona. El resto (bot de Telegram,
+# desconocidos) es texto de terceros.
+KINDS_USUARIO = frozenset({"app", "web", "overlay"})
+# Ejecutores por terminal que se recuerdan (los peers cambian de id al reconectar).
+MAX_TERMINALES = 16
+
+
+def _kwargs_chat(chat, **opciones) -> dict:
+    """Las `opciones` (origen, efimero) que acepta `chat`; un adaptador viejo no las recibe."""
+    try:
+        params = inspect.signature(chat).parameters
+    except (TypeError, ValueError):
+        return {}
+    if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()):
+        return dict(opciones)
+    return {k: v for k, v in opciones.items() if k in params}
+
+
+@dataclass
+class _Terminal:
+    """Un terminal con su Ejecutor, su conversación y sus aprobaciones abiertas."""
+    peer: Peer
+    loop: Optional[asyncio.AbstractEventLoop] = None
+    ejecutor: Optional[Ejecutor] = None
+    session_id: str = ""
+    ev_id: Optional[str] = None                       # último input:text (parent_id)
+    pendientes: Dict[str, Callable[[bool], None]] = field(default_factory=dict)
+    turno_de: Dict[str, str] = field(default_factory=dict)   # id de aprobación → input:text
+    # ids rechazados por no poder preguntar → ¿era por contexto contaminado?
+    sin_canal: Dict[str, bool] = field(default_factory=dict)
+    lock: threading.Lock = field(default_factory=threading.Lock)
 
 
 class ServicioChat:
     def __init__(self, hub: Hub, ai_manager, memoria=None, tools=None, notas=None,
-                 provider_por_defecto: str = "ollama", persona=None):
+                 provider_por_defecto: str = "ollama", persona=None, *, modo: str = "normal"):
         self.hub = hub
         self.ai = ai_manager
         self.memoria = memoria
         self.tools = tools
         self.notas = notas
         self.provider_por_defecto = provider_por_defecto
+        self.modo = modo                 # modo del catálogo de herramientas en el host
         self._persona = persona          # str o callable → persona base del system prompt
+        self._terminales: "OrderedDict[str, _Terminal]" = OrderedDict()
+        self._local = threading.local()
         hub.registrar(Tipo.INPUT_TEXT, self._on_input)
+        hub.registrar(Tipo.TOOL_APPROVAL_RESPONSE, self._on_aprobacion)
 
     # ── System prompt (persona + memoria + herramientas + emociones + RAG) ──────
-    def _system(self, texto_usuario: str) -> str:
+    def _fragmentos_notas(self, texto_usuario: str) -> list:
+        if self.notas is None or not getattr(self.notas, "activo", False):
+            return []
+        try:
+            return list(self.notas.contexto_para(texto_usuario) or [])
+        except Exception:
+            return []
+
+    @staticmethod
+    def _sin_aprobacion(ejecutor: Ejecutor) -> set:
+        """Herramientas con handler que NO piden aprobación (para quien no puede darla)."""
+        registro = ejecutor.registro
+        fuera = set()
+        for nombre in ejecutor.handlers:
+            d = registro.get(nombre) if registro is not None else None
+            if d is not None and not d.requiere_aprobacion and d.riesgo != Riesgo.DESTRUCTIVO:
+                fuera.add(nombre)
+        return fuera
+
+    def _contaminado(self, provider: str) -> bool:
+        fn = getattr(self.ai, "contexto_contaminado", None)
+        try:
+            return bool(fn(provider)) if callable(fn) else False
+        except Exception:
+            return True
+
+    def _system(self, texto_usuario: str, *, origen: str = ORIGEN_USUARIO,
+                ejecutor: Optional[Ejecutor] = None, ctx: Optional[dict] = None,
+                fragmentos: Optional[list] = None, puede_aprobar: bool = True,
+                contaminado: bool = False) -> str:
+        """
+        puede_aprobar  False: el terminal no contesta aprobaciones → no se le
+                       ofrecen herramientas que las piden (se rechazarían).
+        contaminado    el historial lleva texto de terceros: sin poder aprobar,
+                       solo lectura (lo demás pediría permiso).
+        """
         base = self._persona() if callable(self._persona) else (self._persona or "")
         partes = [base] if base else []
         try:
-            ctx = self.memoria.obtener_contexto_para_prompt() if self.memoria else ""
+            ctx_mem = self.memoria.obtener_contexto_para_prompt() if self.memoria else ""
         except Exception:
-            ctx = ""
-        if ctx:
-            partes.append("CONTEXTO DE MEMORIA DEL USUARIO:\n" + ctx)
-        if self.tools is not None:
-            partes.append(REGLAS_HERRAMIENTAS)
-        partes.append(GRAMATICA_EMOCIONES)
-        if self.notas is not None and getattr(self.notas, "activo", False):
+            ctx_mem = ""
+        if ctx_mem:
+            partes.append("CONTEXTO DE MEMORIA DEL USUARIO:\n" + ctx_mem)
+        if ejecutor is not None:
             try:
-                frags = self.notas.contexto_para(texto_usuario)
-                if frags:
-                    from .prompt import bloque_contexto
-                    partes.append(bloque_contexto(frags))
+                disponibles = (set(ejecutor.handlers) if puede_aprobar
+                               else self._sin_aprobacion(ejecutor))
+                solo_lectura = origen != ORIGEN_USUARIO or (contaminado and not puede_aprobar)
+                reglas = reglas_herramientas(ejecutor.registro, self.modo, disponibles,
+                                             solo_lectura=solo_lectura, ctx=ctx)
+            except Exception:
+                reglas = ""
+            if reglas:
+                partes.append(reglas)
+        partes.append(GRAMATICA_EMOCIONES)
+        frags = self._fragmentos_notas(texto_usuario) if fragmentos is None else fragmentos
+        if frags:
+            try:
+                partes.append(bloque_contexto(frags))   # envuelto y neutralizado
             except Exception:
                 pass
         return "\n\n".join(p for p in partes if p)
@@ -85,6 +186,165 @@ class ServicioChat:
             pass
         return self.provider_por_defecto
 
+    def _ctx(self, provider: str, turno: Optional[str] = None) -> dict:
+        """ctx del Ejecutor: modo, proveedor y su URL (para saber si es la nube), el
+        AIManager (el Ejecutor mira al ejecutar si el contexto está contaminado) y
+        el id del input:text del turno (parent_id de sus aprobaciones)."""
+        url = ""
+        try:
+            p = (getattr(self.ai, "providers", None) or {}).get(provider)
+            url = str(getattr(p, "base_url", "") or getattr(p, "url", "") or "")
+        except Exception:
+            pass
+        ctx = {"modo": self.modo, "proveedor": provider or "", "url": url, "ai": self.ai}
+        if turno:
+            ctx["turno"] = turno
+        return ctx
+
+    @staticmethod
+    def origen_de(ev: Evento, peer: Peer, *, con_notas: bool = False, imagenes=None) -> str:
+        """'usuario' o 'no_confiable' para este turno (ver la cabecera)."""
+        if str(getattr(peer, "kind", "") or "").strip().lower() not in KINDS_USUARIO:
+            return ORIGEN_NO_CONFIABLE
+        if str(ev.data.get("origen") or ORIGEN_USUARIO).strip().lower() != ORIGEN_USUARIO:
+            return ORIGEN_NO_CONFIABLE
+        if con_notas or imagenes:
+            return ORIGEN_NO_CONFIABLE
+        return ORIGEN_USUARIO
+
+    # ── Un Ejecutor por terminal ────────────────────────────────────────────────
+    def _terminal(self, peer: Peer, loop) -> Optional[_Terminal]:
+        if self.tools is None:
+            return None
+        t = self._terminales.get(peer.id)
+        if t is None:
+            t = _Terminal(peer=peer, loop=loop)
+            try:
+                t.ejecutor = self._crear_ejecutor(t)
+            except Exception:
+                return None
+            self._terminales[peer.id] = t
+            while len(self._terminales) > MAX_TERMINALES:
+                _, viejo = self._terminales.popitem(last=False)
+                if viejo.ejecutor is not None:
+                    viejo.ejecutor.nueva_conversacion()
+        else:
+            self._terminales.move_to_end(peer.id)
+        t.peer, t.loop = peer, loop
+        return t
+
+    def _crear_ejecutor(self, t: _Terminal) -> Ejecutor:
+        kw = dict(pedir_aprobacion=lambda p, r: self._pedir(t, p, r),
+                  despachar=self._despachar,
+                  cerrar_aprobacion=lambda pid: self._cerrar(t, pid))
+        crear = getattr(self.tools, "crear_ejecutor", None)
+        if callable(crear):
+            return crear(**kw)
+        registro = registro_por_defecto()
+        handlers = getattr(self.tools, "handlers", None) or {}
+        return Ejecutor(registro, Sesion(registro), handlers=dict(handlers), **kw)
+
+    def _despachar(self, fn: Callable[[], None]) -> None:
+        """
+        Lo que pasa tras una aprobación (handler incluido) va fuera del bucle del
+        hub, en un hilo propio. Si ya estamos en el hilo que ejecuta las llamadas
+        de este turno (p. ej. un rechazo inmediato por no tener a quién
+        preguntar), se hace en línea: así ese resultado entra en el done.
+        """
+        if getattr(self._local, "ejecutando", False):
+            fn()
+            return
+        threading.Thread(target=fn, name="lune-accion", daemon=True).start()
+
+    def _ejecutar_turno(self, ejecutor: Ejecutor, llamadas, origen: str, ctx: dict,
+                        al_resultado) -> None:
+        self._local.ejecutando = True
+        try:
+            ejecutor.ejecutar_llamadas(llamadas, origen, ctx, al_resultado)
+        finally:
+            self._local.ejecutando = False
+
+    @staticmethod
+    def puede_aprobar(peer: Peer) -> bool:
+        """¿Anunció este terminal que sabe contestar aprobaciones?"""
+        return Tipo.TOOL_APPROVAL_RESPONSE.value in (getattr(peer, "events", None) or [])
+
+    def _enviar(self, t: _Terminal, tipo: Tipo, data: dict, parent_id: Optional[str] = None) -> None:
+        """Envía al terminal desde cualquier hilo (el bucle es el del hub). parent_id:
+        el input:text del turno al que pertenece (por defecto, el último)."""
+        loop = t.loop
+        if loop is None or loop.is_closed():
+            return
+        ev = nuevo_evento(tipo, data, self.hub.fuente, parent_id=parent_id or t.ev_id)
+        try:
+            asyncio.run_coroutine_threadsafe(self.hub.enviar_a(t.peer, ev), loop)
+        except RuntimeError:
+            pass                                         # el bucle ya se cerró
+
+    def _pedir(self, t: _Terminal, pendiente: dict, responder: Callable[[bool], None]) -> None:
+        pendiente = dict(pendiente)
+        pid = str(pendiente.get("id") or "")
+        turno = pendiente.pop("turno", None) or t.ev_id
+        if not self.puede_aprobar(t.peer) or t.peer.id not in self.hub.peers:
+            with t.lock:
+                t.sin_canal[pid] = bool(pendiente.get("contaminado"))
+            raise RuntimeError("este terminal no puede pedir permiso")
+        with t.lock:
+            t.pendientes[pid] = responder
+            if turno:
+                t.turno_de[pid] = turno
+        why = pendiente.get("resumen", "")
+        if pendiente.get("contaminado"):
+            why = f"{why}. {pendiente.get('motivo', '')}".strip(". ")
+        datos = {**pendiente, "tool": pendiente.get("herramienta", ""),
+                 "why": why, "risk": pendiente.get("riesgo", "")}
+        self._enviar(t, Tipo.TOOL_APPROVAL_REQUEST, datos, parent_id=turno)
+
+    def _cerrar(self, t: _Terminal, pid: str) -> None:
+        with t.lock:
+            t.pendientes.pop(pid, None)
+            turno = t.turno_de.pop(pid, None)
+        self._enviar(t, Tipo.TOOL_APPROVAL_CLOSE, {"id": pid, "motivo": "sin respuesta o cancelada"},
+                     parent_id=turno)
+
+    async def _on_aprobacion(self, ev: Evento, peer: Peer):
+        """Respuesta humana del terminal al que se preguntó (las de otros se ignoran)."""
+        pid = str(ev.data.get("id") or "")
+        t = self._terminales.get(peer.id)
+        if t is None or not pid:
+            return
+        with t.lock:
+            responder = t.pendientes.pop(pid, None)
+            t.turno_de.pop(pid, None)
+        if responder is not None:
+            responder(ev.data.get("approved") is True)
+
+    def _resultado(self, t: _Terminal, res: ResultadoAccion) -> dict:
+        d = res.a_dict()
+        with t.lock:
+            sin_canal = res.pendiente_id in t.sin_canal
+            contaminado = t.sin_canal.pop(res.pendiente_id, False)
+        if res.estado == RECHAZADA and sin_canal:
+            porque = (" porque la conversación contiene contenido externo (p. ej. mensajes de "
+                      "Telegram)," if contaminado else "")
+            d["mensaje"] = (f"«{res.herramienta}» necesita tu permiso{porque} y este terminal "
+                            "no puede pedírtelo: pídelo desde la app de Lune en el equipo host.")
+        return d
+
+    def _sin_claves(self, error) -> str:
+        """Un error sin claves (puede traer «Bearer <clave>»)."""
+        redactar = getattr(self.ai, "redactar", None)
+        try:
+            if callable(redactar):
+                return str(redactar(error))
+        except Exception:
+            pass
+        try:
+            from servicios.ai_manager import redactar_secretos
+            return redactar_secretos(error)
+        except Exception:
+            return "error interno"
+
     # ── Manejo del chat ─────────────────────────────────────────────────────────
     async def _on_input(self, ev: Evento, peer: Peer):
         text = str(ev.data.get("text") or "")
@@ -93,8 +353,25 @@ class ServicioChat:
             return
         imagenes = ev.data.get("images") or []
         provider = self._provider(ev.data.get("provider"))
-        system = self._system(text)
         loop = asyncio.get_running_loop()
+
+        term = self._terminal(peer, loop)
+        ejecutor = term.ejecutor if term is not None else None
+        turno = ev.meta.id
+        if term is not None:
+            term.ev_id = turno
+            sesion = str(ev.data.get("session_id") or "")
+            if sesion and term.session_id and sesion != term.session_id:
+                ejecutor.nueva_conversacion()
+            if sesion:
+                term.session_id = sesion
+        frags = self._fragmentos_notas(text)
+        origen = self.origen_de(ev, peer, con_notas=bool(frags), imagenes=imagenes)
+        efimero = ev.data.get("efimero") is True        # p. ej. comentario de pantalla
+        ctx = self._ctx(provider, turno)
+        system = self._system(text, origen=origen, ejecutor=ejecutor, ctx=ctx, fragmentos=frags,
+                              puede_aprobar=self.puede_aprobar(peer),
+                              contaminado=self._contaminado(provider))
 
         self.hub.estado_extra["busy"] = True
         await self.hub.publicar(Tipo.HOST_STATUS, self.hub.estado())
@@ -112,41 +389,70 @@ class ServicioChat:
                 asyncio.run_coroutine_threadsafe(
                     self.hub.responder(peer, Tipo.OUTPUT_DELTA, {"text": chunk}, ev), loop)
 
+        # El origen va al historial (taint); un turno efímero no se guarda.
+        extra = _kwargs_chat(self.ai.chat, origen=origen, efimero=efimero)
         try:
             texto = await self.ai.chat(text, system, provider=provider,
-                                       on_token=on_token, imagenes=imagenes)
+                                       on_token=on_token, imagenes=imagenes, **extra)
         except Exception as e:
-            texto = f"Error del host al generar la respuesta: {e}"
+            texto = f"Error del host al generar la respuesta: {self._sin_claves(e)}"
+        texto = texto or ""
 
         if pend["buf"]:      # lo que quedó sin enviar
             await self.hub.responder(peer, Tipo.OUTPUT_DELTA, {"text": pend["buf"]}, ev)
 
+        # Herramientas: el Ejecutor saca las <|CALL|> ANTES de separar las
+        # emociones (el parser de marcadores también se come las CALL).
+        llamadas = []
+        if ejecutor is not None:
+            try:
+                sin_calls, llamadas = ejecutor.procesar(texto, origen, ctx)
+            except Exception:
+                sin_calls, llamadas = limpiar_texto(texto), []
+        else:
+            sin_calls = limpiar_texto(texto)
+
         # Emociones: separa marcadores y emite un ACT por cada uno.
-        hablable, control = marcadores.separar(texto)
+        hablable, control = marcadores.separar(sin_calls)
         acts = [v for c, v in control if c == "act"]
         for a in acts:
             await self.hub.responder(peer, Tipo.OUTPUT_ACT, a, ev)
 
-        # Herramientas de escritorio, ejecutadas EN EL HOST. Se parte del texto
-        # YA sin marcadores de emoción (hablable), para no reintroducirlos.
-        texto_final = hablable
-        resultados_tools = []
-        if self.tools is not None:
+        # Acciones EN EL HOST, fuera del bucle del hub. Lo que se resuelve ya va
+        # en el done; lo que espera aprobación llega luego como tool:result.
+        resultados_tools: List[dict] = []
+        if ejecutor is not None and llamadas:
+            caja = {"done": False, "lista": []}
+            cerrojo = threading.Lock()
+
+            def al_resultado(res: ResultadoAccion, t=term):
+                d = self._resultado(t, res)
+                with cerrojo:
+                    if not caja["done"]:
+                        caja["lista"].append(d)
+                        return
+                self._enviar(t, Tipo.TOOL_RESULT, d, parent_id=turno)
+
             try:
-                limpio, comandos = self.tools.parsear_respuesta_ia(hablable)
-                texto_final = limpio if limpio is not None else hablable
-                for cmd in comandos:
-                    herr = cmd.pop("herramienta", None)
-                    if herr:
-                        r = self.tools.ejecutar(herr, **cmd)
-                        resultados_tools.append({"ok": bool(r.ok), "mensaje": r.mensaje})
+                await loop.run_in_executor(
+                    None, lambda: self._ejecutar_turno(ejecutor, llamadas, origen, ctx, al_resultado))
             except Exception:
                 pass
+            with cerrojo:
+                caja["done"] = True
+                resultados_tools = list(caja["lista"])
 
-        # Persistir en la memoria del host (sesión, resumen…).
+        # Lo que no se hizo se cuenta en el texto: los terminales no enseñan `tools`
+        # y el modelo pudo decir «te la abro».
+        avisos = [str(d.get("mensaje") or "") for d in resultados_tools if not d.get("ok")]
+        avisos = [a for a in avisos if a]
+        if avisos:
+            hablable = (hablable.rstrip() + "\n\n" if hablable.strip() else "") + "\n".join(avisos)
+
+        # Persistir en la memoria del host (sesión, resumen…). Un turno efímero no.
         try:
-            if self.memoria:
-                self.memoria.procesar_respuesta_lune(texto)
+            if self.memoria and not efimero:
+                self.memoria.procesar_respuesta_lune(sin_calls)
         except Exception:
             pass
 
@@ -158,5 +464,5 @@ class ServicioChat:
         self.hub.estado_extra["busy"] = False
         await self.hub.publicar(Tipo.HOST_STATUS, self.hub.estado())
         await self.hub.responder(peer, Tipo.OUTPUT_DONE,
-                                 {"text": texto_final, "usage": usage,
+                                 {"text": hablable, "usage": usage,
                                   "acts": acts, "tools": resultados_tools}, ev)

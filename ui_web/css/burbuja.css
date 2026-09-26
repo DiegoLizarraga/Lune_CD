@@ -1,0 +1,68 @@
+/* ============================================================
+   ui_web/css/burbuja.css — añadidos a la burbuja de la mascota
+   (companion.html y companion_vrm.html) para lune_burbuja.js:
+   texto en streaming con alto máximo y el final a la vista,
+   cursor de máquina de escribir y burbuja espejada (luneLado).
+
+   NO cambia la burbuja de siempre: el ancho y el tamaño los pone
+   cada página (230 px en la animada, 92 % en la VRM) y comentar()
+   se sigue viendo entera y desde el principio. El alto máximo solo
+   se aplica en modo streaming (clase .stream, que ponen
+   burbujaTexto y comentarTipeado).
+
+   Solo usa los canales RGB de tokens/colors.css, siempre con
+   respaldo:  rgb(var(--cyan-500-rgb, 0 229 255) / .6)
+   Lleva `body` delante para ganar a los <style> de las páginas
+   sin importar el orden en que se enlace; por eso aquí no se
+   declara nada que las páginas ya definan (max-width, padding…).
+   ============================================================ */
+
+/* Una URL o una palabra larguísima no se sale de la burbuja */
+body #bubble {
+  overflow-wrap: anywhere;
+}
+
+/* Streaming (chat en la burbuja, máquina de escribir): alto máximo
+   y se ve el final; lune_burbuja.js baja el scroll con cada trozo. */
+body #bubble.stream #btxt {
+  display: block;
+  max-height: var(--burbuja-alto-max, 38vh);
+  overflow: hidden;
+  white-space: pre-wrap;
+}
+
+/* Mientras escribe: brillo cian y cursor parpadeando */
+body #bubble.tipeando {
+  box-shadow: 0 6px 22px rgb(0 0 0 / .55),
+              0 0 12px rgb(var(--cyan-500-rgb, 0 229 255) / .22);
+}
+body #bubble.tipeando #btxt::after {
+  content: "▍";
+  margin-left: 1px;
+  color: rgb(var(--cyan-500-rgb, 0 229 255) / .85);
+  animation: lune-burbuja-cursor 1s steps(1, end) infinite;
+}
+@keyframes lune-burbuja-cursor {
+  0%, 55% { opacity: 1; }
+  56%, 100% { opacity: 0; }
+}
+
+/* luneLado('izq'): la mascota está pegada al borde izquierdo de la
+   pantalla → la burbuja se va hacia dentro (derecha), como siempre. */
+body #bubble[data-lado="izq"] {
+  align-self: flex-end;
+}
+
+/* luneLado('der'): pegada al borde derecho → burbuja espejada: hacia
+   dentro (izquierda) y con la muesca en la esquina contraria. */
+body #bubble[data-lado="der"] {
+  align-self: flex-start;
+  clip-path: var(--clip-tl, polygon(12px 0, 100% 0, 100% 100%, 0 100%, 0 12px));
+}
+body #bubble[data-lado="der"] .who {
+  text-align: right;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body #bubble.tipeando #btxt::after { animation: none; }
+}

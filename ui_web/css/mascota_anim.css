@@ -1,0 +1,143 @@
+/* ============================================================
+   ui_web/css/mascota_anim.css — mascota ANIMADA (companion.html)
+   Estilos de los módulos ui_web/anim/lune_anim_video.js (doble
+   búfer de clips) y ui_web/anim/lune_anim_fisica.js (arrastre,
+   toque y sueño).
+
+   · Dos <video class="lune-vid"> (#va, #vb) apilados en #stage;
+     el módulo pone .lune-doble en #stage. El visible lleva .activo; el que se va lleva .saliendo. El
+     que entra sube de opacidad ENCIMA del saliente, que sigue
+     opaco la primera mitad y se apaga en la segunda: sin bajón
+     de brillo con clips opacos y sin fantasma si algún día hay
+     clips con alfa. La duración la pone el JS en --lune-fundido
+     (250 ms; 500 hacia composed; 450 hacia sad/bored).
+   · .lune-sueno-sustituto: dormida sin clip propio (bored a 0.6x
+     más oscuro).
+   · #stage.lune-dormida o #stage[data-sueno]: zzz flotando.
+
+   El transform, filter y opacity de #stage son del registro de
+   módulos (lune_anim_modulos.js): aquí NO se declaran para
+   #stage, solo para sus hijos.
+
+   Colores: solo canales RGB de tokens/colors.css con respaldo,
+     rgb(var(--cyan-500-rgb, 0 229 255) / .6)
+   `body` delante para ganar al <style> de la página (que pone
+   `#stage video { height:97%; width:100% … }`) sin depender del
+   orden de enlace.
+   ============================================================ */
+
+/* ── Doble búfer ─────────────────────────────────────────────── */
+body #stage .lune-vid {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 97%;
+  object-fit: contain;
+  object-position: bottom center;
+  z-index: 1;
+  pointer-events: none;
+}
+
+/* Ocultos por defecto SOLO cuando el módulo está vivo (pone
+   .lune-doble en el stage): si el JS no cargara, el clip se sigue
+   viendo en vez de quedarse la mascota en blanco. */
+body #stage.lune-doble .lune-vid {
+  opacity: 0;
+  transition:
+    opacity var(--lune-fundido, 250ms) ease-out,
+    filter .6s ease;
+}
+
+/* El que entra: encima y hacia opacidad 1 */
+body #stage.lune-doble .lune-vid.activo {
+  opacity: 1;
+  z-index: 2;
+}
+
+/* El que sale: debajo, opaco la primera mitad y fuera en la segunda */
+body #stage.lune-doble .lune-vid.saliendo {
+  opacity: 0;
+  z-index: 1;
+  transition:
+    opacity calc(var(--lune-fundido, 250ms) / 2) ease-in calc(var(--lune-fundido, 250ms) / 2),
+    filter .6s ease;
+}
+
+/* Dormida sin lune-sleeping.webm: bored lento y en penumbra */
+body #stage .lune-vid.lune-sueno-sustituto {
+  filter: brightness(.75) saturate(.85);
+}
+
+/* Las scanlines del stage (#stage::after) siguen por encima de los
+   vídeos, que ahora tienen z-index propio. */
+body #stage::after {
+  z-index: 4;
+}
+
+/* ── Dormida ─────────────────────────────────────────────────── */
+body #stage.lune-dormida {
+  box-shadow: inset 0 0 38px rgb(var(--ink-950-rgb, 5 7 15) / .6);
+}
+
+body #stage .lune-zzz {
+  display: none;
+  position: absolute;
+  top: 12%;
+  right: 20%;
+  width: 40px;
+  height: 56px;
+  z-index: 3;
+  pointer-events: none;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-weight: 700;
+  color: rgb(var(--cyan-300-rgb, 125 245 255) / .92);
+  text-shadow:
+    0 0 6px rgb(var(--cyan-500-rgb, 0 229 255) / .55),
+    0 1px 2px rgb(var(--ink-950-rgb, 5 7 15) / .8);
+}
+
+body #stage.lune-dormida .lune-zzz,
+body #stage[data-sueno] .lune-zzz {
+  display: block;
+}
+
+body #stage .lune-zzz span {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  font-size: 12px;
+  opacity: 0;
+  animation: lune-zzz 3s ease-in-out infinite;
+}
+
+body #stage .lune-zzz span:nth-child(2) {
+  font-size: 15px;
+  animation-delay: 1s;
+}
+
+body #stage .lune-zzz span:nth-child(3) {
+  font-size: 19px;
+  animation-delay: 2s;
+}
+
+@keyframes lune-zzz {
+  0%   { opacity: 0;   transform: translate(0, 4px) scale(.7) rotate(-8deg); }
+  20%  { opacity: 1; }
+  75%  { opacity: .85; }
+  100% { opacity: 0;   transform: translate(18px, -40px) scale(1.1) rotate(10deg); }
+}
+
+/* ── Menos movimiento ────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  body #stage.lune-doble .lune-vid,
+  body #stage.lune-doble .lune-vid.saliendo {
+    transition: none;
+  }
+  body #stage .lune-zzz span {
+    animation: none;
+    opacity: .85;
+  }
+  body #stage .lune-zzz span:nth-child(2) { transform: translate(8px, -16px); }
+  body #stage .lune-zzz span:nth-child(3) { transform: translate(16px, -34px); }
+}

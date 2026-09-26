@@ -1,5 +1,5 @@
 {
-  "_nota": "Plantilla de configuración. Al arrancar, datos.py copia este archivo a datos.json si no existe. NO pongas claves reales aquí: datos.json está en .gitignore, esta plantilla no.",
+  "_nota": "Plantilla de configuración. Al arrancar, datos.py copia este archivo a datos.json si no existe. NO pongas claves reales aquí: datos.json está en .gitignore, esta plantilla no. Personajes: 'voz' = {motor: 'auto' | 'edge' | 'gtts' | 'kokoro', id: voz del motor (en edge el ShortName, p. ej. es-MX-DaliaNeural; en kokoro ef_dora…), rate: '+0%' (de -50% a +50%), pitch: '+0Hz' (de -50Hz a +50Hz)}; manda sobre la voz de config.json y la usa también el bot de Telegram (ver nucleo/personajes.py). 'frases_mascota' = {evento: [frases]} con eventos arrastre, soltar, caricia, dormir, despertar, mareo, aparecer o pudor; vacío = las frases de serie.",
   "apis": {
     "telegram_token": "",
     "telegram_admin_id": "",
@@ -12,7 +12,13 @@
     "ollama_keep_alive": "30m",
     "ollama_num_ctx": 8192,
     "ollama_timeout": 300,
-    "temperatura": 0.7
+    "temperatura": 0.7,
+    "_compat_nota": "Proveedor 'compat': cualquier API compatible con OpenAI (LM Studio http://localhost:1234/v1, Groq https://api.groq.com/openai/v1, OpenAI, Together, Mistral…). Se activa al poner compat_url. compat_key es opcional (LM Studio no la pide); compat_model vacío = el primero que devuelva /models.",
+    "compat_url": "",
+    "compat_key": "",
+    "compat_model": "",
+    "_preset_nota": "preset_muestreo: 'preciso' (temperatura 0.2, top_p 0.9, top_k 40, min_p 0.05, repeat_penalty 1.1) · 'equilibrado' (0.7) · 'creativo' (1.0) · 'personalizado'. Lo que fijes a mano (temperatura, top_p, top_k, min_p, repeat_penalty, num_predict, seed) manda sobre el preset; lo que no, lo decide el modelo.",
+    "preset_muestreo": "equilibrado"
   },
   "bot": {
     "_proveedor_nota": "A quien pregunta el bot de Telegram: 'ollama' (modelo local, en esta maquina o en otra de la red segun modelos.ollama_url) u 'openrouter' (nube).",
@@ -27,7 +33,14 @@
       "descripcion": "Asistente personal y secretaria privada.",
       "systemPrompt": "Eres Lune, una asistente virtual inteligente y amigable. Eres experta en escribir, investigar y automatizar tareas. Responde de manera clara, concisa, útil y en español.",
       "fraseInicial": "Buenos días. ¿En qué te puedo ayudar hoy? 👀",
-      "avatar_pack": "default"
+      "avatar_pack": "default",
+      "voz": {
+        "motor": "edge",
+        "id": "es-MX-DaliaNeural",
+        "rate": "+0%",
+        "pitch": "+0Hz"
+      },
+      "frases_mascota": {}
     }
   ],
   "hub": {
@@ -36,5 +49,18 @@
     "puerto": 7777,
     "token": "",
     "url_host": ""
+  },
+  "minecraft": {
+    "_nota": "Bot de Minecraft de Lune (minecraft-bot/). host/port del servidor; version vacía = autodetectar; usuario = nick del bot; dueno = tu nick. solo_dueno filtra por nick y en servidores con online-mode=false el nick se puede suplantar: no es una garantía de seguridad. pensar_cada_s comparte el modelo con el chat, no lo bajes de 30.",
+    "host": "localhost",
+    "port": 25565,
+    "version": "",
+    "usuario": "",
+    "dueno": "",
+    "pensar_cada_s": 45,
+    "defender": true,
+    "solo_dueno": true,
+    "estilo_frases": "personaje",
+    "visor": false
   }
 }

@@ -31,6 +31,11 @@
   #login input { padding:11px 14px; width:min(340px,90vw); background:var(--surface2); color:var(--text); }
   #login .err { color:var(--err); font:13px monospace; min-height:18px; }
   .oculto { display:none !important; }
+  .aprob { align-self:stretch; max-width:none; background:var(--surface2); border:1px solid var(--accent); }
+  .aprob .aviso { color:var(--err); }
+  .aprob .botones { display:flex; gap:8px; margin-top:8px; }
+  .aprob button { padding:6px 14px; }
+  .aprob button.no { background:var(--surface); color:var(--text); border:1px solid var(--border); }
 </style>
 </head>
 <body>
@@ -79,7 +84,7 @@ function conectar(){
     let ev; try { ev = JSON.parse(m.data); } catch { return; }
     if (fase==="auth" && ev.meta?.parent_id===idA){
       if (ev.type==="error"){ mostrarLogin(ev.data?.message||"token inválido"); ws.close(); return; }
-      const e=sobre("announce",{name:miId,kind:"web",events:["input:text"]}); idAnn=e.meta.id; fase="ann"; ws.send(JSON.stringify(e)); return;
+      const e=sobre("announce",{name:miId,kind:"web",events:["input:text","tool:approval:response"]}); idAnn=e.meta.id; fase="ann"; ws.send(JSON.stringify(e)); return;
     }
     if (fase==="ann" && ev.meta?.parent_id===idAnn){ fase="ready"; entrarApp(); return; }
     manejar(ev);
@@ -102,11 +107,52 @@ function manejar(ev){
   }
   else if (ev.type==="output:chat:done"){
     // el done trae el texto limpio y definitivo (sin marcadores ni comandos)
-    if (_burbujaLune){ _burbujaLune.textContent = ev.data?.text || _burbujaLune.textContent; _burbujaLune = null; }
+    // (sin texto final, lo que llegó por streaming sin marcas <|…|>)
+    if (_burbujaLune){ _burbujaLune.textContent = ev.data?.text || _burbujaLune.textContent.replace(/<\|[\s\S]*?\|>/g, "").trim(); _burbujaLune = null; }
     else { burbuja("lune", ev.data?.text || ""); }
   }
+  else if (ev.type==="tool:approval:request"){ pedirPermiso(ev.data||{}); }
+  else if (ev.type==="tool:approval:close"){ cerrarPermiso(ev.data?.id, "Sin respuesta: no lo hice."); }
+  else if (ev.type==="tool:result"){ burbuja("sys", (ev.data?.ok ? "✓ " : "✕ ") + String(ev.data?.mensaje||"")); }
   else if (ev.type==="host:status"){ estado("host: " + (ev.data?.model||"?") + (ev.data?.busy?" · ocupado":""), true); }
   else if (ev.type==="memory:changed"){ /* alguien cambió la memoria */ }
+}
+
+// Aprobaciones del host: el modelo pidió algo que necesita tu permiso. Solo texto
+// (textContent): nada de lo que diga el modelo se interpreta como HTML.
+const permisos = new Map();
+function pedirPermiso(d){
+  const id = String(d.id||""); if (!id || permisos.has(id)) return;
+  const caja = document.createElement("div"); caja.className = "msg aprob";
+  const t = document.createElement("div");
+  t.textContent = "Lune pide permiso: " + String(d.why || d.resumen || d.herramienta || "una acción");
+  caja.appendChild(t);
+  const args = d.args && typeof d.args === "object" ? JSON.stringify(d.args) : "";
+  if (args && args !== "{}"){ const a = document.createElement("div"); a.className = "sys"; a.textContent = String(d.herramienta||"") + " " + args; caja.appendChild(a); }
+  if (d.contaminado || (d.origen && d.origen !== "usuario")){
+    const w = document.createElement("div"); w.className = "aviso";
+    w.textContent = "Ojo: la conversación contiene contenido externo. Acepta solo si lo pediste tú.";
+    caja.appendChild(w);
+  }
+  const bs = document.createElement("div"); bs.className = "botones";
+  const si = document.createElement("button"); si.textContent = "Sí, hazlo";
+  const no = document.createElement("button"); no.textContent = "No"; no.className = "no";
+  const responder = ok => {
+    if (!permisos.has(id)) return;
+    try { ws.send(JSON.stringify(sobre("tool:approval:response",{id, approved: ok === true}))); } catch {}
+    cerrarPermiso(id, ok ? "Aprobado." : "Rechazado.");
+  };
+  si.onclick = () => responder(true); no.onclick = () => responder(false);
+  bs.appendChild(no); bs.appendChild(si); caja.appendChild(bs);
+  permisos.set(id, caja);
+  $("#chat").appendChild(caja); $("#chat").scrollTop = $("#chat").scrollHeight;
+  no.focus();                                   // un Enter perdido no aprueba nada
+}
+function cerrarPermiso(id, texto){
+  const caja = permisos.get(String(id||"")); if (!caja) return;
+  permisos.delete(String(id));
+  caja.querySelectorAll("button").forEach(b => { b.disabled = true; });
+  const f = document.createElement("div"); f.className = "sys"; f.textContent = texto; caja.appendChild(f);
 }
 
 function pedir(type, data, ms=8000){

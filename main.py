@@ -3,9 +3,16 @@ main.py — Ventana principal de Lune CD y punto de entrada.
 El código está por capas: nucleo/ (datos, config, memoria…), servicios/
 (ai_manager, voice, tools…) y ui/ (paneles y widgets Qt). El núcleo de red
 está en lune_core/.
+
+Mascota (corte 3): herramientas del modelo `mascota_dormir`, `mascota_despertar`
+y `mascota_tamano` con la mascota flotante a la vista (solo se ofrecen con ella
+fuera: el modo del turno pasa a "mascota"/"vrm"), y el panel de modelos VRM de
+Configuración recarga la mascota 3D y le aplica la calibración.
 """
 import sys
 import os
+import threading
+from collections.abc import Mapping
 from datetime import datetime
 
 # ANTES de PyQt6: precarga el runtime de C++ de Windows. Si no, PyQt6 mete su
@@ -35,7 +42,7 @@ from nucleo.utils import Logger, log_info, log_error
 from nucleo import datos
 
 from nucleo.memoria import MemoriaManager
-from servicios.tools import ToolManager
+from servicios.tools import ToolManager, ctx_acciones
 from nucleo.respuestas import BancoRespuestas
 
 from ui.theme import (
@@ -48,17 +55,21 @@ from lune_core import marcadores, expresiones
 from servicios.notas_service import NotasService
 from servicios.red_service import RedService
 from ui.avatar_overlay import AvatarOverlay
+from ui.escritorio import ServiciosEscritorio
 from ui.lune_face import LuneFaceWidget, detect_emotion
 from ui.icons import icon, icon_pixmap
 from ui.effects import apply_glow, clear_glow
 from servicios.voice import VoiceEngine, VozStreaming
 from servicios.telegram_worker import TelegramBotWorker
 from ui.chat_widgets import ProviderTab, MessageBubble, TypingIndicator
-from servicios.ai_worker import AIWorker
+from servicios.ai_worker import AIWorker, ORIGEN_NO_CONFIABLE, ORIGEN_USUARIO, meta_proveedor
+from ui.acciones_qt import AccionesQt
+from lune_core.acciones import limpiar_texto
 from ui.settings_panel import SettingsPanel
 from ui.optimizer_panel import OptimizadorPanel
 from ui.personajes_panel import PersonajesPanel
 from nucleo import personajes
+from nucleo import sueno, vrm
 
 from ui.splash import PantallaInicio
 
@@ -105,8 +116,17 @@ class SondeoProveedoresWorker(QThread):
 class LuneCDWindow(QMainWindow):
     _hablando = pyqtSignal(bool)     # la voz suena (hilo de audio) → boca de la mascota 3D
     _acto_voz = pyqtSignal(str)      # empieza a sonar un tramo con esta emoción
+    _voz_error = pyqtSignal(str)     # la voz falló (hilo de audio) → aviso en la ventana
+    _en_ui_senal = pyqtSignal(object)  # fn() a correr en el hilo de Qt (herramientas de la mascota)
+    # (ResultadoAccion, {mascota, directo}): resultado de una acción con destino propio
+    # (chat de la mascota o pedida por la persona); llega de cualquier hilo.
+    _resultado_turno = pyqtSignal(object, object)
+    MODO_ACCIONES = "normal"         # modo del catálogo de herramientas en la nativa
+    ESPERA_UI_S = 5.0                # herramientas de la mascota: espera máxima al hilo de Qt
     def __init__(self):
         super().__init__()
+        self._hilo_qt = threading.get_ident()
+        self._en_ui_senal.connect(self._correr_en_ui)
         # Config visual/features (config.json) + APIs/personalidad (datos.json)
         self.config           = Config()
         self.ai_manager       = AIManager()
@@ -115,6 +135,15 @@ class LuneCDWindow(QMainWindow):
         self._hablando.connect(self._on_hablando)
         self.voice.al_hablar = self._hablando.emit
         self._acto_voz.connect(self._expresar)
+        # Y avisa si falla (voz inexistente, sin red…) en vez de quedarse muda.
+        self._voz_error.connect(self._on_voz_error)
+        self.voice.on_error = self._voz_error.emit
+        # Servicios de escritorio (ui/escritorio.py): estado compartido de la
+        # mascota, tabla de prioridades y registro de controladores. Recibe la
+        # mascota flotante en _crear_mascota y se cierra en closeEvent.
+        self.escritorio = ServiciosEscritorio(self.config, voice=self.voice,
+                                              ai=self.ai_manager, parent=self)
+        self.escritorio.iniciar()
         self._seguidor = None            # <|ACT|> vistos en el stream en curso
         self._expresado_en_stream = False
         self._timers_plan = []
@@ -129,6 +158,21 @@ class LuneCDWindow(QMainWindow):
         self._quit_real       = False
         self.memoria          = MemoriaManager()
         self.tools            = ToolManager()
+        # Acciones del modelo (<|CALL …|>): handlers de esta app (cambiar_voz…) en
+        # el ToolManager y un Ejecutor con aprobación visible (ui/acciones_qt.py):
+        # QMessageBox con la ventana delante, DialogoAprobacion junto a la mascota
+        # si no. El formato antiguo (ABRIR_URL:, TOOL:) ya no se ejecuta.
+        self._registrar_herramientas_mascota()
+        self.escritorio.conectar_herramientas(self.tools)
+        self.acciones = AccionesQt(self.tools, ventana=self, ventana_visible=self._ventana_a_la_vista,
+                                   ancla=self._ancla_mascota, parent=self)
+        self.acciones.resultado.connect(self._on_resultado_accion)
+        self._resultado_turno.connect(self._on_resultado_turno)
+        self._turno = {}                # origen, ctx, proveedor y si salió del chat de la mascota
+        # Generación del envío en curso: lo que emita un worker de un envío ya cortado
+        # (conversación nueva, otro personaje…) se ignora. Ver _cortar_respuesta.
+        self._gen = 0
+        self._esperando_corte = False   # quisiste enviar mientras el worker viejo cortaba
         # Red de Lune: host (sirvo a otros), terminal (memoria del host) o local
         self._hub_en_hilo     = None
         self._hub_cliente     = None
@@ -305,11 +349,14 @@ class LuneCDWindow(QMainWindow):
         self._scroll_bottom()
 
     def _nueva_conversacion(self):
+        self._cortar_respuesta()                 # si la IA estaba escribiendo, eso ya no cuenta
         self.chats.nueva_sesion(
             proveedor=self.current_provider,
             personaje=datos.get_bot().get("personaje_default", "Lune"),
         )
         self.ai_manager.clear_history()
+        # Presupuesto de acciones repuesto y fuera las preguntas pendientes.
+        self.acciones.nueva_conversacion()
         while self.messages_layout.count() > 1:
             item = self.messages_layout.takeAt(0)
             if item.widget():
@@ -324,13 +371,17 @@ class LuneCDWindow(QMainWindow):
         sesion = self.chats.cargar(sesion_id)
         if not sesion:
             QMessageBox.warning(self, "No pude abrirla", "Esa conversación ya no está."); return
+        self._cortar_respuesta()                 # la respuesta en curso era de la otra
+        self.acciones.nueva_conversacion()       # otra conversación: presupuesto propio
         self._pintar_sesion(sesion)
         self.stack.setCurrentIndex(0)
         self.historial_panel.refrescar()
 
-    def _guardar_turno(self, rol, contenido, adjuntos=None, uso=None):
+    def _guardar_turno(self, rol, contenido, adjuntos=None, uso=None, no_confiable=False):
         if self.config.feature("guardar_conversaciones", True):
-            self.chats.agregar(rol, contenido, adjuntos=adjuntos, uso=uso)
+            # La marca solo viaja si hace falta (dobles de test con la firma vieja).
+            extra = {"no_confiable": True} if no_confiable else {}
+            self.chats.agregar(rol, contenido, adjuntos=adjuntos, uso=uso, **extra)
 
     # ── Estado de los proveedores ─────────────────────────────────────────────
     def _sondear_proveedores(self):
@@ -348,6 +399,9 @@ class LuneCDWindow(QMainWindow):
             if pid == "ollama":
                 detalle = (f"Ollama responde en {datos.ollama_url()}" if disponible
                            else f"Sin respuesta de {datos.ollama_url()}")
+            elif pid == "compat":
+                detalle = (f"Responde en {datos.compat_url()}" if disponible
+                           else f"Sin respuesta de {datos.compat_url()}")
             else:
                 detalle = "API key configurada" if disponible else "Falta la API key"
             tab.set_estado(disponible, detalle)
@@ -397,12 +451,15 @@ class LuneCDWindow(QMainWindow):
         layout.addWidget(self._overline("// RED NEURONAL"))
 
         self.provider_tabs = {}
+        self._sidebar_layout = layout
         for pid, meta in PROVIDER_META.items():
             tab = ProviderTab(pid, meta)
             tab.clicked.connect(self._switch_provider)
             self.provider_tabs[pid] = tab
             layout.addWidget(tab)
         self.provider_tabs["openrouter"].set_active(True)
+        # Tercera pestaña: API compatible con OpenAI, solo si está configurada.
+        self._sincronizar_tab_compat()
 
         layout.addStretch()
 
@@ -549,7 +606,7 @@ class LuneCDWindow(QMainWindow):
         bar = QFrame(); bar.setFixedHeight(60)
         bar.setStyleSheet(f"QFrame{{background:{COLORS['surface']};border-bottom:2px solid {COLORS['border']};}}")
         layout = QHBoxLayout(bar); layout.setContentsMargins(20,0,20,0)
-        meta = PROVIDER_META[self.current_provider]
+        meta = meta_proveedor(self.current_provider)
         self.topbar_icon = QLabel(meta["icon"]); self.topbar_icon.setFixedSize(30,30)
         self.topbar_icon.setFont(QFont(FONT_DISPLAY,13,QFont.Weight.Bold)); self.topbar_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._style_topbar_icon(meta)
@@ -584,7 +641,11 @@ class LuneCDWindow(QMainWindow):
     def _build_keys_page(self):
         page = QFrame(); page.setStyleSheet("QFrame{background:transparent;}")
         layout = QVBoxLayout(page); layout.setContentsMargins(10,10,10,10)
-        self.settings_panel = SettingsPanel(self.config); self.settings_panel.saved.connect(self._on_keys_saved); layout.addWidget(self.settings_panel)
+        self.settings_panel = SettingsPanel(self.config, voice=self.voice); self.settings_panel.saved.connect(self._on_keys_saved); layout.addWidget(self.settings_panel)
+        # Panel de modelos VRM (importar, asignar, seguimiento) → la mascota 3D al día.
+        senal_vrm = getattr(self.settings_panel, "vrm_cambiado", None)
+        if senal_vrm is not None:
+            senal_vrm.connect(self._on_vrm_cambiado)
         return page
 
     def _build_optimizer_page(self):
@@ -860,27 +921,122 @@ class LuneCDWindow(QMainWindow):
 
     def _switch_provider(self, provider_id):
         if provider_id == self.current_provider: return
+        # Con una respuesta en marcha, primero se detiene (P2): si no, «Detener» y el
+        # uso de tokens irían al proveedor nuevo y no al que está respondiendo.
+        if self._worker_vivo():
+            self._stop_generation()
         self.current_provider = provider_id
         for pid, tab in self.provider_tabs.items(): tab.set_active(pid==provider_id)
-        meta = PROVIDER_META[provider_id]
+        meta = meta_proveedor(provider_id)
         self._style_topbar_icon(meta)
         self.topbar_title.setText(meta["label"])
         self.topbar_title.setStyleSheet(f"color:{meta['color']};background:transparent;letter-spacing:1px;")
         self.topbar_desc.setText("·  "+meta["desc"])
         self._update_send_btn_color(); self.stack.setCurrentIndex(0)
 
+    def _sincronizar_tab_compat(self):
+        """
+        Pestaña del proveedor 'compat' (LM Studio, Groq, OpenAI…): aparece si hay
+        URL configurada (AIManager lo registra) y se quita si ya no. Si era el
+        proveedor activo y desaparece, se vuelve a Ollama u OpenRouter.
+        """
+        layout = getattr(self, "_sidebar_layout", None)
+        if layout is None:
+            return
+        hay = "compat" in self.ai_manager.providers
+        tab = self.provider_tabs.get("compat")
+        if hay and tab is None:
+            tab = ProviderTab("compat", meta_proveedor("compat"))
+            tab.clicked.connect(self._switch_provider)
+            otras = [t for p, t in self.provider_tabs.items() if p != "compat"]
+            idx = layout.indexOf(otras[-1]) + 1 if otras else layout.count()
+            layout.insertWidget(idx, tab)
+            self.provider_tabs["compat"] = tab
+            tab.set_active(self.current_provider == "compat")
+        elif not hay and tab is not None:
+            if self.current_provider == "compat":
+                self._switch_provider("ollama" if datos.ollama_model() else "openrouter")
+            self.provider_tabs.pop("compat", None)
+            layout.removeWidget(tab); tab.deleteLater()
+        tab = self.provider_tabs.get("compat")
+        if tab is not None:
+            modelo = datos.compat_model() or "modelo del servidor"
+            tab.desc_lbl.setText(modelo if len(modelo) <= 28 else modelo[:27] + "…")
+            tab.setToolTip(f"API compatible con OpenAI · {datos.compat_url()}")
+
     def _update_send_btn_color(self):
-        c = PROVIDER_META[self.current_provider]["color"]
-        d = PROVIDER_META[self.current_provider]["dark"]
+        meta = meta_proveedor(self.current_provider)
+        c = meta["color"]
+        d = meta["dark"]
         self.send_btn.setStyleSheet(f"QPushButton{{background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 {d},stop:1 {c});color:{COLORS['bg']};border:none;border-radius:3px;}}QPushButton:hover{{background:{c};}}QPushButton:disabled{{background:{COLORS['surface3']};color:{COLORS['text_dim']};}}")
         apply_glow(self.send_btn, c, radius=22, alpha=150)
 
     # ── SEND / RECEIVE / STOP ─────────────────────────────────────────────────
 
+    def _worker_vivo(self) -> bool:
+        """¿Sigue corriendo el hilo de la IA (aunque se haya pulsado «Detener»)?"""
+        w = self.ai_worker
+        if w is None:
+            return False
+        try:
+            return bool(w.isRunning())
+        except RuntimeError:                     # el QThread ya no existe
+            return False
+
+    def _cancelar_worker(self):
+        """Pide al proveedor del worker en curso que corte (el del turno, no el de la
+        pestaña elegida ahora: pudo cambiar a mitad de respuesta)."""
+        prov = getattr(self.ai_worker, "provider_id", None)
+        if not isinstance(prov, str):
+            prov = (self._turno or {}).get("proveedor") or self.current_provider
+        p = self.ai_manager.providers.get(prov) if isinstance(self.ai_manager.providers, dict) else None
+        if p is not None:
+            p.cancel_flag = True
+
+    def _al_terminar_worker(self):
+        """finished del AIWorker: si intentaste enviar mientras cortaba, ya puedes."""
+        if self._esperando_corte:
+            self._esperando_corte = False
+            self._set_status("LISTO", COLORS["success"])
+
+    def _cortar_respuesta(self):
+        """
+        Conversación nueva, abrir otra o cambiar de personaje con la IA escribiendo
+        (P1): lo que emita ese worker ya no cuenta (generación nueva y señales
+        desconectadas), se le pide que corte y se sueltan la burbuja y el indicador
+        en curso, que se borran con el resto del chat. Antes el siguiente token
+        tocaba un widget borrado → RuntimeError en un slot → PyQt cerraba la app.
+        """
+        self._gen += 1
+        w = self.ai_worker
+        vivo = self._worker_vivo()
+        if vivo:
+            self._cancelar_worker()
+            for senal in (w.token_received, w.response_ready, w.error_occurred):
+                try:
+                    senal.disconnect()
+                except (TypeError, RuntimeError):
+                    pass
+            try: self.voice.cancelar()
+            except Exception: pass
+        if self._voz_stream is not None:
+            try: self._voz_stream.cancelar()
+            except Exception: pass
+            self._voz_stream = None
+        self._seguidor = None; self._cancelar_plan()
+        indicador = self._typing_indicator
+        self._typing_indicator = None; self._current_bubble = None
+        if indicador is not None:
+            try: indicador.stop()
+            except RuntimeError: pass
+        self._turno = {}
+        self.stop_btn.hide(); self.send_btn.show(); self.input_field.setEnabled(True)
+        if vivo:
+            self._set_status("INTERRUMPIDO", COLORS["warning"])
+
     def _stop_generation(self):
-        if self.ai_worker and self.ai_worker.isRunning():
-            if self.current_provider in self.ai_manager.providers:
-                self.ai_manager.providers[self.current_provider].cancel_flag = True
+        if self._worker_vivo():
+            self._cancelar_worker()
 
             # El hilo tarda un momento en cortar y luego emite response_ready.
             # Sin esta bandera, _on_response pisaba el estado con "LISTO" y
@@ -904,14 +1060,31 @@ class LuneCDWindow(QMainWindow):
         self.messages_layout.insertWidget(self.messages_layout.count() - 1, b)
         return b
 
-    def _send_message(self):
-        text = self.input_field.text().strip()
-        adjuntos_envio = list(self._adjuntos)
+    def _send_message(self, *_senal, texto=None, desde_mascota=False):
+        """
+        Envía lo escrito en la barra de la ventana o, con `texto`, lo que llega
+        de fuera (el chat de la mascota): mismo flujo, mismo historial. Lo de
+        fuera no se lleva los adjuntos pendientes ni borra lo que estés
+        escribiendo. Con `desde_mascota`, la respuesta sale también en su burbuja.
+        """
+        de_fuera = texto is not None
+        text = (texto if de_fuera else self.input_field.text()).strip()
+        adjuntos_envio = [] if de_fuera else list(self._adjuntos)
         # Adjuntar un archivo sin escribir nada es una petición implícita
         if not text and adjuntos_envio:
             text = "Échale un ojo a esto, por favor."
         if not text:
             return
+        # Tras «Detener» (o una conversación nueva) el hilo viejo tarda un momento en
+        # cortar. Hasta entonces no se envía: el proveedor comparte cancel_flag (bajarlo
+        # le quitaría el corte al viejo) y soltar un QThread vivo tumba el proceso.
+        # Lo escrito se queda en la barra.
+        if self._worker_vivo():
+            self._esperando_corte = True
+            self._set_status("ESPERA · CORTANDO LO ANTERIOR", COLORS["warning"])
+            return
+        self._turno = {"origen": ORIGEN_USUARIO, "ctx": None, "mascota": bool(desde_mascota),
+                       "proveedor": self.current_provider}
         self.stack.setCurrentIndex(0)
         # Lo pendiente de la respuesta anterior no debe pisar esta: expresiones
         # programadas, marcadores del stream viejo y voz por tramos.
@@ -922,9 +1095,10 @@ class LuneCDWindow(QMainWindow):
         bubble = MessageBubble(text, is_user=True, provider_id=self.current_provider,
                                markdown=False, adjuntos=adjuntos_envio)
         self.messages_layout.insertWidget(self.messages_layout.count()-1, bubble)
-        self.input_field.clear()
-        self._adjuntos = []
-        self._refrescar_adjuntos()
+        if not de_fuera:
+            self.input_field.clear()
+            self._adjuntos = []
+            self._refrescar_adjuntos()
         self._guardar_turno("user", text, adjuntos=adjuntos_envio)
 
         # Con archivos adjuntos siempre va a la IA: ni la memoria ni el banco
@@ -934,6 +1108,7 @@ class LuneCDWindow(QMainWindow):
             if respuesta_memoria:
                 self._burbuja_bot(respuesta_memoria)
                 self._guardar_turno("assistant", respuesta_memoria)
+                self._eco_mascota(respuesta_memoria, fin=True)
                 self.lune_face.set_state("happy", auto_revert_ms=4000); self._scroll_bottom(); return
 
             # Banco de respuestas instantáneas (saludos, gracias, hora…) — sin IA
@@ -943,16 +1118,23 @@ class LuneCDWindow(QMainWindow):
                 if rta_rapida:
                     self._burbuja_bot(rta_rapida)
                     self._guardar_turno("assistant", rta_rapida)
+                    self._eco_mascota(rta_rapida, fin=True)
                     self.lune_face.set_state("happy", auto_revert_ms=4000)
                     self.voice.speak(rta_rapida); self._scroll_bottom(); return
 
-            tool_result = self.tools.detectar_y_ejecutar(text)
-            if tool_result:
-                icono = "✓" if tool_result.ok else "✕"
-                msg = f"{icono} {tool_result.mensaje}"
-                self._burbuja_bot(msg)
-                self._guardar_turno("assistant", msg)
-                self.lune_face.set_state("happy" if tool_result.ok else "error", auto_revert_ms=5000)
+            # Lo pidió la persona con sus palabras («abre youtube»): sin IA, pero por el
+            # Ejecutor como cualquier acción (política, presupuesto, aprobación y
+            # auditoría). El ✓/✕ llega por _on_resultado_turno (ya o tras aprobar).
+            try:
+                llamadas = self.tools.detectar_llamadas(text)
+            except Exception as e:
+                log_error(f"[acciones] detectar_llamadas: {e}")
+                llamadas = []
+            if llamadas:
+                ctx = ctx_acciones(self.ai_manager, self.current_provider, self._modo_acciones())
+                self._turno["ctx"] = ctx
+                self._ejecutar_acciones(llamadas, ORIGEN_USUARIO, ctx,
+                                        mascota=bool(desde_mascota), directo=True)
                 self._scroll_bottom(); return
 
         self.input_field.setEnabled(False)
@@ -997,26 +1179,45 @@ class LuneCDWindow(QMainWindow):
             self._motor_chat = self._chat_remoto
         else:
             self._motor_chat = self.ai_manager
+        # Origen del turno (crítica d): con adjuntos o notas el prompt lleva texto
+        # de terceros → solo herramientas de LECTURA en esta respuesta.
+        origen = ORIGEN_NO_CONFIABLE if (adjuntos_envio or contexto_notas) else ORIGEN_USUARIO
+        # Con la mascota fuera el modo es "mascota"/"vrm": también las suyas (dormir…).
+        modo = self._modo_acciones()
+        ctx = ctx_acciones(self.ai_manager, self.current_provider, modo)
+        self._turno = {"origen": origen, "ctx": ctx, "mascota": bool(desde_mascota),
+                       "proveedor": self.current_provider}
+        # Generación de este envío: las señales llevan la suya y, si ya no es la
+        # vigente (conversación nueva, otro personaje…), se ignoran (G1/P1).
+        self._gen += 1
+        gen = self._gen
         self.ai_worker = AIWorker(
             self._motor_chat, text, self.current_provider,
             extra_context=contexto_memoria + contexto_archivos + contexto_notas,
             permitir_acciones=self.config.feature("acciones_ia", True),
             imagenes=adj.imagenes_base64(adjuntos_envio),
             emociones=self.config.feature("emociones", True),
+            origen=origen, ejecutor=self.acciones.ejecutor, modo=modo, ctx=ctx,
         )
         if self.config.feature("streaming_tokens", True):
-            self.ai_worker.token_received.connect(self._on_token)
-        self.ai_worker.response_ready.connect(self._on_response)
-        self.ai_worker.error_occurred.connect(self._on_error)
+            self.ai_worker.token_received.connect(lambda t, g=gen: self._on_token(t, g))
+        self.ai_worker.response_ready.connect(lambda r, g=gen: self._on_response(r, g))
+        self.ai_worker.error_occurred.connect(lambda e, g=gen: self._on_error(e, g))
+        self.ai_worker.finished.connect(self._al_terminar_worker)
         self.ai_worker.start()
 
-    def _on_token(self, partial):
+    # `gen` (None = sin generación): la de la señal; si no es la vigente, el envío ya
+    # se cortó (conversación nueva, otro personaje…) y lo que traiga no cuenta.
+    def _on_token(self, partial, gen=None):
+        if gen is not None and gen != self._gen:
+            return
         # En streaming se pinta texto plano: reconstruir los widgets de markdown
         # 16 veces por segundo sería carísimo. Al terminar se formatea de golpe.
         # Los marcadores <|ACT|>/<|DELAY|> se ocultan mientras se escribe.
         visible = marcadores.limpiar_para_mostrar(partial)
         if self._voz_stream is not None:
             self._voz_stream.escribir(visible)
+        self._eco_mascota(visible)          # si el turno salió del chat de la mascota
         # La cara cambia según llegan los <|ACT|> (salvo que la voz vaya a leer la
         # respuesta al final: entonces cambia al ritmo de la voz).
         if self._seguidor is not None and not self._voz_lee_al_final():
@@ -1026,7 +1227,8 @@ class LuneCDWindow(QMainWindow):
         if self._typing_indicator and self._current_bubble is None:
             self._typing_indicator.stop(); self._typing_indicator.deleteLater(); self._typing_indicator = None
             self._current_bubble = MessageBubble(
-                visible + " ▋", is_user=False, provider_id=self.current_provider,
+                visible + " ▋", is_user=False,
+                provider_id=(self._turno or {}).get("proveedor") or self.current_provider,
                 markdown=self.config.feature("markdown", True))
             self.messages_layout.insertWidget(self.messages_layout.count()-1, self._current_bubble)
             if not self._expresado_en_stream:
@@ -1035,8 +1237,19 @@ class LuneCDWindow(QMainWindow):
             self._current_bubble.update_text(visible + " ▋", streaming=True)
         self._scroll_bottom()
 
-    def _on_response(self, response):
-        respuesta_limpia, acciones_ia = self.tools.parsear_respuesta_ia(response)
+    def _on_response(self, response, gen=None):
+        if gen is not None and gen != self._gen:
+            return          # respuesta de un envío ya cortado: ni se pinta ni ejecuta sus <|CALL|>
+        # Acciones del modelo: el Ejecutor saca las <|CALL …|> del texto (y borra
+        # el formato antiguo sin ejecutarlo). Se ejecutan más abajo, al terminar.
+        turno = self._turno or {}
+        origen = turno.get("origen", ORIGEN_NO_CONFIABLE)
+        ctx = turno.get("ctx")
+        proveedor = turno.get("proveedor") or self.current_provider   # el del turno (P2)
+        if self._acciones_locales():
+            respuesta_limpia, llamadas = self.acciones.procesar(response, origen, ctx)
+        else:
+            respuesta_limpia, llamadas = limpiar_texto(response or ""), []
 
         if self._typing_indicator: self._typing_indicator.stop(); self._typing_indicator.deleteLater(); self._typing_indicator = None
         if self._current_bubble:
@@ -1045,30 +1258,28 @@ class LuneCDWindow(QMainWindow):
             burbuja = self._current_bubble
         else:
             # Sin streaming: creamos la burbuja con la respuesta completa
-            burbuja = MessageBubble(respuesta_limpia, is_user=False, provider_id=self.current_provider,
+            burbuja = MessageBubble(respuesta_limpia, is_user=False, provider_id=proveedor,
                                     markdown=self.config.feature("markdown", True))
             self.messages_layout.insertWidget(self.messages_layout.count()-1, burbuja)
         self._current_bubble = None
 
-        uso = (self._motor_chat or self.ai_manager).uso(self.current_provider)
+        uso = (self._motor_chat or self.ai_manager).uso(proveedor)
         if uso and self.config.feature("contador_tokens", True):
             burbuja.set_pie(self._texto_uso(uso))
-        self._guardar_turno("assistant", respuesta_limpia, uso=uso)
+        self._guardar_turno("assistant", respuesta_limpia, uso=uso,
+                            no_confiable=(origen == ORIGEN_NO_CONFIABLE))
 
         self.stop_btn.hide(); self.send_btn.show()
         if not getattr(self, "_cancelado", False):
             self._set_status("LISTO", COLORS["success"])
         self.input_field.setEnabled(True); self.input_field.setFocus()
 
-        # Las acciones que pide la IA (abrir webs, lanzar apps) solo se ejecutan
-        # si el usuario las tiene permitidas en Configuración → Rendimiento.
-        if self.config.feature("acciones_ia", True) and not getattr(self, "_cancelado", False):
-            for accion in acciones_ia:
-                herramienta = accion.pop("herramienta", None)
-                if herramienta:
-                    result = self.tools.ejecutar(herramienta, **accion)
-                    tool_bubble = MessageBubble(f"{'✓' if result.ok else '✕'} {result.mensaje}", is_user=False, provider_id=self.current_provider)
-                    self.messages_layout.insertWidget(self.messages_layout.count()-1, tool_bubble)
+        # Las acciones que pide la IA solo se ejecutan si el usuario las tiene
+        # permitidas en Configuración → Rendimiento, y nunca tras «Detener». Lo
+        # que pide permiso pregunta (QMessageBox o junto a la mascota) y su
+        # resultado llega después por _on_resultado_accion.
+        if llamadas and not getattr(self, "_cancelado", False):
+            self._ejecutar_acciones(llamadas, origen, ctx, mascota=bool(turno.get("mascota")))
 
         self.memoria.procesar_respuesta_lune(respuesta_limpia)
 
@@ -1080,6 +1291,7 @@ class LuneCDWindow(QMainWindow):
         con_acts = bool(expresiones.emociones(plan))
         if con_acts and hablable.strip():
             burbuja.update_text(hablable)   # la burbuja final sin marcadores
+        self._eco_mascota(hablable if hablable.strip() else respuesta_limpia, fin=True)
         hablo = False
         cancelado = getattr(self, "_cancelado", False)
         if self._voz_stream is not None:
@@ -1149,7 +1361,9 @@ class LuneCDWindow(QMainWindow):
             tm.timeout.connect(lambda e=emocion: self._expresar(e))
             tm.start(int(t_s * 1000)); self._timers_plan.append(tm)
 
-    def _on_error(self, error):
+    def _on_error(self, error, gen=None):
+        if gen is not None and gen != self._gen:
+            return
         if self._typing_indicator: self._typing_indicator.stop(); self._typing_indicator.deleteLater(); self._typing_indicator = None
         if self._current_bubble: self._current_bubble.update_text(f"✕ {error}")
         else:
@@ -1159,7 +1373,128 @@ class LuneCDWindow(QMainWindow):
         self.stop_btn.hide(); self.send_btn.show()
         self._set_status("ERROR", COLORS["error"]); self.input_field.setEnabled(True); self.input_field.setFocus()
         self.lune_face.set_state("error", auto_revert_ms=8000)
+        self._eco_mascota(f"✕ {error}", fin=True)
         self._scroll_bottom()
+
+    # ── ACCIONES DEL MODELO, VOZ Y CHAT DE LA MASCOTA ───────────────────────────
+    def _acciones_locales(self) -> bool:
+        """¿Procesa esta app las <|CALL|>? No si están apagadas (acciones_ia) ni si
+        respondió el host (modo terminal): allí ya se ejecutaron y el texto llega limpio."""
+        if not self.config.feature("acciones_ia", True):
+            return False
+        motor = self._motor_chat
+        return motor is None or motor is self.ai_manager
+
+    def _on_resultado_accion(self, res) -> str:
+        """Resultado de una acción del modelo (siempre en el hilo de Qt): ✓/✕ en el chat."""
+        texto = f"{'✓' if res.ok else '✕'} {res.mensaje}"
+        self._burbuja_bot(texto)
+        self._scroll_bottom()
+        return texto
+
+    def _ejecutar_acciones(self, llamadas, origen, ctx, *, mascota: bool = False,
+                           directo: bool = False) -> None:
+        """
+        Corre las acciones de un turno. Las del chat de la mascota y las que pidió la
+        persona con sus palabras llevan su destino con el resultado (llegue en línea,
+        tras aprobar o al caducar): el ✓/✕ sale también en la burbuja de la mascota
+        aunque entre tanto hayas escrito en la ventana, y el de lo pedido se guarda en
+        la conversación. El resto, por AccionesQt.resultado como siempre.
+        """
+        if not llamadas:
+            return
+        if not (mascota or directo):
+            self.acciones.ejecutar(llamadas, origen, ctx)
+            return
+        info = {"mascota": bool(mascota), "directo": bool(directo)}
+        self.acciones.ejecutor.ejecutar_llamadas(
+            llamadas, origen, ctx, lambda res, i=info: self._resultado_turno.emit(res, i))
+
+    def _on_resultado_turno(self, res, info):
+        """Slot de _resultado_turno (hilo de Qt): el ✓/✕ en el chat y donde toque."""
+        info = info if isinstance(info, dict) else {}
+        texto = self._on_resultado_accion(res)
+        if info.get("directo"):
+            self._guardar_turno("assistant", texto)
+            self.lune_face.set_state("happy" if res.ok else "error", auto_revert_ms=5000)
+        if info.get("mascota"):
+            self._burbuja_mascota(texto, fin=True)
+
+    def _ventana_a_la_vista(self) -> bool:
+        """¿Se verá un QMessageBox sobre la ventana? Solo si está visible, sin
+        minimizar y activa, y el turno no salió del chat de la mascota. Si no, la
+        pregunta va junto a la mascota (siempre encima): nunca caduca sin verse."""
+        try:
+            return bool(self.isVisible() and not self.isMinimized() and self.isActiveWindow()
+                        and not (self._turno or {}).get("mascota"))
+        except Exception:
+            return False
+
+    def _ancla_mascota(self):
+        """Rectángulo global de la mascota visible (para la pregunta «¿Lo hago?»), o None."""
+        ov = self._mascota_viva()
+        if ov is None or not ov.isVisible():
+            return None
+        try:
+            return ov.frameGeometry()
+        except Exception:
+            return None
+
+    def _on_voz_error(self, mensaje: str):
+        """voice.on_error (llega del hilo de audio por señal): estado + aviso."""
+        log_error(f"[voz] {mensaje}")
+        self._set_status("VOZ ✕", COLORS["warning"])
+        self.status_label.setToolTip(mensaje)
+        if self.tray is not None and not self.isVisible():
+            self.tray.showMessage("Lune CD · voz", mensaje, QSystemTrayIcon.MessageIcon.Warning, 5000)
+
+    def _chat_desde_mascota(self, texto: str) -> bool:
+        """
+        on_chat de la mascota (EntradaChat bajo ella): lo que escribes ahí va por
+        el flujo normal de la ventana (mismo historial y memoria) y la respuesta
+        se ve también en su burbuja. False si aún está respondiendo a otra cosa.
+        """
+        texto = str(texto or "").strip()
+        if not texto:
+            return False
+        if self._worker_vivo():                  # también mientras corta tras «Detener»
+            ov = self._mascota_viva()
+            if ov is not None and hasattr(ov, "burbuja_texto"):
+                try:
+                    ov.burbuja_texto("Espera, aún estoy con lo anterior…")
+                    ov.burbuja_fin(4000)
+                except Exception:
+                    pass
+            return False
+        self._send_message(texto=texto, desde_mascota=True)
+        return True
+
+    def _eco_mascota(self, texto: str, fin: bool = False):
+        """Si el turno salió del chat de la mascota: el texto en su burbuja
+        (burbuja_texto) y, al acabar, burbuja_fin con el tiempo de lectura."""
+        if not (self._turno or {}).get("mascota"):
+            return
+        self._burbuja_mascota(texto, fin)
+
+    def _burbuja_mascota(self, texto: str, fin: bool = False):
+        """El texto en la burbuja de la mascota, solo si está a la vista: oculta, cada
+        trozo del streaming la hacía reaparecer sola junto a una mascota invisible."""
+        ov = self._mascota_viva()
+        if ov is None or not hasattr(ov, "burbuja_texto"):
+            return
+        try:
+            if not ov.isVisible():
+                return
+        except Exception:
+            return
+        try:
+            texto = str(texto or "").strip()
+            if texto:
+                ov.burbuja_texto(texto)
+            if fin and hasattr(ov, "burbuja_fin"):
+                ov.burbuja_fin(max(8000, len(texto) * 1000 // 15))
+        except Exception as e:
+            log_error(f"[mascota] burbuja: {e}")
 
     # ── HELPERS ───────────────────────────────────────────────────────────────
 
@@ -1233,7 +1568,28 @@ class LuneCDWindow(QMainWindow):
             ov.recrear.connect(self._mascota_recrear)      # arrancó en vídeo y ya hay .vrm
         except Exception:
             pass
+        # Chat de la mascota (doble clic → EntradaChat): envía por el flujo normal
+        # de la ventana. La mascota llama a `on_chat(texto)` si lo tiene puesto.
+        on_chat = getattr(self, "_chat_desde_mascota", None)
+        if callable(on_chat):
+            try:
+                ov.on_chat = on_chat
+            except Exception:
+                pass
+        self._escritorio_mascota(ov)
         return ov
+
+    def _escritorio_mascota(self, ov):
+        """La mascota flotante nueva (o None) → ServiciosEscritorio (BusEstado y eventos)."""
+        esc = getattr(self, "escritorio", None)
+        if esc is None:
+            return
+        try:
+            render = None if ov is None else (
+                "sprites" if isinstance(ov, AvatarOverlay) else str(getattr(ov, "render", "") or ""))
+            esc.set_mascota(ov, render=render)
+        except Exception as e:
+            log_error(f"[escritorio] no pude enganchar la mascota: {e}")
 
     def _on_mascota_visible(self, fuera: bool):
         """Lune fuera → el escenario de la barra lateral se apaga (no verla doble)."""
@@ -1244,9 +1600,115 @@ class LuneCDWindow(QMainWindow):
         ov = self._overlay
         return ov if (ov is not None and not getattr(ov, "cerrado", False)) else None
 
-    def _on_hablando(self, activo: bool):
+    # ── Herramientas de la mascota (mascota_dormir / despertar / tamano) ──────
+    def _registrar_herramientas_mascota(self):
+        """Handlers del catálogo (riesgo ESCRITURA, sin aprobación, modos mascota/vrm)
+        por el registro de ServiciosEscritorio (llegan al ToolManager y al Ejecutor)."""
+        for nombre, fn in (("mascota_dormir", self._h_mascota_dormir),
+                           ("mascota_despertar", self._h_mascota_despertar),
+                           ("mascota_tamano", self._h_mascota_tamano)):
+            try:
+                self.escritorio.registrar_herramienta(nombre, fn)
+            except Exception as e:
+                log_error(f"[acciones] no pude registrar {nombre}: {e}")
+
+    def _mascota_a_la_vista(self):
+        """La mascota flotante si existe, no está cerrada y se ve; si no, None."""
         ov = self._mascota_viva()
-        if ov is not None and ov.isVisible() and hasattr(ov, "set_hablando"):
+        if ov is None:
+            return None
+        try:
+            return ov if ov.isVisible() else None
+        except Exception:
+            return None
+
+    def _modo_acciones(self) -> str:
+        """Modo del catálogo para este turno: con la mascota fuera, "vrm" (3D) o
+        "mascota" (sprites); si no, MODO_ACCIONES ("normal")."""
+        ov = self._mascota_a_la_vista()
+        if ov is None:
+            return self.MODO_ACCIONES
+        if isinstance(ov, AvatarOverlay):
+            return "mascota"
+        return "vrm" if str(getattr(ov, "render", "") or "") == "vrm" else "mascota"
+
+    @staticmethod
+    def _correr_en_ui(fn):
+        """Slot de _en_ui_senal (hilo de Qt): corre fn()."""
+        try:
+            fn()
+        except Exception:
+            pass
+
+    def en_ui(self, fn, espera_s: float = None):
+        """Corre fn() en el hilo de Qt y devuelve su resultado. Desde otro hilo la
+        encola (_en_ui_senal) y espera como mucho ESPERA_UI_S: TimeoutError si la
+        ventana no contesta; la excepción de fn se relanza aquí."""
+        if threading.get_ident() == self._hilo_qt:
+            return fn()
+        hecho = threading.Event()
+        caja = {}
+
+        def correr():
+            try:
+                caja["r"] = fn()
+            except Exception as e:                   # noqa: BLE001
+                caja["e"] = e
+            finally:
+                hecho.set()
+
+        self._en_ui_senal.emit(correr)
+        if not hecho.wait(self.ESPERA_UI_S if espera_s is None else espera_s):
+            raise TimeoutError("la mascota no respondió a tiempo")
+        if "e" in caja:
+            raise caja["e"]
+        return caja.get("r")
+
+    def _ctx_mascota(self, ctx, **extra) -> dict:
+        """ctx del Ejecutor + la mascota a la vista (None si no hay: la herramienta
+        devuelve un error claro). `en_ui` solo desde otro hilo: en el de Qt se llama
+        directo y el resultado de dormir()/despertar() cuenta."""
+        if ctx is None:
+            c = {}
+        elif isinstance(ctx, Mapping):
+            c = dict(ctx)
+        else:
+            c = {"contexto": ctx}
+        c.update(extra)
+        c["mascota"] = self._mascota_a_la_vista()
+        if threading.get_ident() != self._hilo_qt:
+            c["en_ui"] = self.en_ui
+        return c
+
+    def _h_mascota_dormir(self, args, ctx=None):
+        return sueno.herramienta_dormir(args, self._ctx_mascota(ctx))
+
+    def _h_mascota_despertar(self, args, ctx=None):
+        return sueno.herramienta_despertar(args, self._ctx_mascota(ctx))
+
+    def _h_mascota_tamano(self, args, ctx=None):
+        return vrm.herramienta_tamano(args, self._ctx_mascota(ctx, config=self.config))
+
+    def _on_vrm_cambiado(self):
+        """El panel de modelos VRM importó, asignó o guardó el seguimiento: la mascota
+        3D carga el modelo que toque (si cambió) y aplica la calibración."""
+        ov = self._mascota_viva()
+        if ov is None:
+            return
+        for metodo in ("recargar_modelo", "aplicar_params_vrm"):
+            fn = getattr(ov, metodo, None)
+            if callable(fn):
+                try:
+                    fn()
+                except Exception as e:
+                    log_error(f"[mascota] {metodo}: {e}")
+
+    def _on_hablando(self, activo: bool):
+        # También con la mascota oculta: si no, al ocultarla mientras habla se
+        # quedaría «hablando» para siempre (no se duerme, sonidos callados…). La
+        # mascota guarda el estado y se lo pasa a su página al volver a verse.
+        ov = self._mascota_viva()
+        if ov is not None and hasattr(ov, "set_hablando"):
             try:
                 ov.set_hablando(bool(activo))
             except Exception:
@@ -1259,6 +1721,7 @@ class LuneCDWindow(QMainWindow):
             try: ov.close()
             except Exception: pass
         self._overlay = None
+        self._escritorio_mascota(None)
         if vis:
             self._overlay = self._crear_mascota(); self._overlay.show(); self._overlay.raise_()
 
@@ -1271,9 +1734,15 @@ class LuneCDWindow(QMainWindow):
 
     def _switch_character(self, nombre):
         """Cambia el personaje activo: recarga prompt, limpia historial y saluda."""
-        personajes.set_activo(nombre)
+        try:
+            nombre = personajes.set_activo(nombre)      # solo uno que exista (con su nombre guardado)
+        except ValueError as e:
+            QMessageBox.warning(self, "Personaje", str(e)); return
+        self._cortar_respuesta()                 # la respuesta en curso era del anterior
         datos.invalidar()
         self.ai_manager.clear_history()
+        self.acciones.nueva_conversacion()
+        self.voice.invalidar_params()            # cada personaje puede traer su voz
 
         p = personajes.get_activo()
         # Cambiar avatar pack si el personaje define uno
@@ -1308,9 +1777,15 @@ class LuneCDWindow(QMainWindow):
             self.red.reanunciar()
         # datos.guardar() ya invalidó la caché, así que esto lee lo recién escrito.
         self.ai_manager.reload_provider()
+        self._sincronizar_tab_compat()           # la API compatible pudo aparecer o irse
         # Salida de audio elegida en Configuración → se aplica sin reiniciar.
         if self.voice.available:
             self.voice.aplicar_salida(self.config.get("voz", "dispositivo_salida", "") or "")
+        # Motor, voz, velocidad o tono pudieron cambiar: que la próxima frase los use.
+        try:
+            self.voice.reiniciar_motor()
+        except Exception as e:
+            log_error(f"[voz] no pude reiniciar el motor: {e}")
         self.stack.setCurrentIndex(0)
 
         personaje = datos.get_personaje(datos.get_bot().get("personaje_default", "Lune"))
@@ -1398,6 +1873,10 @@ class LuneCDWindow(QMainWindow):
             self.notas.cerrar()
         if hasattr(self, "red"):
             self.red.detener()
+        if hasattr(self, "acciones"):
+            self.acciones.cerrar()               # ninguna pregunta «¿Lo hago?» colgada
+        if hasattr(self, "escritorio"):
+            self.escritorio.cerrar()
         if self._overlay is not None:
             self._overlay.close()
         if hasattr(self, "_timer_estado"):
@@ -1530,6 +2009,32 @@ def _crear_ventana_principal():
     return LuneCDWindow()
 
 
+def _instalar_red_de_excepciones():
+    """
+    Red de seguridad: con el sys.excepthook de serie, PyQt6 ABORTA el proceso ante
+    una excepción no capturada en un slot (se cerraba Lune entera, sin rastro).
+    Con este gancho el error se registra en el log (y en la consola, si hay) y la
+    app sigue. Solo lo instala main(): los tests no pasan por aquí, así que allí
+    los errores se siguen viendo como siempre. Devuelve el gancho.
+    """
+    import traceback
+
+    def gancho(tipo, valor, tb):
+        texto = "".join(traceback.format_exception(tipo, valor, tb))
+        try:
+            log_error(f"[ui] excepción no capturada (la app sigue):\n{texto}")
+        except Exception:
+            pass
+        if sys.stderr is not None:              # con pythonw no hay consola
+            try:
+                sys.stderr.write(texto)
+            except Exception:
+                pass
+
+    sys.excepthook = gancho
+    return gancho
+
+
 def main():
     # QtWebEngine (avatar VRM) necesita compartir el contexto OpenGL; hay que
     # pedirlo ANTES de crear QApplication. Inofensivo si no se usa el VRM.
@@ -1539,6 +2044,7 @@ def main():
         pass
     app = QApplication(sys.argv)
     app.setApplicationName("Lune CD")
+    _instalar_red_de_excepciones()
 
     if _ya_hay_una_instancia():
         log_info("Lune ya estaba abierta: no abro una segunda")
