@@ -239,11 +239,32 @@ def test_web_turno_de_ia_con_origen_remoto(puente):
     assert w.kw["ejecutor"] is b.acciones.ejecutor and b._turno["remoto"] == "o2"
     assert b.senales["usuario_mascota"] == ["📱 Telegram: ¿me abres youtube y me dices algo?"]
     w.response_ready.emit('Claro, te lo abro. <|CALL ["abrir_url", {"url": "https://www.youtube.com"}]|>')
-    assert b._tg_worker.textos("o2") == ["Claro, te lo abro."]          # la respuesta limpia
+    # La respuesta limpia y, como la acción espera tu permiso, dicho (prueba real:
+    # llegaba «te lo abro» antes de que nadie lo aprobara en el PC).
+    assert b._tg_worker.textos("o2") == ["Claro, te lo abro.\n\n(pendiente de tu permiso en el PC)"]
     assert b.urls == [] and _pedida(b)["remoto"] is True
     b.resolver_aprobacion(_pedida(b)["id"], True)
     assert b.urls == ["https://www.youtube.com"]
     assert b._tg_worker.textos("o2")[-1].startswith("✓ ")
+
+
+def test_web_remota_sin_acciones_no_dice_pendiente(puente):
+    b = puente
+    b._orden_remota("o5", "cuéntame algo")
+    WorkerFalso.creados[-1].response_ready.emit('<|ACT {"emotion":"happy"}|>Había una vez…')
+    assert b._tg_worker.textos("o5") == ["Había una vez…"]
+
+
+def test_web_remota_con_marca_no_entendida_avisa_y_no_dice_pendiente(puente):
+    """Una marca inventada (<|CHANGE_VOCES …|>) no se pide ni se da por hecha: a
+    Telegram llega la respuesta limpia y después «✕ No entendí la acción…»."""
+    b = puente
+    b._orden_remota("o6", "cámbiate la voz")
+    WorkerFalso.creados[-1].response_ready.emit('¡Listo! <|CHANGE_VOCES {"voice": "x"}|>')
+    textos = b._tg_worker.textos("o6")
+    assert textos[0] == "¡Listo!"
+    assert any(t.startswith("✕ No entendí la acción «CHANGE_VOCES»") for t in textos[1:])
+    assert b.senales["aprobacion_pedida"] == []
 
 
 def test_web_error_de_la_ia_vuelve_legible(puente):
@@ -445,12 +466,19 @@ def test_nativa_turno_de_ia_remoto_usa_el_motor_local(nativa):
     assert w.kw["origen"] == "remoto" and w.kw["ctx"]["origen"] == "remoto"
     assert yo._turno["remoto"] == "o2" and yo._turno["origen"] == "remoto"
     yo._on_response('Te miro. <|ACT {"emotion": "happy"}|> <|CALL ["sistema_info", {}]|>', yo._gen)
-    assert tg.textos("o2") == ["Te miro."]
+    assert tg.textos("o2") == ["Te miro.\n\n" + tw.AVISO_TG_PENDIENTE]   # como en la web
     assert _guardados(yo)[-1][1]["no_confiable"] is True
     [(pendiente, responder)] = nativa["preguntas"]           # también la LECTURA pregunta
     assert pendiente["herramienta"] == "sistema_info" and pendiente["remoto"] is True
     responder(True)
     assert tg.textos("o2")[-1] == "✓ CPU 5% | RAM 40%"
+
+
+def test_nativa_remota_sin_acciones_no_dice_pendiente(nativa):
+    yo, tg = nativa["yo"], nativa["tg"]
+    yo._orden_remota("o5", "¿qué tal?")
+    yo._on_response('Muy bien. <|ACT {"emotion": "happy"}|>', yo._gen)
+    assert tg.textos("o5") == ["Muy bien."] and not nativa["preguntas"]
 
 
 def test_nativa_error_y_detener(nativa):

@@ -57,6 +57,7 @@ import threading
 import time
 from collections import OrderedDict
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional
 
 from .hub import Hub, Peer
@@ -65,7 +66,7 @@ from . import marcadores
 from .acciones import Ejecutor, ResultadoAccion, RECHAZADA, limpiar_texto
 from .catalogo_herramientas import ORIGEN_NO_CONFIABLE, ORIGEN_USUARIO
 from .herramientas import Riesgo, Sesion, registro_por_defecto
-from .prompt import GRAMATICA_EMOCIONES, bloque_contexto
+from .prompt import ETIQUETA_EXTERNO, bloque_contexto, construir_system_prompt, prefijo_hora
 from .reglas_prompt import reglas_herramientas
 
 # Kinds de terminal que escribe la propia persona. El resto (bot de Telegram,
@@ -147,43 +148,53 @@ class ServicioChat:
     def _system(self, texto_usuario: str, *, origen: str = ORIGEN_USUARIO,
                 ejecutor: Optional[Ejecutor] = None, ctx: Optional[dict] = None,
                 fragmentos: Optional[list] = None, puede_aprobar: bool = True,
-                contaminado: bool = False, con_memoria: bool = True) -> str:
+                contaminado: bool = False, con_memoria: bool = True,
+                con_fecha: bool = False, notas_en_mensaje: bool = False) -> str:
         """
+        Como la app (lune_core.prompt.construir_system_prompt): persona → fecha →
+        emociones → herramientas → anti-inyección → memoria al final. Estable de un
+        turno a otro para que el modelo local reuse su caché.
+
         puede_aprobar  False: el terminal no contesta aprobaciones → no se le
                        ofrecen herramientas que las piden (se rechazarían).
         contaminado    el historial lleva texto de terceros: sin poder aprobar,
                        solo lectura (lo demás pediría permiso).
         con_memoria    False: sin el contexto de memoria del usuario (turnos de
                        un terminal que no es de la persona: ver ve_la_memoria).
+        con_fecha      la hora llega como prefijo del mensaje: la regla que lo explica.
+        notas_en_mensaje  las notas (RAG) van en el mensaje (`_anexo_notas`); si el
+                       chat no lo admite, aquí, antes de la memoria.
         """
         base = self._persona() if callable(self._persona) else (self._persona or "")
-        partes = [base] if base else []
         try:
             ctx_mem = (self.memoria.obtener_contexto_para_prompt()
                        if self.memoria and con_memoria else "")
         except Exception:
             ctx_mem = ""
-        if ctx_mem:
-            partes.append("CONTEXTO DE MEMORIA DEL USUARIO:\n" + ctx_mem)
+        reglas = ""
         if ejecutor is not None:
             try:
                 disponibles = (set(ejecutor.handlers) if puede_aprobar
                                else self._sin_aprobacion(ejecutor))
                 solo_lectura = origen != ORIGEN_USUARIO or (contaminado and not puede_aprobar)
                 reglas = reglas_herramientas(ejecutor.registro, self.modo, disponibles,
-                                             solo_lectura=solo_lectura, ctx=ctx)
+                                             con_titulo=False, solo_lectura=solo_lectura, ctx=ctx)
             except Exception:
                 reglas = ""
-            if reglas:
-                partes.append(reglas)
-        partes.append(GRAMATICA_EMOCIONES)
         frags = self._fragmentos_notas(texto_usuario) if fragmentos is None else fragmentos
-        if frags:
-            try:
-                partes.append(bloque_contexto(frags))   # envuelto y neutralizado
-            except Exception:
-                pass
-        return "\n\n".join(p for p in partes if p)
+        notas = "" if notas_en_mensaje else self._anexo_notas(frags)
+        return construir_system_prompt(str(base or ""), herramientas=reglas, extra=notas,
+                                       con_fecha=con_fecha, memoria=ctx_mem or "")
+
+    @staticmethod
+    def _anexo_notas(frags) -> str:
+        """Las notas (RAG) de este mensaje, envueltas, neutralizadas y con su etiqueta."""
+        if not frags:
+            return ""
+        try:
+            return f"{ETIQUETA_EXTERNO}\n{bloque_contexto(frags)}"
+        except Exception:
+            return ""
 
     def _provider(self, pedido: Optional[str]) -> str:
         """Usa el proveedor pedido si el host lo tiene disponible; si no, el suyo."""
@@ -385,10 +396,16 @@ class ServicioChat:
         origen = self.origen_de(ev, peer, con_notas=bool(frags), imagenes=imagenes)
         efimero = ev.data.get("efimero") is True        # p. ej. comentario de pantalla
         ctx = self._ctx(provider, turno)
+        # Caché del modelo: la hora y las notas van en el mensaje (si el chat lo admite),
+        # no en el system. Mensaje y hora quedan en ctx para el cotejo del Ejecutor.
+        momento = datetime.now()
+        ctx["mensaje_usuario"], ctx["momento"] = text, momento
+        acepta = _kwargs_chat(self.ai.chat, prefijo="x", anexo="x")
         system = self._system(text, origen=origen, ejecutor=ejecutor, ctx=ctx, fragmentos=frags,
                               puede_aprobar=self.puede_aprobar(peer),
                               contaminado=self._contaminado(provider),
-                              con_memoria=self.ve_la_memoria(peer))
+                              con_memoria=self.ve_la_memoria(peer),
+                              con_fecha="prefijo" in acepta, notas_en_mensaje="anexo" in acepta)
 
         self.hub.estado_extra["busy"] = True
         await self.hub.publicar(Tipo.HOST_STATUS, self.hub.estado())
@@ -407,7 +424,13 @@ class ServicioChat:
                     self.hub.responder(peer, Tipo.OUTPUT_DELTA, {"text": chunk}, ev), loop)
 
         # El origen va al historial (taint); un turno efímero no se guarda.
-        extra = _kwargs_chat(self.ai.chat, origen=origen, efimero=efimero)
+        opciones = {"origen": origen, "efimero": efimero}
+        if "prefijo" in acepta:
+            opciones["prefijo"] = prefijo_hora(momento)
+        anexo = self._anexo_notas(frags) if "anexo" in acepta else ""
+        if anexo:
+            opciones["anexo"] = anexo
+        extra = _kwargs_chat(self.ai.chat, **opciones)
         try:
             texto = await self.ai.chat(text, system, provider=provider,
                                        on_token=on_token, imagenes=imagenes, **extra)

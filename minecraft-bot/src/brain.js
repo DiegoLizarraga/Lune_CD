@@ -17,6 +17,9 @@
 //   · `pausado` (Lune está pensando: comparten Ollama) → no llama al modelo.
 //   · Si el modelo cae: idle en silencio y como mucho UNA línea cada 5 min
 //     («No me llega el modelo»), nada de «¡Uwaaah! Algo salió mal» en bucle.
+//   · Caché de prompt: el system es FIJO (la situación va solo en cada mensaje)
+//     y el historial se recorta por bloques, no de uno en uno. Así Ollama reusa
+//     lo ya procesado en vez de releerlo todo en cada decisión.
 //
 // Por inyección: crearCerebro({persona, estilo, dueno, llm, fetch, ahora, …}).
 'use strict'
@@ -43,8 +46,8 @@ const REGLAS = `=== CÓMO JUEGAS ===
 - Si tu hambre es < 8 y tienes comida: action="eat".
 - De noche no te alejes de los jugadores.
 
-=== TU SITUACIÓN ACTUAL ===
-{CONTEXTO}
+=== TU SITUACIÓN ===
+Llega en cada mensaje, antes de lo que dijo un jugador. Manda siempre la del último mensaje.
 
 === CÓMO RESPONDES ===
 Responde SOLO con un JSON, sin texto extra, con este formato EXACTO:
@@ -67,16 +70,30 @@ Responde SOLO con un JSON, sin texto extra, con este formato EXACTO:
 - flee: huir de la amenaza más cercana
 - explore: caminar y explorar los alrededores`
 
-/** El prompt de sistema: persona (o una breve si el estilo es 'sobrio') + reglas + contexto. */
+/**
+ * El prompt de sistema: persona (o una breve si el estilo es 'sobrio') + reglas. Es fijo
+ * para el cerebro (caché del modelo); `think` NO le pasa contexto. Con `contexto` (para
+ * enseñarlo entero, `prompt(ctx)`) se añade al final como la situación actual.
+ */
 function construirPrompt ({ persona = {}, estilo = 'personaje', dueno = '', contexto = '' } = {}) {
   const nombre = String(persona.nombre || 'Lune').slice(0, 40)
   const base = estilo === 'sobrio' || !String(persona.prompt || '').trim()
     ? `Eres ${nombre}. Juegas Minecraft. Directa, breve y con un poco de filo.`
     : `Eres ${nombre}.\n${String(persona.prompt).slice(0, 2000).trim()}`
-  // Reemplazos con función: un «$&» en el chat de un jugador no se interpreta.
+  // Reemplazo con función: un «$&» en un nick no se interpreta.
   const reglas = REGLAS.replace(/\{dueno\}/g, () => nickSeguro(dueno) || 'tu dueño')
-    .replace('{CONTEXTO}', () => String(contexto || ''))
-  return `${base}\n\n${reglas}`
+  const ctx = String(contexto || '').trim()
+  return ctx ? `${base}\n\n${reglas}\n\n=== TU SITUACIÓN ACTUAL ===\n${ctx}` : `${base}\n\n${reglas}`
+}
+
+/**
+ * Recorte por bloques: al pasar de `max` se deja la mitad más reciente, empezando por un
+ * mensaje del jugador. Entre recortes lo anterior no cambia (prefijo estable → caché).
+ */
+function recortarHistorial (historial, max) {
+  if (historial.length <= max) return
+  historial.splice(0, historial.length - Math.max(1, Math.floor(max / 2)))
+  while (historial.length > 1 && historial[0].role !== 'user') historial.shift()
 }
 
 /** Mensaje de usuario para el modelo: contexto + lo que dijo el jugador (saneado y entre comillas). */
@@ -170,6 +187,7 @@ function crearCerebro ({ persona = {}, estilo = 'personaje', dueno = '', llm = n
   maxHistorial = MAX_HISTORIAL, log = null } = {}) {
   const f = fetchFn || ((...a) => globalThis.fetch(...a))
   const registrar = log || ((m) => console.error(m))
+  const system = construirPrompt({ persona, estilo, dueno })
   const historial = []
   let pausado = false
   let fallos = 0
@@ -210,9 +228,8 @@ function crearCerebro ({ persona = {}, estilo = 'personaje', dueno = '', llm = n
     if (pausado) return { ...IDLE, reason: 'pausa: Lune está pensando' }
     if (!llm || !llm.modelo) return { ...IDLE, reason: 'sin modelo configurado' }
     const usuario = mensajeUsuario(contexto, mensaje, de)
-    const system = construirPrompt({ persona, estilo, dueno, contexto: usuario })
     historial.push({ role: 'user', content: usuario })
-    while (historial.length > maxHistorial) historial.shift()
+    recortarHistorial(historial, maxHistorial)
     let raw
     try {
       raw = await llamar([{ role: 'system', content: system }, ...historial])
@@ -230,7 +247,7 @@ function crearCerebro ({ persona = {}, estilo = 'personaje', dueno = '', llm = n
     fallos = 0
     const decision = parseDecision(raw)
     historial.push({ role: 'assistant', content: JSON.stringify(decision) })
-    while (historial.length > maxHistorial) historial.shift()
+    recortarHistorial(historial, maxHistorial)
     return decision
   }
 

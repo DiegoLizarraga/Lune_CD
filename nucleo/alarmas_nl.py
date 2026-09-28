@@ -527,4 +527,68 @@ def detectar(texto: str, ahora: Optional[datetime] = None) -> Optional[Tuple[str
         return None
 
 
-__all__ = ("detectar", "leer_duracion")
+_CONECTOR_PISTA = re.compile(r"\b(?:en|dentro\s+de|de|por|durante)\s+")
+_MANANERO = re.compile(r"despiert|despert|levant|madrug")
+
+
+def pistas(texto: str, ahora: Optional[datetime] = None) -> Dict[str, object]:
+    """
+    La duración y la hora EXPLÍCITAS de un texto, SEA O NO una petición (a diferencia
+    de `detectar`): para cotejar la llamada del modelo con lo que escribió la persona
+    (lune_core.catalogo_herramientas.cotejar). Claves (solo las que haya):
+      segundos  una duración clara («en veinte minutos», «temporizador de 90 s»)
+      hora      "HH:MM" resuelta como la resolvería `detectar`
+      horas     las "HH:MM" compatibles («a las 6:30» sin más: 06:30 y 18:30)
+      dias      letras de días que se repiten («de lunes a viernes»)
+      fecha     "AAAA-MM-DD" de un día concreto («mañana», «el lunes»)
+    En la duda (dos duraciones u horas distintas) esa parte no sale: {}.
+    """
+    original = str(texto or "").strip()[:300]
+    if not original:
+        return {}
+    n = _normalizar(original)
+    ahora = ahora or datetime.now()
+    salida: Dict[str, object] = {}
+    try:
+        duraciones = set()
+        for m in _CONECTOR_PISTA.finditer(n):
+            d = leer_duracion(n, m.end())
+            if d and 1 <= d[0] <= MAX_SEGUNDOS:
+                duraciones.add(d[0])
+        if len(duraciones) == 1:
+            salida["segundos"] = duraciones.pop()
+
+        hora = _leer_hora(n)
+        if hora is not None:
+            h, mi, ambigua, tramo = hora
+            otra = _leer_hora(n[tramo[1]:])
+            if otra is not None and (otra[0] % 12, otra[1]) != (h % 12, mi):
+                return salida                         # dos horas distintas: en la duda, nada
+            c = _RE_CALIF.search(n)
+            calif = (c.group("c") or c.group("c2") or c.group("c3") or "mediodia") if c else ""
+            letras, fecha, _ = _dias(n, ahora)
+            if ambigua and calif:
+                h, ambigua = _calificar(h, calif), False
+            if ambigua and _MANANERO.search(n):
+                h, ambigua = h % 12, False            # «levantarme a las 6:30»: de mañana
+            if ambigua:
+                cands = sorted({h % 12, (h % 12) + 12})
+                if not letras and not fecha:
+                    minuto = ahora.hour * 60 + ahora.minute
+                    futuras = [x for x in cands if x * 60 + mi > minuto]
+                    h = futuras[0] if futuras else cands[0]
+                horas = [f"{x:02d}:{mi:02d}" for x in cands]
+            else:
+                horas = [f"{h:02d}:{mi:02d}"]
+            salida["hora"] = f"{h:02d}:{mi:02d}"
+            salida["horas"] = horas
+            if letras:
+                salida["dias"] = letras
+            if fecha:
+                salida["fecha"] = fecha
+    except Exception:
+        return {}
+    return salida
+
+
+__all__ = ("detectar", "leer_duracion", "pistas")

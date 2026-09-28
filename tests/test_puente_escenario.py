@@ -164,6 +164,7 @@ class MCFalso(QObject):
         super().__init__()
         self.llamadas = []
         self.instalando = False
+        self.conectado = False      # instalar_bot lo rechaza (BM11)
 
     def estado(self):
         return {"reaccionar": True, "log": {"ruta": "C:/mc/logs/latest.log", "activo": True, "yo": "Diego_01"},
@@ -177,6 +178,9 @@ class MCFalso(QObject):
 
     def instalar_bot(self):
         self.llamadas.append(("instalar",))
+        if self.conectado:
+            return False, "Desconecta el bot antes de reinstalarlo."
+        return True, "Instalando el bot (~400 MB). Tarda unos minutos."
 
     def conectar_bot(self):
         self.llamadas.append(("conectar",))
@@ -525,6 +529,14 @@ def test_ordenes_decir_bot_e_instalar(cfg):
     assert r["ok"] and "400 MB" in r["texto"] and mc.llamadas[-1] == ("instalar",)
     mc.instalando = True
     assert J(p.mc_bot_instalar())["ok"] is False and mc.llamadas.count(("instalar",)) == 1
+
+
+def test_instalar_rechazado_por_el_servicio_no_dice_instalando(cfg):
+    """BM11: con el bot conectado el servicio dice que no; el puente no responde «Instalando…»."""
+    mc = MCFalso()
+    mc.conectado = True
+    r = J(puente(cfg, mc=mc).mc_bot_instalar())
+    assert r["ok"] is False and r["texto"].startswith("Desconecta") and mc.llamadas.count(("instalar",)) == 1
 
 
 def test_senales_de_minecraft_solo_texto(cfg):

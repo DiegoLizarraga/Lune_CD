@@ -889,7 +889,8 @@ class PanelEscenarioNativo(QWidget):
             return
         bot = e["bot"]
         self._estado(self.estado_bot, texto_bot(e), error=bool(bot["error"]) and not bot["conectado"])
-        self.btn_instalar.setEnabled(not bot["instalando"] and e["requisitos"]["node_ok"] is not False)
+        self.btn_instalar.setEnabled(not bot["instalando"] and not bot["conectado"] and not bot["conectando"]
+                                     and e["requisitos"]["node_ok"] is not False)
         self.btn_instalar.setText("INSTALANDO…" if bot["instalando"] else
                                   ("REINSTALAR EL BOT" if bot["instalado"] else TEXTO_INSTALAR))
         self.btn_conectar.setEnabled(bot["instalado"] and not bot["conectado"] and not bot["conectando"])

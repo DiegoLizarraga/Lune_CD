@@ -85,3 +85,27 @@ def test_sin_cambios_no_escribe(datos_tmp):
     assert datos_tmp.stat().st_mtime_ns == antes
     with pytest.raises(ValueError):
         datos.guardar_minecraft(["no", "dict"])
+
+
+def test_dos_guardados_a_la_vez_no_se_pisan(datos_tmp, monkeypatch):
+    """Ajustes y `/mc bot on` guardando a la vez: sin cerrojo, el segundo escribía su copia
+    vieja y el cambio del primero se perdía."""
+    import threading
+    import time
+
+    cargar_real = datos.cargar
+
+    def cargar_lento():
+        d = cargar_real()
+        time.sleep(0.05)                # ensancha la ventana leer → guardar
+        return d
+
+    monkeypatch.setattr(datos, "cargar", cargar_lento)
+    hilos = [threading.Thread(target=datos.guardar_minecraft, args=({"host": "mc.example.com"},)),
+             threading.Thread(target=datos.guardar_minecraft, args=({"pensar_cada_s": 90},))]
+    for h in hilos:
+        h.start()
+    for h in hilos:
+        h.join(5)
+    mc = leer(datos_tmp)["minecraft"]
+    assert mc["host"] == "mc.example.com" and mc["pensar_cada_s"] == 90

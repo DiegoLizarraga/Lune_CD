@@ -12,14 +12,26 @@ let _mid = 0;
 const uid = () => `m${++_mid}`;
 const NOW = () => new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
 
-// Quita los marcadores de control (<|ACT …|>) del texto mientras se transmite,
-// para que no se vean en la burbuja durante el streaming.
+// Quita los marcadores de control del texto (en el streaming y también al terminar),
+// con las mismas reglas que lune_core/marcadores.py: los buenos (<|ACT …|>, <|CALL …|>),
+// los que los modelos pequeños escriben mal (|<ACT …>|, |ACT …|, <ACT …>,
+// <|OPEN_URL …|>, <|mascota_bailar(…)|>…), los neutralizados (< |CALL …|>) y una marca
+// a medio escribir al final. «x <| f |>» (F#) o «a | b» (tablas) no son marcas.
+const RE_MARCAS = [
+  /\|?<\|(?=\s*(?:ACT|DELAY|CALL)\b|[A-Za-z_])(?:(?!<\|)[\s\S]){0,600}?\|>\|?/gi,  // <|…|> (con | sueltos)
+  /\|?<\|\s*ACT\b\s*:?\s*\{[^{}<>|\n]{0,600}\}/gi,                      // <|ACT {…} sin cerrar
+  /\|<[A-Za-z_][^<>|\n]{0,600}?(?:>\|?|\|>)/g,                          // |<…>|  |<…>  |<…|>
+  /(?<![<\w])(?<!<\s)>?\|(?:ACT|DELAY)\b[^|<>\n]{0,600}?\|(?!>)/g,       // |ACT …|
+  /<(?:ACT|DELAY|CALL)\b[^<>\n]{0,600}?>/g,                              // <ACT …>
+  /<\s+\|\s*(?:ACT|DELAY|CALL)\b[\s\S]{0,600}?\|>/gi,                    // < |CALL …|> (neutralizado)
+];
+const RE_MARCA_ABIERTA = /(?:<\|(?:\s*(?:ACT|DELAY|CALL)\b|[A-Za-z_]|$)|\|<(?:[A-Za-z_|]|$)|<(?:ACT|DELAY|CALL)\b)[^\n]{0,600}$/;
 function limpiarMarcadores(t) {
-  return (t || '')
-    .replace(/<\|\s*(ACT|DELAY|CALL)\b[\s\S]*?\|>/gi, '')   // marcador completo
-    .replace(/<\|\s*(ACT|DELAY|CALL)\b[\s\S]*$/i, '')        // marcador parcial al final
-    .replace(/\s+$/,'');
+  let s = String(t || '');
+  for (const re of RE_MARCAS) s = s.replace(re, '');
+  return s.replace(RE_MARCA_ABIERTA, '').replace(/\s+$/, '');
 }
+window.LuneLimpiarMarcadores = limpiarMarcadores;   // para los tests (tests/js/marcas_web.test.mjs)
 
 function Topbar({ provider, status, view, onView, onMenu }) {
   const { StatusPill, IconButton } = window.LUNE;
@@ -210,9 +222,11 @@ function App() {
         setTyping(false); setBusy(false);
         const id = streamId.current;
         streamId.current = null;
+        // También al terminar (prueba real: lo que el backend no reconocía se pintaba tal cual).
+        const final = limpiarMarcadores(texto);
         setMessages((m) => {
-          if (id && m.some((x) => x.id === id)) return m.map((x) => x.id === id ? { ...x, text: texto || x.text, streaming:false } : x);
-          if (texto) return [...m, { id: uid(), role:'bot', provider: providerRef.current, text: texto, time: NOW() }];
+          if (id && m.some((x) => x.id === id)) return m.map((x) => x.id === id ? { ...x, text: final || x.text, streaming:false } : x);
+          if (final) return [...m, { id: uid(), role:'bot', provider: providerRef.current, text: final, time: NOW() }];
           return m;
         });
         if (mascota) setMascot(mascota);   // vacío = la cara la va llevando la voz

@@ -95,6 +95,19 @@ AVISO_TG_DESACTIVADAS = "Las órdenes desde Telegram están desactivadas en Lune
 AVISO_TG_OCUPADA = "Lune está ocupada, prueba en un momento."
 AVISO_TG_DETENIDA = "Se detuvo la respuesta en el PC."
 SIN_TEXTO = "(Lune no dijo nada)"
+# Prueba real: por Telegram llegaba «He programado…» antes de que nadie lo aprobara en
+# el PC. Toda acción de una orden remota espera tu permiso: la respuesta lo dice.
+AVISO_TG_PENDIENTE = "(pendiente de tu permiso en el PC)"
+
+
+def con_aviso_pendiente(texto: str, llamadas) -> str:
+    """La respuesta para Telegram con «(pendiente de tu permiso en el PC)» si trae
+    acciones que se van a pedir (las válidas: las que no se entendieron no se piden,
+    y su ✕ «No entendí…» llega aparte)."""
+    texto = str(texto or "").strip() or SIN_TEXTO
+    if any(getattr(ll, "valida", False) for ll in (llamadas or [])):
+        return f"{texto}\n\n{AVISO_TG_PENDIENTE}"
+    return texto
 
 
 def admin_id() -> str:

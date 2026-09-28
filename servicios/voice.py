@@ -330,7 +330,18 @@ class VoiceEngine:
     # ── Hablar ──────────────────────────────────────────────────────────────────
     @staticmethod
     def _limpiar(text: str, tope: int = 400) -> str:
-        limpio = re.sub(r'[^\w\s,.!?áéíóúüñ¿¡]', '', text or '', flags=re.UNICODE).strip()
+        # Red de seguridad (prueba real): ninguna marca de control se lee en voz, ni
+        # las buenas ni las rotas (<|OPEN_URL …|>, |<ACT …>|) ni las neutralizadas
+        # (< |CALL …|>). Sin esto la voz decía «OPEN_URL httpswww.nasa.gov».
+        text = text or ''
+        try:
+            from lune_core.marcadores import limpiar_para_mostrar
+            text = limpiar_para_mostrar(text)
+        except Exception:
+            pass
+        text = re.sub(r'<\s+\|.*?\|>', ' ', text, flags=re.DOTALL)
+        limpio = re.sub(r'[^\w\s,.!?áéíóúüñ¿¡]', '', text, flags=re.UNICODE).strip()
+        limpio = re.sub(r'[ \t]{2,}', ' ', limpio)
         if len(limpio) > tope:                      # cortar en un espacio, no a media palabra
             corte = limpio.rfind(" ", 0, tope)
             limpio = limpio[:corte if corte > tope // 2 else tope].rstrip()

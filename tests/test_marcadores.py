@@ -59,10 +59,11 @@ def test_call_lista():
     assert control == [("call", ["buscar_web", {"q": "gatos"}])]
 
 
-def test_marcador_invalido_queda_como_texto():
+def test_marcador_invalido_no_se_ve_ni_se_lee():
+    """Prueba real: antes quedaba como texto (y la voz lo leía). Ahora desaparece."""
     hablable, control = M.separar("esto <|ACT no-es-json ni-emocion|> queda")
     assert control == []
-    assert "<|ACT no-es-json ni-emocion|>" in hablable
+    assert hablable == "esto  queda"
 
 
 def test_menor_que_normal_no_es_marcador():

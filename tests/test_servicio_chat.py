@@ -552,3 +552,55 @@ def test_turno_efimero_llega_al_modelo_y_no_se_persiste():
             await hub.detener()
 
     correr(caso())
+
+
+class FakeAICache(FakeAI):
+    """Un chat que entiende prefijo/anexo (como AIManager): guarda qué recibió en cada turno."""
+
+    def __init__(self, texto="Vale."):
+        super().__init__(texto)
+        self.turnos = []
+
+    async def chat(self, message, system_prompt="", provider=None, on_token=None, imagenes=None,
+                   origen=None, efimero=False, prefijo="", anexo=""):
+        self.turnos.append({"system": system_prompt, "prefijo": prefijo, "anexo": anexo})
+        return await super().chat(message, system_prompt, provider, on_token, imagenes)
+
+
+class FakeNotas:
+    activo = True
+
+    def contexto_para(self, texto):
+        return [("notas/recetas.md", f"Nota para «{texto}»: el horno va a 180 grados.")]
+
+
+def test_cache_el_system_no_cambia_entre_turnos_y_hora_y_notas_van_en_el_mensaje():
+    """Caché del modelo local: el system del host es el mismo en cada turno (memoria al
+    final); la hora va como prefijo y las notas (RAG) como anexo del mensaje."""
+    async def caso():
+        hub = Hub(TOKEN, host="127.0.0.1", puerto=0)
+        ai = FakeAICache()
+        ServicioChat(hub, ai, memoria=FakeMem(), tools=FakeTools(), notas=FakeNotas(),
+                     provider_por_defecto="ollama", persona="Eres Lune.")
+        await hub.iniciar()
+        eventos = []
+        cli = Cliente(f"ws://127.0.0.1:{hub.puerto}", TOKEN, "term", "web", on_evento=eventos.append)
+        try:
+            assert await cli.conectar(reintentar=False)
+            for texto in ("¿a cuánto pongo el horno?", "¿y cuánto tiempo?"):
+                ev = await cli.enviar(P.Tipo.INPUT_TEXT, {"text": texto})
+                assert await _esperar(eventos, _done_de(ev)) is not None
+        finally:
+            await cli.cerrar()
+            await hub.detener()
+        return ai.turnos
+
+    a, b = correr(caso())
+    assert a["system"] == b["system"], "el system del host cambió de un turno a otro"
+    sp = a["system"]
+    assert sp.rstrip().endswith("El usuario se llama Diego.")            # memoria al final
+    assert sp.index("<|CALL") < sp.index("CONTEXTO DE MEMORIA DEL USUARIO")
+    assert "horno" not in sp and "180 grados" not in sp                  # las notas, no aquí
+    assert a["prefijo"].startswith("[20") and a["prefijo"].endswith("] ")
+    assert "180 grados" in a["anexo"] and "¿a cuánto" in a["anexo"]
+    assert "¿y cuánto tiempo?" in b["anexo"]

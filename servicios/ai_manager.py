@@ -11,7 +11,23 @@ entre proveedores era una carrera esperando a ocurrir. Las llamadas sueltas
 misma razón: pueden coincidir con un chat en curso.
 
 El historial se recorta a `datos.max_historial()` turnos. Sin eso crecía sin
-límite y con modelos locales acababa desbordando la ventana de contexto.
+límite y con modelos locales acababa desbordando la ventana de contexto. Se
+recorta POR BLOQUES (`BLOQUE_RECORTE` mensajes de golpe) y no de dos en dos: si
+la ventana se desplazara en cada turno, el principio de la conversación cambiaría
+siempre y la caché de prefijo de Ollama no serviría nunca (prueba real: 40 s
+hasta el primer token con el historial lleno, en cada mensaje).
+
+CACHÉ Y MENSAJE DEL USUARIO
+`prefijo` (la hora, «[AAAA-MM-DD HH:MM] ») se guarda con el mensaje: el mismo
+texto en el historial que el que se envió. `anexo` (adjuntos, notas: datos de
+este mensaje) se envía al final del último mensaje y NO se guarda: el
+historial no crece con documentos y el prefijo cacheado no cambia.
+
+HISTORIAL NORMALIZADO
+Lo que se guarda de cada respuesta es su versión normalizada
+(lune_core.marcadores.normalizar): marcas válidas en su forma buena y sin la
+basura que los modelos pequeños escriben (|<ACT …>|, <|OPEN_URL …|>…). Guardarla
+cruda hacía que el modelo copiara sus propias marcas rotas en los turnos siguientes.
 
 Visión: las imágenes se adjuntan SOLO al mensaje que se está enviando; en el
 historial queda la versión de texto. Guardar el base64 turno tras turno haría
@@ -71,6 +87,7 @@ from urllib.parse import urlparse
 import requests
 from urllib3.exceptions import ReadTimeoutError
 
+from lune_core import marcadores
 from nucleo import datos
 
 
@@ -91,6 +108,13 @@ ORIGEN_USUARIO = "usuario"
 
 _CALL_EN_HISTORIAL = re.compile(r"<\|(\s*)(CALL)(?![A-Za-z0-9_])", re.IGNORECASE)
 
+# Recorte del historial por bloques (mensajes; par, para no partir user/assistant).
+BLOQUE_RECORTE = 10
+# Mensajes de la conversación que ve un turno efímero (el comentario de pantalla de la
+# mascota): los últimos, no todos (prueba real: 22 s con el historial entero y otro
+# system prompt, sin caché).
+VENTANA_EFIMERA = 4
+
 
 def es_no_confiable(origen) -> bool:
     """None (no se dijo) = turno del usuario, como siempre; cualquier otro valor
@@ -101,6 +125,16 @@ def es_no_confiable(origen) -> bool:
 def neutralizar_calls(texto: str) -> str:
     """`<|CALL …|>` → `< |CALL …|>`: el parser ya no lo ve como llamada."""
     return _CALL_EN_HISTORIAL.sub(r"< |\1\2", str(texto or ""))
+
+
+def respuesta_para_historial(texto: str) -> str:
+    """La respuesta tal como se guarda en el historial: normalizada (marcas buenas,
+    sin basura). Si no queda nada (solo había marcas rotas), «…»."""
+    try:
+        limpio = marcadores.normalizar(texto)
+    except Exception:
+        limpio = str(texto or "")
+    return limpio if limpio.strip() else "…"
 
 
 # ── Claves fuera de los mensajes de error ─────────────────────────────────────
@@ -357,7 +391,8 @@ class AIProvider(ABC):
     @abstractmethod
     async def chat(self, message: str, system_prompt: str = "",
                    on_token: Callable = None, imagenes: Optional[List[str]] = None, *,
-                   origen: Optional[str] = None, efimero: bool = False) -> str: ...
+                   origen: Optional[str] = None, efimero: bool = False,
+                   prefijo: str = "", anexo: str = "") -> str: ...
     @abstractmethod
     def is_available(self) -> bool: ...
 
@@ -387,26 +422,37 @@ class AIProvider(ABC):
 
     def _recortar_historial(self):
         """
-        Conserva los últimos N turnos (user + assistant). Recorta desde el
-        principio, que es lo más viejo y menos relevante.
+        Conserva como mucho N turnos (user + assistant). Al pasarse, recorta desde
+        el principio (lo más viejo) un BLOQUE de mensajes de golpe: así el
+        principio de la conversación no cambia en cada turno y la caché de prefijo
+        del modelo sigue valiendo hasta el siguiente recorte. Con ventanas muy
+        pequeñas (≤ 3 turnos) el bloque se reduce hasta el recorte de siempre.
         """
         limite = self._limite_historial()
         if len(self.conversation_history) > limite:
-            self.conversation_history = self.conversation_history[-limite:]
+            bloque = min(BLOQUE_RECORTE, (limite // 2) // 2 * 2)
+            nuevo = self.conversation_history[-(limite - bloque):]
+            if bloque:
+                # Que no empiece por una respuesta suelta (se recorta al llegar el mensaje).
+                while len(nuevo) > 1 and nuevo[0].get("role") == "assistant":
+                    nuevo = nuevo[1:]
+            self.conversation_history = nuevo
 
     def _mensajes_para_envio(self, message: str, system_prompt: str, *,
-                             origen: Optional[str] = None, efimero: bool = False) -> List[dict]:
+                             origen: Optional[str] = None, efimero: bool = False,
+                             prefijo: str = "", anexo: str = "") -> List[dict]:
         """
         Los mensajes que se envían: system + la ventana del historial + el nuevo.
         Un turno no confiable queda marcado en el historial; uno efímero no se
-        guarda (el modelo ve la misma ventana, pero la conversación no cambia).
-        Al proveedor solo le llegan role y content.
+        guarda y solo ve los últimos VENTANA_EFIMERA mensajes. `prefijo` (la hora)
+        se guarda con el mensaje; `anexo` (adjuntos, notas) va al final del que se
+        envía y no se guarda. Al proveedor solo le llegan role y content.
         """
-        entrada = {"role": "user", "content": message}
+        entrada = {"role": "user", "content": f"{prefijo or ''}{message}"}
         if es_no_confiable(origen):
             entrada[MARCA_NO_CONFIABLE] = True
         if efimero:
-            previo = self._limite_historial() - 1
+            previo = min(VENTANA_EFIMERA, self._limite_historial() - 1)
             ventana = (list(self.conversation_history[-previo:]) if previo > 0 else []) + [entrada]
         else:
             self.conversation_history.append(entrada)
@@ -415,6 +461,8 @@ class AIProvider(ABC):
             self._envio_contaminado = any(m.get(MARCA_NO_CONFIABLE) for m in ventana)
         mensajes = [{"role": m.get("role", "user"), "content": m.get("content", "")}
                     for m in ventana]
+        if anexo and str(anexo).strip():
+            mensajes[-1]["content"] = f"{mensajes[-1]['content']}\n\n{str(anexo).strip()}"
         if system_prompt:
             mensajes.insert(0, {"role": "system", "content": system_prompt})
         return mensajes
@@ -424,11 +472,12 @@ class AIProvider(ABC):
         if efimero:
             return
         if texto and not texto.startswith(self.ERROR) and not self.cancel_flag:
-            entrada = {"role": "assistant", "content": texto}
+            contenido = respuesta_para_historial(texto)
+            entrada = {"role": "assistant", "content": contenido}
             if es_no_confiable(origen):
                 # Lo que respondió a texto de terceros: marcado y sin CALL que el
                 # modelo pueda «recordar» como algo que ya hizo.
-                entrada = {"role": "assistant", "content": neutralizar_calls(texto),
+                entrada = {"role": "assistant", "content": neutralizar_calls(contenido),
                            MARCA_NO_CONFIABLE: True}
             self.conversation_history.append(entrada)
             self._recortar_historial()
@@ -568,7 +617,8 @@ class OllamaProvider(AIProvider):
 
     async def chat(self, message: str, system_prompt: str = "",
                    on_token: Callable = None, imagenes: Optional[List[str]] = None, *,
-                   origen: Optional[str] = None, efimero: bool = False) -> str:
+                   origen: Optional[str] = None, efimero: bool = False,
+                   prefijo: str = "", anexo: str = "") -> str:
         if not message or not message.strip():
             return "El mensaje está vacío"
         if not self.model:
@@ -576,7 +626,7 @@ class OllamaProvider(AIProvider):
                     "Ve a Configuración → Red Neuronal · Local y pulsa «Buscar modelos».")
 
         messages = self._mensajes_para_envio(message, system_prompt, origen=origen,
-                                             efimero=efimero)
+                                             efimero=efimero, prefijo=prefijo, anexo=anexo)
         if imagenes:
             # Ollama espera las imágenes en el propio mensaje, en base64 plano.
             messages[-1] = {**messages[-1], "images": imagenes}
@@ -710,16 +760,17 @@ class OpenRouterProvider(AIProvider):
 
     async def chat(self, message: str, system_prompt: str = "",
                    on_token: Callable = None, imagenes: Optional[List[str]] = None, *,
-                   origen: Optional[str] = None, efimero: bool = False) -> str:
+                   origen: Optional[str] = None, efimero: bool = False,
+                   prefijo: str = "", anexo: str = "") -> str:
         falta = self._falta_configuracion()
         if falta:
             return falta
 
         messages = self._mensajes_para_envio(message, system_prompt, origen=origen,
-                                             efimero=efimero)
+                                             efimero=efimero, prefijo=prefijo, anexo=anexo)
         if imagenes:
             # Formato de contenido por partes de OpenAI (OpenRouter y compatibles).
-            partes = [{"type": "text", "text": message}]
+            partes = [{"type": "text", "text": messages[-1]["content"]}]
             for img in imagenes:
                 partes.append({
                     "type": "image_url",
@@ -1078,11 +1129,14 @@ class AIManager:
     async def chat(self, message: str, system_prompt: str = "",
                    provider: Optional[str] = "openrouter", on_token: Callable = None,
                    imagenes: Optional[List[str]] = None, *,
-                   origen: Optional[str] = None, efimero: bool = False) -> str:
+                   origen: Optional[str] = None, efimero: bool = False,
+                   prefijo: str = "", anexo: str = "") -> str:
         """
         origen   'usuario' | 'no_confiable' (None = usuario). Un turno no confiable
                  queda marcado en el historial (ver «HISTORIAL CON ORIGEN»).
         efimero  True: ni el prompt ni la respuesta entran en el historial.
+        prefijo  delante del mensaje, también en el historial (la hora).
+        anexo    detrás del mensaje enviado, NO en el historial (adjuntos, notas).
         """
         if provider not in self.providers:
             return f"Proveedor '{provider}' no disponible"
@@ -1092,6 +1146,10 @@ class AIManager:
             extra["origen"] = origen
         if efimero:
             extra["efimero"] = True
+        if prefijo:
+            extra["prefijo"] = prefijo
+        if anexo:
+            extra["anexo"] = anexo
         texto = await prov.chat(message, system_prompt, on_token=on_token, imagenes=imagenes,
                                 **extra)
         # Red de seguridad: ninguna clave configurada sale en el texto (y en un

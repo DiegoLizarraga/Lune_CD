@@ -119,6 +119,19 @@ KEYWORDS_PREFERENCIA = [
 
 # ─────────────────────────────────────────────────────────────────────────────
 
+def mensajes_aproximados(total) -> int:
+    """El total de mensajes redondeado hacia abajo a una cifra significativa (812 →
+    800, 45 → 40, 1234 → 1000); 0 si son menos de 10. Estable entre mensajes."""
+    try:
+        n = int(total or 0)
+    except (TypeError, ValueError):
+        return 0
+    if n < 10:
+        return 0
+    base = 10 ** (len(str(n)) - 1)
+    return (n // base) * base
+
+
 class MemoriaManager:
     """Gestor de memoria personal persistente entre sesiones."""
 
@@ -206,10 +219,13 @@ class MemoriaManager:
         if resumen:
             partes.append(f"Resumen de la última sesión: {resumen}")
 
+        # Redondeado a propósito: un contador exacto cambiaba en CADA mensaje y, como
+        # la memoria va en el system prompt, rompía la caché de prefijo del modelo
+        # (prueba real: 37 s hasta el primer token). Así cambia muy de vez en cuando.
         stats = self._data.get("estadisticas", {})
-        total = stats.get("total_mensajes", 0)
-        if total > 0:
-            partes.append(f"Llevamos {total} mensajes intercambiados en total.")
+        aprox = mensajes_aproximados(stats.get("total_mensajes", 0))
+        if aprox:
+            partes.append(f"Llevamos más de {aprox} mensajes intercambiados en total.")
 
         if not partes:
             return ""

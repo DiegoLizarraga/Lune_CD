@@ -525,10 +525,10 @@ def test_ai_worker_ofrece_todas_las_del_modo_marcadas_pide_permiso(qapp):
     e = Entorno()
     remoto = reglas_para(e.ej, "normal", "remoto", {"modo": "normal", "proveedor": "ollama"})
     lineas = [l for l in remoto.splitlines() if l.startswith("- ")]
-    assert any(l.startswith("- abrir_url(") for l in lineas)
+    assert any(l.startswith('- <|CALL ["abrir_url"') for l in lineas)
     assert lineas and all(l.endswith("(pide permiso)") for l in lineas)
     solo = reglas_para(e.ej, "normal", "no_confiable", {"modo": "normal"})
-    assert "abrir_url(" not in solo and "sistema_info" in solo
+    assert '["abrir_url"' not in solo and "sistema_info" in solo
     w = AIWorker(MagicMock(), "hola", "ollama", origen="remoto", ejecutor=e.ej, modo="normal",
                  ctx={"modo": "normal"})
     assert w.origen == "remoto"

@@ -12,6 +12,7 @@ import json
 import os
 import re
 import shutil
+import threading
 from pathlib import Path
 from typing import Any, Dict
 
@@ -23,6 +24,10 @@ _EJEMPLO = _ROOT / "datos.example.json"
 # cuando datos.json cambia por fuera (mtime) y explícitamente al guardar.
 _cache: dict = {}
 _cache_mtime: float = -1.0
+
+# Leer → cambiar → guardar de los atajos de aquí: dos a la vez (Ajustes y
+# `/mc bot on`, p. ej.) guardaban cada uno su copia y se perdía un cambio.
+_CERROJO = threading.RLock()
 
 
 # ── Arranque en frío ───────────────────────────────────────────────────────────
@@ -76,21 +81,22 @@ def guardar(data: dict):
     """
     global _cache, _cache_mtime
     texto = json.dumps(data, ensure_ascii=False, indent=2)
-    tmp = _PATH.with_name(_PATH.name + ".tmp")
-    try:
-        tmp.write_text(texto, encoding="utf-8")
-        os.replace(tmp, _PATH)
-    except OSError:
+    with _CERROJO:
+        tmp = _PATH.with_name(_PATH.name + ".tmp")
         try:
-            tmp.unlink()
+            tmp.write_text(texto, encoding="utf-8")
+            os.replace(tmp, _PATH)
         except OSError:
-            pass
-        _PATH.write_text(texto, encoding="utf-8")
-    _cache = data
-    try:
-        _cache_mtime = _PATH.stat().st_mtime
-    except OSError:
-        _cache_mtime = -1.0
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
+            _PATH.write_text(texto, encoding="utf-8")
+        _cache = data
+        try:
+            _cache_mtime = _PATH.stat().st_mtime
+        except OSError:
+            _cache_mtime = -1.0
 
 
 def invalidar():
@@ -273,17 +279,18 @@ def aplicar_preset_muestreo(nombre: str) -> Dict[str, Any]:
     nombre = str(nombre or "").strip().lower()
     if nombre not in PRESETS_MUESTREO and nombre != PRESET_PERSONALIZADO:
         raise ValueError(f"preset de muestreo desconocido: {nombre!r}")
-    d = cargar()
-    m = d.setdefault("modelos", {})
-    m["preset_muestreo"] = nombre
-    if nombre != PRESET_PERSONALIZADO:
-        valores = PRESETS_MUESTREO[nombre]
-        for clave in _CLAVES_DE_PRESET:
-            if clave in valores:
-                m[clave] = valores[clave]
-            else:
-                m.pop(clave, None)
-    guardar(d)
+    with _CERROJO:
+        d = cargar()
+        m = d.setdefault("modelos", {})
+        m["preset_muestreo"] = nombre
+        if nombre != PRESET_PERSONALIZADO:
+            valores = PRESETS_MUESTREO[nombre]
+            for clave in _CLAVES_DE_PRESET:
+                if clave in valores:
+                    m[clave] = valores[clave]
+                else:
+                    m.pop(clave, None)
+        guardar(d)
     return parametros_muestreo()
 
 
@@ -429,19 +436,20 @@ def guardar_minecraft(cambios: Dict[str, Any]) -> Dict[str, Any]:
             if e not in MC_ESTILOS:
                 raise ValueError("El estilo de frases es «personaje» o «sobrio».")
             limpios[clave] = e
-    d = cargar()
-    mc = d.get("minecraft")
-    mc = dict(mc) if isinstance(mc, dict) else {}
-    usuario = limpios.get("usuario", str(mc.get("usuario") or "").strip())
-    dueno = limpios.get("dueno", str(mc.get("dueno") or "").strip())
-    if usuario and dueno and usuario.lower() == dueno.lower():
-        raise ValueError("El bot no puede llamarse igual que tú (su dueño).")
-    if not limpios:
+    with _CERROJO:
+        d = cargar()
+        mc = d.get("minecraft")
+        mc = dict(mc) if isinstance(mc, dict) else {}
+        usuario = limpios.get("usuario", str(mc.get("usuario") or "").strip())
+        dueno = limpios.get("dueno", str(mc.get("dueno") or "").strip())
+        if usuario and dueno and usuario.lower() == dueno.lower():
+            raise ValueError("El bot no puede llamarse igual que tú (su dueño).")
+        if not limpios:
+            return minecraft()
+        mc.update(limpios)
+        d["minecraft"] = mc
+        guardar(d)
         return minecraft()
-    mc.update(limpios)
-    d["minecraft"] = mc
-    guardar(d)
-    return minecraft()
 
 
 # ── Atajos: hub (red de Lune: host y terminales) ──
@@ -465,8 +473,12 @@ def asegurar_token_hub() -> str:
     if token:
         return token
     from lune_core.protocolo import generar_token
-    d = cargar()
-    d.setdefault("hub", {})["token"] = generar_token()
-    guardar(d)
+    with _CERROJO:
+        token = hub_token()            # otro hilo pudo generarlo mientras esperábamos
+        if token:
+            return token
+        d = cargar()
+        d.setdefault("hub", {})["token"] = generar_token()
+        guardar(d)
     return d["hub"]["token"]
 

@@ -54,9 +54,13 @@ En **⚙️ AJUSTES → Modo de interfaz** pulsas *Completa*, *Bajos recursos* o
 de la vieja con un fundido cortito y se lleva la conversación en curso, el
 proveedor, la voz, la posición de la ventana y lo que tuvieras en marcha (la
 mascota fuera, el bot de Telegram, el bot de Minecraft, el modo juego forzado).
-Nunca hay dos Lunes a la vez. Si eliges *Patata*, se abre la terminal y la app de
-ventanas se cierra limpia; desde la terminal, `/interfaz web` o `/interfaz nativo`
-te devuelven a las ventanas.
+El bot de Minecraft lo desconecta la ventana vieja y lo vuelve a conectar la nueva.
+Eso sí, patata es solo texto: al irte allí me guardo la mascota y apago el bot de
+Telegram (patata no tiene ninguno de los dos), y entre las ventanas y patata el bot
+de Minecraft no viaja contigo en ninguna dirección: lo vuelves a conectar tú (en
+patata, `/mc bot on`). Nunca hay dos Lunes a la vez. Si eliges *Patata*, se abre la terminal y la app de ventanas se cierra
+limpia; desde la terminal, `/interfaz web` o `/interfaz nativo` te devuelven a las
+ventanas.
 
 ---
 
@@ -66,6 +70,11 @@ te devuelven a las ventanas.
 abre una ventana que te explica **para qué sirve cada componente** —*"esto es para
 que Lune hable"*, *"esto para hablarle por micrófono"*— marca lo que ya tienes, e
 instala lo que elijas. Solo necesita Python.
+
+Antes de nada compruebo lo imprescindible: `numpy`, `sounddevice`,
+`imageio-ffmpeg` y, en Windows, `pywin32` y `comtypes`. `psutil` y `gTTS` son
+opcionales. Y como los dos bots (Telegram y Minecraft) necesitan **Node.js 18+**,
+que va aparte, te lo recuerdo con un botón **Descargar Node.js**.
 
 | Componente | Versión | Necesario para |
 |---|---|---|
@@ -169,7 +178,9 @@ misma memoria y misma personalidad; las emociones salen como caritas de teclado:
 
 ¿Prefieres kaomoji? `/caritas kaomoji` y soy `(^▽^)`, `(╥_╥)`, `(^_^)/`…
 
-No necesita Qt, así que también es el **rescate** si la interfaz no abre.
+No necesita Qt, así que también es el **rescate** si la interfaz no abre. Y si ya
+tengo una patata abierta y vuelves a abrirme en modo patata (con el `.vbs`, el
+`.bat` o desde la app), te traigo esa consola al frente en vez de abrir otra.
 
 ```bash
 python patata.py          # o doble clic en lune_patata.bat
@@ -204,7 +215,7 @@ Con `--sin-color` si tu terminal no pinta colores.
 | `/alarma HH:MM [lmxjvsd\|todos] [texto]` · `/alarmas [on\|off]` · `/borrar_alarma <id\|n>` | Alarmas |
 | `/timer 10m [texto]` · `/timers` · `/apagar` · `/posponer` | Temporizadores y la alarma que suena (también Enter o «p») |
 | `/bailar [segundos]` · `/bailar auto on\|off` · `/bailar apps` · `/bailar permitir\|quitar <app>` · `/parar` | Bailo en el título (con música, sola) |
-| `/bailes [texto]` · `/bailes <n>` · `/bailes parar\|pausa\|siguiente\|anterior` · `/bailes bucle on\|off` | Mis bailes con su canción |
+| `/bailes [texto]` · `/bailes <n>` · `/bailes parar\|pausa\|siguiente\|anterior` · `/bailes bucle on\|off` | Mis bailes con su canción (`bucle off` para al acabar, aunque Ajustes diga «repetir») |
 | `/comer [batido\|pastel] [sabor]` · `/comer on\|off` | Darme de comer (texto y sonido) |
 | `/discord [on\|off\|estado]` · `/discord id <número>` | Presencia en Discord |
 | `/autoinicio [on\|off\|estado\|como bandeja\|mascota\|ventana\|espera N]` | Arrancar con Windows |
@@ -440,17 +451,24 @@ el borde). Funciona con la barra normal, la que se oculta sola y la de un segund
 monitor.
 
 **En ventanas** (apágalo o enciéndelo en **⚙️ AJUSTES → Sentarse en la barra y en
-ventanas**): mantenme **medio segundo** sobre el borde de arriba de una ventana y me
-quedo sentada en ella, **siguiéndola** si la mueves. Si otra ventana la tapa, me
-quedo detrás; si la maximizas, la minimizas o la cierras, me levanto. **Tira de mí
-hacia arriba** para bajarme. Viene **apagado** y al encenderlo te enseño un aviso:
-para esto leo la posición de las ventanas (sin tocarlas ni leer lo que tienen
-dentro) y solo muevo la mía, pero algunos anticheats vigilan a quien mira ventanas.
-Con un juego delante no miro nada.
+ventanas**): arrástrame y mantenme **medio segundo** sobre el borde de arriba de una
+ventana, aunque dejes el ratón quieto, y me quedo sentada en ella, **siguiéndola** si
+la mueves. Si me sueltas ahí pasado ese medio segundo, me siento igual; si solo paso
+por encima, no. Con los sprites, suéltame sobre el borde después de llevarme
+arrastrada al menos medio segundo. Si otra ventana la tapa, me quedo detrás; si la
+maximizas, la minimizas o la cierras, me levanto. **Tira de mí hacia arriba** para
+bajarme. Viene **apagado** y al encenderlo te enseño un aviso: para esto leo la
+posición de las ventanas (sin tocarlas ni leer lo que tienen dentro) y solo muevo la
+mía, pero algunos anticheats vigilan a quien mira ventanas. Con un juego delante no
+sigo ninguna.
 
 También: «**siéntate en la barra**», «**siéntate en la ventana**» o «**bájate**»
 en el chat, el radial, la bandeja… Hay un ajuste de **altura del asiento** por si
 quedo flotando o hundida. Y sí: **puedo dormirme sentada**. (-_-) zzZ
+
+Si estoy sentada y un juego, una alarma o uno de mis bailes me levanta, al acabar
+vuelvo a mi sitio. Pero si mientras tanto me mueves o me llevas a la esquina, me
+quedo donde me dejaste.
 
 ### 💃 Bailo con tu música
 
@@ -484,10 +502,13 @@ patata suena igual y baila el título.
   volumen, en el sitio… y **ajustes por baile**: sincronía (±500 ms), ángulo de los
   brazos (25–45°, por si atraviesan el cuerpo) y bailar sin desplazarme.
 - **Mientras hablo, la canción baja sola**; si me escondes bailando, me pauso y
-  sigo al volver. En modo juego no pongo canciones.
-- Pídemelo por el chat: «**ponme el baile de Senbonzakura**», «**baila
-  "Senbonzakura"**» (con comillas) o «**para el baile**». Dicho con otras palabras,
-  el modelo lo busca en tu biblioteca.
+  sigo al volver (también con los sprites). Si me pides un baile estando
+  escondida, salgo; si no puedo, te aviso y empiezo cuando me saques. Y un ⏭ con
+  la mascota escondida espera a que vuelva. En modo juego no pongo canciones.
+- Pídemelo por el chat: «**ponme el baile de Senbonzakura**», «**pon la canción
+  Senbonzakura**», «**baila "Senbonzakura"**» o «**para el baile**». Lo pongo al
+  momento si el nombre es de un baile de tu biblioteca o va entre comillas. Lo
+  demás («pon la canción más alta», «…en YouTube») lo decide el modelo.
 
 Cómo añadir bailes: la guía corta está en **📖 Guías rápidas → Bailes**.
 
@@ -566,10 +587,11 @@ periódico, salir en la barra de tareas).
 vaivén y sin robar el foco) y, si la **pasas rápido por mi cabeza**, me la como:
 *glup glup* con el batido, mordisquitos con el pastel, cara feliz y, a veces, una
 frase. Hay batido de fresa, mango y matcha, y pastel de chocolate, fresa, limón y
-vainilla. **Esc** o dos minutos sin moverla la guardan. También «**toma un
-batido**» en el chat, la bandeja o `/comer` en patata. En la web, sin la mascota
-fuera, la comida aparece sobre mí en la barra lateral. Se apaga en **⚙️ AJUSTES →
-Batido y pastel**.
+vainilla. En el escritorio la guardas desde el menú o la bandeja, o se guarda sola
+tras dos minutos sin moverla (**Esc** solo sirve en la ventana web). También
+«**toma un batido**» en el chat, la bandeja o `/comer` en patata. En la web, sin la
+mascota fuera, la comida sigue a tu ratón por toda la ventana. Se apaga en
+**⚙️ AJUSTES → Batido y pastel**.
 
 ### 💬 Discord
 
@@ -577,8 +599,8 @@ Tu estado de Discord puede enseñar **lo que hago**: «Lune CD · Mascota 3D —
 Bailando ♪», «Sentada en la barra de tareas», «Durmiendo (-_-) zzZ»… Solo textos
 fijos: **nunca** títulos de ventanas, nombres de programas, el chat, el personaje ni
 tus alarmas; **con un juego delante, nada**. Si la app y patata están abiertas,
-publica solo una. Necesita el *Application ID* de una app tuya de Discord: la guía
-está en **📖 Guías rápidas → Discord**.
+publica solo una, y la otra vuelve a probar cada 5 s. Necesita el *Application ID*
+de una app tuya de Discord: la guía está en **📖 Guías rápidas → Discord**.
 
 ### ⛏️ Minecraft
 
@@ -586,18 +608,23 @@ Dos cosas, cada una con su interruptor en **⚙️ AJUSTES → Minecraft** (y su
 **Menú → Minecraft**):
 
 1. **Reacciono a tu partida.** Leo el `latest.log` de Minecraft —**solo el archivo**,
-   nada del juego en sí— y comento tus muertes, logros, quién entra o sale, el
-   peligro cerca… con frases mías (o de tu personaje), en la burbuja o en voz alta.
-   Encuentro el log solo (launcher oficial, Prism, MultiMC, PolyMC, Modrinth,
-   CurseForge) y entiendo los logs en español y en inglés. Si me escondo mientras
-   juegas (modo juego), al salir te cuento: «Mientras jugabas: 2 muertes, 1 logro…».
+   nada del juego en sí— y comento tus muertes, logros, quién entra o sale… con
+   frases mías (o de tu personaje), en la burbuja o en voz alta. Encuentro el log
+   solo (launcher oficial, Prism, MultiMC, PolyMC, Modrinth —también la app
+   antigua—, CurseForge). Entiendo los textos del juego en español (de España, de
+   México y las demás variantes) y en inglés: probado de la 1.20.1 a la 1.21.11, y
+   con versiones más antiguas, posiblemente también. Si me escondo mientras juegas
+   (modo juego), al salir te cuento lo tuyo: «Mientras jugabas: 2 muertes, 1
+   logro…». Ese resumen empieza de cero cada vez que entro en modo juego. Fuera de
+   él, si mi burbuja está ocupada, lo que no pude decirte no lo guardo.
 2. **Entro contigo como otro jugador: el bot «mina».** Es una copia adaptada de
    *Another-craft* (el otro proyecto de mi creador) con **mi personalidad**: me
    sigue, mina, tala, recoge, explora, te defiende, come… y habla en el chat. Le
    mandas órdenes desde la vista de Minecraft, desde el chat conmigo (te pido
    permiso), o con `/mc sígueme` en patata. Con el bot conectado y tú jugando (en
    modo juego, cuando me escondo), **te digo las muertes, logros y peligros en el
-   chat del juego**.
+   chat del juego**. El **peligro cerca** solo lo sé si el bot está dentro: lo ve
+   él, no sale del log.
 
 Requisitos y pasos en **📖 Guías rápidas → Minecraft**.
 
@@ -645,7 +672,12 @@ Me tomo muy en serio que **tú mandas en tu PC**. Esto es lo que hago (y lo que 
 **Te pido permiso antes de hacer cosas.** El modelo me pide acciones con un
 formato propio, invisible en el chat, y cada una pasa por un filtro con lista de
 cosas prohibidas, un presupuesto por conversación (20) y un registro de auditoría
-(`logs/audit.jsonl`). Como mucho 3 acciones por respuesta.
+(`logs/audit.jsonl`). Como mucho 3 acciones por respuesta. Si el modelo escribe
+la acción medio mal, la entiendo igual y pasa por el mismo filtro; si no la
+entiendo, te digo «No entendí la acción…» y no hago nada (nada de símbolos raros
+en la burbuja ni leídos en voz alta). Y si tú me das una duración o una hora («en
+un cuarto de hora», «a las 7»), manda la tuya aunque el modelo se equivoque de
+número.
 - **Siempre te pregunto** antes de: abrir un programa, mandarle una orden al bot de
   Minecraft, conectar el bot, y hacer una captura de pantalla **si el modelo está en
   la nube**.
@@ -667,17 +699,20 @@ texto de terceros y podría intentar colarme instrucciones:
 funciona con tu ID de Telegram puesto, desde tu chat privado con el bot y con el
 interruptor encendido; y **todo** lo que la orden provoque —hasta lo de solo
 lectura— lo apruebas tú delante del PC. El chat normal del bot no ejecuta acciones
-en tu PC, pero sí sabe enseñarte archivos de tu carpeta de usuario (`/ls`,
-`/fotos`, `/archivo`): por eso **pon tu ID de Telegram** en Ajustes, que sin él el
-bot le contesta a cualquiera que lo encuentre.
+en tu PC, pero sí sabe enseñarte y mandarte archivos de tu carpeta de usuario
+(`/ls`, `/fotos`, `/archivo`), sin salir nunca de ella. Por eso, hasta que pongas
+**tu ID de Telegram** en Ajustes, el bot solo responde a `/start` y a `/id`.
 
 **Compatible con juegos y anticheats.** Como Mate-Engine: **nada de hooks de
 teclado ni de ratón** (los atajos van con `RegisterHotKey` y la actividad se lee
 sondeando), **nada de leer ni escribir la memoria de otros procesos** ni de meter
 hilos en ellos, y nada de engancharme a los eventos de ventanas del sistema. Lo que
-toco de prioridad y RAM es **solo mío**. Sentarme en ventanas (lo único que mira
-otras ventanas) viene apagado y con aviso. Hay un test que recorre todo el código y
-falla si alguien mete algo de eso.
+toco de prioridad y RAM es **solo mío**. Hay un test que recorre todo el código y
+falla si alguien mete algo de eso. Eso sí, alguna ventana ajena miro: el modo juego
+mira cuál tienes delante, para sentarme en la barra busco su ventana y los
+comentarios automáticos usan el título de la ventana activa. Lo único que **sigue**
+la posición de otras ventanas todo el rato es sentarme en ventanas, y viene apagado
+y con aviso.
 
 **Discord no ve nada tuyo**: solo «Lune CD · *el modo*» y un estado fijo; nunca
 títulos, programas, el chat, el personaje ni tus alarmas; jugando, nada.
@@ -712,10 +747,14 @@ nada de accesos directos ni carpetas de red, y al quitar uno se mueve a
 4. **Reinicia el bot desde Lune** para que lo aplique: **Menú → Telegram** OFF y ON.
 5. En tu Telegram: **`/pc abre youtube`** → «Enviado a tu PC; apruébalo allí» → en
    el PC te sale la ventanita de permiso («Pedido desde Telegram…») → *Sí* o *No*,
-   y el resultado vuelve a tu chat.
+   y el resultado vuelve a tu chat. Si me lo pides con tus palabras («/pc pon un
+   temporizador de 10 minutos»), mi respuesta te llega con «(pendiente de tu permiso
+   en el PC)»: no está hecho hasta que dices *Sí*.
 
-Solo en el chat privado con el bot. Si ya hay una orden esperando, te digo que
-estoy ocupada; si en el PC nadie contesta en 60 s, no se hace.
+Solo en el chat privado con el bot, y solo si el bot lo lanzo yo: si lo tienes
+corriendo suelto en otro equipo, allí `/pc` no funciona. Si ya hay una orden
+esperando, te digo que estoy ocupada; si en el PC nadie contesta en 60 s, no se
+hace.
 
 ### 💬 …Discord
 
@@ -736,13 +775,18 @@ En patata: `/discord id <número>` y `/discord on`.
 
 **Reacciones:** **⚙️ AJUSTES → Minecraft** → *Reaccionar a lo que pasa en tu
 partida*. El log se busca solo; si tienes varios, pulsa *Detectar* y elige. Por
-defecto solo leo mientras Minecraft está abierto. (Patata: `/mc log on`.)
+defecto solo leo mientras Minecraft está abierto. Si el log pasa 10 minutos sin
+cambios lo suelto, y cuando vuelve a moverse, si es el mismo archivo, sigo por
+donde iba. (Patata: `/mc log on`.)
 
 **El bot:**
 1. Instala **Node.js 18 o más nuevo** (nodejs.org). Con 22.13+ o 23.5+ corre con el
    modelo de permisos de Node.
 2. Pulsa **«Instalar el bot»** en **⚙️ AJUSTES → Minecraft**: ocupa **unos 400 MB**
    (casi todo son los datos de todas las versiones del juego). Patata: `/mc instalar`.
+   Se instala de una en una, sea desde las ventanas o desde patata, y con el bot
+   conectado no se puede reinstalar (el botón se apaga). Si cambias de interfaz o
+   me cierras, la instalación se corta y no dejo ningún npm colgado.
 3. Necesitas un **servidor con `online-mode=false`** (en su `server.properties`):
    uno local o uno tuyo. **«Abrir en LAN» del juego normal no sirve**, porque pide
    cuenta.
@@ -751,13 +795,19 @@ defecto solo leo mientras Minecraft está abierto. (Patata: `/mc log on`.)
 5. **Conectar** (o dime «conecta el bot de Minecraft»). Patata: `/mc bot on` o
    `/mc bot on host:puerto`.
 
-Versiones: las que soporta mineflayer 4.37.1 (de la 1.8.8 a la 1.21.x). Órdenes que
-entiende: `sígueme`, `ven`, `para`, `mina <bloque>`, `tala`, `ataca <mob>`,
-`defiéndeme`, `recoge`, `dame <objeto>`, `come`, `explora`, `inventario`,
-`dónde estás`, `vida`, `mírame`, `salta`, `baila` o `di <texto>`. El bot piensa con
-su propio modelo (según `bot.proveedor` de `datos.json`, como el bot de Telegram):
-se pausa mientras yo pienso para no pelearnos por Ollama y, jugando, no piensa por
-su cuenta (salvo que lo actives) para no quitarle GPU a Minecraft.
+Versiones: el bot lo he probado conectado a un servidor 1.20.1; en uno 1.21 de
+verdad todavía no me he estrenado. Órdenes que entiende: `sígueme`, `ven`, `para`, `mina <bloque>`, `tala`,
+`ataca <mob>`, `defiéndeme`, `recoge`, `dame <objeto>`, `come`, `explora`,
+`inventario`, `dónde estás`, `vida`, `mírame`, `salta`, `baila` o `di <texto>`. En
+el chat del juego, la orden va al principio del mensaje («sígueme», «Lune, ven
+aquí»), y «para» solo cuenta si es el mensaje entero: «voy para casa» ya no frena
+al bot. Los demás jugadores tienen que mencionarlo; si no, no contesta.
+
+El bot piensa con su propio modelo (según `bot.proveedor` de `datos.json`, como el
+bot de Telegram) y con la personalidad de tu personaje: hasta 2000 caracteres
+contados como en JavaScript (un emoji vale 2); si es más larga, la recorto yo
+sola. Se pausa mientras yo pienso para no pelearnos por Ollama y, jugando, no
+piensa por su cuenta (salvo que lo actives) para no quitarle GPU a Minecraft.
 
 ### 🎬 …mis bailes
 
@@ -772,6 +822,10 @@ su cuenta (salvo que lo actives) para no quitarle GPU a Minecraft.
      `X_lip.vmd`, `X.mp3`).
 3. Dale a ▶. Si el baile va adelantado o los brazos atraviesan el cuerpo, ajústalo
    en su ficha (o en un `lune.json` opcional junto al baile).
+
+Mientras importo (convertir un `.m4a` con ffmpeg tarda un poquito), la lista y el
+buscador siguen funcionando. Y al abrir **Mis bailes**, la lista sale al momento
+con lo último que viste.
 
 Límites: 32 MB por movimiento, 64 MB por canción, 8 archivos por baile, 500 bailes.
 Los VMD de solo cámara no se usan. **Los movimientos y canciones tienen autor y
@@ -814,7 +868,10 @@ terminales que lo usan sin cargarlo. Cada dispositivo tiene un **rol**, en
 El **host corre el agente**: en modo terminal tu chat viaja por el hub al host,
 que ejecuta el modelo, aplica la memoria compartida y las herramientas, y te
 devuelve la respuesta en streaming. El bot de Telegram es un terminal más de solo
-texto. Si el host no responde, cada terminal vuelve a lo suyo y reconecta solo.
+texto: con host, su chat lo responde el host con herramientas de solo lectura y
+**sin tu memoria** en el prompt (`/memoria` y `/olvidar` te siguen funcionando a
+ti, el dueño). Si el host no responde, cada terminal vuelve a lo suyo y reconecta
+solo.
 
 **Descubrir dispositivos:** en **⚙️ AJUSTES → Red de Lune → BUSCAR DISPOSITIVOS**
 escaneo la red (mDNS) y te listo los demás Lune con su rol y modelo. Pulsa
@@ -842,6 +899,12 @@ comandos listos para copiar.
 | **Ventana de contexto** | Tokens de contexto (`num_ctx`). Más = más RAM/VRAM. |
 | **Timeout** | Súbelo si el modelo tarda en cargar en frío. |
 | **Temperatura** | 0 = preciso, 1 = creativo (o usa los presets de *Parámetros del modelo*). |
+
+**Te contesto antes con el modelo local.** Mis instrucciones no cambian de un
+mensaje a otro (la fecha y la hora van pegadas a tu mensaje, y lo que recuerdo de ti
+va al final), y la conversación larga se recorta a trozos, no de uno en uno. Así
+Ollama reutiliza lo que ya había leído en vez de releerlo todo cada vez. Pasa en las
+ventanas, en patata, en el host de la red y en el bot de Minecraft.
 
 ### Usar otro PC como servidor de modelos
 
@@ -933,7 +996,7 @@ mencionas.
 - `"estado del pc"` · `"info del sistema"`
 - `"avísame en 10 minutos"` · `"pon una alarma a las 7"`
 - `"baila"` · `"para de bailar"`
-- `"ponme el baile de Senbonzakura"` · `baila «Senbonzakura»` · `"para el baile"`
+- `"ponme el baile de Senbonzakura"` · `"pon la canción Senbonzakura"` (si es un baile de tu biblioteca o va entre comillas) · `baila «Senbonzakura»` · `"para el baile"`
 - `"siéntate en la barra"` · `"siéntate en la ventana"` · `"bájate"`
 - `"toma un batido"` · `"toma un pastel"`
 - `"conecta el bot de Minecraft"` (te pregunto antes) · `"desconecta el bot de Minecraft"`
@@ -987,18 +1050,27 @@ no estoy usando, y en **Rendimiento** puedo hacerlo sola de vez en cuando.
 
 1. Habla con **@BotFather** → `/newbot` → copia el token.
 2. Ponlo en **⚙️ AJUSTES → Telegram → Token del Bot**.
-3. **Menú → Telegram**. Pasa a ON cuando arranca (la primera vez instala sus
-   dependencias con npm; necesita Node.js 18+).
+3. **Menú → Telegram**. Pasa a ON cuando arranca (necesita Node.js 18+). La
+   primera vez instalo sus dependencias con `npm ci --ignore-scripts`, con las
+   versiones exactas de su `package-lock.json`; si una instalación se quedó a
+   medias, la repito, y si lo apagas mientras instala, la paro. Luego lo lanzo
+   directo con `node bot.js`.
 4. Escríbele **`/id`** y pon ese número en **⚙️ AJUSTES → Telegram → Tu ID de
-   Telegram**: así **solo tú** puedes usarlo. **Hazlo sí o sí**: sin tu ID, el bot le
-   contesta a cualquiera que lo encuentre.
+   Telegram**: así **solo tú** puedes usarlo. Hasta que lo hagas, el bot solo
+   responde a `/start` y a `/id`.
 
 Comandos del bot: `/start`, `/personajes`, `/usar <nombre>`, `/voz`, `/buscar`,
 `/ls`, `/fotos`, `/archivo`, `/sistema`, `/memoria`, `/olvidar`, `/limpiar`,
 `/modelo`, `/id` y **`/pc <orden>`** (órdenes a tu PC, ver **📖 Guías rápidas**).
-`bot.proveedor` en `datos.json` decide si el bot pregunta a la nube (`openrouter`)
-o a tu Ollama (`ollama`, que puede estar en otro equipo). Habla con la misma voz
-que tu personaje.
+`bot.proveedor` en `datos.json` decide si el bot pregunta a la nube (`openrouter`),
+a tu Ollama (`ollama`, que puede estar en otro equipo) o a la API compatible que
+pusiste en **Otra API de IA** (`compat`: la misma URL, modelo y clave; el tiempo de
+espera es `modelos.compat_timeout` en `datos.json`; sin modelo, usa el primero que
+ofrezca la API, y `/modelo` te dice cuál). Habla con la
+misma voz que tu personaje.
+
+¿Lo tienes corriendo suelto en otro equipo, sin que lo lance yo? Allí `/pc` no
+funciona. Y acuérdate de actualizar esa copia para tener los arreglos de seguridad.
 
 ---
 
@@ -1186,7 +1258,7 @@ modelo (te lo aviso); si no hay internet, elige `tiny` o conéctate una vez.
 
 **No hay voz** → `pip install edge-tts pygame`. **Micrófono** → `faster-whisper sounddevice`.
 **PDF/Word** → `pypdf python-docx`. **Optimizador** → `psutil`. **Bot de Telegram** →
-Node.js 18+ (el `npm install` lo hago yo la primera vez).
+Node.js 18+ (la instalación con `npm ci` la hago yo la primera vez).
 
 > Los logs están en `logs/lune_AAAAMMDD.log`. Ahí siempre digo la verdad.
 

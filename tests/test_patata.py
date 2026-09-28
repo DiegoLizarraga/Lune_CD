@@ -73,13 +73,16 @@ class AIFalsa:
     def __init__(self, texto="Hola <|ACT {\"emotion\":\"happy\"}|>"):
         self.texto = texto
         self.system = ""
+        self.prefijo = ""
         self.providers = {"ollama": ProvFalso(), "openrouter": ProvFalso()}
         self.limpiado = 0
         self.recargas = 0
         self.liberado = 0
 
-    async def chat(self, message, system_prompt="", provider=None, on_token=None, imagenes=None):
+    async def chat(self, message, system_prompt="", provider=None, on_token=None, imagenes=None,
+                   prefijo=""):
         self.system = system_prompt
+        self.prefijo = prefijo
         for i in range(0, len(self.texto), 5):
             if on_token:
                 on_token(self.texto[i:i + 5])
@@ -190,6 +193,37 @@ def _tm_con_lanzar():
     tm.registrar_handler("lanzar_app", lambda a, c: lanzadas.append((a["app"], c.get("origen")))
                          or f"Abriendo {a['app']}")
     return tm, lanzadas
+
+
+# ── Caché del modelo local: el system no cambia de un mensaje a otro ─────────────
+
+def test_cache_system_estable_memoria_al_final_y_la_hora_en_el_mensaje(crear):
+    p = crear("Vale.")
+    p.memoria.obtener_contexto_para_prompt = lambda: "El usuario se llama Diego."
+    p.responder("hola")
+    a, pre_a = p.ai.system, p.ai.prefijo
+    p.responder("¿qué hora es?")
+    assert p.ai.system == a, "el system de patata cambió de un mensaje a otro"
+    assert a.rstrip().endswith("El usuario se llama Diego.")               # memoria al final
+    assert a.index("<|CALL") < a.index("CONTEXTO DE MEMORIA DEL USUARIO")
+    assert pre_a.startswith("[20") and pre_a.endswith("] ") and p.ai.prefijo.startswith("[20")
+
+
+def test_cache_con_un_chat_sin_prefijo_no_se_le_pasa(crear):
+    p = crear("Vale.")
+
+    class Vieja:
+        system = ""
+
+        async def chat(self, message, system_prompt="", provider=None, on_token=None, imagenes=None):
+            Vieja.system = system_prompt
+            return "Vale."
+
+    vieja = Vieja()
+    vieja.providers = {}
+    p.ai = vieja
+    p.responder("hola")
+    assert Vieja.system and "Vale." in p.out.getvalue()
 
 
 # ── Un turno con acciones ────────────────────────────────────────────────────────

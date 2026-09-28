@@ -104,12 +104,14 @@ Comandos:
 from __future__ import annotations
 
 import asyncio
+import inspect
 import os
 import re
 import sys
 import threading
 import time
 import unicodedata
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 
@@ -126,7 +128,7 @@ from lune_core.frases_mascota import frases_para          # noqa: E402
 from lune_core.acciones import (CADUCADA, RECHAZADA,      # noqa: E402
                                 limpiar_texto)
 from lune_core.catalogo_herramientas import ORIGEN_USUARIO  # noqa: E402
-from lune_core.prompt import GRAMATICA_EMOCIONES          # noqa: E402
+from lune_core.prompt import construir_system_prompt, prefijo_hora   # noqa: E402
 from lune_core.reglas_prompt import reglas_herramientas   # noqa: E402
 from servicios.ai_manager import AIManager                # noqa: E402
 
@@ -627,24 +629,36 @@ class Patata:
         except Exception:
             pass
 
-    # ── Prompt: igual que la app (personalidad + memoria + herramientas + emociones) ──
+    # ── Prompt: igual que la app (lune_core.prompt.construir_system_prompt) ──────
     def _system_prompt(self, ctx: Optional[dict] = None) -> str:
-        base = personajes.build_system_prompt(personajes.get_activo())
+        """Persona → fecha → emociones → herramientas → anti-inyección → memoria al
+        final. Estable de un mensaje a otro para que el modelo local reuse su caché;
+        la hora va como prefijo del mensaje (`_opciones_chat`)."""
+        persona = personajes.build_system_prompt(personajes.get_activo())
         try:
             mem = self.memoria.obtener_contexto_para_prompt()
         except Exception:
             mem = ""
-        if mem:
-            base += "\n\nCONTEXTO DE MEMORIA DEL USUARIO:\n" + mem
+        reglas = ""
         if self._acciones_permitidas():
             try:
                 reglas = reglas_herramientas(self.ejecutor.registro, MODO,
-                                             set(self.ejecutor.handlers), ctx=ctx)
+                                             set(self.ejecutor.handlers), con_titulo=False, ctx=ctx)
             except Exception:
                 reglas = ""
-            if reglas:
-                base += "\n\n" + reglas
-        return base + "\n\n" + GRAMATICA_EMOCIONES
+        return construir_system_prompt(str(persona or ""), herramientas=reglas,
+                                       con_fecha="prefijo" in self._opciones_chat(),
+                                       memoria=str(mem or ""))
+
+    def _opciones_chat(self, momento=None) -> dict:
+        """La hora como prefijo del mensaje, solo si el chat lo entiende (AIManager sí)."""
+        try:
+            params = inspect.signature(self.ai.chat).parameters
+        except (TypeError, ValueError, AttributeError):
+            return {}
+        if "prefijo" in params or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()):
+            return {"prefijo": prefijo_hora(momento)}
+        return {}
 
     # ── Salida por consola (stream con los marcadores <|…|> ocultos) ────────────
     def _imprimir_stream(self):
@@ -780,6 +794,9 @@ class Patata:
             self._p(self._lune(":D", r) + "\n"); return
 
         ctx = self._ctx()
+        momento = datetime.now()
+        if isinstance(ctx, dict):          # para el cotejo del Ejecutor (duraciones y horas tuyas)
+            ctx["mensaje_usuario"], ctx["momento"] = texto, momento
         self.consola.escribir(f"{c['cyan']}Lune{c['reset']}  ")
         on_token = self._imprimir_stream()
         prov = (getattr(self.ai, "providers", {}) or {}).get(self.provider)
@@ -793,7 +810,8 @@ class Patata:
         self._discord_al_dia()
         try:
             respuesta = asyncio.run(self.ai.chat(texto, self._system_prompt(ctx),
-                                                 provider=self.provider, on_token=on_token))
+                                                 provider=self.provider, on_token=on_token,
+                                                 **self._opciones_chat(momento)))
         except KeyboardInterrupt:
             if prov is not None:
                 try:

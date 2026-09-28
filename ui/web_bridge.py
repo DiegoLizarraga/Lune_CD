@@ -97,7 +97,8 @@ from servicios.ai_manager import AIManager
 from servicios.ai_worker import AIWorker, ORIGEN_NO_CONFIABLE, ORIGEN_REMOTO, ORIGEN_USUARIO
 from servicios.tools import ToolManager, ctx_acciones
 from servicios.telegram_worker import (AVISO_TG_DESACTIVADAS, AVISO_TG_DETENIDA, AVISO_TG_OCUPADA,
-                                       PREFIJO_IA, PREFIJO_TELEGRAM, SIN_TEXTO, ordenes_activas)
+                                       AVISO_TG_PENDIENTE, PREFIJO_IA, PREFIJO_TELEGRAM, SIN_TEXTO,
+                                       con_aviso_pendiente, ordenes_activas)
 from servicios.voice import VoiceEngine
 from lune_core import marcadores, expresiones
 from lune_core.acciones import limpiar_texto
@@ -733,10 +734,13 @@ class LuneBridge(QObject):
         except Exception:
             contexto = ""
         imagenes = []
+        externo = ""
         if pend:
             try:
                 from nucleo import adjuntos as adj
-                contexto = contexto + adj.bloque_para_prompt(pend)
+                # Los adjuntos son datos de terceros de ESTE mensaje: van aparte (al
+                # final del mensaje), nunca bajo «CONTEXTO DE MEMORIA DEL USUARIO».
+                externo = adj.bloque_para_prompt(pend)
                 imagenes = adj.imagenes_base64(pend)
             except Exception:
                 pass
@@ -751,12 +755,14 @@ class LuneBridge(QObject):
         ctx = ctx_acciones(self.ai, provider_id, modo)
         self._arrancar_ia(texto or "Analiza lo que te adjunto.", provider_id, contexto=contexto,
                           imagenes=imagenes, origen=origen, modo=modo, ctx=ctx,
-                          mascota=bool(desde_mascota))
+                          mascota=bool(desde_mascota), externo=externo)
         return True
 
     def _arrancar_ia(self, mensaje: str, provider_id: str, *, contexto: str = "", imagenes=None,
-                     origen: str, modo: str, ctx: dict, mascota: bool = False, remoto: str = ""):
-        """Lanza el AIWorker de un turno (ventana, mascota u orden de Telegram)."""
+                     origen: str, modo: str, ctx: dict, mascota: bool = False, remoto: str = "",
+                     externo: str = ""):
+        """Lanza el AIWorker de un turno (ventana, mascota u orden de Telegram).
+        `contexto`: la memoria del usuario; `externo`: adjuntos de este mensaje."""
         self.estado.emit("busy")
         self.acto.emit("thinking")
         self._mascota_estado("thinking")
@@ -781,7 +787,7 @@ class LuneBridge(QObject):
             imagenes=imagenes or [],
             emociones=self.config.feature("emociones", True),
             origen=origen, ejecutor=getattr(self.acciones, "ejecutor", None),
-            modo=modo, ctx=ctx,
+            modo=modo, ctx=ctx, **({"contexto_externo": externo} if externo else {}),
         )
         # Las señales llevan la generación: tras Detener (o un envío nuevo) las del
         # worker viejo se ignoran, en vez de pintar su respuesta parcial.
@@ -1102,7 +1108,8 @@ class LuneBridge(QObject):
         remoto = turno.get("remoto")
         if remoto:
             visible = hablable.strip() or marcadores.limpiar_para_mostrar(limpio).strip()
-            self._responder_telegram(remoto, visible or SIN_TEXTO)
+            pedidas = llamadas if self.acciones is not None else []
+            self._responder_telegram(remoto, con_aviso_pendiente(visible or SIN_TEXTO, pedidas))
 
         # Las acciones que pidió el modelo, AL TERMINAR la respuesta (tras pintarla):
         # lo permitido se hace ya; lo que pide permiso pregunta (modal de la página o

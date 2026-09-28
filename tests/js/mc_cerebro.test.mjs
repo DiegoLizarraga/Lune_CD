@@ -38,6 +38,36 @@ test('prompt: persona de Lune + reglas de Minecraft + dueño; con «sobrio», si
   assert.ok(raro.includes('a $& b $1'), 'el contexto no se interpreta como patrón de reemplazo');
 });
 
+test('caché: el system es el mismo en cada decisión y la situación va solo en el mensaje', async () => {
+  const { f, pedidos } = fetchFalso(ollamaDice({ action: 'idle' }));
+  const c = crearCerebro({ persona: PERSONA, dueno: 'Diego_01', llm: OLLAMA, fetch: f, log: () => {} });
+  await c.think('Salud: 20/20 · día');
+  await c.think('Salud: 7/20 · noche', 'ven', 'Diego_01');
+  const [a, b] = pedidos.map((p) => p.cuerpo.messages);
+  assert.equal(a[0].role, 'system');
+  assert.equal(a[0].content, b[0].content);
+  assert.ok(!a[0].content.includes('Salud:') && !b[0].content.includes('Salud:'));
+  assert.match(b.at(-1).content, /^Salud: 7\/20 · noche\n/);
+  assert.deepEqual(b.slice(0, a.length), a, 'lo de la decisión anterior es prefijo de la siguiente');
+});
+
+test('caché: el historial se recorta por bloques, empieza por el jugador y entre recortes no cambia', async () => {
+  const { f, pedidos } = fetchFalso(ollamaDice({ action: 'idle' }));
+  const c = crearCerebro({ persona: PERSONA, dueno: 'Diego_01', llm: OLLAMA, fetch: f, log: () => {}, maxHistorial: 6 });
+  for (let i = 0; i < 9; i++) await c.think(`vuelta ${i}`);
+  let recortes = 0;
+  for (let i = 1; i < pedidos.length; i++) {
+    const antes = pedidos[i - 1].cuerpo.messages;
+    const ahora = pedidos[i].cuerpo.messages;
+    assert.ok(ahora.length <= 1 + 6, `como mucho el system + 6 (${ahora.length})`);
+    assert.equal(ahora[1].role, 'user', 'tras el system, siempre un mensaje del jugador');
+    const esPrefijo = JSON.stringify(ahora.slice(0, antes.length)) === JSON.stringify(antes);
+    if (!esPrefijo) recortes++;
+  }
+  assert.ok(recortes >= 1 && recortes <= 3, `recorta a trozos, no en cada vuelta (${recortes} de ${pedidos.length - 1})`);
+  assert.match(pedidos.at(-1).cuerpo.messages.at(-1).content, /^vuelta 8\n/);
+});
+
 test('parseDecision: lista blanca de acciones y objetivos validados', () => {
   assert.deepEqual(parseDecision('{"chat":"hola","action":"follow","target":"Diego_01","reason":"r"}'),
     { chat: 'hola', action: 'follow', target: 'Diego_01', reason: 'r' });

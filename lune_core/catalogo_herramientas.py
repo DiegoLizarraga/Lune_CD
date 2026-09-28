@@ -84,6 +84,8 @@ class Arg:
       recortar  True: un str largo se corta a maxlen en vez de rechazarse
                 (solo para textos libres, nunca para rutas, URL o ids)
       ayuda     pista corta para el prompt ("HH:MM", "letras lmxjvsd"…)
+      hueco     lo que se enseña en la firma del prompt en lugar del valor (None:
+                según el tipo/ayuda; "" para «vacío salvo que haga falta»)
     """
     tipo: str
     requerido: bool = False
@@ -95,6 +97,7 @@ class Arg:
     defecto: Any = None
     recortar: bool = False
     ayuda: str = ""
+    hueco: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -164,12 +167,14 @@ _LISTA: List[Herramienta] = [
         "texto": _TEXTO_CORTO},
        handler="nucleo.alarmas.herramienta_temporizador",
        resumen="Poner un temporizador de {segundos} s «{texto}»",
-       ejemplo={"segundos": 300, "texto": "sacar la pizza"}),
-    _h("alarma", "Poner una alarma (dias vacío = solo una vez)", _E, False, 1, TODOS,
+       # Neutro: la prueba real vio al modelo copiar «sacar la pizza» del ejemplo.
+       ejemplo={"segundos": 300}),
+    _h("alarma", "Poner una alarma (dias: letras lmxjvsd solo si se repite; para un día "
+                 "concreto, fecha)", _E, False, 1, TODOS,
        {"hora": Arg("str", requerido=True, maxlen=5,
                     patron=r"(?:[01]?\d|2[0-3]):[0-5]\d", ayuda="HH:MM"),
         "dias": Arg("str", maxlen=7, patron=r"[lmxjvsd]*", defecto="",
-                    ayuda="letras lmxjvsd"),
+                    ayuda="letras lmxjvsd", hueco=""),
         "texto": _TEXTO_CORTO,
         # Día concreto («mañana a las 7»); sin fecha, la próxima vez que lleguen esa hora.
         "fecha": Arg("str", maxlen=10, patron=r"\d{4}-\d{2}-\d{2}", ayuda="AAAA-MM-DD")},
@@ -187,7 +192,10 @@ _LISTA: List[Herramienta] = [
     # ── Mascota (P02, P03, P04, P05, P14) ──
     # Cortes 9/10: con «cancion», una de la biblioteca de bailes (bailes/); en patata también
     # (el título baila al ritmo de la canción: servicios/bailes_terminal).
-    _h("mascota_bailar", "Bailar (cancion: uno de tus bailes)", _E, False, 0,
+    # Prueba real: el modelo se inventaba canciones («Dance Monkey»): solo títulos que
+    # haya dado listar_bailes o el usuario; si no, sin cancion (el handler avisa si no está).
+    _h("mascota_bailar", "Bailar (cancion: solo un título de listar_bailes o que diga el "
+                         "usuario; si no, omítela)", _E, False, 0,
        {"normal", "br", "mascota", "patata"},
        {"segundos": Arg("int", min=5, max=300, defecto=30),
         "cancion": Arg("str", maxlen=80, recortar=True)},
@@ -196,7 +204,7 @@ _LISTA: List[Herramienta] = [
     _h("parar_baile", "Dejar de bailar", _E, False, 0, {"normal", "br", "mascota", "patata"},
        handler="nucleo.baile.herramienta_parar", resumen="Dejar de bailar"),
     # Títulos saneados (son nombres de archivo). Sin controlador lee bailes/ sin tocar nada.
-    _h("listar_bailes", "Ver tus bailes", _L, False, 0, TODOS,
+    _h("listar_bailes", "Ver tus bailes (úsala si preguntan cuáles sabes)", _L, False, 0, TODOS,
        {"texto": _TEXTO_CORTO},
        handler="nucleo.bailes.herramienta_listar", resumen="Mirar tus bailes"),
     _h("mascota_dormir", "Echarte a dormir", _E, False, 0, _MASCOTA,
@@ -232,7 +240,7 @@ _LISTA: List[Herramienta] = [
     # El patrón solo filtra caracteres; servicios.voces valida que la voz exista.
     _h("cambiar_voz", "Cambiar tu voz", _E, False, 1, TODOS,
        {"voz": Arg("str", requerido=True, maxlen=80, patron=r"[A-Za-z0-9_\-]{2,80}",
-                   ayuda="p. ej. es-MX-DaliaNeural")},
+                   ayuda="p. ej. es-MX-DaliaNeural", hueco="es-XX-NombreNeural")},
        handler="servicios.voces.herramienta",
        resumen="Cambiar la voz a {voz}", ejemplo={"voz": "es-MX-DaliaNeural"}),
 
@@ -496,8 +504,88 @@ def resumen(nombre: str, args: Optional[Mapping] = None, ctx: Any = None,
     return re.sub(r"\s*«»", "", texto).strip()
 
 
+def _marcador_arg(a: Arg) -> Any:
+    """Hueco de un argumento en la firma: lo que el modelo sustituye por su valor."""
+    if a.hueco is not None:
+        return a.hueco
+    if a.tipo in ("int", "float"):
+        return "N"
+    if a.tipo == "bool":
+        return "true|false"
+    if a.enum:
+        return "|".join(a.enum)
+    return a.ayuda or "…"
+
+
+def firma_marca(h: Herramienta) -> str:
+    """
+    La firma para el prompt, con la MISMA forma que la llamada (prueba real: con
+    `nombre(arg: tipo)` los modelos pequeños escribían <|nombre(arg=…)|>):
+        <|CALL ["temporizador", {"segundos": N, "texto": "…"}]|>
+    Números y booleanos van sin comillas (N, true|false); el resto, entre comillas.
+    """
+    partes = []
+    for clave, a in h.args.items():
+        v = _marcador_arg(a)
+        partes.append(f'"{clave}": {v}' if a.tipo in ("int", "float", "bool") else f'"{clave}": "{v}"')
+    return f'<|CALL ["{h.nombre}", {{{", ".join(partes)}}}]|>'
+
+
+# ── Cotejo con lo que escribió la persona ─────────────────────────────────────────
+
+def _hhmm(valor: Any) -> str:
+    m = re.fullmatch(r"\s*(\d{1,2}):(\d{2})\s*", str(valor or ""))
+    return f"{int(m.group(1)):02d}:{m.group(2)}" if m else str(valor or "")
+
+
+def cotejar(nombre: str, args: Mapping[str, Any], ctx: Any = None
+            ) -> Tuple[Dict[str, Any], Dict[str, Tuple[Any, Any]]]:
+    """
+    Cotejo barato (prueba real: 45 s por «veinte minutos», días «l» por «mañana»):
+    si el mensaje de la persona (ctx['mensaje_usuario'], hora ctx['momento']) trae
+    una duración u hora que nucleo.alarmas_nl entiende y la llamada del modelo a
+    `temporizador`/`alarma` la contradice, manda la de la persona. Devuelve
+    (args, cambios {clave: (del modelo, de la persona)}); sin mensaje, sin
+    pistas o sin contradicción, los args tal cual y {}.
+    """
+    args = dict(args or {})
+    if nombre not in ("temporizador", "alarma"):
+        return args, {}
+    texto = valor_ctx(ctx, "mensaje_usuario")
+    if not isinstance(texto, str) or not texto.strip():
+        return args, {}
+    try:
+        from nucleo.alarmas_nl import pistas
+        p = pistas(texto, valor_ctx(ctx, "momento"))
+    except Exception:
+        return args, {}
+    cambios: Dict[str, Tuple[Any, Any]] = {}
+
+    def poner(clave, valor):
+        if args.get(clave) != valor:
+            cambios[clave] = (args.get(clave), valor)
+            args[clave] = valor
+
+    if nombre == "temporizador":
+        if p.get("segundos"):
+            poner("segundos", int(p["segundos"]))
+        return args, cambios
+    horas = list(p.get("horas") or [])
+    if horas and _hhmm(args.get("hora")) not in horas:
+        poner("hora", p["hora"])
+    if p.get("fecha"):
+        poner("dias", "")
+        poner("fecha", p["fecha"])
+    elif p.get("dias"):
+        poner("dias", p["dias"])
+        if args.get("fecha"):
+            cambios["fecha"] = (args.pop("fecha"), None)
+    return args, cambios
+
+
 def firma(h: Herramienta) -> str:
-    """`temporizador(segundos: entero 1-90000, texto?: texto ≤60)` para el prompt."""
+    """`temporizador(segundos: entero 1-90000, texto?: texto ≤60)` (forma antigua;
+    el prompt usa firma_marca)."""
     partes = []
     for clave, a in h.args.items():
         marca = "" if a.requerido else "?"

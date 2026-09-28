@@ -789,9 +789,8 @@ class PuenteEscenario(PuenteOcioBase):
         e = self._estado_mc()
         if e["bot"]["instalando"]:
             return dump({"ok": False, "texto": "Ya se está instalando.", "estado": e})
-        llamar(self._mc, "instalar_bot")
-        return dump({"ok": True, "texto": "Instalando el bot (~400 MB). Tarda unos minutos.",
-                     "estado": self._estado_mc()})
+        ok, texto = _tupla_ok(llamar(self._mc, "instalar_bot"), "No pude instalar el bot.")
+        return dump({"ok": ok, "texto": texto, "estado": self._estado_mc()})
 
     @pyqtSlot(result=str)
     def mc_bot_conectar(self) -> str:

@@ -13,7 +13,18 @@ lune_core/herramientas.py (fail-closed, deny-list, presupuesto y auditoría).
 
 Reglas (plan §2.5 y crítica d):
   · Máximo 3 CALL por respuesta; el resto se descarta sin ejecutar.
-  · Un CALL con JSON inválido (o sin cerrar) desaparece del texto y no se ejecuta.
+  · Tolerancia (prueba real con modelos locales): las formas mal escritas que
+    lune_core/marcadores.py sabe leer (<|mascota_bailar(segundos=60)|>,
+    <|OPEN_URL https://…|>, |<CALL …>|, JSON con una llave de más…) se
+    interpretan y pasan por AQUÍ como cualquier CALL: misma Política, misma
+    aprobación, mismo origen.
+  · Un CALL (o una marca con intención de acción) que no se entiende —JSON
+    ilegible, cortado, nombre inventado— desaparece del texto, NO se ejecuta y
+    vuelve como Llamada inválida: la persona ve «No entendí la acción…» en vez de
+    creer que se hizo.
+  · Cotejo: si la persona escribió una duración u hora (ctx['mensaje_usuario']) y
+    la llamada a temporizador/alarma la contradice, manda la de la persona
+    (catalogo_herramientas.cotejar; queda en `Llamada.corregidos` y en la auditoría).
   · El formato antiguo (`ABRIR_URL:`, `ABRIR_BUSQUEDA:`, `TOOL:`) ya NO se
     ejecuta: se salta la neutralización de marcadores. Solo se borra del texto.
   · Origen del turno: 'usuario', 'no_confiable' o 'remoto'. Si el prompt llevaba
@@ -96,6 +107,10 @@ INVALIDA = "invalida"
 NO_DISPONIBLE = "no_disponible"
 LIMITE = "limite"
 
+# Error de una marca con intención de acción que no se pudo interpretar (el
+# mensaje que ve la persona es «No entendí la acción «X»: …»).
+NO_ENTENDIDA = "la marca no es válida y no la hice"
+
 
 # ── Datos ────────────────────────────────────────────────────────────────────────
 
@@ -113,6 +128,9 @@ class Llamada:
     # servicios.tools.detectar_llamadas), no el modelo. Un historial con texto de
     # terceros no la afecta (el modelo no intervino). procesar() nunca la pone.
     directa: bool = False
+    # Cotejo con lo que escribió la persona (catalogo_herramientas.cotejar): los
+    # argumentos que se cambiaron, {clave: (lo que pidió el modelo, lo que se usa)}.
+    corregidos: Dict[str, Any] = field(default_factory=dict)
 
     @property
     def valida(self) -> bool:
@@ -148,10 +166,11 @@ class _Aprobacion:
 # ── Texto: sacar las marcas ──────────────────────────────────────────────────────
 
 _ABRE, _CIERRA = "<|", "|>"
-_ES_CALL = re.compile(r"\s*CALL(?![A-Za-z0-9_])", re.IGNORECASE)
-# Restos que no se ejecutan: CALL mal cortados o neutralizados («< |CALL …|>»).
-_RESTO_CALL = re.compile(r"<\s*\|\s*CALL(?![A-Za-z0-9_]).*?\|>", re.IGNORECASE | re.DOTALL)
-_RESTO_CALL_ABIERTO = re.compile(r"<\s*\|\s*CALL(?![A-Za-z0-9_])[^\n]*$", re.IGNORECASE)
+# Restos que no se ejecutan ni se enseñan: marcas neutralizadas («< |CALL …|>», el
+# eco de un texto de terceros) y un CALL neutralizado sin cerrar al final.
+_RESTO_CALL = re.compile(r"<\s+\|\s*(?:CALL|ACT|DELAY)(?![A-Za-z0-9_]).*?\|>",
+                         re.IGNORECASE | re.DOTALL)
+_RESTO_CALL_ABIERTO = re.compile(r"<\s+\|\s*CALL(?![A-Za-z0-9_])[^\n]*$", re.IGNORECASE)
 # Formato antiguo: se borra, nunca se ejecuta.
 _LEGADO = (
     # Línea entera con solo el comando: se va también su salto de línea.
@@ -180,47 +199,36 @@ def _ordenar(texto: str) -> str:
     return texto.strip()
 
 
-def separar_llamadas(texto: str) -> Tuple[str, List[Any], int]:
+def separar_acciones(texto: str) -> Tuple[str, List[Any], List[str]]:
     """
-    Quita del texto las marcas CALL y el formato antiguo. Devuelve
-    (texto_limpio, payloads_validos_en_orden, n_invalidas). Las demás marcas
-    (ACT, DELAY) se quedan tal cual para quien las procese después.
-    Sigue la misma regla que ParserMarcadores: una marca va de «<|» al primer «|>».
+    Quita del texto las marcas de acción (CALL y sus formas toleradas, ver
+    lune_core/marcadores.py), la basura con forma de marca y el formato antiguo.
+    Devuelve (texto_limpio, payloads_en_orden, nombres_no_entendidos): lo último
+    son marcas con intención de acción que no se pudieron interpretar (JSON roto,
+    marca cortada, nombre inventado con argumentos…); quien ejecuta avisa «no
+    entendí la acción» en vez de darla por hecha. ACT y DELAY se quedan para quien
+    los procese después: tal cual si venían bien escritos, en su forma buena si
+    venían tolerados (|<ACT …>|, |ACT …|…).
     """
     texto = "" if texto is None else str(texto)
+    trozos, _ = marcadores.trocear(texto, final=True)
     piezas: List[str] = []
     payloads: List[Any] = []
-    invalidas = 0
+    fallidas: List[str] = []
     tocado = False
-    i = 0
-    while True:
-        a = texto.find(_ABRE, i)
-        if a == -1:
-            piezas.append(texto[i:])
-            break
-        b = texto.find(_CIERRA, a + len(_ABRE))
-        if b == -1:
-            # Marca sin cerrar al final (respuesta cortada): si es un CALL, fuera.
-            if _ES_CALL.match(texto[a + len(_ABRE):]):
-                piezas.append(texto[i:a])
-                invalidas += 1
-                tocado = True
-            else:
-                piezas.append(texto[i:])
-            break
-        cuerpo = texto[a + len(_ABRE):b]
-        if _ES_CALL.match(cuerpo):
-            piezas.append(texto[i:a])
-            _, control = marcadores.separar(texto[a:b + len(_CIERRA)])
-            calls = [v for c, v in control if c == "call"]
-            if calls:
-                payloads.append(calls[0])
-            else:
-                invalidas += 1
-            tocado = True
+    for clase, valor, crudo in trozos:
+        if clase == "texto":
+            piezas.append(crudo)
+        elif clase in ("act", "delay"):
+            bien = crudo.startswith(_ABRE) and crudo.endswith(_CIERRA)
+            piezas.append(crudo if bien else marcadores.canonica(clase, valor))
+            tocado = tocado or not bien
         else:
-            piezas.append(texto[i:b + len(_CIERRA)])
-        i = b + len(_CIERRA)
+            if clase == "call":
+                payloads.append(valor)
+            elif clase == "invalida":
+                fallidas.append(str(valor or ""))
+            tocado = True
 
     limpio = _unir(piezas)
     for patron in (_RESTO_CALL, _RESTO_CALL_ABIERTO, *_LEGADO):
@@ -228,11 +236,17 @@ def separar_llamadas(texto: str) -> Tuple[str, List[Any], int]:
         tocado = tocado or n > 0
     if tocado:
         limpio = _ordenar(limpio)
-    return limpio, payloads, invalidas
+    return limpio, payloads, fallidas
+
+
+def separar_llamadas(texto: str) -> Tuple[str, List[Any], int]:
+    """(texto_limpio, payloads_en_orden, n_no_entendidas): ver separar_acciones."""
+    limpio, payloads, fallidas = separar_acciones(texto)
+    return limpio, payloads, len(fallidas)
 
 
 def limpiar_texto(texto: str) -> str:
-    """Solo el texto, sin marcas CALL ni formato antiguo (para mostrar o hablar)."""
+    """Solo el texto, sin marcas de acción, basura ni formato antiguo (para mostrar o hablar)."""
     try:
         return separar_llamadas(texto)[0]
     except Exception:
@@ -261,6 +275,40 @@ def _a_bool(v: Any) -> bool:
     if isinstance(v, (int, float)):
         return v == 1
     return str(v or "").strip().lower() in {"s", "si", "sí", "y", "yes", "true", "1", "ok"}
+
+
+def _args_de(resto: List[Any], h: cat.Herramienta) -> Optional[Dict[str, Any]]:
+    """
+    Lo que va tras el nombre en el payload → objeto de argumentos (sin validar):
+      [{…}]                  el de siempre
+      ["https://…"]          un valor suelto → al único argumento requerido (o al único)
+      ["6:30", {"dias": …}]  valores sueltos → a los argumentos en orden (primero los
+                             requeridos que falten), más lo nombrado
+    None si no se puede (p. ej. varios sueltos para una herramienta sin argumentos).
+    """
+    nombrados: Dict[str, Any] = {}
+    sueltos: List[Any] = []
+    for x in resto:
+        if isinstance(x, Mapping):
+            nombrados.update(x)
+        elif x is None:
+            continue
+        elif isinstance(x, (str, int, float)):
+            sueltos.append(x)
+        else:
+            return None
+    if not sueltos or not h.args:
+        return nombrados                 # <|sistema_info("cpu")|>: sin argumentos, se ignora
+    requeridos = [k for k, a in h.args.items() if a.requerido]
+    if len(sueltos) == 1 and not nombrados and not isinstance(sueltos[0], bool):
+        destino = requeridos or list(h.args)
+        if len(destino) == 1:
+            return {destino[0]: sueltos[0]}
+    libres = [k for k in requeridos + [k for k in h.args if k not in requeridos]
+              if k not in nombrados]
+    if len(sueltos) > len(libres):
+        return None
+    return {**nombrados, **dict(zip(libres, sueltos))}
 
 
 def _programar_hilo(segundos: float, fn: Callable[[], None]):
@@ -354,12 +402,16 @@ class Ejecutor:
         """
         try:
             origen = _origen(origen)
-            limpio, payloads, invalidas = separar_llamadas(texto)
-            if invalidas:
-                self._auditar("call_invalido", cantidad=invalidas)
+            limpio, payloads, fallidas = separar_acciones(texto)
+            if fallidas:
+                self._auditar("call_invalido", cantidad=len(fallidas), nombres=fallidas[:5])
             llamadas: List[Llamada] = []
+            # Dos temporizadores en la misma respuesta: el cotejo no sabría cuál es cuál.
+            nombres = [p[0] for p in payloads if isinstance(p, list) and p and isinstance(p[0], str)]
+            repetidas = {n for n in nombres if nombres.count(n) > 1}
             for i, payload in enumerate(payloads):
-                ll = self._interpretar(payload, origen, ctx)
+                repetida = isinstance(payload, list) and bool(payload) and payload[0] in repetidas
+                ll = self._interpretar(payload, origen, ctx, cotejar=not repetida)
                 if i >= self.max_por_respuesta:
                     ll.error = f"máximo {self.max_por_respuesta} acciones por respuesta"
                     ll.motivo = LIMITE
@@ -367,37 +419,47 @@ class Ejecutor:
             if len(payloads) > self.max_por_respuesta:
                 self._auditar("limite_por_respuesta", pedidas=len(payloads),
                               maximo=self.max_por_respuesta)
+            # Intención de acción que no se entendió: no se hace, pero se AVISA
+            # («No entendí la acción…»), para que nadie la dé por hecha. Una por nombre.
+            for nombre in dict.fromkeys(fallidas):
+                llamadas.append(Llamada(nombre, crudo=nombre, error=NO_ENTENDIDA,
+                                        motivo=INVALIDA, origen=origen))
             return limpio, llamadas
         except Exception:
             return limpiar_texto(texto), []
 
-    def _interpretar(self, payload: Any, origen: str, ctx: Any) -> Llamada:
+    def _interpretar(self, payload: Any, origen: str, ctx: Any, cotejar: bool = True) -> Llamada:
         if (not isinstance(payload, list) or not payload
-                or not isinstance(payload[0], str) or len(payload) > 2):
+                or not isinstance(payload[0], str)):
             return Llamada("", crudo=payload, error="forma de CALL inválida",
                            motivo=INVALIDA, origen=origen)
         nombre = payload[0].strip()
-        crudo_args = payload[1] if len(payload) > 1 else {}
         ll = Llamada(nombre, crudo=payload, origen=origen)
         h = cat.obtener(nombre, self.catalogo)
         if h is None or self.registro.get(nombre) is None:
             ll.error, ll.motivo = "herramienta desconocida", INVALIDA
             return ll
-        # Un único argumento suelto («["abrir_url", "https://…"]») → su campo.
-        if not isinstance(crudo_args, (Mapping, type(None))):
-            requeridos = [k for k, a in h.args.items() if a.requerido] or list(h.args)
-            if len(requeridos) == 1 and isinstance(crudo_args, (str, int, float)) \
-                    and not isinstance(crudo_args, bool):
-                crudo_args = {requeridos[0]: crudo_args}
-            else:
-                ll.error, ll.motivo = "los argumentos tienen que ser un objeto {…}", INVALIDA
-                return ll
+        crudo_args = _args_de(payload[1:], h)
+        if crudo_args is None:
+            ll.error, ll.motivo = "los argumentos tienen que ser un objeto {…}", INVALIDA
+            return ll
         try:
             ll.args, ignorados = cat.validar(crudo_args, h.args)
             ll.ignorados = tuple(ignorados)
         except cat.ArgumentosInvalidos as e:
             ll.error, ll.motivo = str(e), INVALIDA
             return ll
+        # Lo que escribió la persona manda sobre lo que entendió el modelo («en veinte
+        # minutos» son 1200 s aunque el modelo pida 45; «mañana» no es «todos los lunes»).
+        try:
+            nuevos, cambios = cat.cotejar(nombre, ll.args, ctx) if cotejar else (ll.args, {})
+            if cambios:
+                ll.args, _ = cat.validar(nuevos, h.args)
+                ll.corregidos = cambios
+                self._auditar("cotejo", herramienta=nombre,
+                              cambios={k: list(v) for k, v in cambios.items()})
+        except Exception:
+            pass
         modo = cat.valor_ctx(ctx, "modo")
         if modo and not h.disponible_en(modo):
             ll.error, ll.motivo = "no disponible en este modo", NO_DISPONIBLE

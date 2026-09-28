@@ -95,7 +95,7 @@ from ui.effects import apply_glow, clear_glow
 from servicios.voice import VoiceEngine, VozStreaming
 from servicios.telegram_worker import (TelegramBotWorker, ordenes_activas, PREFIJO_TELEGRAM, PREFIJO_IA,
                                        AVISO_TG_DESACTIVADAS, AVISO_TG_OCUPADA, AVISO_TG_DETENIDA,
-                                       SIN_TEXTO)
+                                       SIN_TEXTO, con_aviso_pendiente)
 from ui.chat_widgets import ProviderTab, MessageBubble, TypingIndicator
 from servicios.ai_worker import (AIWorker, ORIGEN_NO_CONFIABLE, ORIGEN_REMOTO, ORIGEN_USUARIO,
                                  meta_proveedor)
@@ -1523,10 +1523,12 @@ class LuneCDWindow(QMainWindow):
         self.input_field.setEnabled(True); self.input_field.setFocus()
 
         # Una orden de Telegram: la respuesta limpia vuelve a su chat (tras «Detener»
-        # ya se avisó allí de que se cortó).
+        # ya se avisó allí de que se cortó). Si pide acciones, dice que esperan tu
+        # permiso en el PC: «He programado…» aún no es verdad.
         remoto = turno.get("remoto") or ""
         if remoto and not getattr(self, "_cancelado", False):
-            self._responder_telegram(remoto, self._texto_telegram(respuesta_limpia))
+            self._responder_telegram(remoto, con_aviso_pendiente(self._texto_telegram(respuesta_limpia),
+                                                                 llamadas))
 
         # Las acciones que pide la IA solo se ejecutan si el usuario las tiene
         # permitidas en Configuración → Rendimiento, y nunca tras «Detener». Lo

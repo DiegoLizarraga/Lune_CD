@@ -121,16 +121,25 @@ def test_call_en_medio_no_deja_doble_espacio(env):
     assert limpio == "Hola qué tal"
 
 
-def test_call_con_json_invalido_desaparece_sin_ejecutarse(env):
+def test_call_con_json_invalido_desaparece_sin_ejecutarse_y_avisa(env):
+    """Prueba real: una marca rota no se ejecuta, pero tampoco se da por hecha en
+    silencio: vuelve como «No entendí la acción…»."""
     limpio, llamadas = env.correr('Vale. <|CALL ["abrir_url", {url: nope}]|> Listo.')
     assert limpio == "Vale. Listo."
-    assert llamadas == [] and env.llamados == [] and env.resultados == []
+    assert env.llamados == [] and env.preguntas == []
+    assert [(ll.herramienta, ll.valida) for ll in llamadas] == [("abrir_url", False)]
+    r, = env.resultados
+    assert not r.ok and r.estado == A.INVALIDA
+    assert r.mensaje.startswith("No entendí la acción «abrir_url»")
     assert "call_invalido" in env.eventos_audit()
 
 
-def test_call_sin_cerrar_al_final_desaparece(env):
-    limpio, llamadas = env.correr('Ahora mismo. <|CALL ["temporizador", {"segun')
-    assert limpio == "Ahora mismo." and llamadas == [] and env.llamados == []
+def test_call_sin_cerrar_al_final_desaparece_y_no_se_completa(env):
+    """Respuesta cortada: nunca se «arregla» un JSON a medias (12 no es 120)."""
+    limpio, llamadas = env.correr('Ahora mismo. <|CALL ["temporizador", {"segundos": 12')
+    assert limpio == "Ahora mismo." and env.llamados == []
+    assert [(ll.herramienta, ll.valida) for ll in llamadas] == [("temporizador", False)]
+    assert env.resultados[0].estado == A.INVALIDA
 
 
 def test_call_neutralizado_no_se_ejecuta_ni_se_ve(env):

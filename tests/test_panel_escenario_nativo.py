@@ -334,6 +334,7 @@ def test_minecraft_botones_y_el_bot_solo_se_instala_con_su_boton(qapp):
     mc.estado_cambio.emit("{}")
     assert p.estado_bot.text() == "Conectado a localhost:25565 como Lune · vida 17/20."
     assert p.btn_desconectar.isEnabled()
+    assert not p.btn_instalar.isEnabled()                     # BM11: npm ci borraría lo que usa el bot
     p.desconectar_bot()
     assert mc.diario[-1] == "desconectar"
 

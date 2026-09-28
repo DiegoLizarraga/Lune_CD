@@ -2,9 +2,13 @@
 Tests de las reglas de herramientas del system prompt (lune_core/reglas_prompt.py).
 
 Lo crítico: solo aparecen las herramientas con handler, registradas y del modo;
-el ejemplo usa el formato único <|CALL …|> y el Ejecutor lo entiende tal cual;
-y el formato antiguo (ABRIR_URL:/TOOL:) no se enseña nunca.
+cada una se enseña con la forma de su llamada (<|CALL ["x", {…}]|>, no x(…): la
+prueba real con qwen2.5:7b vio al modelo copiar la firma como <|x(arg=…)|>); los
+ejemplos son pocos, neutros y el Ejecutor los entiende tal cual; y el formato
+antiguo (ABRIR_URL:/TOOL:) no se enseña nunca.
 """
+import json
+import re
 import sys
 from pathlib import Path
 
@@ -26,8 +30,13 @@ def reg():
 
 
 def listadas(texto):
-    return {linea[2:].split("(", 1)[0] for linea in texto.splitlines()
+    return {re.match(r'- <\|CALL \["([^"]+)"', linea).group(1) for linea in texto.splitlines()
             if linea.startswith("- ")}
+
+
+def lineas_por_nombre(texto):
+    return {re.match(r'- <\|CALL \["([^"]+)"', l).group(1): l
+            for l in texto.splitlines() if l.startswith("- ")}
 
 
 def test_solo_las_del_modo(reg):
@@ -77,9 +86,37 @@ def test_sin_herramientas_vacio(reg):
 
 def test_argumentos_en_la_lista(reg):
     texto = reglas_herramientas(reg, "patata", TODAS)
-    assert "- temporizador(segundos: entero 1-90000, texto?: texto ≤60):" in texto
-    assert "alarma(hora: HH:MM, dias?: letras lmxjvsd" in texto
-    assert "dar_de_comer(comida: batido|pastel)" in texto
+    assert '- <|CALL ["temporizador", {"segundos": N, "texto": "…"}]|> Poner un temporizador' in texto
+    assert '<|CALL ["alarma", {"hora": "HH:MM", "dias": "", "texto": "…", "fecha": "AAAA-MM-DD"}]|>' in texto
+    assert '<|CALL ["dar_de_comer", {"comida": "batido|pastel"}]|>' in texto
+
+
+def test_firmas_con_la_forma_de_la_llamada(reg):
+    """Ninguna firma `nombre(arg: tipo)`: el modelo la copiaba como <|nombre(arg=…)|>."""
+    texto = reglas_herramientas(reg, "vrm", TODAS)
+    for linea in texto.splitlines():
+        if linea.startswith("- "):
+            assert linea.startswith('- <|CALL ["'), linea
+            assert not re.match(r"- \w+\(", linea)
+
+
+def _rellenar(marca):
+    """La firma con valores del tipo, como los escribiría el modelo."""
+    t = marca.replace(": N", ": 5").replace(": true|false", ": true")
+    t = re.sub(r'"([a-z]+)\|[a-z|]+"', r'"\1"', t)          # enum → la primera opción
+    return (t.replace('"HH:MM"', '"07:30"').replace('"AAAA-MM-DD"', '"2026-01-01"')
+             .replace('"https://…"', '"https://example.org"').replace('"…"', '"x"'))
+
+
+@pytest.mark.parametrize("nombre", sorted(TODAS))
+def test_la_firma_rellenada_es_una_llamada_valida(reg, nombre):
+    texto = reglas_herramientas(reg, None, {nombre})
+    linea = lineas_por_nombre(texto)[nombre]
+    marca = re.search(r"<\|CALL .*?\|>", linea).group(0)
+    ej = A.Ejecutor(reg, H.Sesion(reg), {nombre: lambda a, c: "ok"})
+    _, llamadas = ej.procesar(_rellenar(marca))
+    assert [ll.herramienta for ll in llamadas] == [nombre]
+    assert llamadas[0].valida, (marca, llamadas[0].error)
 
 
 def test_sin_formato_antiguo(reg):
@@ -88,37 +125,82 @@ def test_sin_formato_antiguo(reg):
         assert viejo not in texto
 
 
-def test_un_solo_ejemplo_y_se_entiende(reg, tmp_path):
+def _ejemplos(texto):
+    return [l for l in texto.splitlines() if l.startswith("«")]
+
+
+def test_dos_ejemplos_y_uno_sin_accion_y_se_entienden(reg):
     texto = reglas_herramientas(reg, "patata", TODAS)
-    assert texto.count("<|CALL ") == 1
+    ejemplos = _ejemplos(texto)
+    assert len(ejemplos) == 3
     ej = A.Ejecutor(reg, H.Sesion(reg), {n: (lambda a, c: "ok") for n in TODAS})
-    limpio, llamadas = ej.procesar(texto)
-    assert len(llamadas) == 1 and llamadas[0].valida
-    assert llamadas[0].herramienta == "temporizador"
-    assert "<|CALL" not in limpio
+    hechas = []
+    for linea in ejemplos:
+        respuesta = linea.split(" → ", 1)[1]
+        assert respuesta.startswith("<|ACT {")                 # la cara, al principio
+        limpio, llamadas = ej.procesar(respuesta)
+        assert all(ll.valida for ll in llamadas) and "<|CALL" not in limpio
+        hechas += [ll.herramienta for ll in llamadas]
+    assert hechas == ["abrir_url", "temporizador"]            # el tercero: sin acción
+    assert "sin marca" in ejemplos[-1]
+
+
+def test_los_ejemplos_son_neutros(reg):
+    """Prueba real: el modelo copió «sacar la pizza» del único ejemplo."""
+    for modo in C.MODOS:
+        texto = reglas_herramientas(reg, modo, TODAS)
+        assert "pizza" not in texto
+    # Un cuarto de hora son 900 s: enseña a pasar palabras a número.
+    assert '["temporizador", {"segundos": 900}]' in reglas_herramientas(reg, "normal", TODAS)
+
+
+def test_sin_emociones_los_ejemplos_no_llevan_act(reg):
+    texto = reglas_herramientas(reg, "normal", TODAS, con_emociones=False)
+    assert "<|ACT" not in texto and len(_ejemplos(texto)) == 3
+
+
+def test_anti_ejemplos_de_las_marcas_inventadas(reg):
+    texto = reglas_herramientas(reg, "normal", TODAS)
+    assert "<|OPEN_URL" in texto and "<|nombre(…)|>" in texto and "|<…>|" in texto
 
 
 @pytest.mark.parametrize("nombre", sorted(TODAS))
-def test_el_ejemplo_de_cada_herramienta_es_valido(reg, nombre):
-    """Sea cual sea la única disponible, su ejemplo pasa por el Ejecutor."""
+def test_los_ejemplos_solo_de_lo_disponible(reg, nombre):
+    """Sea cual sea la única disponible, los ejemplos con acción son de ella (o no hay)."""
     texto = reglas_herramientas(reg, None, {nombre})
     ej = A.Ejecutor(reg, H.Sesion(reg), {nombre: lambda a, c: "ok"})
-    _, llamadas = ej.procesar(texto)
-    assert [ll.herramienta for ll in llamadas] == [nombre]
-    assert llamadas[0].valida, llamadas[0].error
+    for linea in _ejemplos(texto):
+        _, llamadas = ej.procesar(linea.split(" → ", 1)[1])
+        assert all(ll.herramienta == nombre and ll.valida for ll in llamadas)
 
 
 def test_marca_pide_permiso(reg):
     texto = reglas_herramientas(reg, "vrm", TODAS)
-    lineas = {l[2:].split("(", 1)[0]: l for l in texto.splitlines() if l.startswith("- ")}
+    lineas = lineas_por_nombre(texto)
     assert lineas["lanzar_app"].endswith("(pide permiso)")
     assert lineas["minecraft_orden"].endswith("(pide permiso)")
     assert not lineas["temporizador"].endswith("(pide permiso)")
     assert not lineas["comentar_pantalla"].endswith("(pide permiso)")
     nube = reglas_herramientas(reg, "vrm", TODAS, ctx={"proveedor": "openrouter"})
-    assert "- comentar_pantalla(): Mirar la pantalla y comentarla (pide permiso)" in nube
+    assert ('- <|CALL ["comentar_pantalla", {}]|> Mirar la pantalla y comentarla (pide permiso)'
+            in nube)
     local = reglas_herramientas(reg, "vrm", TODAS, ctx={"proveedor": "ollama"})
-    assert "- comentar_pantalla(): Mirar la pantalla y comentarla\n" in local + "\n"
+    assert '- <|CALL ["comentar_pantalla", {}]|> Mirar la pantalla y comentarla\n' in local + "\n"
+
+
+def test_comentar_pantalla_sin_handler_no_se_ofrece(reg):
+    """Nadie registra un handler «comentar_pantalla» (el comentario va por la mascota,
+    sin herramienta): con los handlers reales no aparece en ningún modo."""
+    sin = TODAS - {"comentar_pantalla"}
+    for modo in C.MODOS:
+        assert "comentar_pantalla" not in reglas_herramientas(reg, modo, sin)
+
+
+def test_bailes_de_la_biblioteca(reg):
+    """Prueba real: el modelo se inventaba canciones y nunca listaba los bailes."""
+    lineas = lineas_por_nombre(reglas_herramientas(reg, "mascota", TODAS))
+    assert "listar_bailes" in lineas["mascota_bailar"] and "omítela" in lineas["mascota_bailar"]
+    assert "preguntan" in lineas["listar_bailes"]
 
 
 def test_solo_lectura(reg):
@@ -141,5 +223,12 @@ def test_estable_y_corta(reg):
     a = reglas_herramientas(reg, "vrm", set(sorted(TODAS)))
     b = reglas_herramientas(reg, "vrm", list(reversed(sorted(TODAS))))
     assert a == b                                   # no depende del orden del set
-    assert len(a) < 2200                            # modelos locales pequeños
+    # Presupuesto (modelos locales pequeños). Subió de 2200 a 3300 con TODO el catálogo
+    # en vrm (22 herramientas; con los handlers reales, ~3000) por las firmas con forma
+    # de llamada, los dos ejemplos + uno sin acción y los anti-ejemplos: la prueba real
+    # pasó de acertar solo con temporizador a acertar también NASA y alarma. Se compensa
+    # en parte con la gramática de emociones más corta (sin DELAY) y, sobre todo, el
+    # prompt ya es ESTABLE: con la caché de prefijo se evalúa una vez por conversación.
+    assert len(a) < 3300
     assert "<<<INICIO" in a                         # recuerda la regla anti-inyección
+    assert not re.search(r"\d{4}-\d{2}-\d{2}|\d{1,2}:\d{2}", a)   # ni fechas ni horas: caché
