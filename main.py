@@ -23,6 +23,22 @@ el tile ALARMAS (despachador «alarma» → el editor de alarmas), el panel de A
 (PanelOcioNativo, vía usar_servicios), la carita contenta y «♪ BAILANDO» mientras
 baila (_on_baile) y «avísame en 10 minutos» escrito en el chat → Ejecutor antes que
 la memoria.
+
+Cortes 7 y 8 (sentarse, comida, Discord): también dentro del montaje del corte 4
+(ServiciosCorte4.vida, ui/montaje_vida.py) y el panel de Ajustes (PanelVidaNativo, vía
+usar_servicios). Arranque con Windows (nucleo/arranque.py, servicios/autoinicio.py):
+`main.py --autoinicio` no enseña la pantalla de inicio, espera
+`sistema.autoinicio_retraso_s` y abre en la bandeja, con la mascota o con la ventana
+(si mientras tanto vuelves a abrir Lune, abre ya y se ve); una segunda instancia
+lanzada así se va sin traer la primera al frente. Al arrancar y al cambiar de
+interfaz se repara la entrada de arranque (carpeta movida, modo cambiado).
+
+Cortes 9 y 10 (reproductor de bailes MMD/VRMA y Minecraft): también dentro del montaje
+del corte 4 (ServiciosCorte4.escenario, ui/montaje_escenario.py) y el panel de Ajustes
+(PanelEscenarioNativo, vía usar_servicios). El bot de Minecraft conectado se vuelve a
+conectar tras un cambio de interfaz en caliente (estado_para_cambio → "minecraft_bot").
+Mientras la IA responde, el BusEstado dice `pensando` (fuente «chat»): el bot de
+Minecraft pausa su modelo (comparten Ollama) y Discord pone «Pensando…».
 """
 import sys
 import os
@@ -43,7 +59,8 @@ from PyQt6.QtWidgets import (
     QApplication, QMessageBox, QStackedWidget, QFileDialog,
     QSystemTrayIcon, QMenu, QGridLayout,
 )
-from PyQt6.QtCore import Qt, QTimer, QSize, QEvent, QThread, pyqtSignal
+from PyQt6 import sip
+from PyQt6.QtCore import Qt, QTimer, QSize, QEvent, QThread, QObject, pyqtSignal
 from PyQt6.QtGui import QFont, QColor, QPalette, QIcon, QAction, QPixmap, QFontDatabase
 
 from nucleo import adjuntos as adj
@@ -91,10 +108,10 @@ from nucleo import personajes
 from nucleo import sueno, vrm
 
 from ui.splash import PantallaInicio
-from ui.cambio_interfaz import (GestorInterfaz, callar_voz, cerrar_mascota, desmontar_servicios_c4,
-                                detener_bot, detener_hilo_ia, hilo_vivo, instantanea_sesion,
-                                ordenes_cortadas, parar_temporizadores, quitar_bandeja,
-                                retomar_sesion, soltar_hilos)
+from ui.cambio_interfaz import (GestorInterfaz, bot_minecraft_de, callar_voz, cerrar_mascota,
+                                desmontar_servicios_c4, detener_bot, detener_hilo_ia, hilo_vivo,
+                                instantanea_sesion, ordenes_cortadas, parar_temporizadores,
+                                quitar_bandeja, reconectar_bot_minecraft, retomar_sesion, soltar_hilos)
 
 logger = Logger()
 
@@ -183,6 +200,20 @@ def juego_forzado_de(servicios):
     return f if isinstance(f, bool) else None
 
 
+def soltar_avisos_voz(ventana) -> None:
+    """Desengancha `voice.al_hablar` y `voice.on_error` si siguen siendo los avisos de
+    `ventana` (LuneCDWindow._aviso_hablando / _aviso_voz_error): al salir, el hilo de
+    audio ya no llama a la ventana que se borra."""
+    voz = getattr(ventana, "voice", None)
+    for attr, nombre in (("al_hablar", "_aviso_hablando"), ("on_error", "_aviso_voz_error")):
+        mio = getattr(ventana, nombre, None)
+        try:
+            if mio is not None and getattr(voz, attr, None) == mio:
+                setattr(voz, attr, None)
+        except Exception:
+            pass
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 #  MAIN WINDOW
 # ─────────────────────────────────────────────────────────────────────────────
@@ -222,12 +253,14 @@ class LuneCDWindow(QMainWindow):
         self.ai_manager       = AIManager()
         self.voice = VoiceEngine(self.config)
         # La voz avisa cuándo suena (hilo de audio) → señal → boca del avatar 3D.
+        # Nunca el `emit` ligado: el hilo de audio puede llamar después de borrarse esta
+        # ventana (cambio de interfaz, salir) → _emitir_si_vivo.
         self._hablando.connect(self._on_hablando)
-        self.voice.al_hablar = self._hablando.emit
+        self.voice.al_hablar = self._aviso_hablando
         self._acto_voz.connect(self._expresar)
         # Y avisa si falla (voz inexistente, sin red…) en vez de quedarse muda.
         self._voz_error.connect(self._on_voz_error)
-        self.voice.on_error = self._voz_error.emit
+        self.voice.on_error = self._aviso_voz_error
         # Servicios de escritorio (ui/escritorio.py): estado compartido de la
         # mascota, tabla de prioridades y registro de controladores. Recibe la
         # mascota flotante en _crear_mascota y se cierra en closeEvent.
@@ -1151,6 +1184,25 @@ class LuneCDWindow(QMainWindow):
             self._esperando_corte = False
             self._set_status("LISTO", COLORS["success"])
 
+    def _pensando_chat(self, on: bool) -> None:
+        """Cortes 9/10: el chat de esta ventana espera al modelo (BusEstado.pensar, fuente
+        «chat»: no pisa a la mascota cuando comenta la pantalla)."""
+        bus = getattr(getattr(self, "escritorio", None), "estado", None)
+        f = getattr(bus, "pensar", None)
+        if not callable(f):
+            return
+        try:
+            from nucleo.estado_mascota import PENSANDO_CHAT
+            f(PENSANDO_CHAT, bool(on))
+        except Exception as e:
+            log_error(f"[escritorio] no pude marcar «pensando»: {e}")
+
+    def _fin_pensando_chat(self, worker) -> None:
+        """finished de un AIWorker: deja de pensar si era el vigente (o ya no hay). El de un
+        hilo viejo que acaba tarde no apaga el del envío nuevo."""
+        if getattr(self, "ai_worker", None) in (None, worker):
+            self._pensando_chat(False)
+
     def _cortar_respuesta(self):
         """
         Conversación nueva, abrir otra o cambiar de personaje con la IA escribiendo
@@ -1394,6 +1446,11 @@ class LuneCDWindow(QMainWindow):
         self.ai_worker.response_ready.connect(lambda r, g=gen: self._on_response(r, g))
         self.ai_worker.error_occurred.connect(lambda e, g=gen: self._on_error(e, g))
         self.ai_worker.finished.connect(self._al_terminar_worker)
+        # Cortes 9/10: `pensando` en el bus mientras el hilo de la IA vive (el bot de
+        # Minecraft pausa su modelo; Discord, «Pensando…»). Lo apaga el finished de ESTE hilo.
+        w = self.ai_worker
+        self.ai_worker.finished.connect(lambda w=w: self._fin_pensando_chat(w))
+        self._pensando_chat(True)
         self.ai_worker.start()
 
     # `gen` (None = sin generación): la de la señal; si no es la vigente, el envío ya
@@ -1502,8 +1559,8 @@ class LuneCDWindow(QMainWindow):
             # acabar, se queda con la última (aunque su tramo no tenga texto).
             hablo = self.voice.speak_segmentos(
                 expresiones.segmentos_voz(plan),
-                al_segmento=lambda _i, e: self._acto_voz.emit(e),
-                al_terminar=lambda f=expresiones.final(plan): self._acto_voz.emit(f))
+                al_segmento=lambda _i, e: self._emitir_si_vivo("_acto_voz", e),
+                al_terminar=lambda f=expresiones.final(plan): self._emitir_si_vivo("_acto_voz", f))
         else:
             self.voice.speak(hablable)
         if not hablo and not cancelado:
@@ -1722,6 +1779,31 @@ class LuneCDWindow(QMainWindow):
             return ov.frameGeometry()
         except Exception:
             return None
+
+    # ── Avisos de la voz (hilo de audio) → señales ────────────────────────────
+    def _emitir_si_vivo(self, senal: str, *args) -> None:
+        """Emite `senal` solo si la ventana sigue viva. El hilo de voz puede llamar después
+        de borrarla (cambio de interfaz, salir): emitir una señal ligada de un QObject
+        borrado da AttributeError o una violación de acceso; aquí se resuelve en cada
+        llamada (como el puente web, ui/web_bridge.py)."""
+        try:
+            if sip.isdeleted(self):
+                return
+            getattr(self, senal).emit(*args)
+        except (RuntimeError, AttributeError):
+            pass
+
+    def _aviso_hablando(self, activo) -> None:
+        """voice.al_hablar (hilo de audio)."""
+        self._emitir_si_vivo("_hablando", bool(activo))
+
+    def _aviso_voz_error(self, mensaje) -> None:
+        """voice.on_error (hilo de audio)."""
+        self._emitir_si_vivo("_voz_error", str(mensaje))
+
+    def _soltar_voz(self) -> None:
+        """Desengancha los avisos de la voz si siguen siendo los de esta ventana."""
+        soltar_avisos_voz(self)
 
     def _on_voz_error(self, mensaje: str):
         """voice.on_error (llega del hilo de audio por señal): estado + aviso."""
@@ -2274,6 +2356,12 @@ class LuneCDWindow(QMainWindow):
                 juego.forzar(forzado)
             except Exception as e:
                 log_error(f"[interfaz] no pude volver a forzar el modo juego: {e}")
+        # Cortes 9/10: el bot de Minecraft que estaba conectado se vuelve a conectar (la
+        # ventana vieja lo paró al desmontar; nunca se instala solo).
+        if estado.get("minecraft_bot"):
+            ok, texto = reconectar_bot_minecraft(getattr(self, "_servicios_c4", None))
+            if not ok and texto:
+                log_error(f"[interfaz] no pude volver a conectar el bot de Minecraft: {texto}")
 
     def estado_para_cambio(self) -> dict:
         """Lo que hereda la ventana del modo nuevo (la geometría la toma el gestor)."""
@@ -2285,6 +2373,7 @@ class LuneCDWindow(QMainWindow):
             "mascota_fuera": self._mascota_a_la_vista() is not None,
             "telegram": hilo_vivo(self._tg_worker),
             "juego_forzado": juego_forzado_de(getattr(self, "_servicios_c4", None)),
+            "minecraft_bot": bot_minecraft_de(getattr(self, "_servicios_c4", None)),
         }
 
     def aplicar_estado(self, estado) -> None:
@@ -2362,7 +2451,7 @@ class LuneCDWindow(QMainWindow):
                 self.lune_face._player.stop()
             except Exception:
                 pass
-        callar_voz(self.voice)
+        callar_voz(self.voice)                   # corta y suelta al_hablar/on_error
         # La conversación queda en chats/ (la nueva la retoma); notas y red, parados.
         for fn in (self.chats.guardar, self.notas.cerrar, self.red.detener):
             try:
@@ -2450,6 +2539,7 @@ class LuneCDWindow(QMainWindow):
             self._tg_worker.stop(); self._tg_worker.wait(3000)
         if self.tray is not None:                # la de respaldo, si la hubo
             self.tray.hide()
+        soltar_avisos_voz(self)                  # el hilo de audio ya no avisa a esta ventana
         event.accept()
         QApplication.quit()
 
@@ -2489,7 +2579,11 @@ def _mostrar_de_verdad(ventana):
     ventana.activateWindow()
 
 
-def _ya_hay_una_instancia() -> bool:
+PEDIR_MOSTRAR = b"mostrar"          # lo que manda una segunda instancia normal
+PEDIR_SILENCIO = b"silencio"        # la del arranque con Windows: no trae nada al frente
+
+
+def _ya_hay_una_instancia(silencioso: bool = False, clave: str = CLAVE_INSTANCIA) -> bool:
     """
     ¿Hay otra Lune corriendo?
 
@@ -2497,32 +2591,137 @@ def _ya_hay_una_instancia() -> bool:
     veces es facilísimo (doble clic, o arrancar a mano lo que ya estaba). En vez
     de tener dos Lunes peleándose por datos.json, memoria.json y el mismo puerto
     del bot, la segunda avisa a la primera y se va.
+
+    `silencioso` (arranque con Windows, nucleo/arranque.Plan.silencioso): se va igual,
+    pero sin pedir a la primera que se enseñe (a quien arrancó el PC no le salta una
+    ventana). La primera solo trae al frente con «mostrar» (ver _AvisosInstancia).
     """
     from PyQt6.QtNetwork import QLocalServer, QLocalSocket
 
     socket = QLocalSocket()
-    socket.connectToServer(CLAVE_INSTANCIA)
+    socket.connectToServer(clave)
     if socket.waitForConnected(300):
-        # Ya hay una viva: le pedimos que se muestre y nos retiramos.
-        socket.write(b"mostrar")
+        # Ya hay una viva: le pedimos que se muestre (o no) y nos retiramos.
+        socket.write(PEDIR_SILENCIO if silencioso else PEDIR_MOSTRAR)
         socket.waitForBytesWritten(300)
         socket.disconnectFromServer()
         return True
 
     # Un servidor huérfano (de un cierre a lo bruto) bloquearía el arranque.
-    QLocalServer.removeServer(CLAVE_INSTANCIA)
+    QLocalServer.removeServer(clave)
     servidor = QLocalServer()
-    servidor.listen(CLAVE_INSTANCIA)
+    servidor.listen(clave)
     # Referencia global para que no lo recoja el recolector de basura
     globals()["_servidor_instancia"] = servidor
     return False
 
 
-def _lanzar_patata() -> bool:
+class _AvisosInstancia(QObject):
+    """El servidor de instancia única, filtrado: `newConnection` cuando otra Lune pide
+    «mostrar» (o se va sin decir nada, como las de antes). La del arranque con Windows
+    («silencio») no trae nada al frente.
+    Se pasa a GestorInterfaz.conectar_servidor como si fuera el servidor (no deja
+    conexiones pendientes: las lee y las suelta aquí)."""
+
+    newConnection = pyqtSignal()
+
+    def __init__(self, servidor, parent=None):
+        super().__init__(parent)
+        self._servidor = servidor
+        self._leidos = {}
+        senal = getattr(servidor, "newConnection", None)
+        if senal is not None and hasattr(senal, "connect"):
+            senal.connect(self._nuevas)
+
+    def hasPendingConnections(self) -> bool:
+        return False
+
+    def nextPendingConnection(self):
+        return None
+
+    def _nuevas(self) -> None:
+        srv = self._servidor
+        try:
+            while srv.hasPendingConnections():
+                s = srv.nextPendingConnection()
+                if s is None:
+                    break
+                self._leidos[id(s)] = b""
+                s.readyRead.connect(lambda s=s: self._leer(s))
+                s.disconnected.connect(lambda s=s: self._soltar(s))
+                self._leer(s)                        # lo que ya hubiera llegado
+                if self._ya_desconectado(s):
+                    # Se fue antes de que esto conectara `disconnected` (escribió y cerró
+                    # enseguida): esa señal ya no llegará. Sin esto, su entrada se quedaba en
+                    # _leidos (y el id reciclado la mezclaba con otra) y el socket, sin borrar.
+                    self._soltar(s)
+        except Exception as e:
+            log_error(f"[instancia] no pude leer una conexión: {e}")
+
+    @staticmethod
+    def _ya_desconectado(s) -> bool:
+        estado = getattr(s, "state", None)
+        if not callable(estado):
+            return False
+        try:
+            from PyQt6.QtNetwork import QLocalSocket
+            return estado() == QLocalSocket.LocalSocketState.UnconnectedState
+        except Exception:
+            return False
+
+    def _leer(self, s) -> None:
+        clave = id(s)
+        if clave not in self._leidos:
+            return
+        try:
+            if s.bytesAvailable() > 0:
+                self._leidos[clave] += bytes(s.readAll())
+        except Exception:
+            return
+        if PEDIR_MOSTRAR in self._leidos[clave]:
+            self._leidos.pop(clave, None)            # una vez por conexión
+            self.newConnection.emit()
+
+    def _soltar(self, s) -> None:
+        self._leer(s)
+        datos = self._leidos.pop(id(s), None)
+        # Se fue sin decir nada legible (una Lune vieja, o los datos no llegaron): como
+        # siempre, se trae al frente. Solo «silencio» (arranque con Windows) no lo hace.
+        if datos is not None and PEDIR_SILENCIO not in datos:
+            self.newConnection.emit()
+        try:
+            s.deleteLater()
+        except Exception:
+            pass
+
+
+def _patata_ya_abierta(mostrar: bool = True) -> bool:
+    """¿Ya hay una patata viva (servicios/instancia_patata)? Con `mostrar`, se le pide que
+    traiga su consola al frente (si Windows no deja, parpadea y dice «¡Sigo aquí!»)."""
+    try:
+        from servicios import instancia_patata as ip
+        if not ip.patata_viva():
+            return False
+        if mostrar:
+            ip.pedir_mostrar()
+        return True
+    except Exception as e:
+        log_error(f"[ui] no pude mirar si ya había una patata: {e}")
+        return False
+
+
+def _lanzar_patata(autoinicio: bool = False) -> bool:
     """Abre patata.py (Lune en terminal) en una consola NUEVA y devuelve si pudo.
     Desde el .vbs corremos con pythonw (sin consola): se busca el python.exe
-    hermano para que la terminal sí tenga ventana."""
+    hermano para que la terminal sí tenga ventana. Con `autoinicio` (arranque con
+    Windows y la entrada aún en su variante de ventanas) va con --autoinicio y la
+    consola se abre minimizada, sin quitar el foco (D3).
+    Si ya hay una patata viva (la del arranque con Windows, u otra), no se abre otra
+    terminal: se trae al frente la que hay (con `autoinicio`, ni eso) y cuenta como hecho."""
     import subprocess
+    if _patata_ya_abierta(mostrar=not autoinicio):
+        log_info("[ui] modo patata: Lune ya estaba en una terminal; no abro otra")
+        return True
     raiz = os.path.dirname(os.path.abspath(__file__))
     script = os.path.join(raiz, "patata.py")
     if not os.path.exists(script):
@@ -2534,7 +2733,14 @@ def _lanzar_patata() -> bool:
             exe = candidato
     try:
         flags = getattr(subprocess, "CREATE_NEW_CONSOLE", 0) if os.name == "nt" else 0
-        subprocess.Popen([exe, script], cwd=raiz, creationflags=flags)
+        orden = [exe, script] + (["--autoinicio"] if autoinicio else [])
+        kw = {"cwd": raiz, "creationflags": flags}
+        if autoinicio and os.name == "nt" and hasattr(subprocess, "STARTUPINFO"):
+            si = subprocess.STARTUPINFO()
+            si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            si.wShowWindow = 7                   # SW_SHOWMINNOACTIVE: minimizada, sin foco
+            kw["startupinfo"] = si
+        subprocess.Popen(orden, **kw)
         log_info("[ui] modo patata: Lune abierta en la terminal")
         return True
     except Exception as e:
@@ -2542,10 +2748,11 @@ def _lanzar_patata() -> bool:
         return False
 
 
-def _crear_ventana_principal():
+def _crear_ventana_principal(autoinicio: bool = False):
     """
     Ventana principal. Por defecto la piel web "Shibuya Punk" (QWebEngineView);
     con interfaz.modo="nativo" en config.json, o si la web falla, la PyQt clásica.
+    En modo patata abre la terminal (minimizada si `autoinicio`) y devuelve None.
     """
     try:
         from nucleo.config import Config
@@ -2555,7 +2762,7 @@ def _crear_ventana_principal():
     if modo == "patata":
         # Modo patata: Lune en la terminal, sin Qt. Se abre en una consola nueva
         # (venimos de pythonw, sin consola) y esta app se retira.
-        if _lanzar_patata():
+        if _lanzar_patata(autoinicio=autoinicio):
             return None
         log_error("[ui] no pude abrir el modo patata; uso la interfaz nativa")
         return LuneCDWindow()
@@ -2581,6 +2788,39 @@ def _fabrica_ventana(modo: str):
     raise ValueError(f"modo de interfaz desconocido: {modo}")
 
 
+def _reparar_autoinicio(cfg=None, modo=None, *, mod=None) -> str:
+    """Arranque con Windows: si la entrada Run existe pero apunta a otra carpeta o a
+    la variante de otro modo, se reescribe (servicios/autoinicio.reparar: nunca la
+    crea ni toca StartupApproved). Con `cfg`, `sistema.autoinicio` queda como el
+    registro de verdad (el Administrador de tareas puede haberla deshabilitado).
+    Devuelve "", "ruta" o "modo". Nunca lanza."""
+    try:
+        if mod is None:
+            from servicios import autoinicio as mod
+        if modo is None:
+            modo = str(cfg.get("interfaz", "modo", "web") or "web") if cfg is not None else None
+        motivo = str(mod.reparar(cfg, modo) or "")
+        if motivo:
+            log_info(f"[autoinicio] entrada de arranque con Windows reparada ({motivo})")
+        if cfg is not None:
+            activo = bool(mod.activo())
+            if bool(cfg.get("sistema", "autoinicio", False)) != activo:
+                cfg.set("sistema", "autoinicio", activo)
+        return motivo
+    except Exception as e:
+        log_error(f"[autoinicio] no pude revisar la entrada de arranque: {e}")
+        return ""
+
+
+def _guardar_modo_interfaz(modo: str) -> None:
+    """guardar_modo de GestorInterfaz: interfaz.modo en config.json y, si Lune arranca
+    con Windows, la entrada Run en la variante del modo nuevo (patata → consola
+    minimizada sin PyQt6; web/nativo → la app). También en el cambio en caliente."""
+    from nucleo.config import Config
+    Config().set("interfaz", "modo", modo)
+    _reparar_autoinicio(None, modo)
+
+
 def _crear_gestor_interfaz():
     """GestorInterfaz de la app: cambio de modo en caliente (Ajustes → Modo de
     interfaz). interfaz.fundido_ms en config.json (por defecto 180; 0 = sin fundido)."""
@@ -2589,7 +2829,80 @@ def _crear_gestor_interfaz():
         fundido = int(Config().get("interfaz", "fundido_ms", 180))
     except Exception:
         fundido = 180
-    return GestorInterfaz(_fabrica_ventana, lanzar_patata=_lanzar_patata, fundido_ms=fundido)
+    return GestorInterfaz(_fabrica_ventana, guardar_modo=_guardar_modo_interfaz,
+                          lanzar_patata=_lanzar_patata, fundido_ms=fundido)
+
+
+def _preparar_arranque(argv, config=None):
+    """(opciones, plan, config) del arranque (nucleo/arranque.py): a mano, el de
+    siempre; con --autoinicio, sin pantalla de inicio y tras la espera. `config`
+    None → Config() (None si no se puede leer: plan con los valores por defecto)."""
+    from nucleo import arranque
+    opc = arranque.parsear_args(argv)
+    cfg = config
+    if cfg is None:
+        try:
+            from nucleo.config import Config
+            cfg = Config()
+        except Exception as e:
+            log_error(f"[arranque] no pude leer config.json: {e}")
+            cfg = None
+    return opc, arranque.plan_arranque(cfg, opc), cfg
+
+
+def _presentar_principal(ventana, plan, *, mostrar: bool = False) -> str:
+    """Enseña la ventana recién creada según el plan de arranque: "ventana" (a la
+    vista), "mascota" (oculta y la mascota fuera) o "bandeja" (oculta, solo el icono;
+    los servicios y la bandeja ya arrancaron en el constructor). `mostrar` (alguien
+    abrió Lune durante la espera) manda. Sin icono de bandeja nunca queda invisible."""
+    if mostrar or plan.mostrar_ventana:
+        _mostrar_de_verdad(ventana)
+        return "ventana"
+    if plan.abrir_mascota:
+        desp = getattr(getattr(ventana, "_servicios_c4", None), "despachador", None)
+        ok = False
+        try:
+            ok = bool(desp.ejecutar("mascota")) if desp is not None else False
+        except Exception as e:
+            log_error(f"[arranque] no pude sacar la mascota: {e}")
+        if ok:
+            return "mascota"
+    if getattr(ventana, "tray", None) is None:
+        _mostrar_de_verdad(ventana)              # ni bandeja: que se vea algo
+        return "ventana"
+    return "bandeja"
+
+
+def _abrir_tras_espera(retraso_s, abrir, avisos=None, *, programar=None) -> dict:
+    """Arranque con Windows: `abrir()` a los `retraso_s` segundos. Si mientras tanto
+    otra Lune pide «mostrar» (la abriste a mano), `abrir(mostrar=True)` ya. Una vez."""
+    estado = {"hecho": False}
+
+    def soltar():
+        senal = getattr(avisos, "newConnection", None)
+        if senal is not None:
+            try:
+                senal.disconnect(abrir_ya)
+            except (TypeError, RuntimeError):
+                pass
+
+    def abrir_ya():
+        soltar()
+        if not estado["hecho"]:
+            estado["hecho"] = True
+            abrir(mostrar=True)
+
+    def al_vencer():
+        soltar()
+        if not estado["hecho"]:
+            estado["hecho"] = True
+            abrir()
+
+    senal = getattr(avisos, "newConnection", None)
+    if senal is not None and hasattr(senal, "connect"):
+        senal.connect(abrir_ya)
+    (programar or QTimer.singleShot)(max(0, int(retraso_s or 0)) * 1000, al_vencer)
+    return estado
 
 
 def _instalar_red_de_excepciones():
@@ -2629,9 +2942,13 @@ def main():
     app.setApplicationName("Lune CD")
     _instalar_red_de_excepciones()
 
-    if _ya_hay_una_instancia():
+    # A mano o con Windows (--autoinicio desde iniciar_lune.vbs /autoinicio).
+    opc, plan, cfg = _preparar_arranque(sys.argv[1:])
+    if _ya_hay_una_instancia(silencioso=plan.silencioso):
         log_info("Lune ya estaba abierta: no abro una segunda")
         return
+    # La entrada de arranque con Windows sigue a la carpeta y al modo de interfaz.
+    _reparar_autoinicio(cfg)
 
     # Tipografía Shibuya Punk: cargar las fuentes empaquetadas en fonts/.
     _cargar_fuentes()
@@ -2666,27 +2983,39 @@ def main():
     # la cambia en caliente por la de otro modo (Ajustes → Modo de interfaz); aquí
     # no se guarda otra referencia (retendría la vieja tras un cambio).
     ventanas = {"gestor": _crear_gestor_interfaz()}
+    # Las conexiones de otra Lune que piden «mostrar» (no las del arranque con Windows).
+    srv = globals().get("_servidor_instancia")
+    avisos = _AvisosInstancia(srv) if srv is not None else None
+    ventanas["avisos"] = avisos
 
-    def abrir_principal():
+    def abrir_principal(mostrar=False):
         gestor = ventanas["gestor"]
         if ventanas.get("abierta"):
             return
         ventanas["abierta"] = True
-        ventana = _crear_ventana_principal()
+        ventana = _crear_ventana_principal(autoinicio=opc.autoinicio)
         if ventana is None:
             # Modo patata: Lune ya vive en la terminal; esta app Qt se retira.
             QApplication.instance().quit()
             return
         gestor.adoptar(ventana)
-        _mostrar_de_verdad(ventana)
+        # A la vista, o (arranque con Windows) en la bandeja o con la mascota fuera.
+        _presentar_principal(ventana, plan, mostrar=mostrar)
 
         # Si intentas abrir Lune otra vez, se trae al frente la ventana ACTUAL
         # (también después de un cambio de modo).
-        gestor.conectar_servidor(globals().get("_servidor_instancia"))
+        gestor.conectar_servidor(avisos)
 
-    ventana_inicio = PantallaInicio(al_terminar=abrir_principal)
-    ventanas["inicio"] = ventana_inicio
-    _mostrar_de_verdad(ventana_inicio)
+    if plan.splash:
+        ventana_inicio = PantallaInicio(al_terminar=abrir_principal)
+        ventanas["inicio"] = ventana_inicio
+        _mostrar_de_verdad(ventana_inicio)
+    else:
+        # Arranque con Windows: sin pantalla de inicio y tras la espera (patata, que no
+        # carga Qt pesado, sin esperar); abrir Lune a mano mientras tanto abre ya.
+        modo = str(cfg.get("interfaz", "modo", "web") or "web") if cfg is not None else "web"
+        retraso = 0 if modo == "patata" else plan.retraso_s
+        ventanas["espera"] = _abrir_tras_espera(retraso, abrir_principal, avisos)
 
     sys.exit(app.exec())
 

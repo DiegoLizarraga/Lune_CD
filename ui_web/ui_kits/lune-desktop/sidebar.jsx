@@ -15,6 +15,11 @@
  *     módulo baileProc (ui_web/vrm/lune_baile_proc.js) se registra en el avatar de la barra (h.usarModulo) y
  *     recibe bailar(on, opts) y cada pulso; en vídeo, un transform por rAF a ≤ 30 fps, solo mientras baila y
  *     no está en pausa (Lune fuera o modo juego). Encima, el rótulo «♪ Spotify · 124 BPM».
+ *   · Comida (cortes 7/8): clic central (soltado) sobre la mascota → menú radial «secundario» (Batido, Pastel,
+ *     Guardar), como la flotante. `window.__luneCabezaBarra()` → {x, y, r} en px de la ventana (o null): la
+ *     cabeza de Lune para el acierto de ComidaWeb (extra/vida.jsx). En VRM, el hueso de la cabeza (+0.1 m, como
+ *     Mate-Engine) proyectado, r = 0.22·ancho; en vídeo, la misma fórmula que companion.html (luneCabeza) con el
+ *     encuadre de la barra (object-fit: cover, abajo al centro). Solo la registra el escenario a la vista.
  */
 
 // PNG estático (respaldo si el video de un estado aún no existe).
@@ -47,11 +52,58 @@ const VID_IDLE = VID_DIR + 'lune-composed.webm';
 
 const FPS_BAILE_VIDEO = 30;
 
+// ── Cabeza de la mascota de la barra (comida de la web, cortes 7/8) ──────────
+const ALTO_CABEZA_M = 0.1;       // el acierto de Mate-Engine: cabeza + (0, 0.1, 0)
+const ALTOS_POR_METRO = 1.29;    // clips 720×1280 (companion.html, luneCabeza)
+const RADIO_CABEZA_M = 0.1732;   // 0.1·|escala| de Mate-Engine
+const numOk = (v) => typeof v === 'number' && isFinite(v);
+/** {x, y, r} de la cabeza en un <video>/<img> de la barra (object-fit: cover, abajo al centro). */
+function cabezaVideo(el) {
+  try {
+    if (!el || typeof el.getBoundingClientRect !== 'function') return null;
+    const r = el.getBoundingClientRect();
+    if (!(r.width > 0 && r.height > 0)) return null;
+    const vw = el.videoWidth > 0 ? el.videoWidth : (el.naturalWidth > 0 ? el.naturalWidth : 720);
+    const vh = el.videoHeight > 0 ? el.videoHeight : (el.naturalHeight > 0 ? el.naturalHeight : 1280);
+    const s = Math.max(r.width / vw, r.height / vh);
+    const cw = vw * s, ch = vh * s;
+    const izq = r.left + (r.width - cw) / 2, arriba = r.top + (r.height - ch);
+    const M = ALTOS_POR_METRO;
+    return { x: izq + 0.505 * cw, y: arriba + (0.36 - ALTO_CABEZA_M * M) * ch, r: RADIO_CABEZA_M * M * ch };
+  } catch (e) { return null; }
+}
+/** {x, y, r} de la cabeza del avatar 3D de la barra: el hueso proyectado (sin él, el 35 % desde arriba). */
+function cabezaVrm(h, canvas) {
+  try {
+    if (!canvas || typeof canvas.getBoundingClientRect !== 'function') return null;
+    const r = canvas.getBoundingClientRect();
+    if (!(r.width > 0 && r.height > 0)) return null;
+    const radio = 0.22 * r.width;
+    const m = h && h.mascota;
+    const ctx = m && m.ctx;
+    const cab = ctx && ctx.huesos && ctx.huesos.head;
+    const T = ctx && ctx.THREE;
+    if (cab && T && typeof T.Vector3 === 'function' && typeof ctx.proyectar === 'function' && typeof cab.getWorldPosition === 'function') {
+      const v = cab.getWorldPosition(new T.Vector3());
+      v.y += ALTO_CABEZA_M;
+      const p = ctx.proyectar(v);
+      if (p && numOk(p.x) && numOk(p.y)) return { x: p.x, y: p.y, r: radio };
+    }
+    return { x: r.left + r.width / 2, y: r.top + 0.35 * r.height, r: radio };
+  } catch (e) { return null; }
+}
+/** Publica `fn` como window.__luneCabezaBarra mientras el escenario esté a la vista. → quitar */
+function publicarCabeza(fn) {
+  window.__luneCabezaBarra = fn;
+  return () => { if (window.__luneCabezaBarra === fn) window.__luneCabezaBarra = null; };
+}
+
 function MascotVideo({ state, pausado = false, baile = null }) {
   const wanted = VID_DIR + 'lune-' + (VID[state] || 'composed') + '.webm';
   const [src, setSrc] = React.useState(wanted);
   const [png, setPng] = React.useState(false);
   const video = React.useRef(null);
+  const imagen = React.useRef(null);
   React.useEffect(() => { setSrc(wanted); setPng(false); }, [wanted]);
   React.useEffect(() => {
     const v = video.current;
@@ -89,7 +141,11 @@ function MascotVideo({ state, pausado = false, baile = null }) {
     };
   }, [bailando, src, png]);
 
-  if (png) return <img src={MASCOT[state] || MASCOT.normal} alt="Lune" />;
+  // Cortes 7/8: la cabeza para la comida de la web (solo mientras se ve).
+  React.useEffect(() => (pausado ? undefined : publicarCabeza(() => cabezaVideo(png ? imagen.current : video.current))),
+    [pausado, png]);
+
+  if (png) return <img ref={imagen} src={MASCOT[state] || MASCOT.normal} alt="Lune" />;
   return (
     <video ref={video} key={src} src={src} autoPlay={!pausado} loop muted playsInline
       onError={() => { if (src !== VID_IDLE) setSrc(VID_IDLE); else setPng(true); }} />
@@ -184,6 +240,8 @@ function MascotVrm({ info, state, pausado, onFallo, baile = null }) {
   }, []);
   React.useEffect(() => { const h = handle.current; if (h) { try { h.setEstado(state || 'normal'); } catch (e) { /* sigue */ } } }, [state]);
   React.useEffect(() => { const h = handle.current; if (h) { try { h.pausar(!!pausado); } catch (e) { /* sigue */ } } }, [pausado]);
+  // Cortes 7/8: la cabeza para la comida de la web (en pausa, Lune está fuera o hay un juego: nada).
+  React.useEffect(() => (pausado ? undefined : publicarCabeza(() => cabezaVrm(handle.current, lienzo.current))), [pausado]);
   // Baile: módulo baileProc en el bus del avatar de la barra (se carga la primera vez que baila).
   const B = window.LuneBaileWeb;
   const bailando = !!(baile && baile.estado && baile.estado.bailando) && !pausado;
@@ -266,6 +324,13 @@ function Sidebar({ provider, onProvider, mascotState, mascotaFuera = false, onTr
     e.preventDefault();
     window.LuneRadial.abrir(e.clientX, e.clientY);
   };
+  // Clic central (soltado) sobre la mascota → radial «secundario» (comida), como la flotante (cortes 7/8).
+  const centralAbajo = (e) => { if (e && e.button === 1 && typeof e.preventDefault === 'function') e.preventDefault(); };
+  const centralArriba = (e) => {
+    if (!e || e.button !== 1 || mascotaFuera || !window.LuneRadial) return;
+    if (typeof e.preventDefault === 'function') e.preventDefault();
+    window.LuneRadial.abrir(e.clientX, e.clientY, 'secundario');
+  };
   return (
     <aside className="ln-sidebar">
       <div className="ln-brand">
@@ -290,7 +355,8 @@ function Sidebar({ provider, onProvider, mascotState, mascotaFuera = false, onTr
       </div>
 
       <div className="ln-mascot">
-        <div className={`ln-mascot-stage${mascotaFuera ? ' is-out' : ''}`} onContextMenu={abrirRadial}>
+        <div className={`ln-mascot-stage${mascotaFuera ? ' is-out' : ''}`} onContextMenu={abrirRadial}
+          onMouseDown={centralAbajo} onMouseUp={centralArriba}>
           {/* El avatar 3D sigue montado (en pausa y oculto) mientras Lune está fuera. */}
           {mascotaFuera ? <MascotFuera onTraer={onTraer} /> : null}
           <MascotStage state={mascotState} mascotaFuera={mascotaFuera} modoJuego={modoJuego} baile={baile} />
@@ -300,4 +366,4 @@ function Sidebar({ provider, onProvider, mascotState, mascotaFuera = false, onTr
   );
 }
 window.Sidebar = Sidebar;
-window.LuneBarra = { normalizarVrmBarra, claveVrm };
+window.LuneBarra = { normalizarVrmBarra, claveVrm, cabezaVideo, cabezaVrm };

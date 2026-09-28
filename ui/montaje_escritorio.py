@@ -35,9 +35,19 @@ Todas las piezas son inyectables con `fabricas` (tests y la integración):
     modelos_vrm() → lista de .vrm · sonar(nombre) · mezclador() · traer_al_frente(hwnd)
     ocio        dict de fábricas de ui/montaje_ocio.montar_ocio (grande, alarmas, baile,
                 en_ui) · False = sin alarmas, pantalla grande ni baile
+    vida        dict de fábricas de ui/montaje_vida.montar_vida (asiento, comida, discord,
+                en_ui) · False = sin sentarse, comida ni Discord
+    escenario   dict de fábricas de ui/montaje_escenario.montar_escenario (mmd, minecraft,
+                en_ui) · False = sin reproductor de bailes ni Minecraft (los tests que no
+                los prueban: si no, ControlMMD crea bailes/ y ControlMinecraft busca Node)
 
 Cortes 5/6: al final monta `ServiciosCorte4.ocio` (ui/montaje_ocio.montar_ocio:
 alarmas, pantalla grande y salvapantallas, baile), que se apunta en `_deshacer`.
+Cortes 7/8: después, `ServiciosCorte4.vida` (ui/montaje_vida.montar_vida: sentarse,
+comida y Discord), también en `_deshacer`.
+Cortes 9/10: lo último, `ServiciosCorte4.escenario` (ui/montaje_escenario.montar_escenario:
+el reproductor de bailes MMD/VRMA y Minecraft), también en `_deshacer` (desmontar para el
+baile y el bot, sin dejar node vivo).
 """
 from __future__ import annotations
 
@@ -149,6 +159,12 @@ class ServiciosCorte4:
     # Cortes 5/6 (ui/montaje_ocio.ServiciosOcio: alarmas, pantalla grande y baile). Se
     # desmonta con esto (su desmontar va el último en _deshacer: se hace el primero).
     ocio: Any = None
+    # Cortes 7/8 (ui/montaje_vida.ServiciosVida: sentarse, comida y Discord). Igual que
+    # el ocio: su desmontar va en _deshacer y se hace antes que el del corte 4.
+    vida: Any = None
+    # Cortes 9/10 (ui/montaje_escenario.ServiciosEscenario: bailes MMD/VRMA y Minecraft). Igual:
+    # su desmontar va en _deshacer (para el baile y el bot) y se hace antes que el del corte 4.
+    escenario: Any = None
     # Señal (sección, clave): una acción de la bandeja, el radial o un atajo escribió esa
     # clave de config (siempre encima, barra de tareas). Los Ajustes abiertos la releen.
     config_cambio: Any = None
@@ -543,6 +559,26 @@ def montar_escritorio(escritorio, anfitrion, config, *, voice=None, icono=None,
             s.ocio = montar_ocio(s, config, voice=voice, fabricas=fab_ocio or None)
         except Exception:
             _log.exception("montaje: no pude montar alarmas, pantalla grande y baile (sigue sin ellos)")
+
+    # Cortes 7/8: sentarse en ventanas y en la barra, comida y Discord (ui/montaje_vida).
+    # También en s._deshacer; fabricas["vida"]: dict de fábricas de montar_vida o False.
+    fab_vida = fab.get("vida")
+    if fab_vida is not False:
+        try:
+            from ui.montaje_vida import montar_vida
+            s.vida = montar_vida(s, config, voice=voice, fabricas=fab_vida or None)
+        except Exception:
+            _log.exception("montaje: no pude montar sentarse, comida y Discord (sigue sin ellos)")
+
+    # Cortes 9/10: el reproductor de bailes MMD/VRMA y Minecraft (ui/montaje_escenario).
+    # También en s._deshacer; fabricas["escenario"]: dict de fábricas de montar_escenario o False.
+    fab_esc = fab.get("escenario")
+    if fab_esc is not False:
+        try:
+            from ui.montaje_escenario import montar_escenario
+            s.escenario = montar_escenario(s, config, voice=voice, fabricas=fab_esc or None)
+        except Exception:
+            _log.exception("montaje: no pude montar los bailes MMD y Minecraft (sigue sin ellos)")
     return s
 
 
@@ -644,7 +680,15 @@ def _registrar_acciones(s: ServiciosCorte4, desp: Despachador, anfitrion, config
             _llamar(m, "_guardar_posicion")
     reg("esquina", esquina)
 
-    reg("cerrar_mascota", lambda: _llamar(mascota(), "close"))
+    def cerrar_mascota():
+        m = mascota()
+        if m is None:
+            return
+        _llamar(m, "close")
+        # Lo que estuviera pensando (comentar la pantalla) se va con ella: el sondeo o el
+        # modelo que contestaran después ya no lo apagarían (pensando pegado en el bus).
+        _llamar(getattr(s.escritorio, "estado", None), "actualizar", pensando=False)
+    reg("cerrar_mascota", cerrar_mascota)
 
     def expresion(arg: str = ""):
         if arg not in EXPRESIONES_VALIDAS:

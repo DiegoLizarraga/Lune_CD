@@ -354,3 +354,26 @@ def test_con_el_detector_de_verdad_y_medidor_falso(qapp):
     det.sondear()
     assert ctl.bailando and m.bailes[-1][0] is True and esc.estado.actual().bailando == "musica"
     esc.cerrar()
+
+
+def test_ctx_de_las_herramientas_lleva_el_reproductor_de_bailes(montaje):
+    """Corte 9: con el ControlMMD registrado como «mmd», «bailar {cancion}» va a él."""
+    x = montaje
+
+    class MMDFalso:
+        activo = False
+        ultimo_motivo = ""
+
+        def __init__(self):
+            self.textos = []
+
+        def reproducir_por_texto(self, texto):
+            self.textos.append(texto)
+            return True, "¡A bailar «Uno»!"
+    mmd = MMDFalso()
+    x.esc.registrar("mmd", mmd)
+    h = x.ctl.herramientas()
+    assert h["mascota_bailar"]({"cancion": "uno"}, {"origen": "usuario"}) == "¡A bailar «Uno»!"
+    assert mmd.textos == ["uno"] and x.en_ui and not x.ctl.bailando
+    x.esc.quitar("mmd")
+    assert "reproductor" in h["mascota_bailar"]({"cancion": "uno"}, {})

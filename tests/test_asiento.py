@@ -40,30 +40,50 @@ def arrastrar_hasta(m, t, cursor, sonda, cands=(BLOC,), ocluida=None, **kw):
     return m.al_arrastrar(t, cursor, sonda, R, list(cands), ocluida, **kw)
 
 
+def encajar(m, t, cursor, sonda, cands=(BLOC,), ocluida=None, **kw):
+    """Medio segundo con la sonda sobre el borde: una muestra al llegar (t − 0.5) y otra en t."""
+    r = arrastrar_hasta(m, t - 0.5, cursor, sonda, cands, ocluida, **kw)
+    return r if r is not None else arrastrar_hasta(m, t, cursor, sonda, cands, ocluida, **kw)
+
+
 # ── Encajar en una ventana ─────────────────────────────────────────────────────
 
-def test_no_encaja_sin_medio_segundo_de_agarre():
+def test_no_encaja_sin_medio_segundo_sobre_el_borde():
+    """Revisión 7-10 (SV1): el medio segundo cuenta desde que la sonda LLEGA al borde, no
+    desde que se cogió (README: «mantenme medio segundo sobre el borde»)."""
     m = maquina()
     m.al_pulsar(0.0, (100, 100))
-    assert arrastrar_hasta(m, 0.49, (400, 300), (700, 410)) is None
-    s = arrastrar_hasta(m, 0.50, (400, 300), (700, 410))
+    assert arrastrar_hasta(m, 3.0, (400, 300), (700, 600)) is None        # lejos del borde
+    assert arrastrar_hasta(m, 3.2, (400, 300), (700, 410)) is None        # llega: aún no
+    assert arrastrar_hasta(m, 3.69, (400, 300), (700, 410)) is None
+    s = arrastrar_hasta(m, 3.70, (400, 300), (700, 410))
     assert isinstance(s, Snap) and s.modo == "ventana" and s.objetivo.hwnd == 2
     assert s.frac == pytest.approx((700 - 300) / 800) and s.cursor_y == 300
     assert m.sentada is s
 
 
+def test_pasar_por_encima_del_borde_no_la_sienta_y_salir_reinicia_la_cuenta():
+    m = maquina()
+    m.al_pulsar(0.0, (100, 100))
+    assert arrastrar_hasta(m, 2.0, (400, 300), (700, 410)) is None        # llega…
+    assert arrastrar_hasta(m, 2.3, (400, 300), (700, 480)) is None        # …se va (fuera del radio)…
+    assert arrastrar_hasta(m, 2.4, (400, 300), (700, 410)) is None        # …vuelve: cuenta de nuevo
+    assert arrastrar_hasta(m, 2.8, (400, 300), (700, 410)) is None        # 0.8 s desde la primera
+    assert isinstance(arrastrar_hasta(m, 2.9, (400, 300), (700, 410)), Snap)
+
+
 def test_no_encaja_con_menos_de_10_px_de_arrastre():
     m = maquina()
     m.al_pulsar(0.0, (100, 100))
-    assert arrastrar_hasta(m, 1.0, (109, 91), (700, 410)) is None
-    assert isinstance(arrastrar_hasta(m, 1.0, (110, 100), (700, 410)), Snap)
+    assert encajar(m, 1.0, (109, 91), (700, 410)) is None
+    assert isinstance(encajar(m, 2.0, (110, 100), (700, 410)), Snap)
 
 
 def test_el_arrastre_minimo_escala_con_el_dpr():
     m = maquina()
     m.al_pulsar(0.0, (100, 100))
-    assert arrastrar_hasta(m, 1.0, (112, 100), (700, 410), dpr=1.5) is None     # 15 px a 150 %
-    assert isinstance(arrastrar_hasta(m, 1.0, (115, 100), (700, 410), dpr=1.5), Snap)
+    assert encajar(m, 1.0, (112, 100), (700, 410), dpr=1.5) is None     # 15 px a 150 %
+    assert isinstance(encajar(m, 2.0, (115, 100), (700, 410), dpr=1.5), Snap)
 
 
 @pytest.mark.parametrize("sonda,encaja", [
@@ -75,7 +95,7 @@ def test_el_arrastre_minimo_escala_con_el_dpr():
 def test_encaja_dentro_del_radio_y_entre_los_lados(sonda, encaja):
     m = maquina()
     m.al_pulsar(0.0, (0, 0))
-    assert isinstance(arrastrar_hasta(m, 1.0, (50, 50), sonda), Snap) is encaja
+    assert isinstance(encajar(m, 1.0, (50, 50), sonda), Snap) is encaja
 
 
 def test_tapada_no_encaja_y_se_pregunta_por_el_punto_de_la_sonda():
@@ -88,7 +108,7 @@ def test_tapada_no_encaja_y_se_pregunta_por_el_punto_de_la_sonda():
     m = maquina()
     m.al_pulsar(0.0, (0, 0))
     otra = C(3, (200, 405, 1000, 800))
-    s = arrastrar_hasta(m, 1.0, (50, 50), (700.4, 410.6), cands=(BLOC, otra), ocluida=ocluida)
+    s = encajar(m, 1.0, (50, 50), (700.4, 410.6), cands=(BLOC, otra), ocluida=ocluida)
     assert preguntas[:2] == [(2, 700, 411), (3, 700, 411)]
     assert s.objetivo.hwnd == 3                                    # la de debajo, que no está tapada
 
@@ -97,14 +117,14 @@ def test_la_primera_en_orden_z_gana():
     m = maquina()
     m.al_pulsar(0.0, (0, 0))
     otra = C(3, (200, 405, 1000, 800))
-    assert arrastrar_hasta(m, 1.0, (50, 50), (700, 410), cands=(otra, BLOC)).objetivo.hwnd == 3
+    assert encajar(m, 1.0, (50, 50), (700, 410), cands=(otra, BLOC)).objetivo.hwnd == 3
 
 
 # ── Soltarse arrastrando: bloqueo, banda, guardia, enfriamiento, bloqueo vertical ──
 
 def _sentada_arrastrando(m, t=1.0):
     m.al_pulsar(0.0, (500, 500))
-    s = arrastrar_hasta(m, t, (500, 520), (700, 410))
+    s = encajar(m, t, (500, 520), (700, 410))
     assert isinstance(s, Snap)
     return s
 
@@ -122,6 +142,7 @@ def test_durante_el_bloqueo_no_se_suelta_y_la_banda_del_cursor_si():
 def test_banda_minima_de_16_px_por_dpr():
     m = maquina()
     m.al_pulsar(0.0, (500, 500))
+    assert m.al_arrastrar(0.5, (500, 520), (700, 403), 5.0, [BLOC], None) is None
     assert isinstance(m.al_arrastrar(1.0, (500, 520), (700, 403), 5.0, [BLOC], None), Snap)
     assert m.al_arrastrar(2.0, (500, 544), (700, 403), 5.0, [BLOC], None, dpr=1.5) is None   # 24 = 16·1.5
     assert m.al_arrastrar(2.1, (500, 545), (700, 403), 5.0, [BLOC], None, dpr=1.5) == Desnap("arrastre")
@@ -152,7 +173,8 @@ def test_tras_soltarse_enfriamiento_guardia_y_bloqueo_vertical():
     # bloqueo vertical: fuera de la guardia pero a < máx(16, radio) del borde en vertical
     assert arrastrar_hasta(m, 2.4, (500, 700), (800, 420)) is None
     assert arrastrar_hasta(m, 2.5, (500, 700), (800, 441)) is None                  # se aleja: fin del bloqueo…
-    s = arrastrar_hasta(m, 2.6, (500, 700), (800, 420))                             # …y ya vuelve a encajar
+    assert arrastrar_hasta(m, 2.6, (500, 700), (800, 420)) is None                  # …vuelve al borde…
+    s = arrastrar_hasta(m, 3.1, (500, 700), (800, 420))                             # …y medio segundo después, encaja
     assert isinstance(s, Snap)
 
 
@@ -340,10 +362,24 @@ def test_sprites_encajan_al_soltar_con_agarre():
     assert m2.al_soltar(0.05, sonda=(960, 1030), radio=R, candidatas=[BARRA]).modo == "barra"   # barra: sin agarre
 
 
+def test_al_soltar_un_arrastre_muestreado_encaja_si_ya_llevaba_medio_segundo_en_el_borde():
+    m = maquina()
+    m.al_pulsar(0.0, (100, 100))
+    assert arrastrar_hasta(m, 1.0, (300, 400), (700, 410)) is None
+    s = m.al_soltar(1.55, sonda=(700, 410), radio=R, candidatas=[BLOC], cursor=(300, 400), muestreado=True)
+    assert isinstance(s, Snap)
+    m2 = maquina()
+    m2.al_pulsar(5.0, (100, 100))
+    assert arrastrar_hasta(m2, 6.0, (300, 400), (700, 410)) is None
+    assert m2.al_soltar(6.2, sonda=(700, 410), radio=R, candidatas=[BLOC], cursor=(300, 400),
+                        muestreado=True) is None                          # solo 0.2 s en el borde
+    assert not m2.arrastrando and m2.sentada is None
+
+
 def test_anular_pone_enfriamiento():
     m = maquina()
     m.al_pulsar(0.0, (0, 0))
-    assert isinstance(arrastrar_hasta(m, 1.0, (50, 50), (700, 410)), Snap)
+    assert isinstance(encajar(m, 1.0, (50, 50), (700, 410)), Snap)
     m.anular(1.0)
     assert m.sentada is None
     assert arrastrar_hasta(m, 1.2, (50, 50), (700, 410)) is None

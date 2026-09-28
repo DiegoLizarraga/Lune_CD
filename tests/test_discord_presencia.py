@@ -384,11 +384,16 @@ def test_mutex_ocupado_no_conecta_y_dice_que_otra_lune_publica():
     mutex = MutexFalso(libre=False)
     p, fab, _m, reloj = _presencia(mutex=mutex)
     p.habilitar(True)
-    assert p.paso() == pytest.approx(15.0)
+    # Mirar el mutex no cuesta nada: cada 5 s, sin alargar la espera (tras un cambio de
+    # interfaz el hilo de la ventana vieja lo suelta enseguida: antes eran 15 s de «otra Lune»).
+    assert dp.REINTENTO_OTRA_LUNE_S == 5.0
+    assert p.paso() == pytest.approx(5.0)
     assert fab.clientes == []
     assert p.estado()["error"] == dp.TXT_OTRA_LUNE
+    reloj.t = 5.0
+    assert p.paso() == pytest.approx(5.0)           # sigue ocupado: otros 5 s, no 30
     mutex.libre = True                              # la otra se cerró
-    reloj.t = 15.0
+    reloj.t = 10.0
     p.paso()
     assert len(fab.clientes) == 1 and p.estado()["conectado"] is True
 

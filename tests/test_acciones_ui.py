@@ -253,6 +253,138 @@ def test_en_patata_solo_lo_que_sabe_hacer_la_terminal():
     d = desp_con(*ACCIONES)
     ctx = Contexto(modo="patata")
     est = EstadoMascota()
-    assert d.disponibles(est, ctx) == ["salir", "voz", "modo_juego_forzar", "tema", "autoinicio",
-                                       "liberar_memoria"]
+    assert d.disponibles(est, ctx) == ["salir", "voz", "bailes", "modo_juego_forzar", "tema", "autoinicio",
+                                       "liberar_memoria", "discord", "minecraft", "minecraft_bot"]
     assert au.en_modo("tema", "patata") and not au.en_modo("mascota", "patata")
+    # Cortes 7/8: Discord también en patata (su propia Presencia); sentarse y comer, no
+    assert au.en_modo("discord", "patata")
+    for i in ("sentarse", "bajar", "comer_batido", "comida"):
+        assert not au.en_modo(i, "patata"), i
+
+
+# ── Cortes 7 y 8: sentarse, bajar, comida y Discord ──────────────────────────
+
+def test_sentarse_solo_de_pie_con_la_mascota_y_bajar_solo_sentada():
+    v = au.visible
+    de_pie = EstadoMascota(render="vrm", visible=True)
+    sentada = EstadoMascota(render="vrm", visible=True, sentada="ventana")
+    assert v("sentarse", de_pie, CTX) and not v("bajar", de_pie, CTX)
+    assert not v("sentarse", sentada, CTX) and v("bajar", sentada, CTX)
+    # sin la flotante a la vista (ni con Lune en la barra de la web: se sienta la flotante)
+    for ctx in (CTX._replace(mascota_visible=False), CTX._replace(mascota_visible=False, mascota_barra=True)):
+        assert not v("sentarse", de_pie, ctx)
+    # animada y sprites también se sientan (versión A); la nativa igual
+    assert v("sentarse", de_pie, CTX._replace(render="sprites", modo="br"))
+    a = ACCIONES["sentarse"]
+    assert a.icono == "taskbar" and a.usos == frozenset({"radial", "bandeja"}) and a.grupo == "mascota"
+
+
+def test_comer_en_la_web_con_lune_en_la_barra_y_guardar_solo_comiendo():
+    v = au.visible
+    sin_mascota = CTX._replace(mascota_visible=False)
+    barra = sin_mascota._replace(mascota_barra=True)
+    est = EstadoMascota()
+    comiendo = EstadoMascota(comiendo=True)
+    for i in ("comer_batido", "comer_pastel"):
+        assert v(i, EST, CTX), i                        # con la flotante
+        assert v(i, est, barra), i                      # web: sigue al ratón dentro de la ventana
+        assert not v(i, est, sin_mascota), i            # ventana oculta y sin flotante: no
+        assert not v(i, est, sin_mascota._replace(modo="br")), i
+    # «Guardar la comida» solo con comida en la mano, se vea o no la mascota
+    assert not v("guardar_comida", EST, CTX)
+    assert v("guardar_comida", comiendo, CTX) and v("guardar_comida", comiendo, sin_mascota)
+    # «Comida» (bandeja) pasa a «Guardar la comida» con comida en la mano
+    d = desp_con("comida")
+    [it] = au.items_radial(d, comiendo, CTX, ["comida"])
+    assert it.etiqueta == "Guardar la comida" and it.marcado is None       # no es interruptor
+    [it] = au.items_radial(d, EST, CTX, ["comida"])
+    assert it.etiqueta == "Comida"
+    d.registrar("comida", lambda: None, marcado=lambda: True)             # el del handler manda
+    [it] = au.items_radial(d, EST, CTX, ["comida"])
+    assert it.etiqueta == "Guardar la comida"
+
+
+def test_radial_secundario_de_la_web_con_lune_en_la_barra():
+    d = desp_con("comer_batido", "comer_pastel", "guardar_comida")
+    ids = D["menu_radial"]["secundario"]
+    barra = CTX._replace(mascota_visible=False, mascota_barra=True)
+    assert [i.id for i in au.items_radial(d, EstadoMascota(), barra, ids)] == ["comer_batido", "comer_pastel"]
+    assert [i.id for i in au.items_radial(d, EstadoMascota(comiendo=True), barra, ids)] == \
+        ["comer_batido", "comer_pastel", "guardar_comida"]
+
+
+def test_bandeja_mascota_con_sentarse_o_bajar():
+    d = desp_con("mostrar_lune", "salir", "mascota", "dormir", "sentarse", "bajar", "discord")
+    mascota = next(i for i in au.menu_bandeja(d, EST, CTX, [], []) if i.etiqueta == "Mascota")
+    ids = [h.id for h in mascota.hijos if not h.separador]
+    assert ids == ["mascota", "dormir", "sentarse"]
+    sentada = EstadoMascota(render="vrm", visible=True, sentada="barra")
+    mascota = next(i for i in au.menu_bandeja(d, sentada, CTX, [], []) if i.etiqueta == "Mascota")
+    hijos = [h for h in mascota.hijos if not h.separador]
+    assert [h.id for h in hijos] == ["mascota", "dormir", "bajar"]
+    assert next(h for h in hijos if h.id == "bajar").etiqueta == "Bajar"
+    # Discord: interruptor en las rápidas de la bandeja (bandeja.acciones lo trae)
+    d.registrar("discord", lambda: None, marcado=lambda: True)
+    items = au.menu_bandeja(d, EST, CTX, D["bandeja"]["acciones"], [])
+    lune = next(i for i in items if i.etiqueta == "Lune")
+    disc = next(h for h in lune.hijos if h.id == "discord")
+    assert disc.marcado is True
+    _sin_separadores_malos(items)
+
+
+# ── Cortes 9 y 10: reproductor de bailes y Minecraft ─────────────────────────
+
+def test_mis_bailes_en_todos_los_modos_salvo_en_pantalla_grande():
+    a = ACCIONES["bailes"]
+    assert (a.etiqueta, a.icono, a.grupo) == ("Mis bailes", "film", "baile")
+    assert a.modos == au.MODOS_TODOS and a.usos == frozenset({"radial", "bandeja", "atajo"}) and not a.interruptor
+    v = au.visible
+    sin_mascota = Contexto(modo="br")
+    assert v("bailes", EstadoMascota(), sin_mascota), "abre el panel: no necesita la mascota a la vista"
+    assert v("bailes", EstadoMascota(), Contexto(modo="patata"))
+    assert not v("bailes", EstadoMascota(render="vrm", visible=True, grande=True), CTX)
+    # sin handler no sale en ningún menú
+    assert "bailes" not in [i.id for i in au.items_radial(Despachador(), EST, CTX, ["bailes"])]
+    d = desp_con("bailes")
+    [it] = au.items_radial(d, EST, CTX, ["bailes"])
+    assert (it.etiqueta, it.icono, it.marcado) == ("Mis bailes", "film", None)
+
+
+def test_minecraft_y_su_bot_son_interruptores_en_todos_los_modos():
+    for id_, etiqueta in (("minecraft", "Reacciones a Minecraft"), ("minecraft_bot", "Bot de Minecraft")):
+        a = ACCIONES[id_]
+        assert a.etiqueta == etiqueta and a.icono == "box" and a.grupo == "integraciones"
+        assert a.interruptor and a.modos == au.MODOS_TODOS and a.usos == frozenset({"radial", "bandeja"})
+    d = Despachador()
+    conectado = {"v": False}
+    d.registrar("minecraft_bot", lambda: None, marcado=lambda: conectado["v"])
+    d.registrar("minecraft", lambda: None, marcado=lambda: True)
+    items = au.items_radial(d, EST, CTX, ["minecraft", "minecraft_bot"])
+    assert [(i.id, i.marcado) for i in items] == [("minecraft", True), ("minecraft_bot", False)]
+    conectado["v"] = True
+    lune = next(i for i in au.menu_bandeja(d, EST, CTX, ["minecraft", "minecraft_bot"], []) if i.etiqueta == "Lune")
+    assert [(h.id, h.marcado) for h in lune.hijos] == [("minecraft", True), ("minecraft_bot", True)]
+    # la nativa y patata también (sin mascota a la vista)
+    for ctx in (Contexto(modo="br"), Contexto(modo="patata")):
+        assert au.visible("minecraft_bot", EstadoMascota(), ctx) and au.visible("minecraft", EstadoMascota(), ctx)
+    assert au.validar_lista(["minecraft_bot", "bailes"], uso="atajo") == ["bailes"]
+
+
+def test_pausar_el_baile_con_el_reproductor_mmd():
+    v = au.visible
+    assert not v("baile_pausa", EST, CTX)
+    for bailando in ("musica", "mmd"):
+        assert v("baile_pausa", EstadoMascota(render="vrm", visible=True, bailando=bailando), CTX), bailando
+    mmd = EstadoMascota(render="vrm", visible=True, bailando="mmd")
+    en_pausa = {"v": False}
+    d = Despachador()
+    d.registrar("baile_pausa", lambda: None, marcado=lambda: en_pausa["v"])
+    [it] = au.items_radial(d, mmd, CTX, ["baile_pausa"])
+    assert (it.etiqueta, it.icono, it.marcado) == ("Pausar el baile", "pause", None)
+    en_pausa["v"] = True
+    [it] = au.items_radial(d, mmd, CTX, ["baile_pausa"])
+    assert (it.etiqueta, it.icono) == ("Seguir el baile", "music")
+    # «Bailar» se marca también con el reproductor MMD (pasa a «Parar el baile»)
+    d.registrar("bailar", lambda: None)
+    [b] = au.items_radial(d, mmd, CTX, ["bailar"])
+    assert b.etiqueta == "Parar el baile"

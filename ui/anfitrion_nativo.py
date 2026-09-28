@@ -7,13 +7,18 @@ tiene main.LuneCDWindow (_restore_from_tray, _toggle_overlay, _toggle_voice,
 _toggle_keys_panel, _quit_app, _mascota_viva…), sin modificarla. La nativa no
 tiene modo llamada ni aburrimiento: `llamada_on()` es False y la acción
 «llamada» no se registra (soporta_llamada = False).
+
+Cortes 7/8: `reaccion(estado, ms)` pone la carita de la ventana (lune_face) cuando se
+come sin la mascota a la vista, y `hwnd_principal()` da el HWND de la ventana para
+que la mascota pueda sentarse en ella.
 """
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
-from ui.anfitrion_web import _cfg, poner_en_barra, ventana_visible
+from ui.anfitrion_web import _cfg, hwnd_de, poner_en_barra, ventana_visible
 
 _log = logging.getLogger("lune.anfitrion")
 
@@ -47,6 +52,29 @@ class AnfitrionNativo:
 
     def ventana_visible(self) -> bool:
         return ventana_visible(self.win)
+
+    def hwnd_principal(self) -> int:
+        """HWND de la ventana principal (0 si no hay)."""
+        return hwnd_de(self.win)
+
+    def reaccion(self, estado: str, ms: int = 2500) -> bool:
+        """La carita de la ventana (lune_face) durante `ms` (0.2–10 s): comer sin la
+        mascota a la vista. False si la ventana no tiene carita."""
+        e = str(estado or "").strip().lower()
+        cara = getattr(self.win, "lune_face", None)
+        f = getattr(cara, "set_state", None) if cara is not None else None
+        if not callable(f) or not re.fullmatch(r"[a-z_]{1,24}", e):
+            return False
+        try:
+            n = int(ms)
+        except (TypeError, ValueError):
+            n = 2500
+        try:
+            f(e, auto_revert_ms=max(200, min(10000, n)))
+            return True
+        except Exception:
+            _log.exception("anfitrión nativo: la carita no reaccionó")
+            return False
 
     def abrir_ajustes(self, seccion: str = "") -> None:
         self.mostrar_ventana()

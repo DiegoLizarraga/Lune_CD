@@ -55,6 +55,7 @@ import logging
 import threading
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
+from PyQt6 import sip
 from PyQt6.QtCore import QObject, Qt, pyqtSignal, pyqtSlot
 
 from nucleo import estado_mascota as em
@@ -77,6 +78,52 @@ def crear_mascota(cls: Any, *args, **kw) -> Any:
     if acepta:
         kw.setdefault("bandeja", False)
     return cls(*args, **kw)
+
+
+class PuenteHilo:
+    """Emite la señal `senal` de `dueno` (un QObject) desde OTRO hilo sin tocarlo nunca
+    borrado. Es lo que un controlador da como callback a su hilo (la presencia de
+    Discord, las herramientas del modelo que corren en el Ejecutor…) en vez de un
+    `self.senal.emit` ligado: ese `emit` guardado, llamado cuando el controlador ya se
+    borró (cambio de interfaz con el hilo aún vivo), da AttributeError o una access
+    violation. Aquí la señal se resuelve en CADA llamada, se mira que el objeto de C++
+    siga vivo y, cerrado, no hace nada. `cerrar()` (en `detener`, y solo al destruirse
+    el dueño) espera a una llamada a medias: al volver, ya no sale ninguna más.
+
+        self._puente = PuenteHilo(self, "_desde_hilo")    # hilo.on_algo = self._puente
+        ...
+        self._puente.cerrar()                              # en detener(), antes de soltar el hilo
+    """
+
+    def __init__(self, dueno: QObject, senal: str):
+        self._lock = threading.Lock()
+        self._dueno: Optional[QObject] = dueno
+        self._senal = str(senal)
+        try:
+            dueno.destroyed.connect(self.cerrar)   # borrado sin detener (cierre de la app)
+        except (AttributeError, TypeError, RuntimeError):
+            pass
+
+    @property
+    def abierto(self) -> bool:
+        return self._dueno is not None
+
+    def cerrar(self, *_args) -> None:
+        with self._lock:
+            self._dueno = None
+
+    def __call__(self, *args: Any) -> None:
+        with self._lock:
+            d = self._dueno
+            if d is None:
+                return
+            try:
+                if sip.isdeleted(d):
+                    self._dueno = None
+                    return
+                getattr(d, self._senal).emit(*args)
+            except (RuntimeError, AttributeError):
+                self._dueno = None
 
 
 def _llamar(obj: Any, metodo: str, *args) -> Any:
@@ -300,8 +347,10 @@ class ServiciosEscritorio(QObject):
         self._soltar_mascota()
         self._mascota = ventana
         if ventana is None:
+            # pensando=False apaga solo lo de la mascota (comentar la pantalla); el chat
+            # de la ventana sigue pensando si lo estaba (BusEstado.pensar).
             self.estado.actualizar(render="", visible=False, arrastrando=False,
-                                   durmiendo=False, hablando=False)
+                                   durmiendo=False, hablando=False, pensando=False)
         else:
             self._conectar(ventana, "visibilidad", self._on_visibilidad)
             self._conectar(ventana, "evento_js", self._on_evento_js)
@@ -352,8 +401,10 @@ class ServiciosEscritorio(QObject):
 
     def _on_mascota_destruida(self, *_args) -> None:
         self._soltar_mascota(destruida=True)
+        # Como en set_mascota(None): pensando=False apaga solo la fuente de la mascota
+        # (comentar la pantalla); el chat de la ventana sigue pensando si lo estaba.
         self.estado.actualizar(render="", visible=False, arrastrando=False,
-                               durmiendo=False, hablando=False)
+                               durmiendo=False, hablando=False, pensando=False)
         for ctl in list(self._controladores.values()):
             _llamar(ctl, "set_mascota", None)
         self.mascota_cambio.emit(None)

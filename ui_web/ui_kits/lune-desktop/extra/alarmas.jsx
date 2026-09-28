@@ -4,8 +4,11 @@
  *                     vez», texto, interruptor, «Editar» y papelera; temporizadores h/m/s (y rápidos de 1, 5, 10
  *                     y 25 min) con la cuenta atrás en la página cada 250 ms desde `objetivo` (epoch del backend,
  *                     corregido con su `ahora`), Iniciar/Parar/Reiniciar/Borrar; «Probar».
- * AlarmaBanner        global (app.jsx): lo que está sonando, con «Apagar» bloqueado los primeros segundos (cuenta
- *                     atrás de apagar_en_ms, como el bloqueo de ControlAviso) y «Posponer».
+ * AlarmaBanner        global (app.jsx): lo que está sonando, con «Apagar» y «Posponer» bloqueados los primeros
+ *                     segundos (cuenta atrás de apagar_en_ms, como el bloqueo de ControlAviso y la tarjeta nativa).
+ *                     Con dos en cola, apagar la primera no oculta el banner de la segunda.
+ * Alarmas con fecha («mañana a las 7»): «Una vez · 27/09»; al editarlas con días o sin «Solo una vez» Python
+ * quita la fecha (y aquí se avisa).
  * AlarmasCard         Ajustes: alarmas activas, pantalla grande al sonar, decir el texto, sonido y volumen,
  *                     bloqueo, posponer, recuperar las perdidas, «Probar» y «Abrir alarmas».
  * PantallaGrandeCard  Ajustes: salvapantallas (interruptor, espera en 11 pasos, un clic sale también de la
@@ -92,9 +95,14 @@
     return m;
   }
   const letrasDe = (mask) => DIAS.split('').filter((_, i) => mask & (1 << i)).join('');
-  /** Días de una alarma en palabras: «Todos los días», «De lunes a viernes», «L X V», «Una vez». */
-  function textoDias(mask, unaVez) {
+  const FECHA_OK = /^\d{4}-\d{2}-\d{2}$/;
+  /** «2026-09-27» → «27/09» ('' si no es una fecha). */
+  const fechaCorta = (f) => (FECHA_OK.test(String(f || '')) ? `${f.slice(8, 10)}/${f.slice(5, 7)}` : '');
+  /** Días de una alarma en palabras: «Todos los días», «De lunes a viernes», «L X V», «Una vez»,
+   *  «Una vez · 27/09» (con fecha: «mañana a las 7» suena solo ese día). */
+  function textoDias(mask, unaVez, fecha) {
     const m = (Number(mask) || 0) & 127;
+    if (fechaCorta(fecha)) return `Una vez · ${fechaCorta(fecha)}`;
     if (unaVez && !m) return 'Una vez';
     let t;
     if (!m || m === 127) t = 'Todos los días';
@@ -111,6 +119,7 @@
     return {
       id: String(a.id), activa: a.activa !== false, hora: h, minuto: mi,
       dias: Number.isInteger(d) && d >= 0 && d <= 127 ? d : 0, una_vez: a.una_vez === true, texto: txt(a.texto),
+      fecha: typeof a.fecha === 'string' && FECHA_OK.test(a.fecha) ? a.fecha : '',   // solo ese día
       proxima: fin(px) && px > 0 ? px : 0,                // epoch del backend (0 = que lo calcule la página)
     };
   }
@@ -167,6 +176,11 @@
   /** Próxima vez que sonará `a` después de `desde` (Date local), o null (apagada). */
   function proximaVez(a, desde) {
     if (!a || !a.activa) return null;
+    if (a.fecha && FECHA_OK.test(a.fecha)) {            // solo ese día
+      const f = new Date(Number(a.fecha.slice(0, 4)), Number(a.fecha.slice(5, 7)) - 1, Number(a.fecha.slice(8, 10)),
+        a.hora, a.minuto, 0, 0);
+      return f.getTime() > desde.getTime() ? f : null;
+    }
     for (let d = 0; d <= 7; d++) {
       const f = new Date(desde.getFullYear(), desde.getMonth(), desde.getDate() + d, a.hora, a.minuto, 0, 0);
       if (f.getTime() <= desde.getTime()) continue;
@@ -265,6 +279,7 @@
           Object.assign(a, hm, o.dias !== undefined ? { dias: mascara(o.dias) } : {},
             typeof o.una_vez === 'boolean' ? { una_vez: o.una_vez } : {}, typeof o.activa === 'boolean' ? { activa: o.activa } : {},
             typeof o.texto === 'string' ? { texto: o.texto.trim().slice(0, TEXTO_MAX) } : {});
+          if (a.fecha && ((o.dias !== undefined && mascara(o.dias)) || o.una_vez === false)) a.fecha = '';   // como Python
           return resp(true, '', { id: a.id });
         }
         const hm = parsearHora(o.hora);
@@ -439,7 +454,7 @@
   }
 
   // ── Vista «alarmas» ────────────────────────────────────────────────────────
-  const FORM_VACIO = { id: '', hora: '07:30', dias: '', una_vez: false, texto: '' };
+  const FORM_VACIO = { id: '', hora: '07:30', dias: '', una_vez: false, texto: '', fecha: '' };
 
   function AlarmasPanel() {
     const { Card, Button, Switch, Input, Badge } = window.LUNE;
@@ -477,7 +492,10 @@
     const borrar = (a, setMsg, okTexto) => pedir('alarma_borrar', [a.id], responder(setMsg, okTexto, () => {
       if (form.id === a.id) setForm(FORM_VACIO);
     }));
-    const editar = (a) => { setForm({ id: a.id, hora: hhmm(a.hora, a.minuto), dias: letrasDe(a.dias), una_vez: a.una_vez, texto: a.texto }); setMsgA(null); };
+    const editar = (a) => {
+      setForm({ id: a.id, hora: hhmm(a.hora, a.minuto), dias: letrasDe(a.dias), una_vez: a.una_vez, texto: a.texto, fecha: a.fecha || '' });
+      setMsgA(null);
+    };
     const alternarDia = (ch) => setForm((f) => {
       const m = mascara(f.dias) ^ (1 << DIAS.indexOf(ch));
       return { ...f, dias: letrasDe(m) };
@@ -517,6 +535,9 @@
     const desfaseS = ahoraS() - Date.now() / 1000;
     const prox = estado.activo ? proxima(estado.alarmas, ahora, desfaseS) : null;
     const mask = mascara(form.dias);
+    // Editando «mañana a las 7» (con fecha): con días o sin «Solo una vez» deja de ser solo ese día.
+    const fechaForm = form.id && fechaCorta(form.fecha) ? form.fecha : '';
+    const pierdeFecha = !!fechaForm && (!!mask || !form.una_vez);
     const aviso = modo === 'demo' ? 'Demo sin la app: se guardan en esta página y no suenan.'
       : !estado.disponible ? 'Las alarmas aún no están en marcha (arrancan con los servicios de escritorio).' : '';
     const Papelera = window.IconTrash || (() => '✕');
@@ -564,8 +585,11 @@
             </div>
             <div className="ln-al-acciones">
               <Switch label="Solo una vez" checked={form.una_vez} onChange={(e) => setForm((f) => ({ ...f, una_vez: !!e.target.checked }))} />
-              <span className="ln-al-nota" style={{ margin: 0, alignSelf: 'center' }}>{textoDias(mask, form.una_vez)}</span>
+              <span className="ln-al-nota" style={{ margin: 0, alignSelf: 'center' }}>{textoDias(mask, form.una_vez, pierdeFecha ? '' : fechaForm)}</span>
             </div>
+            {fechaForm && <p className="ln-al-nota" id="al-nota-fecha">{pierdeFecha
+              ? `Al guardar deja de ser solo el ${fechaCorta(fechaForm)}: se repetirá como marcan los días.`
+              : `Solo el ${fechaCorta(fechaForm)}. Si le pones días o le quitas «Solo una vez», deja de ser solo ese día.`}</p>}
             <div className="ln-al-acciones">
               <Button size="sm" variant="primary" onClick={guardarAlarma}>{form.id ? 'Guardar cambios' : 'Añadir alarma'}</Button>
               {form.id && <Button size="sm" variant="ghost" onClick={() => { setForm(FORM_VACIO); setMsgA(null); }}>Cancelar</Button>}
@@ -578,7 +602,7 @@
                 <div key={a.id} className={`ln-al-fila${a.activa ? '' : ' is-off'}${form.id === a.id ? ' is-editando' : ''}`}>
                   <span className="ln-al-hora">{hhmm(a.hora, a.minuto)}</span>
                   <div className="ln-al-meta">
-                    <span className="ln-al-dias-tx">{textoDias(a.dias, a.una_vez)} · {a.id}</span>
+                    <span className="ln-al-dias-tx">{textoDias(a.dias, a.una_vez, a.fecha)} · {a.id}</span>
                     <span className={`ln-al-texto${a.texto ? '' : ' is-vacio'}`}>{a.texto || 'sin texto'}</span>
                   </div>
                   <Switch label={a.activa ? 'Activa' : 'Apagada'} checked={a.activa} onChange={(e) => cambiarActiva(a, !!e.target.checked)} />
@@ -647,11 +671,15 @@
     const [son, setSon] = useState(null);                 // sonando + puedeEn (ms del reloj de la página)
     const [posponerMin, setPosponerMin] = useState(5);
     const [, setTic] = useState(0);
+    // Cuenta los alarma_sonando: con dos en cola, al apagar la primera llega el de la
+    // segunda ANTES que la respuesta de alarma_apagar; esa respuesta no debe ocultarla.
+    const avisos = useRef(0);
     useEffect(() => {
       const quitar = [];
       const alSonar = (o) => {
         const s = normalizarSonando(leer(o, null));
         if (!s || !vivo.current) return;
+        avisos.current += 1;
         setSon({ ...s, puedeEn: Date.now() + s.apagar_en_ms });
         pedir('config_alarmas', [], (j) => { const c = normalizarConfigAlarmas(leer(j, {})); if (vivo.current) setPosponerMin(c.posponer_min); });
       };
@@ -672,8 +700,10 @@
     }, [bloqueada, son]);
     if (!son) return null;
     const falta = Math.max(0, Math.ceil((son.puedeEn - Date.now()) / 1000));
-    const apagar = () => pedir('alarma_apagar', [], (ok) => { if (ok && vivo.current) setSon(null); });
-    const posponer = () => pedir('alarma_posponer', [], (ok) => { if (ok && vivo.current) setSon(null); });
+    // Solo se quita si mientras tanto no empezó a sonar otra (la siguiente de la cola).
+    const quitarSi = (n) => (ok) => { if (ok && vivo.current && avisos.current === n) setSon(null); };
+    const apagar = () => pedir('alarma_apagar', [], quitarSi(avisos.current));
+    const posponer = () => pedir('alarma_posponer', [], quitarSi(avisos.current));
     return (
       <div className="ln-alarma-banner" role="alertdialog" aria-live="assertive" aria-label={tituloSonando(son)}>
         <span className="ln-alarma-ic" aria-hidden="true"><IconoAlarma /></span>
@@ -684,7 +714,7 @@
         </div>
         <div className="ln-alarma-acc">
           <Button size="sm" variant="danger" disabled={bloqueada} onClick={apagar}>{bloqueada ? `Apagar (${falta})` : 'Apagar'}</Button>
-          {son.tipo !== 'prueba' && <Button size="sm" variant="ghost" onClick={posponer}>Posponer {son.posponer_min || posponerMin} min</Button>}
+          {son.tipo !== 'prueba' && <Button size="sm" variant="ghost" disabled={bloqueada} onClick={posponer}>Posponer {son.posponer_min || posponerMin} min</Button>}
         </div>
       </div>
     );

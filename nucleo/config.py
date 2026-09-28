@@ -229,7 +229,6 @@ class Config:
         "interfaz": {
             "modo": "web",
             "en_barra_tareas": True,             # la ventana principal sale en la barra de tareas
-            "idioma": "es",                      # idioma de los textos de la interfaz (fase 2)
             "fundido_ms": 180,                   # fundido al cambiar de interfaz en caliente (0 = sin fundido)
         },
         # Avatar/expresiones: permite cambiar el "modelo" visual de Lune.
@@ -261,7 +260,6 @@ class Config:
             "sonidos": False,                    # sonidos al arrastrar y soltar (P02)
             "pack_sonidos": "default",           # carpeta de sonidos de reacción (P08)
             "volumen_sfx": 0.7,                  # 0–1: volumen de los efectos de la mascota
-            "particulas_tema": "estandar",       # estandar · galaxia (P10)
         },
         # Optimizador estilo Stacer: qué categorías limpiar por defecto.
         "optimizador": {
@@ -358,6 +356,7 @@ class Config:
             "cambiar": False,                    # cambiar de baile procedural cada `cambiar_s`
             "cambiar_s": 15,                     # s entre cambios de baile
             "volumen": 0.25,                     # volumen del audio de los bailes MMD/VRMA
+            "al_terminar": "parar",              # al acabar un baile: parar · siguiente · repetir · aleatorio
             "en_el_sitio": True,                 # bailar sin desplazarse por la ventana
             "particulas": True,                  # notas/partículas mientras baila
             "favoritos": [],                     # ids de bailes favoritos
@@ -385,7 +384,8 @@ class Config:
         # Presencia en Discord (Rich Presence por IPC propio) (P12).
         "discord": {
             "activo": False,                     # apagado por defecto
-            "client_id": "",                     # id de la aplicación de Discord (no es secreto)
+            "client_id": "",                     # Application ID de discord.com/developers (no es secreto;
+                                                 # vacío = no publica nada hasta pegarlo: D1)
             "mostrar_modelo": False,             # enseñar el nombre del modelo VRM
             "boton_url": "",                     # enlace opcional del botón
         },
@@ -393,12 +393,17 @@ class Config:
         "minecraft": {
             "reaccionar": False,                 # reaccionar a lo que pasa en la partida
             "ruta_log": "",                      # latest.log; vacío = .minecraft/logs por defecto
-            "udp_mate_engine": False,            # escuchar el UDP 32145 (choca con Mate-Engine abierto)
+            "udp_mate_engine": False,            # reservada (sin usar): el UDP 32145 del mod de Mate-Engine
             "voz_reacciones": False,             # decir las reacciones en voz alta
-            "comentar_con_ia": False,            # comentar con el modelo en vez de frases fijas
+            "comentar_con_ia": False,            # reservada (sin usar): el texto del juego nunca va al modelo
             "auto_con_juego": True,              # empezar a leer el log al detectar Minecraft abierto
+            "decir_en_juego": True,              # en modo juego y con el bot conectado, lo dice el bot en el chat
+            "resumen_al_salir": True,            # al salir del modo juego, «Mientras jugabas: …»
+            "pensar_en_juego": False,            # el cerebro autónomo del bot sigue en modo juego (más GPU)
+            "reaccionar_otros": False,           # reaccionar también a muertes y logros de otros jugadores
         },
-        # Comida: batido y pastel con el clic central (el catálogo vive en comida.json) (P07).
+        # Comida: batido y pastel con el clic central; el catálogo es fijo (nucleo/comida.CATALOGO)
+        # y `catalogo_extra` queda reservado (se ignora) (P07, corte 8).
         "comida": {
             "activa": True,                      # clic central → comida
             "catalogo_extra": [],                # comidas añadidas por el usuario
@@ -457,6 +462,11 @@ class Config:
             "tema": "cian",                      # paleta ANSI truecolor
             "caritas": "clasico",                # clasico · kaomoji
             "prompt": "tú > ",                   # texto del prompt
+        },
+        # Versión del esquema de config.json: cada migración única de _migrar() sube uno.
+        # Un config.json sin esta sección viene de antes de las migraciones (10.3).
+        "esquema": {
+            "version": 1,
         },
     }
 
@@ -569,6 +579,7 @@ class Config:
         estado, valor, firma = self._leer_con_reintento()
         if estado == "ok":
             merged = self._merge_defaults(valor, self.DEFAULT_CONFIG)
+            self._migrar(valor, merged)
             self._firma = firma
             self._base = copy.deepcopy(merged)
             # Persistir si el esquema cambió (secciones nuevas o claves podadas)
@@ -687,6 +698,33 @@ class Config:
                 sec = self.config[seccion] = {}
             sec[clave] = valor
             self._guardar(forzar=((seccion, clave),))
+
+    # ── Migraciones únicas ─────────────────────────────────────────────────────
+    @staticmethod
+    def _version_esquema(crudo: Dict) -> int:
+        sec = crudo.get("esquema") if isinstance(crudo, dict) else None
+        v = sec.get("version") if isinstance(sec, dict) else None
+        return v if isinstance(v, int) and not isinstance(v, bool) else 0
+
+    def _migrar(self, crudo: Dict, merged: Dict) -> None:
+        """Cambios de valores por defecto que tienen que llegar a los config.json viejos
+        (_merge_defaults solo añade claves nuevas: un valor ya escrito se queda). Se miran
+        en lo LEÍDO (`crudo`) y se aplican una sola vez sobre `merged`."""
+        version = self._version_esquema(crudo)
+        if version < 1:
+            # 10.3 escribía baile.umbral = 0.2 (el defecto de entonces) y el detector de
+            # música ya usa 0.05 (D1). Solo se cambia si sigue en el defecto viejo: un valor
+            # que eligió la persona se respeta.
+            baile = merged.get("baile")
+            umbral = baile.get("umbral") if isinstance(baile, dict) else None
+            if isinstance(umbral, (int, float)) and not isinstance(umbral, bool) and abs(umbral - 0.2) < 1e-9:
+                baile["umbral"] = self.DEFAULT_CONFIG["baile"]["umbral"]
+                _log.info("config: baile.umbral 0.2 (defecto de la 10.3) → %s", baile["umbral"])
+        if version < self.DEFAULT_CONFIG["esquema"]["version"]:
+            sec = merged.get("esquema")
+            if not isinstance(sec, dict):
+                sec = merged["esquema"] = {}
+            sec["version"] = self.DEFAULT_CONFIG["esquema"]["version"]
 
     # ── Fusión con los valores por defecto ─────────────────────────────────────
     def _merge_defaults(self, loaded: Dict, default: Dict) -> Dict:

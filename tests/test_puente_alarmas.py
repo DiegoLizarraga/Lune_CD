@@ -269,7 +269,7 @@ def test_alarmas_json_normaliza_la_forma_de_listar():
     assert [x["id"] for x in e["alarmas"]] == ["a1", "a2"], "ordenadas por hora; el id malo fuera"
     a1 = e["alarmas"][0]
     assert a1 == {"id": "a1", "activa": False, "hora": 7, "minuto": 30, "dias": 31, "una_vez": False,
-                  "texto": "gimnasio", "proxima": 0}
+                  "texto": "gimnasio", "fecha": "", "proxima": 0}
     assert e["alarmas"][1]["dias"] == 96 and e["alarmas"][1]["proxima"] == 1700050000.0
     assert e["temporizadores"] == [
         {"id": "t1", "activo": True, "duracion_s": 300, "objetivo": 1700000065.0, "restante_s": 300, "texto": "té"},
@@ -442,3 +442,39 @@ def test_utilidades_puras():
     assert pa.normalizar_sonando({"texto": "x", "apagar_en_ms": 1e9, "cola": [1, 2, 3]})["apagar_en_ms"] == 60000
     assert pa.normalizar_sonando({"texto": "x", "cola": [1, 2, 3]})["cola"] == 3
     assert pa.normalizar_proxima({"id": "a1", "cuando": 0}) is None
+
+
+def test_la_pagina_recibe_la_fecha_de_las_alarmas_de_un_dia():
+    """Revisión 4-5-6 (MO3): «despiértame mañana a las 7» tiene fecha; la página no la
+    recibía (la enseñaba como «Una vez» a secas y al editarla la fecha quedaba oculta)."""
+    a = AlarmasFalsas()
+    a.alarmas = [{"id": "a1", "hora": "07:00", "h": 7, "m": 0, "minuto": 0, "dias": "", "dias_mask": 0,
+                  "una_vez": True, "texto": "", "activa": True, "fecha": "2026-09-27"},
+                 {"id": "a2", "hora": "08:00", "h": 8, "m": 0, "minuto": 0, "dias": "", "dias_mask": 0,
+                  "una_vez": True, "texto": "", "activa": True, "fecha": "<img src=x>"}]
+    e = _j(_puente(alarmas=a).alarmas_json())
+    assert [x["fecha"] for x in e["alarmas"]] == ["2026-09-27", ""], "solo AAAA-MM-DD"
+
+
+def test_editar_con_dias_por_el_puente_quita_la_fecha(qapp, tmp_path):
+    """MO3 de punta a punta: página → puente → ControlAlarmasQt → Almacen."""
+    from nucleo.alarmas import Almacen
+    from ui.alarmas_qt import ControlAlarmasQt
+
+    class Mutex:
+        es_dueno = False
+
+        def adquirir(self):
+            return False
+
+    alm = Almacen(tmp_path / "alarmas.json")
+    x = alm.crear_alarma(7, 0, fecha="2026-09-27")
+    ctl = ControlAlarmasQt(None, None, almacen=alm, mutex=Mutex(), intervalo_ms=10 ** 6)
+    p = _puente(alarmas=ctl)
+    fila, = _j(p.alarmas_json())["alarmas"]
+    assert fila["fecha"] == "2026-09-27" and fila["una_vez"] is True
+    r = _j(p.alarma_guardar('{"id": "a1", "hora": "07:00", "dias": "lmxjv", "una_vez": false, "texto": ""}'))
+    assert r["ok"] is True
+    a = alm.obtener(x.id)
+    assert (a.fecha, a.dias, a.una_vez) == ("", 31, False)
+    assert r["estado"]["alarmas"][0]["fecha"] == ""

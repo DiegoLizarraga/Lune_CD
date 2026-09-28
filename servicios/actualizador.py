@@ -51,7 +51,9 @@ OPCIONALES: Dict[str, Dict] = {
     },
     "Optimizador del sistema": {
         "modulos": {"psutil": "psutil"},
-        "nota": "Monitor de CPU/RAM y limpieza de archivos temporales.",
+        "nota": "Monitor de CPU/RAM y limpieza de archivos temporales. También lo usan el modo "
+                "juego (bajar la prioridad de Lune), el recorte de RAM y el reconocer programas "
+                "(música, Discord); sin él esas partes se saltan.",
     },
     "Interfaz completa (piel web animada)": {
         "modulos": {"PyQt6.QtWebEngineWidgets": "PyQt6-WebEngine"},
@@ -66,13 +68,9 @@ OPCIONALES: Dict[str, Dict] = {
         "modulos": {"kokoro_onnx": "kokoro-onnx"},
         "nota": "Lune habla sin internet. Además necesita espeak-ng y los pesos en modelos_voz/.",
     },
-    "Mascota: giro y recorte de sprites": {
-        "modulos": {"numpy": "numpy"},
-        "nota": "Para que la mascota de imágenes se incline al arrastrarla con la silueta exacta.",
-    },
-    "Mascota: modo fantasma (Windows)": {
-        "modulos": {"win32gui": "pywin32"},
-        "nota": "Deja pasar los clics a través de la mascota y la mantiene sobre los juegos.",
+    "Voz de respaldo (gTTS)": {
+        "modulos": {"gtts": "gtts"},
+        "nota": "Si edge-tts falla, Lune habla con la voz de Google.",
     },
     "Conversión de voz RVC (experimental)": {
         "modulos": {"rvc_python": "rvc-python"},
@@ -80,26 +78,76 @@ OPCIONALES: Dict[str, Dict] = {
     },
 }
 
-# Lo que hace falta sí o sí para que la app arranque (instalador para usuarios nuevos).
+# Lo que hace falta sí o sí (instalador para usuarios nuevos: va marcado por defecto).
+# numpy es obligatorio: lo importan al cargar el mezclador de sonidos, el pulso de la
+# música, «Mis bailes» (nucleo/bailes.py) y la canción de los bailes
+# (servicios/cancion_python.py); sin él no hay sonidos de la mascota, ni alarmas con
+# sonido propio, ni bailes de la biblioteca.
 NUCLEO: Dict[str, Dict] = {
     "Núcleo de Lune (obligatorio)": {
         "modulos": {"PyQt6": "PyQt6", "requests": "requests", "websockets": "websockets"},
         "nota": "La ventana, la conexión con los modelos y la red entre equipos. Sin esto no arranca.",
     },
+    "Sonido: mezclador, alarmas y bailes (obligatorio)": {
+        "modulos": {"numpy": "numpy", "sounddevice": "sounddevice", "imageio_ffmpeg": "imageio-ffmpeg"},
+        "nota": "numpy: el mezclador de sonidos de la mascota, las alarmas y los bailes (sin él no "
+                "cargan) y el giro de los sprites. sounddevice: la salida del mezclador (sin él cae "
+                "a winsound, sin mezcla). imageio-ffmpeg: un ffmpeg para leer mp3/ogg/m4a de "
+                "alarmas y bailes (sin él solo .wav).",
+    },
 }
+if sys.platform == "win32":
+    NUCLEO["Windows: mascota y detector de música (obligatorio)"] = {
+        "modulos": {"win32gui": "pywin32", "comtypes": "comtypes"},
+        "nota": "pywin32: la mascota fantasma (deja pasar los clics y se queda sobre los juegos) "
+                "y la ventana activa. comtypes: el detector de música y el audio por programa "
+                "(bailar con lo que suena). Solo Windows.",
+    }
+
+# Lo que NO es de pip y avisa el instalador (los bots de Telegram y de Minecraft son Node).
+NODE_MINIMO = 18
+AVISO_NODE = (f"Node.js {NODE_MINIMO} o más nuevo (nodejs.org) para el bot de Telegram y el de "
+              "Minecraft. El resto de Lune funciona sin él.")
+
+
+def estado_node(which=None, ejecutar=None) -> Dict:
+    """{ok, version, mensaje} de Node.js (requisito externo de los bots). No lanza."""
+    import shutil
+    which = which or shutil.which
+    ejecutar = ejecutar or subprocess.run
+    ruta = which("node")
+    if not ruta:
+        return {"ok": False, "version": "", "mensaje": f"Falta {AVISO_NODE}"}
+    try:
+        res = ejecutar([ruta, "--version"], capture_output=True, text=True, timeout=10, **SIN_CONSOLA)
+        version = str(getattr(res, "stdout", "") or "").strip().splitlines()[0][:20]
+    except Exception:
+        version = ""
+    try:
+        mayor = int(version.lstrip("v").split(".")[0])
+    except (ValueError, IndexError):
+        mayor = 0
+    if mayor >= NODE_MINIMO:
+        return {"ok": True, "version": version,
+                "mensaje": f"Node.js {version}: OK (bots de Telegram y Minecraft)."}
+    return {"ok": False, "version": version,
+            "mensaje": f"Node.js {version or '(versión desconocida)'} es viejo: hace falta {AVISO_NODE}"}
 
 
 def estado_opcionales() -> List[Dict]:
     """
-    Qué funciones opcionales están listas y cuáles no.
+    Qué funciones opcionales están listas y cuáles no; al final, las obligatorias
+    (NUCLEO) a las que les falta algo (p. ej. numpy), para que Ajustes lo avise.
     [{funcion, disponible, faltan: [pip], comando, nota}]
     """
     resultado = []
-    for funcion, info in OPCIONALES.items():
+    for funcion, info in [*OPCIONALES.items(), *NUCLEO.items()]:
         faltan = [
             paquete for modulo, paquete in info["modulos"].items()
             if importlib.util.find_spec(modulo) is None
         ]
+        if not faltan and funcion in NUCLEO and funcion not in OPCIONALES:
+            continue
         resultado.append({
             "funcion": funcion,
             "disponible": not faltan,

@@ -1,7 +1,9 @@
 # Lune CD — dependencias de la app de escritorio
 # ================================================
-# El bot de Telegram es Node.js y tiene sus propias dependencias
-# (telegram-bot-or/package.json → npm install).
+# Los bots de Telegram y de Minecraft son Node.js (18 o más nuevo, aparte de pip)
+# y tienen sus propias dependencias con versiones fijas (package-lock.json): las
+# instala Lune con `npm ci --ignore-scripts` (el de Telegram al encenderlo; el de
+# Minecraft con «Instalar el bot»).
 
 # ── NÚCLEO (sin esto la app no arranca) ──────────────────────────
 PyQt6>=6.6.0

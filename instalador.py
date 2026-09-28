@@ -26,7 +26,18 @@ _NUCLEO_RESPALDO = {
         "modulos": {"PyQt6": "PyQt6", "requests": "requests", "websockets": "websockets"},
         "nota": "La ventana, la conexión con los modelos y la red entre equipos. Sin esto no arranca.",
     },
+    "Sonido: mezclador, alarmas y bailes (obligatorio)": {
+        "modulos": {"numpy": "numpy", "sounddevice": "sounddevice", "imageio_ffmpeg": "imageio-ffmpeg"},
+        "nota": "numpy: el mezclador de sonidos, las alarmas y los bailes (sin él no cargan). "
+                "sounddevice: la salida del mezclador. imageio-ffmpeg: leer mp3/ogg/m4a.",
+    },
 }
+if sys.platform == "win32":
+    _NUCLEO_RESPALDO["Windows: mascota y detector de música (obligatorio)"] = {
+        "modulos": {"win32gui": "pywin32", "comtypes": "comtypes"},
+        "nota": "La mascota fantasma y la ventana activa (pywin32); el detector de música y el "
+                "audio por programa para bailar (comtypes). Solo Windows.",
+    }
 _OPCIONALES_RESPALDO = {
     "Voz de salida (Lune habla)": {"modulos": {"edge_tts": "edge-tts", "pygame": "pygame"},
         "nota": "Para que Lune lea sus respuestas en voz alta (edge-tts necesita internet)."},
@@ -36,7 +47,8 @@ _OPCIONALES_RESPALDO = {
         "nota": "La interfaz animada, la mascota en video y el avatar 3D (VRM). Sin esto se usa la nativa ligera."},
     "Leer PDF": {"modulos": {"pypdf": "pypdf"}, "nota": "Para adjuntar PDF al chat."},
     "Leer Word (.docx)": {"modulos": {"docx": "python-docx"}, "nota": "Para adjuntar Word al chat."},
-    "Optimizador del sistema": {"modulos": {"psutil": "psutil"}, "nota": "Monitor de CPU/RAM y limpieza."},
+    "Optimizador del sistema": {"modulos": {"psutil": "psutil"},
+        "nota": "Monitor de CPU/RAM y limpieza; también el modo juego, el recorte de RAM y reconocer programas."},
     "Red local (descubrir dispositivos)": {"modulos": {"zeroconf": "zeroconf"},
         "nota": "Para que Lune encuentre otros equipos con Lune en tu red."},
     "Voz 100% local (Kokoro)": {"modulos": {"kokoro_onnx": "kokoro-onnx"},
@@ -46,8 +58,10 @@ _OPCIONALES_RESPALDO = {
 }
 
 
-# Lo que requirements.txt ya pide y las tablas de arriba (o las de
-# servicios/actualizador.py) aún no traían: se añade si falta en ambas.
+# Red de seguridad: lo que requirements.txt pide y las tablas (las de
+# servicios/actualizador.py o las de respaldo) no traigan. Lo del núcleo se añade AL
+# NÚCLEO aunque ya salga como opcional (antes numpy se quedaba en opcional y sin él no
+# cargan el mezclador, las alarmas con sonido ni los bailes).
 _EXTRAS_NUCLEO = {
     "Sonidos, alarmas y mascota (obligatorio)": {
         "modulos": {"numpy": "numpy", "sounddevice": "sounddevice", "imageio_ffmpeg": "imageio-ffmpeg"},
@@ -67,19 +81,26 @@ _EXTRAS_OPCIONALES = {
 }
 
 
+def _paquetes(*tablas) -> set:
+    return {p.lower() for tabla in tablas for info in tabla.values() for p in info["modulos"].values()}
+
+
 def _con_extras(nucleo: dict, opcionales: dict):
-    """Añade a las tablas los paquetes de los extras que no aparezcan en ninguna."""
-    ya = {p.lower() for tabla in (nucleo, opcionales) for info in tabla.values()
-          for p in info["modulos"].values()}
-    salida = []
-    for tabla, extras in ((nucleo, _EXTRAS_NUCLEO), (opcionales, _EXTRAS_OPCIONALES)):
-        nueva = dict(tabla)
-        for nombre, info in extras.items():
-            faltan = {m: p for m, p in info["modulos"].items() if p.lower() not in ya}
-            if faltan:
-                nueva[nombre] = {**info, "modulos": faltan}
-        salida.append(nueva)
-    return salida[0], salida[1]
+    """Añade a las tablas los paquetes de los extras que falten: los del núcleo, si no
+    están YA EN EL NÚCLEO (marcado por defecto) aunque salgan como opcionales; los
+    opcionales, si no están en ninguna."""
+    nuevo_nucleo = dict(nucleo)
+    for nombre, info in _EXTRAS_NUCLEO.items():
+        faltan = {m: p for m, p in info["modulos"].items() if p.lower() not in _paquetes(nuevo_nucleo)}
+        if faltan:
+            nuevo_nucleo[nombre] = {**info, "modulos": faltan}
+    nuevos_opcionales = dict(opcionales)
+    for nombre, info in _EXTRAS_OPCIONALES.items():
+        faltan = {m: p for m, p in info["modulos"].items()
+                  if p.lower() not in _paquetes(nuevo_nucleo, nuevos_opcionales)}
+        if faltan:
+            nuevos_opcionales[nombre] = {**info, "modulos": faltan}
+    return nuevo_nucleo, nuevos_opcionales
 
 
 def _tablas():
@@ -93,6 +114,23 @@ def _tablas():
 
 def _instalado(modulos: dict) -> bool:
     return all(importlib.util.find_spec(m) is not None for m in modulos)
+
+
+def estado_node(which=None, ejecutar=None) -> dict:
+    """{ok, version, mensaje} de Node.js, que no es de pip: lo necesitan los bots de
+    Telegram y de Minecraft. El de servicios/actualizador.py o, si no se puede importar,
+    un aviso sin comprobar la versión."""
+    try:
+        sys.path.insert(0, str(RAIZ))
+        from servicios import actualizador as A
+        return A.estado_node(which=which, ejecutar=ejecutar)
+    except Exception:
+        import shutil
+        ruta = (which or shutil.which)("node")
+        return {"ok": bool(ruta), "version": "",
+                "mensaje": ("Node.js: encontrado (los bots de Telegram y Minecraft piden la 18 o más nueva)."
+                            if ruta else "Falta Node.js 18 o más nuevo (nodejs.org) para el bot de Telegram "
+                                         "y el de Minecraft. El resto de Lune funciona sin él.")}
 
 
 def main() -> int:
@@ -150,9 +188,15 @@ def main() -> int:
     for n, i in nucleo.items(): fila(n, i, True)
     for n, i in opcionales.items(): fila(n, i, False)
 
+    node = estado_node()
+    ttk.Label(raiz, style="Ok.TLabel" if node["ok"] else "Nota.TLabel", wraplength=720, justify="left",
+              text=node["mensaje"]).pack(anchor="w", pady=(8, 0))
     ttk.Label(raiz, style="Nota.TLabel", wraplength=720, justify="left",
-              text="Aparte de esto: para el modelo local instala Ollama (ollama.com) y baja un modelo con "
-                   "`ollama pull <modelo>`; para Kokoro en español instala espeak-ng.").pack(anchor="w", pady=(8, 4))
+              text="Aparte de esto (no es de pip): para los bots de Telegram y Minecraft, Node.js 18+ "
+                   "(nodejs.org; sus paquetes los instala Lune con npm ci: el de Telegram al encenderlo, "
+                   "el de Minecraft con «Instalar el bot» en Ajustes → Minecraft); para el modelo "
+                   "local instala Ollama (ollama.com) y baja un modelo con `ollama pull <modelo>`; para "
+                   "Kokoro en español instala espeak-ng.").pack(anchor="w", pady=(4, 4))
 
     log = scrolledtext.ScrolledText(raiz, height=8, bg="#080b16", fg="#eaf1ff", insertbackground="#eaf1ff",
                                     font=("Consolas", 9), relief="flat")
@@ -162,6 +206,9 @@ def main() -> int:
     btn = ttk.Button(botones, text="Instalar lo marcado")
     btn.pack(side="left")
     ttk.Button(botones, text="Descargar Ollama", command=lambda: webbrowser.open("https://ollama.com/download")).pack(side="left", padx=8)
+    if not node["ok"]:
+        ttk.Button(botones, text="Descargar Node.js",
+                   command=lambda: webbrowser.open("https://nodejs.org/")).pack(side="left")
     ttk.Button(botones, text="Cerrar", command=win.destroy).pack(side="right")
 
     def escribir(t):

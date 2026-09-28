@@ -150,6 +150,9 @@
     palette: ['M12 22a10 10 0 1 1 10-10c0 2.5-2 3-3.5 3H16a2 2 0 0 0-1.5 3.3A1.7 1.7 0 0 1 12 22z', 'M7.5 10.5h.01', 'M10.5 7.5h.01', 'M15.5 7.5h.01'],
     cpu: ['M6 6h12v12H6z', 'M9 1v3', 'M15 1v3', 'M9 20v3', 'M15 20v3', 'M20 9h3', 'M20 14h3', 'M1 9h3', 'M1 14h3'],
     taskbar: ['M3 17h18v4H3z', 'M6 19h2', 'M10 19h2'],
+    // Cortes 9/10: «Mis bailes» (la biblioteca del reproductor MMD/VRMA).
+    film: ['M4.18 2h15.64A2.18 2.18 0 0 1 22 4.18v15.64A2.18 2.18 0 0 1 19.82 22H4.18A2.18 2.18 0 0 1 2 19.82V4.18A2.18 2.18 0 0 1 4.18 2z',
+      'M7 2v20', 'M17 2v20', 'M2 12h20', 'M2 7h5', 'M2 17h5', 'M17 17h5', 'M17 7h5'],
   };
   const ALIAS_ICONO = {
     engranaje: 'gear', ajustes: 'gear', settings: 'gear', mensaje: 'chat', chat: 'chat', ojo: 'eye', comentar: 'eye',
@@ -165,7 +168,8 @@
     message: 'chat', arrow_down: 'down', box: 'package', expresion: 'smile', cerrar_mascota: 'close',
     mostrar_lune: 'window', menu_radial: 'radial', comentarios_auto: 'message_dots', siempre_encima: 'pin',
     encuadre: 'frame', baile_pausa: 'pause', tema: 'palette', autoinicio: 'power', liberar_memoria: 'cpu',
-    en_barra_tareas: 'taskbar',
+    en_barra_tareas: 'taskbar', sentarse: 'taskbar', barra_tareas: 'taskbar',
+    bailes: 'film', mis_bailes: 'film', pelicula: 'film', minecraft_bot: 'package', bot: 'package',
   };
   function trazosIcono(icono, id) {
     const k = String(icono || '').toLowerCase();
@@ -474,7 +478,7 @@
     const m = leer(v, null);
     try { f(m && typeof m === 'object' && !Array.isArray(m) && Object.keys(m).length ? m : null); return true; } catch (e) { return false; }
   }
-  const VISTAS = ['chat', 'settings', 'personajes', 'memoria', 'historial', 'optimizar', 'tools', 'alarmas'];
+  const VISTAS = ['chat', 'settings', 'personajes', 'memoria', 'historial', 'optimizar', 'tools', 'alarmas', 'bailes', 'minecraft'];
   function vistaDe(v) {
     const [vista, seccion] = String(v || '').split('#');
     if (!VISTAS.includes(vista)) return null;
@@ -871,8 +875,8 @@
     ajustes: 'Ajustes', chat: 'Chat', comentar: 'Comentar pantalla', expresiones: 'Expresiones', bailar: 'Bailar',
     alarma: 'Alarma', voz: 'Voz', dormir: 'Dormir', tamano: 'Tamaño', bajar: 'Bajar', mascota: 'Mascota', llamada: 'Llamada',
     pantalla_grande: 'Pantalla grande', temporizador_rapido: 'Temporizador', comida: 'Comida', modo_juego_forzar: 'Modo juego',
-    discord: 'Discord', minecraft: 'Minecraft', fantasma: 'Modo fantasma', comer_batido: 'Batido', comer_pastel: 'Pastel',
-    guardar_comida: 'Guardar comida',
+    discord: 'Discord', minecraft: 'Reacciones a Minecraft', fantasma: 'Modo fantasma', comer_batido: 'Batido', comer_pastel: 'Pastel',
+    guardar_comida: 'Guardar comida', bailes: 'Mis bailes', minecraft_bot: 'Bot de Minecraft',
   };
   function normalizarCatalogo(lista) {
     const out = [], vistos = new Set();

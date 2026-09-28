@@ -1,4 +1,4 @@
-import { Bot, session, InlineKeyboard } from "grammy";
+import { Bot, session, InlineKeyboard, InputFile } from "grammy";
 import { loadConfig, getPersonaje } from "./config.js";
 import { chatIA, descripcionModelo } from "./ia.js";
 import { loadMemoria, saveMemoria, buildMemoryPrompt, iniciarHub, estadoHub } from "./memoria.js";
@@ -29,16 +29,27 @@ const lanzadoPorLune = process.env.LUNE_BOT_HIJO === "1";
 if (ordenes.activo() || lanzadoPorLune) ordenes.escuchar({ salirAlCerrar: lanzadoPorLune });
 
 // ── SEGURIDAD: solo tu usuario puede usar el bot ─────────────────────────────
-// Pon tu Telegram ID en datos.json como apis.telegram_admin_id
-// Para saber tu ID escribe /id al bot antes de activar el filtro
+// Pon tu Telegram ID en datos.json como apis.telegram_admin_id (o en Ajustes de
+// Lune → Telegram). Para saber tu ID escribe /id al bot.
+// Sin ID configurado el bot NO es de nadie: solo responde a /start e /id. Antes
+// «permitía todo», y cualquiera que lo encontrara podía chatear, ver tu memoria o
+// listar carpetas del PC con /ls.
 function esAdmin(ctx) {
-  if (!config.adminId) return true; // si no esta configurado, permite todo
-  return String(ctx.from?.id) === String(config.adminId);
+  const id = String(config.adminId ?? "").trim();
+  if (!id) return false;
+  return String(ctx.from?.id) === id;
 }
 
+const LIBRES_SIN_DUENO = /^\/(start|id)(@\w+)?(\s|$)/;
+
 function soloAdmin(ctx, next) {
-  if (!esAdmin(ctx)) return ctx.reply("No tienes permiso para usar este bot.");
-  return next();
+  if (esAdmin(ctx)) return next();
+  if (!String(config.adminId ?? "").trim()) {
+    const texto = ctx.message?.text ?? "";
+    if (LIBRES_SIN_DUENO.test(texto)) return next();
+    return ctx.reply("Este bot aun no tiene dueño. Escribe /id, pon ese numero en Lune (Ajustes → Telegram → Tu ID de Telegram) y reinicia el bot desde Lune.");
+  }
+  return ctx.reply("No tienes permiso para usar este bot.");
 }
 
 // Telegram apaga el indicador "escribiendo…" a los ~5 s. Un modelo local en CPU
@@ -217,7 +228,7 @@ bot.callbackQuery(/^fotos_(.+)$/, async (ctx) => {
   await ctx.reply(`Enviando ${Math.min(fotos.length, 10)} foto(s)...`);
   for (const foto of fotos.slice(0, 10)) {
     try {
-      await ctx.replyWithPhoto({ source: foto.ruta }, { caption: foto.nombre.replace(/[_*[\]()~`>#+=|{}.!-]/g, "\\$&"), parse_mode: "MarkdownV2" });
+      await ctx.replyWithPhoto(new InputFile(foto.ruta), { caption: foto.nombre.replace(/[_*[\]()~`>#+=|{}.!-]/g, "\\$&"), parse_mode: "MarkdownV2" });
     } catch (e) {
       await ctx.reply(`No pude enviar: ${foto.nombre} (${e.message})`);
     }
@@ -317,7 +328,7 @@ bot.command("fotos", async (ctx) => {
   await ctx.reply(`Enviando ${Math.min(fotos.length, 10)} foto(s) de ${ruta}...`);
   for (const foto of fotos.slice(0, 10)) {
     try {
-      await ctx.replyWithPhoto({ source: foto.ruta }, { caption: foto.nombre.replace(/[_*[\]()~`>#+=|{}.!-]/g, "\\$&"), parse_mode: "MarkdownV2" });
+      await ctx.replyWithPhoto(new InputFile(foto.ruta), { caption: foto.nombre.replace(/[_*[\]()~`>#+=|{}.!-]/g, "\\$&"), parse_mode: "MarkdownV2" });
     } catch (e) {
       await ctx.reply(`No pude enviar: ${foto.nombre}`);
     }
@@ -332,7 +343,7 @@ bot.command("archivo", async (ctx) => {
   if (!existsSync(rutaReal)) { await ctx.reply(`No encontre el archivo: ${nombre}`); return; }
   await ctx.reply(`Enviando ${nombre}...`);
   try {
-    await ctx.replyWithDocument({ source: rutaReal });
+    await ctx.replyWithDocument(new InputFile(rutaReal));
   } catch (e) {
     await ctx.reply(`Error al enviar: ${e.message}\n(Recuerda: limite de 50MB por archivo)`);
   }

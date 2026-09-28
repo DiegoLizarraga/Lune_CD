@@ -7,7 +7,9 @@ nucleo/baile.py — Lo común del baile procedural (con la música del PC o a ma
   (`{estilo, cambiar, cambiarS, particulas}`).
 - Handlers de las herramientas del modelo `mascota_bailar` y `parar_baile`
   (lune_core/catalogo_herramientas.py): `ctx["baile"]` es el controlador
-  (ui/baile_qt.ControlBaile) y `ctx["en_ui"]` lo ejecuta en el hilo de Qt.
+  (ui/baile_qt.ControlBaile), `ctx["mmd"]` el reproductor de bailes
+  (ui/mmd_qt.ControlMMD, corte 9: «bailar {cancion}» busca en tus bailes) y
+  `ctx["en_ui"]` lo ejecuta en el hilo de Qt.
 - `frames_ascii(kaomoji)`: los cuadros del baile en la terminal (patata).
 
 Sin Qt.
@@ -114,14 +116,56 @@ def _en_ui(ctx: Any, fn: Callable[[], Any]) -> Any:
     return en_ui(fn) if callable(en_ui) else fn()
 
 
+def _par(r: Any) -> Tuple[bool, str]:
+    """(ok, texto) de lo que devuelva un controlador: tupla, bool o texto."""
+    if isinstance(r, tuple) and len(r) == 2:
+        return bool(r[0]), str(r[1] or "")
+    if isinstance(r, bool):
+        return r, ""
+    return True, str(r or "")
+
+
+def _cancion_segura(texto: str) -> str:
+    """La canción pedida, limpia para devolvérsela al modelo."""
+    s = " ".join("".join(ch if ch.isprintable() else " " for ch in texto).split())[:80]
+    try:
+        from lune_core.prompt import neutralizar_marcadores
+        return neutralizar_marcadores(s)
+    except Exception:                                  # pragma: no cover - sin lune_core
+        return s.replace("<|", "< |")
+
+
+# Motivos de ControlMMD por los que no hay baile de la biblioteca (se baila a su manera).
+_SIN_BAILE_MMD = ("no_encontrado", "sin_bailes", "problema")
+
+
 def herramienta_bailar(args: Any = None, ctx: Any = None) -> Union[str, Tuple[bool, str]]:
-    """Handler de `mascota_bailar` ({segundos?, cancion?})."""
+    """Handler de `mascota_bailar` ({segundos?, cancion?}).
+
+    Con `cancion` y el reproductor (`ctx["mmd"]`, ui/mmd_qt.ControlMMD): busca en tus
+    bailes y lo pone (`reproducir_por_texto`). Si no lo encuentra, baile procedural
+    (`ctx["baile"]`) con la nota «No encontré «X» en tus bailes»."""
     baile = _de_ctx(ctx, "baile")
-    if baile is None or not callable(getattr(baile, "bailar", None)):
-        return False, "Ahora mismo no puedo bailar aquí."
+    mmd = _de_ctx(ctx, "mmd")
     args = args if isinstance(args, Mapping) else {}
     seg = segundos_validos(args.get("segundos"))
     cancion = str(args.get("cancion") or "").strip()
+    nota = ""
+    if cancion:
+        if mmd is not None and callable(getattr(mmd, "reproducir_por_texto", None)):
+            try:
+                ok, texto = _par(_en_ui(ctx, lambda: mmd.reproducir_por_texto(cancion)))
+            except Exception as e:
+                return False, f"No pude poner el baile: {e}"[:300]
+            if ok:
+                return texto or "¡A bailar!"
+            if str(getattr(mmd, "ultimo_motivo", "") or "") not in _SIN_BAILE_MMD:
+                return False, texto or "Ahora no puedo bailar."
+            nota = f" No encontré «{_cancion_segura(cancion)}» en tus bailes: bailo a mi manera."
+        else:
+            nota = " Aquí no tengo reproductor de bailes: bailo con lo que suene."
+    if baile is None or not callable(getattr(baile, "bailar", None)):
+        return False, "Ahora mismo no puedo bailar aquí." + nota
     try:
         ok = _en_ui(ctx, lambda: baile.bailar(seg, origen="manual"))
     except Exception as e:
@@ -129,17 +173,30 @@ def herramienta_bailar(args: Any = None, ctx: Any = None) -> Union[str, Tuple[bo
     if ok is False:
         motivo = motivo_legible(getattr(baile, "ultimo_motivo", "") or "")
         return False, "Ahora no puedo bailar" + (f": {motivo}." if motivo else ".")
-    nota = " Aún no tengo reproductor de canciones: bailo con lo que suene." if cancion else ""
     return f"¡A bailar! {seg} s.{nota}"
 
 
 def herramienta_parar(args: Any = None, ctx: Any = None) -> Union[str, Tuple[bool, str]]:
-    """Handler de `parar_baile` ({})."""
+    """Handler de `parar_baile` ({}): para el reproductor de bailes (`ctx["mmd"]`) si
+    suena y el baile procedural (que no vuelve solo hasta que la música se calle)."""
     baile = _de_ctx(ctx, "baile")
-    if baile is None or not callable(getattr(baile, "parar", None)):
+    mmd = _de_ctx(ctx, "mmd")
+    tiene_baile = baile is not None and callable(getattr(baile, "parar", None))
+    tiene_mmd = mmd is not None and callable(getattr(mmd, "parar", None))
+    if not tiene_baile and not tiene_mmd:
         return False, "Ahora mismo no estoy bailando aquí."
+
+    def hacer() -> bool:
+        parado = False
+        # Primero el procedural: así, al acabar el MMD, la tabla no lo reanuda (queda en
+        # pausa hasta que la música se calle).
+        if tiene_baile:
+            parado = bool(baile.parar()) or parado
+        if tiene_mmd and bool(getattr(mmd, "activo", False)):
+            parado = bool(mmd.parar()) or parado
+        return parado
     try:
-        ok = _en_ui(ctx, lambda: baile.parar())
+        ok = _en_ui(ctx, hacer)
     except Exception as e:
         return False, f"No pude parar: {e}"[:300]
     return "Vale, dejo de bailar." if ok else "No estaba bailando."

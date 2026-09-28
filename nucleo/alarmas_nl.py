@@ -226,6 +226,7 @@ def _disparador(n: str, pos: int, cortesia: bool) -> Optional[Tuple[int, int]]:
             return m.span()
     return None
 
+
 # Hora: «a las 7», «para las 7:30», «a la una y media», «a las 8 menos cuarto», «a las 19h»
 _HORA_PAL = "una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce"
 _MIN_PAL = "cinco|diez|veinte|veinticinco|quince"

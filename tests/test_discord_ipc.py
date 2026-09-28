@@ -275,3 +275,128 @@ def test_tuberia_win32_abre_lee_escribe_y_cierra_con_kernel32_falso():
 def test_tuberia_win32_handle_invalido_es_none():
     assert di.TuberiaWin32.abrir(0, kernel32=Kernel32Falso(handle=ctypes.c_void_p(-1).value)) is None
     assert di.TuberiaWin32.abrir(0, kernel32=Kernel32Falso(handle=0)) is None
+
+
+# ── Revisión 7-10: códigos imposibles y Discord que no lee ────────────────────
+
+def test_un_codigo_infinito_de_discord_no_tumba_el_hilo():
+    """SN2: `{"code": 1e400}` llega del JSON como infinito; int() lanzaba OverflowError
+    fuera de atender() y set_activity() (el hilo de la presencia se caía)."""
+    falso = DiscordFalso()
+    c, _ = _cliente(falso)
+    c.conectar()
+    cuerpo = b'{"code":1e400,"message":"raro"}'
+    falso.salida += struct.pack("<II", di.OP_CLOSE, len(cuerpo)) + cuerpo
+    c.atender()
+    assert c.conectado is False and c.codigo_cierre == 0
+    # y en la respuesta de una actividad
+    falso2 = DiscordFalso(responde_actividad=False)
+    c2, _ = _cliente(falso2)
+    c2.conectar()
+    cuerpo = b'{"cmd":"SET_ACTIVITY","evt":"ERROR","nonce":"%s","data":{"code":1e400,"message":"x"}}'
+    orig = falso2.escribir
+
+    def escribir(b):
+        orig(b)
+        orden = falso2.ordenes("SET_ACTIVITY")
+        if orden:
+            txt = cuerpo % orden[-1]["nonce"].encode()
+            falso2.salida += struct.pack("<II", di.OP_FRAME, len(txt)) + txt
+    falso2.escribir = escribir
+    r = c2.set_activity({"state": "x"}, 1)
+    assert r["ok"] is False and r["codigo"] == 0 and "x" in r["error"]
+    assert di._int(float("inf")) == 0 and di._int(float("nan")) == 0 and di._int("12") == 12
+
+
+class Kernel32SinSitio(Kernel32Falso):
+    """Discord no lee: la tubería sin espera nunca tiene sitio (WriteFile escribe 0)."""
+
+    def __init__(self, sitio=65536, **kw):
+        super().__init__(**kw)
+        self.sitio = sitio
+        self.modos = []
+        self.intentos = 0
+
+    def GetNamedPipeInfo(self, h, flags, salida, entrada, maximo):
+        entrada._obj.value = self.sitio
+        return 1
+
+    def SetNamedPipeHandleState(self, h, modo, a, b):
+        self.modos.append(modo._obj.value)
+        return 1
+
+    def WriteFile(self, h, datos, n, escritos, sol):
+        self.intentos += 1
+        escritos._obj.value = 0
+        return 1
+
+
+def test_escribir_se_rinde_si_discord_no_lee_sin_esperar_de_verdad():
+    k = Kernel32SinSitio()
+    t = di.TuberiaWin32.abrir(0, kernel32=k)
+    assert t.sin_espera is True and k.modos == [0x1]            # PIPE_NOWAIT
+    reloj = Reloj()
+    t._reloj, t._dormir = reloj, reloj.dormir
+    with pytest.raises(OSError):
+        t.escribir(b"x" * 700, tope_s=1.0)
+    assert 1.0 <= reloj.t < 1.1 and k.intentos > 10
+
+
+def test_con_poco_sitio_en_discord_la_tuberia_sigue_bloqueante():
+    k = Kernel32SinSitio(sitio=1024)
+    t = di.TuberiaWin32.abrir(0, kernel32=k)
+    assert t.sin_espera is False and k.modos == []
+    with pytest.raises(OSError):                                   # como antes: 0 bytes = error
+        t.escribir(b"x")
+    assert k.intentos == 1
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="tuberías con nombre de Windows")
+def test_tuberia_real_discord_colgado_no_deja_el_hilo_parado():
+    """Una tubería de verdad (propia, nombre al azar) cuyo servidor NUNCA lee, con los
+    64 KB de libuv (el Discord de escritorio): antes WriteFile bloqueaba para siempre
+    en cuanto se llenaba; ahora `escribir` lanza OSError al tope."""
+    import threading
+    import uuid
+    from ctypes import wintypes
+    k = ctypes.WinDLL("kernel32", use_last_error=True)
+    k.CreateNamedPipeW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, wintypes.DWORD,
+                                   wintypes.DWORD, wintypes.DWORD, wintypes.DWORD, ctypes.c_void_p]
+    k.CreateNamedPipeW.restype = wintypes.HANDLE
+    k.ReadFile.argtypes = [wintypes.HANDLE, ctypes.c_void_p, wintypes.DWORD, ctypes.POINTER(wintypes.DWORD),
+                           ctypes.c_void_p]
+    k.ReadFile.restype = wintypes.BOOL
+    k.CloseHandle.argtypes = [wintypes.HANDLE]
+    ruta = "\\\\.\\pipe\\lune-test-" + uuid.uuid4().hex
+    srv = k.CreateNamedPipeW(ruta, 3, 0, 1, 65536, 65536, 0, None)     # dúplex, bytes, espera
+    assert srv and srv != ctypes.c_void_p(-1).value
+    t = None
+    try:
+        t = di.TuberiaWin32.abrir_ruta(ruta)
+        assert t is not None and t.sin_espera is True
+        trama = di.empaquetar(di.OP_FRAME, {"cmd": "SET_ACTIVITY", "relleno": "x" * 600})
+        caja = {}
+
+        def llenar():
+            n = 0
+            try:
+                while n < 1000:
+                    t.escribir(trama, tope_s=0.3)
+                    n += 1
+            except OSError as e:
+                caja["error"] = e
+            caja["n"] = n
+        hilo = threading.Thread(target=llenar, daemon=True)
+        hilo.start()
+        hilo.join(10)
+        assert not hilo.is_alive(), "escribir se quedó bloqueado con Discord sin leer"
+        assert isinstance(caja.get("error"), OSError) and 50 < caja["n"] < 1000
+        # el servidor lee y vuelve a haber sitio: la siguiente sale entera
+        buf = ctypes.create_string_buffer(65536)
+        leidos = wintypes.DWORD(0)
+        assert k.ReadFile(srv, buf, 65536, ctypes.byref(leidos), None) and leidos.value > 0
+        t.escribir(trama, tope_s=0.3)
+    finally:
+        if t is not None:
+            t.cerrar()
+        k.CloseHandle(srv)

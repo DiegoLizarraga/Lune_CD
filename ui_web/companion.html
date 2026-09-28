@@ -3,6 +3,9 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
+<!-- Corte 9: fetch/XHR solo al servidor local de la mascota (y blob:/data:), como en
+     companion_vrm.html. Si rompiera algo en pantalla, se quita. -->
+<meta http-equiv="Content-Security-Policy" content="connect-src 'self' blob: data:" />
 <title>Lune</title>
 <link rel="stylesheet" href="styles.css" />
 <link rel="stylesheet" href="css/burbuja.css" />
@@ -11,6 +14,8 @@
 <link rel="stylesheet" href="css/grande.css" />
 <link rel="stylesheet" href="css/alarma.css" />
 <link rel="stylesheet" href="css/baile.css" />
+<!-- Cortes 7 y 8: apoyada en el borde de una ventana o de la barra (.lune-sentada) -->
+<link rel="stylesheet" href="css/sentarse.css" />
 <style>
   html, body { margin:0; height:100%; background:transparent; overflow:hidden;
     font-family:var(--font-body, system-ui, sans-serif); }
@@ -59,6 +64,9 @@
 <script src="lune_ritmo.js"></script>
 <script src="lune_alarma.js"></script>
 <script src="lune_pantalla.js"></script>
+<!-- Corte 9 (script clásico, también en companion_vrm.html): la canción de un baile en esta
+     página, su reloj y el pulso (LuneMMDAudio). -->
+<script src="lune_mmd_audio.js"></script>
 <script>
   var V = 'assets/mascot/anime-videos/';
   // v10 — un estado por clip; los que aún no tienen video caen al idle.
@@ -105,7 +113,11 @@
   }
   // Voz: la mascota de vídeo no tiene boca, pero la burbuja tiene que saber que suena
   // para no mover la boca al teclear cuando la haya (misma API que companion_vrm.html).
-  window.luneSpeak = function (on) { if (window.luneBurbuja) window.luneBurbuja.setVoz(!!on); };
+  // (corte 9: la canción de un baile baja al 35 % mientras habla: est.hablando del registro)
+  window.luneSpeak = function (on) {
+    if (window.luneBurbuja) window.luneBurbuja.setVoz(!!on);
+    if (window.luneAnim && typeof window.luneAnim.estado === 'function') window.luneAnim.estado({ hablando: !!on });
+  };
   // Cola de eventos y sonidos: respaldo mudo si sus scripts no cargaron.
   if (typeof window.luneEventos !== 'function') window.luneEventos = function () { return '[]'; };
   if (typeof window.luneSfx !== 'function') window.luneSfx = function () { return Promise.resolve(null); };
@@ -163,6 +175,41 @@
   window.luneBailar = function (on, o) { window.__luneOcioPendiente.bailar = [on, o]; return false; };
   window.lunePulso = function (b, f, e) { window.__luneOcioPendiente.pulso = [b, f, e]; return false; };
 
+  // Cortes 7 y 8 (ui/companion.py: asiento, punto_asiento, comer, set_comida_activa):
+  // apoyada en el borde (anim/lune_anim_sentarse.js) y la reacción a la comida
+  // (anim/lune_anim_comida.js). Hasta que carga el módulo se guarda la última llamada
+  // y el módulo la repite; el punto de asiento es el centro de abajo del #stage.
+  window.__luneVidaPendiente = {};
+  window.luneSentar = function (modo, v) { window.__luneVidaPendiente.sentar = [modo, v]; return 'null'; };
+  window.luneSeatPx = function () {
+    try {
+      var r = document.getElementById('stage').getBoundingClientRect();
+      if (!(r.width > 0 && r.height > 0)) return 'null';
+      var p = { x: Math.round((r.left + r.width / 2) * 10) / 10, y: Math.round((r.top + r.height) * 10) / 10 };
+      return JSON.stringify({ asiento: p, sonda: p });
+    } catch (e) { return 'null'; }
+  };
+  window.luneComer = function (tipo, ms) { window.__luneVidaPendiente.comer = [tipo, ms]; return false; };
+  window.luneComidaActiva = function (on) { window.__luneVidaPendiente.comida = [on]; return false; };
+
+  // Corte 9 (ui/companion.py: mmd), D1: la animada no tiene esqueleto. Con un baile de la
+  // biblioteca suena su canción aquí y Lune baila «a su manera» (el baile procedural) al
+  // pulso analizado de la canción (anim/lune_anim_mmd.js). Hasta que carga el módulo se
+  // guarda el último «cargar» con las banderas que lleguen detrás; «parar» lo olvida todo.
+  window.luneMMD = function (orden, o) {
+    var p = window.__luneOcioPendiente;
+    if (!p) return false;
+    var m = p.mmd || (p.mmd = { cargar: null, banderas: [] });
+    orden = String(orden || '');
+    if (orden === 'estado') return JSON.stringify({ fase: m.cargar ? 'cargando' : 'parado', pendiente: true });
+    if (orden === 'cargar') { m.cargar = o; m.banderas = []; return true; }
+    if (orden === 'parar') { m.cargar = null; m.banderas = []; return true; }
+    if (['pausa', 'volumen', 'offset', 'en_sitio', 'bucle'].indexOf(orden) < 0) return false;
+    m.banderas = m.banderas.filter(function (b) { return b[0] !== orden; });
+    m.banderas.push([orden, o]);
+    return true;
+  };
+
   window.setEmocion('wave');   // saluda al aparecer
 </script>
 <script type="module">
@@ -216,9 +263,14 @@ const sinModulo = (nombre) => (e) => {
   try { console.warn(`[companion] sigo sin ${nombre}:`, (e && e.message) || e); } catch (_) { /* sin consola */ }
   return null;
 };
-const [modGrande, modBaile] = await Promise.all([
+const [modGrande, modBaile, modSentarse, modComida, modMMDAnim] = await Promise.all([
   import('./anim/lune_anim_grande.js').catch(sinModulo('lune_anim_grande.js')),
   import('./anim/lune_anim_baile.js').catch(sinModulo('lune_anim_baile.js')),
+  // Cortes 7 y 8 (apoyada en el borde y comida): igual de opcionales
+  import('./anim/lune_anim_sentarse.js').catch(sinModulo('lune_anim_sentarse.js')),
+  import('./anim/lune_anim_comida.js').catch(sinModulo('lune_anim_comida.js')),
+  // Corte 9 (la canción de un baile y el baile a su manera al pulso): igual de opcional
+  import('./anim/lune_anim_mmd.js').catch(sinModulo('lune_anim_mmd.js')),
 ]);
 const pantalla = window.__lunePantalla || null;
 const notas = window.LuneNotas ? window.LuneNotas.crear({ doc: document }) : null;
@@ -253,6 +305,82 @@ window.__luneOcioPendiente = null;
 if (ocioPendiente.grande) window.luneGrande(...ocioPendiente.grande);
 if (ocioPendiente.bailar) window.luneBailar(...ocioPendiente.bailar);
 if (ocioPendiente.pulso) window.lunePulso(...ocioPendiente.pulso);
+
+// ── Cortes 7 y 8: apoyada en el borde (anim/lune_anim_sentarse.js) y comida
+// (anim/lune_anim_comida.js), registrados la primera vez que se usan ──
+let modS = null, modC = null;
+function moduloSentarse() {
+  if (!modS && modSentarse && typeof modSentarse.instalar === 'function') modS = reg.registrar(modSentarse.instalar);
+  return modS;
+}
+function moduloComida() {
+  if (!modC && modComida && typeof modComida.instalar === 'function') modC = reg.registrar(modComida.instalar);
+  return modC;
+}
+const jsonPunto = (p) => (p ? JSON.stringify(p) : 'null');
+const seatClasico = window.luneSeatPx;
+window.luneSentar = (modo, variante) => {
+  try {
+    if (modo == null || modo === '') { if (modS) modS.api.levantar(); return 'null'; }
+    const m = moduloSentarse();
+    return m ? jsonPunto(m.api.sentar(modo, variante)) : 'null';
+  } catch (e) { return 'null'; }
+};
+window.luneSeatPx = () => {
+  try {
+    if (modS) return jsonPunto(modS.api.puntos());
+    if (modSentarse && typeof modSentarse.puntos === 'function') return jsonPunto(modSentarse.puntos(stage));
+    return typeof seatClasico === 'function' ? seatClasico() : 'null';
+  } catch (e) { return 'null'; }
+};
+window.luneComer = (tipo, ms) => { const m = moduloComida(); return m ? !!m.api.comer(tipo, ms) : false; };
+window.luneComidaActiva = (on) => { const m = on ? moduloComida() : modC; return m ? !!m.api.activa(!!on) : false; };
+const vidaPendiente = window.__luneVidaPendiente || {};
+window.__luneVidaPendiente = null;
+if (vidaPendiente.sentar) window.luneSentar(...vidaPendiente.sentar);
+if (vidaPendiente.comida) window.luneComidaActiva(...vidaPendiente.comida);
+if (vidaPendiente.comer) window.luneComer(...vidaPendiente.comer);
+
+// ── Corte 9: bailes de la biblioteca en la animada (anim/lune_anim_mmd.js, D1) ──
+// Se registra con el primer baile. La canción suena en esta página (LuneMMDAudio) y el baile
+// es el de luneBailar/lunePulso (anim/lune_anim_baile.js) con el pulso de la canción a 2 Hz
+// como mucho. Eventos 'mmd' como los del VRM (cargando, listo, sonando, pausado, t, fin,
+// parado, error). Pausa → deja de bailar (reposo) y sigue desde el mismo punto.
+let modMA = null;
+function moduloMMD() {
+  if (!modMA && modMMDAnim && typeof modMMDAnim.instalar === 'function') {
+    modMA = reg.registrar((ctx) => modMMDAnim.instalar(ctx, {
+      audio: window.LuneMMDAudio || null,
+      bailar: (on, o) => window.luneBailar(on, o),
+      pulso: (b, f, e) => window.lunePulso(b, f, e),
+    }));
+  }
+  return modMA;
+}
+// orden: cargar · pausa · parar · volumen · offset · en_sitio · bucle → bool; estado → JSON
+window.luneMMD = (orden, o) => {
+  try {
+    orden = String(orden || '');
+    const m = orden === 'cargar' ? moduloMMD() : modMA;
+    if (!m) {
+      if (orden === 'estado') return JSON.stringify({ fase: 'parado' });
+      if (orden === 'cargar') {
+        let d = o;
+        if (typeof d === 'string') { try { d = JSON.parse(d); } catch (e) { d = null; } }
+        const id = d && typeof d === 'object' ? String(d.id || '') : '';
+        if (typeof window.luneEmitir === 'function') window.luneEmitir('mmd', { fase: 'error', id, mensaje: 'no se pudo cargar el reproductor de bailes' });
+        return false;
+      }
+      return orden === 'parar';
+    }
+    return typeof modMMDAnim.orden === 'function' ? modMMDAnim.orden(m.api, orden, o) : false;
+  } catch (e) { return false; }
+};
+const mmdAntes = ocioPendiente.mmd;
+if (mmdAntes && mmdAntes.cargar) {
+  window.luneMMD('cargar', mmdAntes.cargar);
+  for (const [orden, o] of mmdAntes.banderas || []) window.luneMMD(orden, o);
+}
 </script>
 </body>
 </html>

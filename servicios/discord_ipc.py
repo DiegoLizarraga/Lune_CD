@@ -28,7 +28,10 @@ Nada de esto se llama desde el hilo de Qt: lo usa el hilo «LuneDiscordRPC» de
 servicios/discord_presencia.py. `TuberiaWin32.disponibles()` (PeekNamedPipe) no
 bloquea, y solo se lee lo que ya ha llegado, así que `atender()` vuelve al
 momento; `conectar()` y `set_activity()` esperan su respuesta como mucho
-`timeout_s` (con `dormir` a trocitos).
+`timeout_s` (con `dormir` a trocitos). Escribir tampoco se queda colgado: la
+tubería va en modo PIPE_NOWAIT (si Discord deja sitio de sobra, ≥ 4 KB) y
+`escribir` se rinde a `TOPE_ESCRITURA_S` si Discord no lee (colgado): antes un
+WriteFile síncrono dejaba el hilo parado para siempre con el mutex de la presencia.
 
 Fuera de Windows `TuberiaWin32.abrir` devuelve None (no hay Discord que abrir).
 La DLL (`kernel32`), la apertura de la tubería (`abrir`), el reloj y el `dormir`
@@ -59,6 +62,9 @@ CODIGO_ID_NO_VALIDO = 4000         # cierre de Discord: «Invalid Client ID»
 _CABECERA = struct.Struct("<II")
 _MAX_BUFFER = 4 * MAX_TRAMA        # lo que se acepta sin cerrar trama: más es basura
 _PASO_ESPERA_S = 0.02
+TOPE_ESCRITURA_S = 1.0             # Discord no lee (colgado): la escritura se rinde
+MIN_BUFFER_SIN_ESPERA = 4096       # con menos sitio en Discord, una trama podría no caber nunca
+_PASO_ESCRITURA_S = 0.01
 
 # Textos que ve el usuario (en la tarjeta o en /discord estado).
 TXT_ID_NO_VALIDO = "El Application ID de Discord no es válido."
@@ -118,6 +124,7 @@ def nombre_tuberia(n: int) -> str:
 _GENERIC_READ = 0x80000000
 _GENERIC_WRITE = 0x40000000
 _OPEN_EXISTING = 3
+_PIPE_NOWAIT = 0x00000001          # | PIPE_READMODE_BYTE (0)
 _INVALIDO = ctypes.c_void_p(-1).value
 _K32: Any = None
 
@@ -127,6 +134,12 @@ def _preparar_kernel32(k: Any) -> Any:
     k.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, ctypes.c_void_p,
                               wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE]
     k.CreateFileW.restype = wintypes.HANDLE
+    k.GetNamedPipeInfo.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD), ctypes.POINTER(wintypes.DWORD),
+                                   ctypes.POINTER(wintypes.DWORD), ctypes.POINTER(wintypes.DWORD)]
+    k.GetNamedPipeInfo.restype = wintypes.BOOL
+    k.SetNamedPipeHandleState.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD), ctypes.c_void_p,
+                                          ctypes.c_void_p]
+    k.SetNamedPipeHandleState.restype = wintypes.BOOL
     k.PeekNamedPipe.argtypes = [wintypes.HANDLE, ctypes.c_void_p, wintypes.DWORD,
                                 ctypes.POINTER(wintypes.DWORD), ctypes.POINTER(wintypes.DWORD),
                                 ctypes.POINTER(wintypes.DWORD)]
@@ -162,15 +175,30 @@ class TuberiaWin32:
     `disponibles()` usa PeekNamedPipe: dice cuántos bytes esperan SIN bloquear.
     `leer(n)` solo se llama con n ≤ disponibles, así que tampoco bloquea. Un
     fallo (Discord se cerró: ERROR_BROKEN_PIPE) lanza OSError.
+
+    `sin_espera`: la tubería quedó en PIPE_NOWAIT (Discord deja ≥ 4 KB de sitio;
+    el cliente de Discord, con libuv, deja 64 KB). Así WriteFile vuelve al momento
+    (con 0 bytes si la trama no cabe) y `escribir` reintenta a trocitos hasta
+    `TOPE_ESCRITURA_S`. Si no se pudo (o el sitio es poco), WriteFile bloquea como
+    siempre.
     """
 
-    def __init__(self, handle: int, kernel32: Any):
+    def __init__(self, handle: int, kernel32: Any, *, reloj: Callable[[], float] = time.monotonic,
+                 dormir: Callable[[float], Any] = time.sleep):
         self._h = handle
         self._k = kernel32
+        self._reloj = reloj
+        self._dormir = dormir
+        self.sin_espera = False
 
     @classmethod
     def abrir(cls, n: int, kernel32: Any = None) -> "Optional[TuberiaWin32]":
         """La tubería N abierta, o None si no existe, está ocupada o no es Windows."""
+        return cls.abrir_ruta(nombre_tuberia(n), kernel32)
+
+    @classmethod
+    def abrir_ruta(cls, ruta: str, kernel32: Any = None) -> "Optional[TuberiaWin32]":
+        """`abrir` con la ruta entera de la tubería (los tests usan una propia)."""
         if kernel32 is None:
             if sys.platform != "win32":
                 return None
@@ -179,13 +207,31 @@ class TuberiaWin32:
             except Exception:
                 return None
         try:
-            h = kernel32.CreateFileW(nombre_tuberia(n), _GENERIC_READ | _GENERIC_WRITE, 0, None,
+            h = kernel32.CreateFileW(str(ruta), _GENERIC_READ | _GENERIC_WRITE, 0, None,
                                      _OPEN_EXISTING, 0, None)
         except Exception:
             return None
         if not h or h == _INVALIDO or h == -1:
             return None
-        return cls(h, kernel32)
+        t = cls(h, kernel32)
+        t._poner_sin_espera()
+        return t
+
+    def _poner_sin_espera(self) -> None:
+        info = getattr(self._k, "GetNamedPipeInfo", None)
+        modo_fn = getattr(self._k, "SetNamedPipeHandleState", None)
+        if info is None or modo_fn is None:
+            return
+        try:
+            entrada = wintypes.DWORD(0)            # el sitio de Discord para lo que escribimos
+            if not info(self._h, None, None, ctypes.byref(entrada), None):
+                return
+            if int(entrada.value) < MIN_BUFFER_SIN_ESPERA:
+                return
+            modo = wintypes.DWORD(_PIPE_NOWAIT)
+            self.sin_espera = bool(modo_fn(self._h, ctypes.byref(modo), None, None))
+        except Exception:
+            _log.debug("discord: no pude poner la tubería sin espera", exc_info=True)
 
     def _handle(self) -> int:
         if not self._h:
@@ -206,15 +252,24 @@ class TuberiaWin32:
             raise OSError(_ultimo_error(), "ReadFile falló (¿Discord se cerró?)")
         return buf.raw[:int(leidos.value)]
 
-    def escribir(self, datos: bytes) -> None:
+    def escribir(self, datos: bytes, tope_s: float = TOPE_ESCRITURA_S) -> None:
+        """Escribe todo o lanza OSError: Discord se cerró o, sin espera, no hizo
+        sitio en `tope_s` (colgado; quien llama lo trata como conexión cortada)."""
         pendiente = bytes(datos)
+        limite = self._reloj() + max(0.0, float(tope_s))
         while pendiente:
             escritos = wintypes.DWORD(0)
             if not self._k.WriteFile(self._handle(), pendiente, len(pendiente), ctypes.byref(escritos), None):
                 raise OSError(_ultimo_error(), "WriteFile falló (¿Discord se cerró?)")
-            if int(escritos.value) <= 0:
+            n = int(escritos.value)
+            if n > 0:
+                pendiente = pendiente[n:]
+                continue
+            if not self.sin_espera:
                 raise OSError("WriteFile no escribió nada")
-            pendiente = pendiente[int(escritos.value):]
+            if self._reloj() >= limite:
+                raise OSError(f"Discord no lee la tubería (sin sitio en {float(tope_s):.1f} s)")
+            self._dormir(_PASO_ESCRITURA_S)
 
     def cerrar(self) -> None:
         h, self._h = self._h, None
@@ -469,9 +524,11 @@ class ClienteIPC:
 
 
 def _int(v: Any) -> int:
+    """Un código de Discord como entero (0 si no lo es). `1e400` llega del JSON como
+    infinito: int() lanza OverflowError, que antes tumbaba el hilo de la presencia."""
     try:
         return int(v)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return 0
 
 

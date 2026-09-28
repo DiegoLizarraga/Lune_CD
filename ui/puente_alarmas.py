@@ -16,12 +16,15 @@ textos sin controles y recortados; números finitos y en rango; booleanos de ver
 Ranuras (JS: el resultado llega por callback, `luneAlarmas.x(args…, cb)`):
     alarmas_json() → str             {disponible, activo, ahora (epoch s, el reloj del controlador),
                                       alarmas:[{id, activa, hora, minuto, dias (máscara, bit0 = lunes;
-                                      0 = todos), una_vez, texto, proxima (epoch | 0)}],
+                                      0 = todos), una_vez, texto, fecha («AAAA-MM-DD»: solo ese día | ""),
+                                      proxima (epoch | 0)}],
                                       temporizadores:[{id, activo (en marcha), duracion_s, objetivo (epoch s
                                       | 0 = parado), restante_s, texto}], sonando: {…} | null,
                                       proxima: {id, tipo, texto, cuando (epoch)} | null}
     alarma_guardar(json) → str        {ok, error, id, estado}. json: {id?, hora:"HH:MM", dias:"lmx"|int,
-                                      una_vez, texto, activa}; con id = editar (parcial vale)
+                                      una_vez, texto, activa}; con id = editar (parcial vale). Una
+                                      alarma con fecha a la que se le ponen días o se le quita
+                                      «una_vez» deja de tener fecha (nucleo.alarmas.Almacen.actualizar)
     alarma_borrar(id) → str           {ok, error, estado}
     temporizador_crear(json) → str    {ok, error, id, estado}. json: {segundos | h,m,s, texto, iniciar}
     temporizador_accion(id, accion) → str   iniciar · parar · reiniciar · borrar → {ok, error, estado}
@@ -83,6 +86,7 @@ DEFECTO_GRANDE = {"activo": False, "paso": 0, "clic_sale_de_todo": True, "fondo_
 _HORA = re.compile(r"^([01]?\d|2[0-3]):([0-5]\d)$")
 _DIAS = re.compile(r"^[lmxjvsd]{0,7}$")
 _PROGRAMADO = re.compile(r"^[0-9T:\- ]{0,25}$")
+_FECHA = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 # ── Utilidades puras ───────────────────────────────────────────────────────────
@@ -135,7 +139,7 @@ def etiqueta_tiempo(segundos: int) -> str:
 
 def normalizar_alarma(item: Any) -> Optional[Dict[str, Any]]:
     """Alarma de ControlAlarmasQt.listar() (dict o dataclass) → fila segura para la página."""
-    d = a_dict(item, ("id", "activa", "hora", "minuto", "dias", "una_vez", "texto"))
+    d = a_dict(item, ("id", "activa", "hora", "minuto", "dias", "una_vez", "texto", "fecha"))
     iid = d.get("id")
     if not id_valido(iid):
         return None
@@ -150,6 +154,7 @@ def normalizar_alarma(item: Any) -> Optional[Dict[str, Any]]:
     if dias is None:
         dias = mascara_dias(d.get("dias", 0))
     proxima = numero(d.get("proxima"))
+    fecha = d.get("fecha") if isinstance(d.get("fecha"), str) else ""
     return {
         "id": iid,
         "activa": d.get("activa", True) is not False,
@@ -158,6 +163,7 @@ def normalizar_alarma(item: Any) -> Optional[Dict[str, Any]]:
         "dias": dias if dias is not None else 0,
         "una_vez": d.get("una_vez") is True,
         "texto": texto_limpio(d.get("texto")),
+        "fecha": fecha if _FECHA.match(fecha) else "",         # «mañana a las 7»: solo ese día
         "proxima": round(proxima, 3) if proxima and proxima > 0 else 0,
     }
 

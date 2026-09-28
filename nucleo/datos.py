@@ -10,6 +10,7 @@ automáticamente a partir de datos.example.json al importar este módulo.
 """
 import json
 import os
+import re
 import shutil
 from pathlib import Path
 from typing import Any, Dict
@@ -347,6 +348,100 @@ def minecraft() -> Dict[str, Any]:
         out[clave] = _bool(crudo.get(clave), d[clave])
     out["estilo_frases"] = str(crudo.get("estilo_frases") or "").strip().lower() or d["estilo_frases"]
     return out
+
+
+# Lo que acepta guardar_minecraft (el bot lo vuelve a validar en minecraft-bot/src/config.js).
+_MC_NICK = re.compile(r"[A-Za-z0-9_]{3,16}")
+_MC_VERSION = re.compile(r"\d+\.\d+(?:\.\d+)?")
+_MC_ETIQUETA = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?")
+_MC_IPV4 = re.compile(r"(?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}")
+_MC_IPV6 = re.compile(r"[0-9A-Fa-f:]{2,39}")
+MC_ESTILOS = ("personaje", "sobrio")
+
+
+def _mc_host(valor: Any) -> str:
+    h = str(valor if isinstance(valor, str) else "").strip()
+    if not h or len(h) > 253:
+        raise ValueError("El servidor tiene que ser un nombre o una IP (sin http:// ni rutas).")
+    if _MC_IPV4.fullmatch(h):
+        return h
+    if ":" in h:
+        if _MC_IPV6.fullmatch(h) and h.count(":") >= 2:
+            return h
+        raise ValueError("El puerto va en su propio campo, no pegado al servidor.")
+    if not all(_MC_ETIQUETA.fullmatch(e) for e in h.split(".")):
+        raise ValueError("El servidor tiene que ser un nombre o una IP (sin http:// ni rutas).")
+    return h
+
+
+def _mc_entero(valor: Any, minimo: int, maximo: int, texto: str) -> int:
+    if isinstance(valor, bool):
+        raise ValueError(texto)
+    try:
+        f = float(str(valor).strip())
+    except (TypeError, ValueError):
+        raise ValueError(texto) from None
+    if f != int(f) or not minimo <= int(f) <= maximo:
+        raise ValueError(texto)
+    return int(f)
+
+
+def _mc_bool(valor: Any, clave: str) -> bool:
+    b = _bool(valor, None)          # type: ignore[arg-type]
+    if b is None:
+        raise ValueError(f"«{clave}» tiene que ser sí o no.")
+    return b
+
+
+def guardar_minecraft(cambios: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Valida `cambios` de la sección `minecraft` (host, port, version, usuario, dueno,
+    pensar_cada_s 30–3600, defender, solo_dueno, estilo_frases) y los guarda con la
+    escritura atómica de `guardar`. Las claves que no son de la sección (o `visor`, que
+    ya no se usa) se ignoran: nunca llegan a datos.json. Si algo no vale, ValueError
+    con el texto para el usuario y NO se guarda nada. → `minecraft()` resultante.
+    """
+    if not isinstance(cambios, dict):
+        raise ValueError("Los cambios de Minecraft tienen que ser un objeto.")
+    limpios: Dict[str, Any] = {}
+    for clave, valor in cambios.items():
+        if clave == "host":
+            limpios["host"] = _mc_host(valor)
+        elif clave == "port":
+            limpios["port"] = _mc_entero(valor, 1, 65535, "El puerto tiene que estar entre 1 y 65535.")
+        elif clave == "version":
+            v = str(valor or "").strip() if isinstance(valor, (str, type(None))) else None
+            if v is None or (v and not _MC_VERSION.fullmatch(v)):
+                raise ValueError("La versión tiene que ser como 1.21.1 (o vacía para autodetectarla).")
+            limpios["version"] = v
+        elif clave in ("usuario", "dueno"):
+            n = str(valor or "").strip() if isinstance(valor, (str, type(None))) else None
+            if n is None or (n and not _MC_NICK.fullmatch(n)):
+                quien = "del bot" if clave == "usuario" else "tuyo (dueño)"
+                raise ValueError(f"El nick {quien} tiene que tener 3–16 letras, números o _.")
+            limpios[clave] = n
+        elif clave == "pensar_cada_s":
+            limpios[clave] = _mc_entero(valor, 30, 3600, "«Pensar cada» tiene que estar entre 30 y 3600 s.")
+        elif clave in ("defender", "solo_dueno"):
+            limpios[clave] = _mc_bool(valor, clave)
+        elif clave == "estilo_frases":
+            e = str(valor or "").strip().lower()
+            if e not in MC_ESTILOS:
+                raise ValueError("El estilo de frases es «personaje» o «sobrio».")
+            limpios[clave] = e
+    d = cargar()
+    mc = d.get("minecraft")
+    mc = dict(mc) if isinstance(mc, dict) else {}
+    usuario = limpios.get("usuario", str(mc.get("usuario") or "").strip())
+    dueno = limpios.get("dueno", str(mc.get("dueno") or "").strip())
+    if usuario and dueno and usuario.lower() == dueno.lower():
+        raise ValueError("El bot no puede llamarse igual que tú (su dueño).")
+    if not limpios:
+        return minecraft()
+    mc.update(limpios)
+    d["minecraft"] = mc
+    guardar(d)
+    return minecraft()
 
 
 # ── Atajos: hub (red de Lune: host y terminales) ──

@@ -9,7 +9,9 @@ regla (ver el plan de la serie 10.3, principio 4):
   SetWindowsHookEx): los atajos van con RegisterHotKey y la entrada global se
   lee sondeando (GetLastInputInfo, GetAsyncKeyState solo del clic izquierdo);
 - nada de escribir en la memoria de otro proceso ni de crear hilos en él
-  (WriteProcessMemory, CreateRemoteThread);
+  (WriteProcessMemory, CreateRemoteThread), y tampoco de LEERLA (corte 10: la
+  integración con Minecraft lee latest.log como archivo y el bot es un cliente de
+  red; nada abre el proceso del juego);
 - nada de ganchos de eventos de ventanas del sistema (la función «SetWin» +
   «EventHook» de user32): sentarse en ventanas (corte 7) sondea con
   EnumWindows/GetWindowRect solo mientras hace falta, sin enganchar nada.
@@ -44,6 +46,7 @@ PROHIBIDAS = [
     "pyn" + "put",
     "SetWindows" + "HookEx",
     "WriteProcess" + "Memory",
+    "ReadProcess" + "Memory",
     "CreateRemote" + "Thread",
     "SetWin" + "EventHook",
 ]
@@ -73,9 +76,20 @@ def test_se_recorre_el_codigo_de_verdad():
     for esperado in ("main.py", "patata.py", "nucleo/config.py", "servicios/atajos_globales.py",
                      "servicios/win_entrada.py", "ui/companion.py", "ui_web/vrm/lune_vrm.js",
                      "ui_web/lune_eventos.js", "servicios/ventanas_ajenas.py", "ui/asiento_qt.py",
-                     "nucleo/asiento.py", "servicios/win_ventana.py"):
+                     "nucleo/asiento.py", "servicios/win_ventana.py", "minecraft-bot/src/bot.js",
+                     "minecraft-bot/src/observador.js", "lune_core/minecraft_log.py",
+                     "lune_core/minecraft_proceso.py", "ui/minecraft_qt.py"):
         assert esperado in vistos, esperado
     assert not any(v.startswith(("tests/", "ui_web/vendor/")) for v in vistos)
+    assert not any("/node_modules/" in "/" + v for v in vistos)     # ni el bot instalado
+
+
+def test_prohibe_leer_la_memoria_de_otros_procesos():
+    """Corte 10: Minecraft se lee del log (archivo), nunca de la memoria del juego."""
+    cadena = "ReadProcess" + "Memory"
+    assert cadena in PROHIBIDAS
+    linea = "k32." + cadena + "(h, addr, buf, n, None)"
+    assert [c for c in PROHIBIDAS if c in linea] == [cadena]
 
 
 def test_sin_hooks_globales_ni_inyeccion_en_otros_procesos():

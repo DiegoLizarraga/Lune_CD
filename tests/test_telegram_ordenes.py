@@ -190,6 +190,15 @@ class ProcesoFalso:
         self.vivo = False
 
 
+def _parar_y_soltar(w, tope_s=5.0):
+    """stop() y espera a que el hilo escritor (sin bot ya) termine: no quedan hilos vivos."""
+    h = w._escritor
+    w.stop()
+    if h is not None:
+        h.join(tope_s)
+        assert not h.is_alive()
+
+
 def test_responder_orden_escribe_json_en_el_stdin_del_bot(qapp):
     w, _l, _r = _worker()
     p = ProcesoFalso()
@@ -203,6 +212,7 @@ def test_responder_orden_escribe_json_en_el_stdin_del_bot(qapp):
     assert w.responder_orden("ab12", "x" * 10000) is True           # Telegram admite 4096
     assert w.esperar_envios(5)
     assert len(json.loads(p.stdin.escrito[-1])["texto"]) == tw.MAX_RESPUESTA
+    _parar_y_soltar(w)
 
 
 def test_responder_orden_no_revienta(qapp):
@@ -221,6 +231,8 @@ def test_responder_orden_no_revienta(qapp):
     sin._process = ProcesoFalso()
     assert sin.responder_orden("ab12", "hola") is False             # sin canal, nada
     assert sin._process.stdin.escrito == []
+    _parar_y_soltar(w)
+    _parar_y_soltar(sin)
 
 
 def test_responder_orden_desde_varios_hilos_no_mezcla_lineas(qapp):
@@ -240,6 +252,7 @@ def test_responder_orden_desde_varios_hilos_no_mezcla_lineas(qapp):
     assert w.esperar_envios(10)
     assert len(p.stdin.escrito) == 240
     assert all(json.loads(l)["tipo"] == "orden:mensaje" for l in p.stdin.escrito)
+    _parar_y_soltar(w)
 
 
 def test_stop_cierra_el_stdin_y_es_idempotente(qapp):
@@ -256,16 +269,18 @@ def test_stop_cierra_el_stdin_y_es_idempotente(qapp):
     assert terco.stdin.cerrado and terco.terminado
 
 
-def test_run_lanza_npm_con_stdin_y_token_y_filtra_las_ordenes(qapp, tmp_path, monkeypatch):
-    (tmp_path / "node_modules").mkdir()
+def test_run_lanza_node_con_stdin_y_token_y_filtra_las_ordenes(qapp, tmp_path, monkeypatch):
+    (tmp_path / "node_modules" / "grammy").mkdir(parents=True)          # ya instalado
+    (tmp_path / "node_modules" / "grammy" / "package.json").write_text("{}", "utf-8")
     w, logs, rec = _worker()
     w.BOT_DIR = tmp_path
+    w._node = "C:/node/node.exe"
     lanzados = []
 
     def popen(args, **kw):
         tok = kw["env"][tw.ENV_TOKEN]
         p = ProcesoFalso()
-        p.stdout = iter(["> telegram-chatbot-v2@2.0.0 start\n",
+        p.stdout = iter(["Arrancando\n",
                          f"{MARCA} {tok} {_json(oid='x1', texto='hola')}\n",
                          "Bot iniciado | modelo\n"])
         lanzados.append((args, kw, p))
@@ -275,11 +290,14 @@ def test_run_lanza_npm_con_stdin_y_token_y_filtra_las_ordenes(qapp, tmp_path, mo
     parados = []
     w.stopped.connect(lambda: parados.append(1))
     w.run()
+    assert len(lanzados) == 1                                     # sin npm: ya estaba instalado
     args, kw, p = lanzados[0]
-    assert args == ["npm", "start"] and kw["stdin"] is subprocess.PIPE
+    # node directo, SIN shell (con shell, terminate() mataba cmd.exe y dejaba node huérfano).
+    assert args == ["C:/node/node.exe", "bot.js"] and not kw.get("shell")
+    assert kw["stdin"] is subprocess.PIPE
     assert kw["encoding"] == "utf-8" and kw["env"][tw.ENV_HIJO] == "1"
     assert rec == [("x1", "hola")]
-    assert logs[-2:] == ["> telegram-chatbot-v2@2.0.0 start", "Bot iniciado | modelo"]
+    assert logs[-2:] == ["Arrancando", "Bot iniciado | modelo"]
     assert not any(w._token in l or MARCA in l for l in logs)
     assert p.stdin.cerrado and parados == [1]
 

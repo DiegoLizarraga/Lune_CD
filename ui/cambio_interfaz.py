@@ -43,7 +43,9 @@ ESTADO (claves que entienden las dos ventanas):
     modo, geometria (capturar_geometria), proveedor ("ollama" | "openrouter" |
     "compat"), voz (bool), sesion (copia de la conversación de chats/, con su
     marca no_confiable por mensaje), mascota_fuera (bool), telegram (bool),
-    juego_forzado (None | True | False: el modo juego puesto a mano en la bandeja).
+    juego_forzado (None | True | False: el modo juego puesto a mano en la bandeja),
+    minecraft_bot (bool: el bot de Minecraft conectado o conectándose; la vieja lo para al
+    desmontar y la nueva lo vuelve a conectar con reconectar_bot_minecraft; nunca lo instala).
 
 Aquí también están los ayudantes que usan las dos ventanas para soltar sus
 recursos (detener_hilo_ia, cerrar_mascota, detener_bot, quitar_bandeja…): así
@@ -376,6 +378,44 @@ def desmontar_servicios_c4(*duenios: Any) -> None:
             setattr(d, "_servicios_c4", None)
         except Exception:
             pass
+
+
+def _minecraft_de(servicios: Any) -> Any:
+    esc = getattr(servicios, "escenario", None) if servicios is not None else None
+    return getattr(esc, "minecraft", None) if esc is not None else None
+
+
+def bot_minecraft_de(servicios: Any) -> bool:
+    """Cortes 9/10: ¿el bot de Minecraft de ServiciosCorte4 (su `.escenario.minecraft`)
+    está conectado o conectándose (proceso vivo)? Va en estado_para_cambio."""
+    mc = _minecraft_de(servicios)
+    if mc is None:
+        return False
+    try:
+        if bool(getattr(mc, "bot_conectado", False)):
+            return True
+        return bool(getattr(getattr(mc, "proceso", None), "vivo", False))
+    except Exception:
+        return False
+
+
+def reconectar_bot_minecraft(servicios: Any) -> "tuple[bool, str]":
+    """Cortes 9/10: tras un cambio de interfaz en caliente, vuelve a conectar el bot de
+    Minecraft de los servicios nuevos (`conectar_bot()`; sin instalar nada: si no está
+    instalado, lo dice y ya). (ok, texto)."""
+    mc = _minecraft_de(servicios)
+    f = getattr(mc, "conectar_bot", None) if mc is not None else None
+    if not callable(f):
+        return False, "Minecraft no está montado."
+    try:
+        if bool(getattr(mc, "bot_conectado", False)):
+            return True, ""
+        r = f()
+    except Exception as e:
+        return False, str(e)
+    if isinstance(r, tuple) and len(r) == 2:
+        return bool(r[0]), str(r[1] or "")
+    return bool(r), ""
 
 
 def quitar_bandeja(tray: Any) -> None:

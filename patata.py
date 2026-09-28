@@ -28,6 +28,26 @@ es el título «(-_-) zzZ 23:41» y, con música, el título baila. «Avísame e
 minutos» o «baila» escritos en el chat van directos, como «abre youtube». El
 título va por capas: alarma 60, modo juego 50, baile 20, salvapantallas 10.
 
+Comida, Discord y arranque con Windows (cortes 7 y 8), sin Qt: /comer (texto y el
+sonido del trago o del mordisco; «toma un batido» escrito en el chat va directo),
+la presencia de Discord propia («Lune CD · Terminal»: en la terminal, pensando, o
+nada con un juego delante; si la app de ventanas ya publica, publica ella) y
+/autoinicio. `patata.py --autoinicio` (entrada de Windows en su variante /patata:
+consola minimizada) repara la entrada y, si la interfaz ya no es patata, abre la
+app de ventanas y se va.
+
+Una sola patata a la vez (servicios/instancia_patata): si ya hay una (p. ej. la que
+arrancó con Windows y vuelves a abrir Lune), la nueva le pide que traiga su consola
+al frente —si Windows no deja, parpadea y dice «¡Sigo aquí!»— y se va. main.py en
+modo patata hace lo mismo en vez de abrir otra terminal.
+
+Bailes y Minecraft (cortes 9 y 10), sin Qt: /bailes pone la canción de un baile de tu
+biblioteca (bailes/) por el Mezclador y el título baila a su ritmo (aquí no hay
+esqueleto: baila a su manera); /mc reacciona a tu partida con «Lune: …» (latest.log,
+sin tocar el juego) y maneja el bot de Minecraft (se instala solo con /mc instalar).
+«Ponme el baile de X» y «conecta el bot de Minecraft» escritos en el chat van directos.
+Mientras Lune piensa, el bot pausa su modelo (comparten Ollama).
+
 Sueño: aquí no hay mascota que dormir, pero la regla es la misma
 (nucleo/sueno.ReglaSueno, avatar.dormir_min). Si vuelves tras una pausa larga,
 antes de la respuesta sale «Lune se quedó dormida hace N min… (-_-) zzZ» y, a
@@ -64,10 +84,22 @@ Comandos:
   /apagar · /posponer           la alarma que suena (también Enter o «p» mientras suena)
   /bailar [segundos] · /bailar auto on|off · /bailar apps · /bailar permitir <app> ·
   /bailar quitar <app> · /parar   Lune baila en el título (con música, sola)
+  /bailes [texto] · /bailes <n> · /bailes parar|pausa|siguiente|anterior · /bailes bucle on|off
+                                tus bailes (carpeta bailes/): suena la canción y el título baila a su
+                                ritmo (Enter o /parar para); «ponme el baile de X» en el chat, igual
+  /mc · /mc log on|off · /mc bot on [host[:puerto]]|off · /mc instalar · /mc di <texto> · /mc <orden> (sígueme, ven, para, mina 10 hierro…)
+                                Minecraft: reacciones a tu partida (latest.log) y el bot (solo servidores
+                                con online-mode=false; /mc instalar lo descarga, ~400 MB y Node 18+)
+  /comer [batido|pastel] [sabor] · /comer on|off   darle de comer (texto y sonido) o apagar la comida
+  /discord [on|off|estado] · /discord id <número>  presencia en Discord (solo «Lune CD · Terminal» y
+                                un estado fijo; el Application ID de discord.com/developers)
+  /autoinicio [on|off|estado|como bandeja|mascota|ventana|espera N]   arrancar con Windows (aquí:
+                                esta terminal, minimizada) y cómo abre la app de ventanas
   /interfaz [web|nativo]        vuelve a las ventanas (completa o bajos recursos) y cierra la terminal
   /salir
   (La terminal no tiene bandeja, menú radial ni atajos globales: eso es de las ventanas.
-  Tampoco pantalla grande: el salvapantallas es el título, con salvapantallas.activo.)
+  Tampoco pantalla grande: el salvapantallas es el título, con salvapantallas.activo.
+  Sentarse en la barra o en una ventana es cosa de la mascota de las ventanas.)
 """
 from __future__ import annotations
 
@@ -209,6 +241,22 @@ def preset_tema(texto: Any) -> Optional[str]:
     return candidatos[0] if len(candidatos) == 1 else None
 
 
+def ayuda() -> str:
+    """El texto de /ayuda: la sección «Comandos:» de este módulo; si a las ayudas de /bailes
+    y /mc (servicios/bailes_terminal.AYUDA y minecraft_terminal.AYUDA) les falta algo aquí,
+    se añaden al final (sin Qt)."""
+    texto = __doc__.split("Comandos:")[1].strip("\n") if "Comandos:" in (__doc__ or "") else ""
+    for modulo in ("servicios.bailes_terminal", "servicios.minecraft_terminal"):
+        try:
+            import importlib
+            extra = str(getattr(importlib.import_module(modulo), "AYUDA", "") or "")
+        except Exception:
+            extra = ""
+        if extra and extra not in texto:
+            texto += "\n  " + extra
+    return texto
+
+
 def _en_hilo(fn: Callable[[], None]) -> None:
     """Lo que sigue a una aprobación sale del hilo lector de la consola (tiene que ser rápido)."""
     threading.Thread(target=fn, name="lune-accion", daemon=True).start()
@@ -235,14 +283,15 @@ def python_sin_consola(exe: Optional[str] = None) -> str:
 
 
 def lanzar_app_qt(modo: str = "", *, raiz: Path = RAIZ, popen: Optional[Callable[..., Any]] = None,
-                  espera_s: float = ESPERA_ARRANQUE_S) -> bool:
+                  espera_s: float = ESPERA_ARRANQUE_S, extra: tuple = ()) -> bool:
     """Abre la app de ventanas (main.py) sin consola y desacoplada de esta terminal:
     si cierras la consola, la app sigue. Lee el modo de config (interfaz.modo).
 
     Sin importar Qt aquí: se comprueba que PyQt6 esté instalado buscándolo, no
     importándolo. Si la app se cierra con error en los primeros segundos (le falta
     algo), lanza RuntimeError con el motivo para que patata no se vaya. True si
-    quedó abierta (o terminó bien: otra Lune ya estaba abierta y se trajo al frente)."""
+    quedó abierta (o terminó bien: otra Lune ya estaba abierta y se trajo al frente).
+    `extra`: argumentos para main.py (p. ej. ("--autoinicio",))."""
     import importlib.util
     import subprocess
     script = Path(raiz) / "main.py"
@@ -261,7 +310,7 @@ def lanzar_app_qt(modo: str = "", *, raiz: Path = RAIZ, popen: Optional[Callable
             _DETACHED_PROCESS if sin_consola else _CREATE_NO_WINDOW)
     else:
         kw["start_new_session"] = True
-    proc = (popen or subprocess.Popen)([exe, str(script)], **kw)
+    proc = (popen or subprocess.Popen)([exe, str(script), *[str(a) for a in (extra or ())]], **kw)
     if espera_s and espera_s > 0:
         try:
             codigo = proc.wait(timeout=espera_s)
@@ -283,6 +332,8 @@ class Patata:
                  juego: Any = None, prioridad: Optional[Callable[[bool], Any]] = None,
                  recortar: Optional[Callable[[], Any]] = None, autoinicio: Any = None,
                  alarmas: Any = _AUTO, baile: Any = _AUTO, salvapantallas: Any = _AUTO,
+                 comida: Any = _AUTO, sistema: Any = _AUTO, con_windows: bool = False,
+                 bailes: Any = _AUTO, minecraft: Any = _AUTO,
                  **opciones_ejecutor):
         self.c = _colores(color)
         self._c_base = dict(self.c)                          # /tema parte de aquí cada vez
@@ -294,6 +345,8 @@ class Patata:
         self._recortar_fn = recortar                         # recorte_ram.recortar
         self._autoinicio = autoinicio                        # servicios.autoinicio
         self._juego_activo = False
+        self._pensando = False                               # esperando al modelo (Discord: «Pensando…»)
+        self.con_windows = bool(con_windows)                 # arrancó con Windows (--autoinicio)
         self._juego_motivo = ""
         self._prioridad_baja = False
         self._lock_juego = threading.Lock()
@@ -328,6 +381,28 @@ class Patata:
                 self.alarmas.registrar_herramientas(self.tools)   # temporizador, alarma…
             except Exception:
                 pass
+        # Cortes 7/8 (sin Qt): la comida (servicios/comida_terminal: /comer y la
+        # herramienta dar_de_comer) y Discord + arranque con Windows
+        # (servicios/sistema_terminal: /discord, /autoinicio). None = sin ellos.
+        self.comida = self._crear_comida() if comida is _AUTO else comida
+        self.sistema = self._crear_sistema() if sistema is _AUTO else sistema
+        if self.comida is not None and self.tools is not None:
+            try:
+                self.comida.registrar_herramientas(self.tools)    # dar_de_comer
+            except Exception:
+                pass
+        # Cortes 9/10 (sin Qt): los bailes de tu biblioteca (servicios/bailes_terminal: /bailes;
+        # la canción por el Mezclador y el título baila a su ritmo, con el MISMO BaileTerminal)
+        # y Minecraft (servicios/minecraft_terminal: /mc, reacciones a tu partida y el bot).
+        # None = sin ellos.
+        self.bailes = self._crear_bailes() if bailes is _AUTO else bailes
+        self.minecraft = self._crear_minecraft() if minecraft is _AUTO else minecraft
+        for pieza in (self.bailes, self.minecraft):     # listar_bailes, mascota_bailar, minecraft_*…
+            if pieza is not None and self.tools is not None:
+                try:
+                    pieza.registrar_herramientas(self.tools)
+                except Exception:
+                    pass
         self._reclamos: Dict[str, Callable[[], None]] = {}   # aprobación → cancelar()
         self._lock = threading.Lock()
         self.ejecutor = None
@@ -419,6 +494,49 @@ class Patata:
         except Exception:
             return None
 
+    def _crear_comida(self):
+        try:
+            from servicios.comida_terminal import ComidaTerminal
+            return ComidaTerminal(self.consola, self.config, colores=self.c, en_juego=self._en_juego,
+                                  nombre=lambda: (personajes.get_activo() or {}).get("nombre", "Lune"))
+        except Exception:
+            return None
+
+    def _crear_sistema(self):
+        try:
+            from servicios.sistema_terminal import SistemaTerminal
+            return SistemaTerminal(self.consola, self.config, en_juego=self._en_juego,
+                                   pensando=lambda: bool(getattr(self, "_pensando", False)),
+                                   autoinicio=self._autoinicio or None)
+        except Exception:
+            return None
+
+    def _crear_bailes(self):
+        try:
+            from servicios.bailes_terminal import BailesTerminal
+            return BailesTerminal(self.consola, self.config, colores=self.c, en_juego=self._en_juego,
+                                  baile=getattr(self, "baile", None))
+        except Exception:
+            return None
+
+    def _crear_minecraft(self):
+        try:
+            from servicios.minecraft_terminal import MinecraftTerminal
+            return MinecraftTerminal(self.consola, self.config, voice=self.voice, colores=self.c,
+                                     en_juego=self._en_juego,
+                                     pensando=lambda: bool(getattr(self, "_pensando", False)))
+        except Exception:
+            return None
+
+    def _discord_al_dia(self) -> None:
+        """Algo que Discord publica cambió (pensando, juego): que lo vea ya."""
+        s = getattr(self, "sistema", None)
+        if s is not None:
+            try:
+                s.actualizar()
+            except Exception:
+                pass
+
     def _ctx(self) -> dict:
         try:
             from servicios.tools import ctx_acciones
@@ -432,6 +550,17 @@ class Patata:
     # ── Salida (todo por la consola compartida) ──────────────────────────────────
     def _p(self, texto: str = "", end: str = "\n") -> None:
         self.consola.imprimir(texto, end=end)
+
+    def traer_al_frente(self) -> None:
+        """Alguien volvió a abrir Lune (otra patata, o la app en modo patata): esta
+        consola delante (si Windows deja; si no, parpadea) y una línea. Hilo del aviso."""
+        from servicios.instancia_patata import traer_consola_al_frente
+        if not traer_consola_al_frente():
+            try:
+                self.consola.parpadear(hasta_foco=True)
+            except Exception:
+                pass
+        self.consola.aviso(self._lune("o/", "¡Sigo aquí! Ya estaba abierta en esta terminal."))
 
     def _lune(self, cara: str, texto: str) -> str:
         c = self.c
@@ -621,18 +750,23 @@ class Patata:
                 llamadas = []
             baile = [ll for ll in llamadas if ll.herramienta in ("mascota_bailar", "parar_baile")]
             if baile:
-                # «baila» / «para de bailar»: aquí el baile es el título (BaileTerminal).
-                bt = getattr(self, "baile", None)
-                if bt is None:
-                    self._p(self._lune("^^'", "Aquí no puedo bailar.") + "\n")
-                    return
-                orden = "/bailar" if baile[0].herramienta == "mascota_bailar" else "/parar"
-                try:
-                    r = bt.comando(orden)
-                except Exception as e:
-                    r = f"No pude: {e}"
+                # «baila» / «para de bailar»: aquí el baile es el título (BaileTerminal). Cortes
+                # 9/10: «ponme el baile de X» (con canción) busca en tu biblioteca y pone la
+                # canción con el título a su ritmo (BailesTerminal); «para» con una canción
+                # puesta la para también.
+                r = self._baile_pedido(baile[0])
                 if r:
                     self._p(self._lune(":D", str(r)) + "\n")
+                return
+            if any(ll.herramienta == "mascota_sentarse" for ll in llamadas):
+                # «siéntate», «bájate»: eso lo hace la mascota de las ventanas.
+                texto_s = None
+                if getattr(self, "sistema", None) is not None:
+                    try:
+                        texto_s = self.sistema.comando("/sentarse")
+                    except Exception:
+                        texto_s = None
+                self._p(self._lune("^^'", texto_s or "Aquí no me puedo sentar: eso es de la mascota.") + "\n")
                 return
             if llamadas and self.ejecutor is not None:
                 self.ejecutor.ejecutar_llamadas(llamadas, ORIGEN_USUARIO, self._ctx(), self._al_resultado)
@@ -654,6 +788,9 @@ class Patata:
                 prov.cancel_flag = False
             except Exception:
                 pass
+        # Discord (si publica): «Pensando…» mientras llega la respuesta.
+        self._pensando = True
+        self._discord_al_dia()
         try:
             respuesta = asyncio.run(self.ai.chat(texto, self._system_prompt(ctx),
                                                  provider=self.provider, on_token=on_token))
@@ -666,6 +803,9 @@ class Patata:
             self._p(f"\n{c['dim']}(interrumpido){c['reset']}\n"); return
         except Exception as e:
             self._p(f"\n{c['red']}(no pude responder: {e}){c['reset']}\n"); return
+        finally:
+            self._pensando = False
+            self._discord_al_dia()
         respuesta = respuesta or ""
 
         # Acciones: el Ejecutor saca las <|CALL|> (el formato antiguo solo se borra).
@@ -687,6 +827,22 @@ class Patata:
             pass
         if llamadas:
             self.ejecutor.ejecutar_llamadas(llamadas, ORIGEN_USUARIO, ctx, self._al_resultado)
+
+    def _baile_pedido(self, ll) -> Optional[str]:
+        """Texto para «baila…» / «para de bailar» escritos en el chat (sin IA ni Ejecutor)."""
+        bl = getattr(self, "bailes", None)
+        bt = getattr(self, "baile", None)
+        bailar = ll.herramienta == "mascota_bailar"
+        try:
+            if bl is not None and ((bailar and (ll.args or {}).get("cancion"))
+                                   or (not bailar and bool(getattr(bl, "activo", False)))):
+                r = bl.bailar_pedido(ll.args) if bailar else bl.parar_pedido()
+                return str(r[1] if isinstance(r, tuple) and len(r) == 2 else r or "")
+            if bt is None:
+                return "Aquí no puedo bailar."
+            return bt.comando("/bailar" if bailar else "/parar")
+        except Exception as e:
+            return f"No pude: {e}"
 
     def _hablar(self, limpio: str) -> None:
         """Voz por tramos (cada <|ACT|> es un tramo) si está activada."""
@@ -814,7 +970,12 @@ class Patata:
         if cmd == "/salir":
             return True
         # Cortes 5/6: /alarma, /alarmas, /timer, /apagar… y /bailar, /parar.
-        for modulo in (getattr(self, "alarmas", None), getattr(self, "baile", None)):
+        # Cortes 7/8: /comer y /discord, /autoinicio, /sentarse.
+        # Cortes 9/10: /bailes (ANTES que el baile: con una canción puesta, su /parar la para
+        # con el baile del título; sin canción devuelve None y sigue el /parar de siempre) y /mc.
+        for modulo in (getattr(self, "alarmas", None), getattr(self, "bailes", None),
+                       getattr(self, "baile", None), getattr(self, "comida", None),
+                       getattr(self, "sistema", None), getattr(self, "minecraft", None)):
             if modulo is None:
                 continue
             try:
@@ -826,8 +987,7 @@ class Patata:
                     self._p(str(r) + "\n")
                 return False
         acciones = {
-            "/ayuda": lambda a: (__doc__.split("Comandos:")[1].strip("\n")
-                                 if "Comandos:" in __doc__ else ""),
+            "/ayuda": lambda a: ayuda(),
             "/memoria": lambda a: self.memoria._cmd_listar(),
             "/olvida": lambda a: (self.memoria._cmd_olvida(a) if a
                                   else "¿Olvidar qué? /olvida <texto o id>"),
@@ -1165,6 +1325,7 @@ class Patata:
             self._cambiar_prioridad(False)
             self._prioridad_baja = False
         self._poner_titulo()
+        self._discord_al_dia()                   # con un juego delante, Discord no ve nada
         try:
             from nucleo.utils import log_info
             log_info(f"[juego] {'entra: ' + (self._juego_motivo or '?') if activo else 'sale'} (patata)")
@@ -1258,6 +1419,29 @@ class Patata:
                 d.registrar("modo_juego_forzar", self._accion_juego, marcado=lambda: self._juego_activo)
             d.registrar("tema", self._accion_tema)
             d.registrar("autoinicio", self._accion_autoinicio, marcado=self._autoinicio_on)
+            s = getattr(self, "sistema", None)
+            if s is not None:
+                d.registrar("discord", lambda: self._p(s.alternar_discord()),
+                            marcado=lambda: bool(s.discord_activo))
+            # Cortes 9/10: «Mis bailes» (la lista, /bailes), las reacciones a Minecraft y el bot.
+            bl = getattr(self, "bailes", None)
+            if bl is not None:
+                d.registrar("bailes", lambda: self._p(bl.comando("/bailes") or ""))
+            mc = getattr(self, "minecraft", None)
+            if mc is not None:
+                def reacciones():
+                    on = bool(mc.alternar_reacciones())
+                    self._p("Reacciono a tu partida de Minecraft." if on else "Ya no reacciono a Minecraft.")
+
+                def bot():
+                    if mc.bot_conectado or bool(getattr(getattr(mc, "proceso", None), "vivo", False)):
+                        mc.desconectar_bot()
+                        self._p("Desconecto el bot de Minecraft.")
+                    else:
+                        _ok, texto = mc.conectar_bot()
+                        self._p(una_linea(texto, 300))
+                d.registrar("minecraft", reacciones, marcado=lambda: bool(mc.reaccionando))
+                d.registrar("minecraft_bot", bot, marcado=lambda: bool(mc.bot_conectado))
             d.registrar("liberar_memoria", lambda: self._p(self._cmd_ram()))
             d.registrar("salir", self._accion_salir)
             self._desp = d
@@ -1307,7 +1491,8 @@ class Patata:
             self._p("No sé arrancar con Windows desde aquí.")
             return
         try:
-            nuevo = bool(m.establecer(not self._autoinicio_on()))
+            # La variante de patata: consola minimizada, sin PyQt6 (servicios/autoinicio).
+            nuevo = bool(m.establecer(not self._autoinicio_on(), "patata"))
         except Exception as e:
             self._p(f"No pude cambiarlo: {una_linea(e, 200)}")
             return
@@ -1399,8 +1584,10 @@ class Patata:
     # ── Bucle ────────────────────────────────────────────────────────────────────
     def iniciar_ocio(self) -> None:
         """Cortes 5/6: el hilo de las alarmas, el detector de música del baile y el
-        salvapantallas del título (cada uno en su hilo). Lo llama correr()."""
-        for nombre in ("alarmas", "baile", "salvapantallas"):
+        salvapantallas del título (cada uno en su hilo). Lo llama correr(). Cortes 7/8:
+        la comida (nada que arrancar) y la presencia de Discord (sin hilo si está apagada).
+        Cortes 9/10: los bailes y Minecraft (su hilo solo con las reacciones o el bot)."""
+        for nombre in ("alarmas", "baile", "salvapantallas", "comida", "sistema", "bailes", "minecraft"):
             modulo = getattr(self, nombre, None)
             if modulo is None:
                 continue
@@ -1411,8 +1598,9 @@ class Patata:
 
     def detener_ocio(self) -> None:
         """Para lo de iniciar_ocio y quita sus capas del título (idempotente). Lo que
-        sonaba queda en alarmas.json para la próxima vez."""
-        for nombre in ("salvapantallas", "baile", "alarmas"):
+        sonaba queda en alarmas.json para la próxima vez. Minecraft para el bot (que no
+        quede node vivo) y los bailes su canción, ANTES que el baile del título."""
+        for nombre in ("minecraft", "bailes", "sistema", "comida", "salvapantallas", "baile", "alarmas"):
             modulo = getattr(self, nombre, None)
             if modulo is None:
                 continue
@@ -1442,11 +1630,16 @@ class Patata:
     def correr(self) -> int:
         c = self.c
         nombre = personajes.get_activo().get("nombre", "Lune")
-        self._p(f"{c['bold']}{c['cyan']}月 {nombre} — modo patata{c['reset']} "
-                f"{c['dim']}({self._describir_proveedor()}){c['reset']}")
-        self._p(f"{c['dim']}Solo texto. Caritas en vez de mascota. /ayuda para los comandos, "
-                f"/salir para irte.{c['reset']}\n")
-        self._p(self._lune("o/", "Lune en línea. Dime qué necesitas.") + "\n")
+        if self.con_windows:
+            # Arrancó con Windows (consola minimizada): una línea y listo.
+            self._p(f"{c['bold']}{c['cyan']}月 {nombre} — modo patata{c['reset']} "
+                    f"{c['dim']}(arrancó con Windows · /ayuda){c['reset']}\n")
+        else:
+            self._p(f"{c['bold']}{c['cyan']}月 {nombre} — modo patata{c['reset']} "
+                    f"{c['dim']}({self._describir_proveedor()}){c['reset']}")
+            self._p(f"{c['dim']}Solo texto. Caritas en vez de mascota. /ayuda para los comandos, "
+                    f"/salir para irte.{c['reset']}\n")
+            self._p(self._lune("o/", "Lune en línea. Dime qué necesitas.") + "\n")
         # El título normal desde el principio: al quitarse la última capa (salvapantallas,
         # baile, alarma…) vuelve este, aunque aún no hayas chateado.
         self._poner_titulo()
@@ -1497,13 +1690,77 @@ class Patata:
             pass
 
 
-def main(argv=None) -> int:
-    argv = sys.argv[1:] if argv is None else argv
+_BANDERAS_AUTOINICIO = frozenset({"--autoinicio", "/autoinicio", "-autoinicio"})
+
+
+def arranque_con_windows(*, config: Any = _AUTO, autoinicio: Any = None,
+                         lanzar: Optional[Callable[[], Any]] = None) -> Optional[int]:
+    """`patata.py --autoinicio` (entrada Run en su variante /patata). Repara la entrada
+    (carpeta movida o modo cambiado: servicios/autoinicio.reparar, nunca la crea) y, si
+    la interfaz ya NO es patata, abre la app de ventanas con --autoinicio y devuelve 0
+    (patata se va). None = seguir aquí (sigue siendo patata, o la app no pudo abrir).
+    Sin Qt."""
+    cfg = _config_por_defecto() if config is _AUTO else config
     try:
-        return Patata(color="--sin-color" not in argv).correr()
+        modo = str(cfg.get("interfaz", "modo", "web") or "web") if cfg is not None else "patata"
+    except Exception:
+        modo = "patata"
+    mod = autoinicio
+    if mod is None:
+        try:
+            from servicios import autoinicio as mod
+        except Exception:
+            mod = None
+    if mod is not None:
+        try:
+            mod.reparar(cfg, modo)
+        except Exception:
+            pass
+    if modo == "patata":
+        return None
+    try:
+        ok = bool((lanzar or (lambda: lanzar_app_qt(modo, extra=("--autoinicio",))))())
+    except Exception:
+        ok = False
+    return 0 if ok else None
+
+
+TXT_YA_ABIERTA = "Lune ya está abierta en otra terminal (modo patata)."
+ESPERA_YA_ABIERTA_S = 4.0     # que dé tiempo a leerlo antes de que se cierre esta consola
+
+
+def _nueva_instancia():
+    """El mutex de instancia única de patata (los tests lo cambian por un doble)."""
+    from servicios.instancia_patata import InstanciaPatata
+    return InstanciaPatata()
+
+
+def main(argv=None, *, instancia: Any = None, esperar: Callable[[float], Any] = time.sleep) -> int:
+    argv = sys.argv[1:] if argv is None else argv
+    con_windows = any(str(a).strip().lower() in _BANDERAS_AUTOINICIO for a in argv)
+    if con_windows:
+        r = arranque_con_windows()
+        if r is not None:
+            return r
+    inst = instancia if instancia is not None else _nueva_instancia()
+    if not inst.adquirir():
+        # Ya hay una patata (p. ej. la del arranque con Windows): que se enseñe ella.
+        traida = inst.pedir_mostrar()
+        print(TXT_YA_ABIERTA + (" Te la traigo al frente." if traida else ""), flush=True)
+        if not con_windows:
+            esperar(ESPERA_YA_ABIERTA_S)
+        return 0
+    try:
+        p = Patata(color="--sin-color" not in argv, con_windows=con_windows)
+        al_frente = getattr(p, "traer_al_frente", None)
+        if callable(al_frente):
+            inst.escuchar(al_frente)
+        return p.correr()
     except KeyboardInterrupt:
         # Ctrl+C mientras arranca o se despide: se sale sin traceback.
         return 130
+    finally:
+        inst.liberar()
 
 
 if __name__ == "__main__":

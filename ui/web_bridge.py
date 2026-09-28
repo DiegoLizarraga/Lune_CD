@@ -56,6 +56,10 @@ Corte 4 (bandeja única, radial, atajos, modo juego): la mascota se crea sin ico
 (`crear_mascota(..., bandeja=False)`); `pausar_aburrimiento(on)` lo usa el modo juego
 (AnfitrionWeb) y `comentar_pantalla` no mira la pantalla con un juego delante.
 
+Cortes 9/10: mientras el hilo de la IA vive, el BusEstado del escritorio dice `pensando`
+(BusEstado.pensar, fuente «chat»; lo apaga el finished de ese hilo): el bot de Minecraft
+pausa su modelo (comparten Ollama) y Discord pone «Pensando…».
+
 Chat de la mascota: la cajita que abre el doble clic (ui/chat_mascota.py) llama
 a `enviar_desde_mascota(texto)`, que entra por el mismo flujo que el chat de la
 ventana (mismo historial y memoria); la respuesta se ve también en la burbuja de
@@ -84,6 +88,7 @@ from typing import Any, Mapping
 
 from PyQt6.QtCore import (QCoreApplication, QEventLoop, QMetaObject, QObject, Qt, QThread,
                           QTimer, pyqtSignal, pyqtSlot)
+from PyQt6 import sip
 
 from nucleo.config import Config
 from nucleo.memoria import MemoriaManager
@@ -304,10 +309,13 @@ class LuneBridge(QObject):
         # En modo llamada, la respuesta final la habla el worker (bloqueando) y
         # luego vuelve a escuchar; por eso se engancha a `done`.
         self.done.connect(self._llamada_entregar)
-        # La voz avisa cuándo suena (hilo de audio) → señal → boca del avatar VRM.
+        # La voz avisa cuándo suena (hilo de audio) → señal → boca del avatar VRM. No se
+        # guarda la señal ligada (self._hablando.emit): el hilo de voz puede llamarla con
+        # el puente ya borrado (AttributeError o violación de acceso); _aviso_hablando
+        # comprueba que siga vivo, y cerrar_escritorio la desengancha.
         self._hablando.connect(self._on_hablando)
         try:
-            self.voice.al_hablar = self._hablando.emit
+            self.voice.al_hablar = self._aviso_hablando
         except Exception:
             pass
         # Expresiones: hasta tres por respuesta; con voz cambian al ritmo de la voz,
@@ -351,7 +359,7 @@ class LuneBridge(QObject):
         # La voz avisa si falla (voz inexistente, sin red…) en vez de quedarse muda.
         self._voz_error.connect(self._on_voz_error)
         try:
-            self.voice.on_error = self._voz_error.emit
+            self.voice.on_error = self._aviso_voz_error      # igual que al_hablar
         except Exception:
             pass
         app = QCoreApplication.instance()
@@ -359,7 +367,9 @@ class LuneBridge(QObject):
             app.aboutToQuit.connect(self.cerrar_escritorio)
 
     def cerrar_escritorio(self):
-        """Al salir: ninguna pregunta «¿Lo hago?» colgada, servicios de escritorio parados."""
+        """Al salir: ninguna pregunta «¿Lo hago?» colgada, servicios de escritorio parados
+        y los avisos de la voz desenganchados (el hilo de audio ya no llama a este puente)."""
+        self._soltar_voz()
         acc = getattr(self, "acciones", None)
         if acc is not None:
             try:
@@ -468,6 +478,36 @@ class LuneBridge(QObject):
             linea = f"{'✓' if ok else '✕'} {mensaje.strip()}"
             previo = (self._eco_texto or "").strip()
             self._eco_mascota(f"{previo}\n{linea}" if previo else linea, fin=True)
+
+    # ── Avisos de la voz (llegan del hilo de audio) ─────────────────────────────
+    def _emitir_si_vivo(self, senal: str, *args) -> None:
+        """Emite `senal` solo si el puente sigue vivo. El hilo de voz puede llamar después
+        de borrarlo (cambio de interfaz, salir): emitir una señal de un QObject borrado da
+        AttributeError o una violación de acceso; aquí se resuelve en cada llamada."""
+        try:
+            if sip.isdeleted(self):
+                return
+            getattr(self, senal).emit(*args)
+        except (RuntimeError, AttributeError):
+            pass
+
+    def _aviso_hablando(self, activo) -> None:
+        """voice.al_hablar (hilo de audio)."""
+        self._emitir_si_vivo("_hablando", bool(activo))
+
+    def _aviso_voz_error(self, mensaje) -> None:
+        """voice.on_error (hilo de audio)."""
+        self._emitir_si_vivo("_voz_error", str(mensaje))
+
+    def _soltar_voz(self) -> None:
+        """Desengancha los avisos de la voz si siguen siendo los de este puente."""
+        voz = getattr(self, "voice", None)
+        for attr, mio in (("al_hablar", self._aviso_hablando), ("on_error", self._aviso_voz_error)):
+            try:
+                if getattr(voz, attr, None) == mio:
+                    setattr(voz, attr, None)
+            except Exception:
+                pass
 
     def _on_voz_error(self, mensaje: str):
         """voice.on_error (llega del hilo de audio por señal): aviso en la página."""
@@ -748,7 +788,36 @@ class LuneBridge(QObject):
         self._worker.token_received.connect(lambda t, g=gen: self._on_chunk(t, g))
         self._worker.response_ready.connect(lambda r, g=gen: self._on_done(r, g))
         self._worker.error_occurred.connect(lambda m, g=gen: self._on_error(m, g))
+        # Cortes 9/10: `pensando` en el bus mientras el hilo de la IA vive (el bot de
+        # Minecraft pausa su modelo; Discord, «Pensando…»). Lo apaga el finished de ESTE hilo.
+        fin = getattr(self._worker, "finished", None)
+        if fin is not None and hasattr(fin, "connect"):
+            fin.connect(lambda w=self._worker: self._fin_pensando_chat(w))
+        self._pensando_chat(True)
         self._worker.start()
+
+    def _pensando_chat(self, on: bool) -> None:
+        """Cortes 9/10: el chat espera al modelo (BusEstado.pensar, fuente «chat»: no pisa a la
+        mascota cuando comenta la pantalla)."""
+        bus = getattr(getattr(self, "escritorio", None), "estado", None)
+        f = getattr(bus, "pensar", None)
+        if not callable(f):
+            return
+        try:
+            from nucleo.estado_mascota import PENSANDO_CHAT
+            f(PENSANDO_CHAT, bool(on))
+        except Exception as e:
+            try:
+                from nucleo.utils import log_error
+                log_error(f"[escritorio] no pude marcar «pensando»: {e}")
+            except Exception:
+                pass
+
+    def _fin_pensando_chat(self, worker) -> None:
+        """finished de un AIWorker: deja de pensar si era el vigente (o ya no hay). El de un
+        hilo viejo que acaba tarde no apaga el del envío nuevo."""
+        if getattr(self, "_worker", None) in (None, worker):
+            self._pensando_chat(False)
 
     # ── Órdenes desde Telegram (/pc) ─────────────────────────────────────────────
     # NO son slots de la página (sin @pyqtSlot): solo las llama el TelegramBotWorker.
@@ -2472,9 +2541,10 @@ class LuneBridge(QObject):
         except Exception:
             return False
         # sistema.autoinicio sigue al estado REAL (registro y Administrador de tareas),
-        # como la bandeja y el panel nativo.
+        # como la bandeja y el panel nativo; solo se escribe si cambia.
         try:
-            self.config.set("sistema", "autoinicio", estado)
+            if bool(self.config.get("sistema", "autoinicio", False)) != estado:
+                self.config.set("sistema", "autoinicio", estado)
         except Exception:
             pass
         self.aviso.emit("Lune arrancará con Windows" if estado else "Autoinicio desactivado")

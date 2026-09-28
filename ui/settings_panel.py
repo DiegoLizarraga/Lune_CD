@@ -22,6 +22,16 @@ apartado se aplica en caliente con los servicios del corte 4 que da main.py
 Alarmas, pantalla grande y baile (cortes 5/6): ui/panel_ocio_nativo.PanelOcioNativo
 (`ocio_panel`) guarda al momento y aplica él mismo; recibe ServiciosCorte4.ocio con
 usar_servicios y el «Guardar» escribe lo que tuviera pendiente.
+
+Sentarse, comida, Discord y arranque con Windows (cortes 7/8):
+ui/panel_vida_nativo.PanelVidaNativo (`vida_panel`), igual: guarda al momento, recibe
+ServiciosCorte4 (su `.vida`) con usar_servicios y lo suelta al desmontarse. La casilla
+«Arrancar Lune junto con Windows» sigue aquí y deja `sistema.autoinicio` como el registro.
+
+Bailes MMD/VRMA y Minecraft (cortes 9/10): ui/panel_escenario_nativo.PanelEscenarioNativo
+(`escenario_panel`), igual: guarda al momento (config.json y, lo del bot, datos.json con
+datos.guardar_minecraft), recibe ServiciosCorte4 (su `.escenario`) con usar_servicios y lo
+suelta al desmontarse. «Mis bailes» de la bandeja o del radial abre estos Ajustes.
 """
 import re
 
@@ -490,6 +500,27 @@ class SettingsPanel(QFrame):
         if s is not None and getattr(s, "ocio", None) is not None:
             self._enlazar_ocio(s)
         layout.addWidget(self.ocio_panel)
+
+        # ── SECCIÓN 6a ter: SENTARSE, COMIDA, DISCORD Y ARRANQUE (cortes 7/8). Guarda al
+        # momento (300 ms) y aplica él mismo; los controladores (ServiciosCorte4.vida)
+        # llegan con usar_servicios y se sueltan solos al desmontarse.
+        layout.addWidget(self._create_section_title(
+            "Sentarse, comida, Discord y arranque con Windows"))
+        from ui.panel_vida_nativo import PanelVidaNativo
+        self.vida_panel = PanelVidaNativo(self.config, self)
+        if s is not None and getattr(s, "vida", None) is not None:
+            self._enlazar_vida(s)
+        layout.addWidget(self.vida_panel)
+
+        # ── SECCIÓN 6a quater: BAILES MMD/VRMA Y MINECRAFT (cortes 9/10). Guarda al momento
+        # (300 ms) y aplica él mismo; los controladores (ServiciosCorte4.escenario) llegan con
+        # usar_servicios y se sueltan solos al desmontarse.
+        layout.addWidget(self._create_section_title("Bailes y Minecraft"))
+        from ui.panel_escenario_nativo import PanelEscenarioNativo
+        self.escenario_panel = PanelEscenarioNativo(self.config, self)
+        if s is not None and getattr(s, "escenario", None) is not None:
+            self._enlazar_escenario(s)
+        layout.addWidget(self.escenario_panel)
 
         # ── SECCIÓN 6b: RED DE LUNE (host y terminales) ──
         layout.addWidget(self._create_section_title("Red de Lune · host y terminales"))
@@ -1317,6 +1348,30 @@ class SettingsPanel(QFrame):
         if panel is not None:
             panel.set_atajos(getattr(servicios, "atajos", None))
         self._enlazar_ocio(servicios)
+        self._enlazar_vida(servicios)
+        self._enlazar_escenario(servicios)
+
+    def _enlazar_escenario(self, servicios) -> None:
+        """Cortes 9/10: el panel de bailes y Minecraft recibe ServiciosCorte4 (usa su
+        `.escenario`); se apunta él solo en su _deshacer y los suelta al desmontarse."""
+        panel = getattr(self, "escenario_panel", None)
+        if panel is None or servicios is None:
+            return
+        try:
+            panel.enlazar(servicios)
+        except Exception:
+            pass
+
+    def _enlazar_vida(self, servicios) -> None:
+        """Cortes 7/8: el panel de sentarse, comida y Discord recibe ServiciosCorte4 (usa
+        su `.vida`); se apunta él solo en su _deshacer y los suelta al desmontarse."""
+        panel = getattr(self, "vida_panel", None)
+        if panel is None or servicios is None:
+            return
+        try:
+            panel.enlazar(servicios)
+        except Exception:
+            pass
 
     def _enlazar_ocio(self, servicios) -> None:
         """Cortes 5/6: el panel de ocio recibe ServiciosCorte4.ocio (alarmas, pantalla
@@ -1594,7 +1649,7 @@ class SettingsPanel(QFrame):
         # Seguimiento del cursor que el panel VRM aún no escribió (espera 250 ms) y lo
         # de los paneles de escritorio (corte 4) y de ocio (cortes 5/6, 300 ms):
         # escrito ya y aplicado.
-        for nombre in ("vrm_panel", "escritorio_panel", "ocio_panel"):
+        for nombre in ("vrm_panel", "escritorio_panel", "ocio_panel", "vida_panel", "escenario_panel"):
             panel = getattr(self, nombre, None)
             if panel is not None:
                 try:
@@ -1619,7 +1674,9 @@ class SettingsPanel(QFrame):
         if ("autoinicio",) in cambios:
             try:
                 from servicios import autoinicio as _auto
-                _auto.establecer(actual[("autoinicio",)])
+                estado = bool(_auto.establecer(actual[("autoinicio",)]))
+                # sistema.autoinicio sigue al estado real (como la bandeja y la web).
+                self.config.config.setdefault("sistema", {})["autoinicio"] = estado
             except Exception:
                 pass
         self.config.save()

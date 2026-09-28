@@ -377,12 +377,23 @@ class ControlBaile(QObject):
     def _ctx(self, ctx: Any) -> dict:
         base = dict(ctx) if isinstance(ctx, dict) else ({"contexto": ctx} if ctx is not None else {})
         base["baile"] = self
+        # El reproductor de bailes (corte 9, ui/mmd_qt.ControlMMD), si está montado:
+        # «bailar {cancion}» busca en tus bailes y «parar_baile» lo para primero.
+        obtener = getattr(self.escritorio, "obtener", None)
+        if callable(obtener):
+            try:
+                mmd = obtener("mmd")
+            except Exception:
+                mmd = None
+            if mmd is not None:
+                base["mmd"] = mmd
         if self._en_ui is not None:
             base["en_ui"] = self._en_ui
         return base
 
     def herramientas(self) -> dict:
-        """{nombre: handler(args, ctx)} de `mascota_bailar` y `parar_baile`."""
+        """{nombre: handler(args, ctx)} de `mascota_bailar` y `parar_baile` (con
+        ctx["mmd"] si el reproductor de bailes está montado)."""
         return {
             "mascota_bailar": lambda args=None, ctx=None: nb.herramienta_bailar(args, self._ctx(ctx)),
             "parar_baile": lambda args=None, ctx=None: nb.herramienta_parar(args, self._ctx(ctx)),

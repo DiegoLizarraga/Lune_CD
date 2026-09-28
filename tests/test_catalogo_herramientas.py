@@ -22,6 +22,7 @@ NUEVAS_PLAN = {
     "mascota_pantalla_grande", "mascota_sentarse", "mascota_tamano",
     "dar_de_comer", "cambiar_voz", "comentar_pantalla",
     "minecraft_estado", "minecraft_orden", "minecraft_bot",
+    "listar_bailes",                     # cortes 9/10 (reproductor de bailes)
 }
 EXISTENTES = {"sistema_info", "buscar_web", "abrir_url", "lanzar_app"}
 
@@ -55,6 +56,7 @@ def test_existentes_coinciden_con_registro_por_defecto():
     ("listar_alarmas", H.Riesgo.LECTURA, False, 0),
     ("mascota_bailar", H.Riesgo.ESCRITURA, False, 0),
     ("parar_baile", H.Riesgo.ESCRITURA, False, 0),
+    ("listar_bailes", H.Riesgo.LECTURA, False, 0),
     ("mascota_dormir", H.Riesgo.ESCRITURA, False, 0),
     ("mascota_despertar", H.Riesgo.ESCRITURA, False, 0),
     ("mascota_pantalla_grande", H.Riesgo.ESCRITURA, False, 0),
@@ -114,10 +116,16 @@ def test_modos():
     assert cat["mascota_dormir"].disponible_en("mascota")
     assert not cat["mascota_dormir"].disponible_en("patata")
     assert cat["mascota_sentarse"].disponible_en("vrm")
-    assert not cat["mascota_sentarse"].disponible_en("mascota")
+    assert cat["mascota_sentarse"].disponible_en("mascota")     # cortes 7/8: animada y sprites se apoyan
+    assert not cat["mascota_sentarse"].disponible_en("normal")  # sin mascota a la vista, no
+    assert not cat["mascota_sentarse"].disponible_en("patata")
+    assert not cat["mascota_tamano"].disponible_en("mascota")   # el tamaño sigue siendo solo de la 3D
+    assert cat["dar_de_comer"].disponible_en("patata") and cat["dar_de_comer"].disponible_en("normal")
     assert cat["mascota_bailar"].disponible_en("normal")
     assert cat["mascota_bailar"].disponible_en("br")
-    assert not cat["mascota_bailar"].disponible_en("patata")
+    # Cortes 9/10: en patata también (el título baila al ritmo de la canción de tu biblioteca).
+    assert cat["mascota_bailar"].disponible_en("patata") and cat["parar_baile"].disponible_en("patata")
+    assert all(cat["listar_bailes"].disponible_en(m) for m in C.MODOS)
     assert cat["temporizador"].disponible_en("patata")
     assert cat["temporizador"].disponible_en(None)            # sin modo, sin filtro
 

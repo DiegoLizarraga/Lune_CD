@@ -91,3 +91,50 @@ def test_psutil_declarado_coincide_con_la_realidad():
     except ImportError:
         instalado = False
     assert opt["disponible"] is instalado
+
+
+# ── Revisión final (RR8 / X5): núcleo al día y Node avisado ─────────────────────
+
+def _paquetes(tabla):
+    return {p for info in tabla.values() for p in info["modulos"].values()}
+
+
+def test_numpy_y_el_sonido_son_obligatorios():
+    """numpy se importa arriba del todo en nucleo/bailes.py, servicios/cancion_python.py,
+    el mezclador y el pulso: sin él no cargan. Va en NUCLEO (marcado por defecto)."""
+    nucleo, opcionales = _paquetes(actualizador.NUCLEO), _paquetes(actualizador.OPCIONALES)
+    assert {"numpy", "sounddevice", "imageio-ffmpeg"} <= nucleo
+    assert "numpy" not in opcionales                        # ya no se ofrece como opcional
+    if sys.platform == "win32":
+        assert {"comtypes", "pywin32"} <= nucleo            # detector de música, mascota fantasma
+    assert "psutil" in opcionales and "gtts" in opcionales
+
+
+def test_estado_opcionales_avisa_de_lo_obligatorio_que_falta(monkeypatch):
+    import importlib.util
+    real = importlib.util.find_spec
+    monkeypatch.setattr(actualizador.importlib.util, "find_spec",
+                        lambda m, *a: None if m == "numpy" else real(m, *a))
+    estados = {o["funcion"]: o for o in actualizador.estado_opcionales()}
+    sonido = estados["Sonido: mezclador, alarmas y bailes (obligatorio)"]
+    assert sonido["disponible"] is False and sonido["faltan"] == ["numpy"]
+    assert sonido["comando"] == "pip install numpy"
+    assert "Núcleo de Lune (obligatorio)" not in estados    # lo obligatorio que está, no se lista
+
+
+def test_estado_node():
+    import subprocess
+
+    def correr(salida):
+        return lambda *a, **k: subprocess.CompletedProcess(a, 0, stdout=salida)
+
+    assert actualizador.estado_node(which=lambda n: None)["ok"] is False
+    assert actualizador.estado_node(which=lambda n: "node", ejecutar=correr("v18.0.0\n"))["ok"] is True
+    viejo = actualizador.estado_node(which=lambda n: "node", ejecutar=correr("v14.21.3\n"))
+    assert viejo["ok"] is False and "18" in viejo["mensaje"]
+
+    def roto(*a, **k):
+        raise OSError("sin permiso")
+
+    raro = actualizador.estado_node(which=lambda n: "node", ejecutar=roto)
+    assert raro["ok"] is False and "versión desconocida" in raro["mensaje"]

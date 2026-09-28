@@ -108,6 +108,15 @@ def test_guardado_diferido_escribe_una_vez(qapp, control):
     assert cfg.escrituras[-1]["preset"] == "ambar" and len(cfg.escrituras) == 2
 
 
+def test_quien_escucha_cambio_ya_ve_lo_guardado(qapp, control):
+    """El panel nativo lee guardado() dentro del aviso `cambio`: tiene que ver ya
+    el tema nuevo, no el anterior."""
+    vistos = []
+    control.cambio.connect(lambda _css: vistos.append(control.guardado()["preset"]))
+    control.guardar({"preset": "magenta_mate"})
+    assert vistos == ["magenta_mate"]
+
+
 def test_presets_restablecer_y_entradas_raras(qapp, control):
     control.guardar({"saturacion": 0.5, "tenir_fondo": True})
     r = control.aplicar_preset("rojo_neon")

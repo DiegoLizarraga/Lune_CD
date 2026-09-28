@@ -265,6 +265,8 @@ def montaje(qapp):
         "sonar": sonidos.append,
         "traer_al_frente": None,
         "ocio": False,               # cortes 5/6 aparte (tests/test_anfitriones_c56.py)
+        "vida": False,               # cortes 7/8 aparte (tests/test_anfitriones_c78_int.py)
+        "escenario": False,          # cortes 9/10 aparte (tests/test_anfitriones_c910_int.py)
     }
     s = montar_escritorio(esc, anf, cfg, fabricas=fab)
     esc.set_mascota(masc, render="vrm")
@@ -377,6 +379,19 @@ def test_acciones_de_la_mascota(montaje):
     assert ("close",) in m.diario
 
 
+def test_cerrar_mascota_apaga_lo_que_estaba_pensando(montaje):
+    """Revisión 7-10 (RR5): cerrar la mascota con un «Comentar pantalla» a medias dejaba
+    `pensando` pegado en el bus (Discord «Pensando…», bot de Minecraft en pausa, sin sueño)."""
+    s = montaje
+    s.esc.estado.actualizar(pensando=True)               # la mascota comentando la pantalla
+    s.esc.estado.pensar("chat", True)                    # y el chat de la ventana
+    s.despachador.ejecutar("cerrar_mascota")
+    assert ("close",) in s.masc.diario
+    assert s.esc.estado.actual().pensando is True        # el chat sigue: no es suya
+    s.esc.estado.pensar("chat", False)
+    assert s.esc.estado.actual().pensando is False
+
+
 def test_chat_saca_la_mascota_si_estaba_guardada(montaje):
     s = montaje
     s.masc.visible = False
@@ -469,7 +484,7 @@ def test_desmontar_con_el_escritorio_ya_cerrado(qapp):
     s = montar_escritorio(esc, AnfitrionFalso(), cfg, fabricas={
         "tema": lambda c, p: TemaFalso(c, p), "juego": JuegoFalso, "gestor_atajos": g,
         "tray": TrayFalso, "autoinicio": AutoinicioFalso(), "sonar": lambda n: None,
-        "modelos_vrm": lambda: [], "traer_al_frente": None, "ocio": False})
+        "modelos_vrm": lambda: [], "traer_al_frente": None, "ocio": False, "vida": False, "escenario": False})
     tray = s.bandeja.icono_tray
     esc.cerrar()                                         # la app se cierra antes
     s.desmontar()
@@ -488,7 +503,7 @@ def test_sin_tema_ni_juego_el_resto_funciona(qapp, monkeypatch):
     g = GestorFalso()
     s = montar_escritorio(esc, AnfitrionFalso(modo="br"), cfg, fabricas={
         "gestor_atajos": g, "tray": TrayFalso, "autoinicio": AutoinicioFalso(),
-        "sonar": lambda n: None, "modelos_vrm": lambda: [], "traer_al_frente": None, "ocio": False})
+        "sonar": lambda n: None, "modelos_vrm": lambda: [], "traer_al_frente": None, "ocio": False, "vida": False, "escenario": False})
     try:
         assert s.tema is None and s.juego is None
         assert list(esc.controladores()) == ["despachador", "atajos", "radial", "bandeja"]
@@ -511,7 +526,7 @@ def test_fabrica_que_revienta_no_tumba_el_montaje(qapp):
     s = montar_escritorio(esc, AnfitrionFalso(), cfg, fabricas={
         "tema": mal, "juego": mal, "gestor_atajos": GestorFalso(), "tray": TrayFalso,
         "autoinicio": AutoinicioFalso(), "sonar": lambda n: None, "modelos_vrm": lambda: [],
-        "traer_al_frente": None, "ocio": False})
+        "traer_al_frente": None, "ocio": False, "vida": False, "escenario": False})
     try:
         assert s.tema is None and s.juego is None and s.bandeja is not None and s.radial is not None
     finally:
@@ -527,7 +542,7 @@ def test_fuera_de_la_barra_al_montar(qapp):
     s = montar_escritorio(esc, anf, cfg, fabricas={
         "tema": lambda c, p: TemaFalso(c, p), "juego": JuegoFalso, "gestor_atajos": GestorFalso(),
         "tray": TrayFalso, "autoinicio": AutoinicioFalso(), "sonar": lambda n: None,
-        "modelos_vrm": lambda: [], "traer_al_frente": None, "ocio": False})
+        "modelos_vrm": lambda: [], "traer_al_frente": None, "ocio": False, "vida": False, "escenario": False})
     try:
         assert ("en_barra", False) in anf.diario
         # el escritorio aún no se había iniciado: nada arrancó todavía
@@ -553,7 +568,7 @@ def test_sonidos_de_menu_por_el_mezclador(qapp, tmp_path):
     s = montar_escritorio(esc, AnfitrionFalso(), cfg, fabricas={
         "tema": lambda c, p: TemaFalso(c, p), "juego": JuegoFalso, "gestor_atajos": GestorFalso(),
         "tray": TrayFalso, "autoinicio": AutoinicioFalso(), "mezclador": Mez,
-        "modelos_vrm": lambda: [], "traer_al_frente": None, "ocio": False})
+        "modelos_vrm": lambda: [], "traer_al_frente": None, "ocio": False, "vida": False, "escenario": False})
     try:
         s.sonar("menu_abrir")
         fin = time.monotonic() + 3
@@ -732,7 +747,7 @@ def test_con_el_control_tema_real(qapp):
     s = montar_escritorio(esc, AnfitrionFalso(), cfg, fabricas={
         "juego": JuegoFalso, "gestor_atajos": GestorFalso(), "tray": TrayFalso,
         "autoinicio": AutoinicioFalso(), "sonar": lambda n: None, "modelos_vrm": lambda: [],
-        "traer_al_frente": None, "ocio": False})
+        "traer_al_frente": None, "ocio": False, "vida": False, "escenario": False})
     try:
         assert s.tema is not None and s.despachador.tiene("tema")
         qss_cian = s.bandeja._qss

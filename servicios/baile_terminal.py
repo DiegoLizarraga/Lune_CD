@@ -17,6 +17,12 @@ En patata no hay mascota: el baile es texto.
 - `/bailar auto on|off`, `/bailar apps`, `/bailar permitir X`, `/bailar quitar X`
   (se guardan en config: baile.auto, baile.apps) y `/parar`.
 - Con un juego delante (`en_juego()`) no baila ni el detector llama a COM.
+- Corte 9 (pulso de FUERA): `bailar_con(pulso_fn, titulo, duracion_fn, posicion_fn,
+  al_parar=)` baila con el pulso que da otro (la canción de un baile de la biblioteca:
+  servicios/bailes_terminal.BailesTerminal): «ヽ(^o^)ﾉ ♪ Senbonzakura · 154 BPM» y la línea
+  viva con «0:42/3:15». Manda sobre el baile automático y el manual (que no lo pisan);
+  Enter, /parar o el modo juego lo paran y avisan con `al_parar()`; `parar_externo()` es
+  el dueño parándolo (sin aviso).
 
 `paso(t)` es un paso de la animación (el hilo lo llama ~12 veces por segundo;
 los tests, a mano). Sin Qt.
@@ -24,6 +30,7 @@ los tests, a mano). Sin Qt.
 from __future__ import annotations
 
 import logging
+import math
 import shutil
 import threading
 import time
@@ -86,6 +93,7 @@ class BaileTerminal:
         self._kaomoji_linea = nb.es_windows_terminal()
         self._hilo: Optional[threading.Thread] = None
         self._despertar = threading.Event()
+        self._externo: Optional[dict] = None       # corte 9: {pulso, titulo, duracion, posicion, al_parar}
 
     def _col(self, nombre: str) -> str:
         return self.c.get(nombre, "")
@@ -130,6 +138,11 @@ class BaileTerminal:
     def origen(self) -> str:
         return self._origen if self._bailando else ""
 
+    @property
+    def externo(self) -> bool:
+        """¿Baila con un pulso de fuera (bailar_con)?"""
+        return self._bailando and self._origen == "externo"
+
     # ── Del detector (su hilo) ───────────────────────────────────────────────────
     def _juego(self) -> bool:
         try:
@@ -168,6 +181,10 @@ class BaileTerminal:
         """Baile a mano de N s. Devuelve el texto para la terminal."""
         if self._juego():
             return "En modo juego no bailo (luego sí)."
+        with self._lock:
+            ext = self._externo if self._bailando and self._origen == "externo" else None
+        if ext is not None:
+            return f"♪ Ya estoy bailando «{ext['titulo']}» (Enter o /parar para)."
         seg = nb.segundos_validos(segundos)
         self._empezar("manual", seg)
         if self._ansi():
@@ -177,6 +194,53 @@ class BaileTerminal:
     def parar(self, silenciar_auto: bool = True) -> bool:
         """Para. `silenciar_auto`: no vuelve a bailar sola hasta que la música se calle."""
         return self._parar_baile(silenciar=silenciar_auto)
+
+    # ── Corte 9: pulso de fuera (la canción de un baile de la biblioteca) ─────────
+    def bailar_con(self, pulso_fn: Callable[[], Any], titulo: str,
+                   duracion_fn: Optional[Callable[[], Optional[float]]] = None,
+                   posicion_fn: Optional[Callable[[], Optional[float]]] = None, *,
+                   al_parar: Optional[Callable[[], Any]] = None) -> bool:
+        """Baila con el pulso de `pulso_fn()` (Pulso, (bpm, fase[, energía]), {bpm, fase,
+        energia} o None → metrónomo) y `titulo` en el título. `duracion_fn()` y
+        `posicion_fn()` (s o None) ponen el reloj de la línea viva. `al_parar()` avisa si lo
+        para la persona (Enter, /parar) o el modo juego. False en modo juego. Llamarlo otra
+        vez cambia la canción sin cortar el baile. Las funciones se llaman desde el hilo de
+        la animación con el cerrojo de este objeto: que no llamen a este objeto."""
+        if self._juego():
+            return False
+        t = self._reloj()
+        limpio = " ".join("".join(ch if ch.isprintable() else " " for ch in str(titulo or "")).split())[:48]
+        with self._lock:
+            if not self._bailando:
+                self._bailando = True
+                self._t0 = t
+                self._golpes = 0
+                self._fase_ant = None
+                self._ultima_linea = None
+            self._origen = "externo"
+            self._t_fin = None
+            self._externo = {"pulso": pulso_fn, "titulo": limpio or "♪", "duracion": duracion_fn,
+                             "posicion": posicion_fn, "al_parar": al_parar}
+            self._ultimo_titulo = None
+            d = self._detector
+        if d is not None:
+            try:
+                d.forzar_pulso(False)              # el pulso lo da la canción, no el detector
+            except Exception:
+                pass
+        self._reclamar_linea(t)
+        self.paso(t)
+        self._arrancar_hilo()
+        return True
+
+    def parar_externo(self) -> bool:
+        """El dueño del pulso de fuera lo para (fin de la canción, otra canción, /bailes
+        parar): sin llamar a `al_parar`. False si no bailaba con él."""
+        with self._lock:
+            if not (self._bailando and self._origen == "externo"):
+                self._externo = None
+                return False
+        return self._parar_baile(silenciar=False, avisar=False)
 
     def _ansi(self) -> bool:
         return bool(getattr(self.consola, "ansi", False))
@@ -212,9 +276,11 @@ class BaileTerminal:
         self.paso(t)
         self._arrancar_hilo()
 
-    def _parar_baile(self, silenciar: bool) -> bool:
+    def _parar_baile(self, silenciar: bool, avisar: bool = True) -> bool:
         with self._lock:
             estaba = self._bailando
+            externo = self._externo if (estaba and self._origen == "externo") else None
+            self._externo = None
             if silenciar and self._musica:
                 self._pausado = True
             self._bailando = False
@@ -237,6 +303,11 @@ class BaileTerminal:
                 pass
         self._titulo_capa(None)
         self._despertar.set()
+        if externo is not None and avisar and callable(externo.get("al_parar")):
+            try:
+                externo["al_parar"]()              # la canción de fuera también para
+            except Exception:
+                _log.exception("baile (patata): al_parar del pulso de fuera falló")
         return estaba
 
     def _reclamar_linea(self, t: float) -> None:
@@ -275,7 +346,52 @@ class BaileTerminal:
         return True
 
     # ── Pulso, título y línea ────────────────────────────────────────────────────
+    def _pulso_externo(self, t: float) -> Optional[Pulso]:
+        """El pulso de `bailar_con` (None si no da uno válido: metrónomo)."""
+        ext = self._externo if self._origen == "externo" else None
+        if ext is None:
+            return None
+        try:
+            r = ext["pulso"]() if callable(ext.get("pulso")) else None
+        except Exception:
+            return None
+        if isinstance(r, Pulso):
+            bpm, fase, energia = r.bpm, r.fase_en(t), r.energia
+        elif isinstance(r, dict):
+            bpm, fase, energia = r.get("bpm"), r.get("fase"), r.get("energia", 0.7)
+        elif isinstance(r, (tuple, list)) and len(r) >= 2:
+            bpm, fase, energia = r[0], r[1], (r[2] if len(r) > 2 else 0.7)
+        else:
+            return None
+        try:
+            bpm, fase, energia = float(bpm), float(fase), float(energia)
+        except (TypeError, ValueError):
+            return None
+        if not all(math.isfinite(x) for x in (bpm, fase, energia)) or bpm <= 0:
+            return None
+        return Pulso(max(40.0, min(240.0, bpm)), fase % 1.0, max(0.0, min(1.0, energia)), 1.0, t)
+
+    def _reloj_externo(self) -> Optional[str]:
+        """«0:42/3:15» (o «0:42») con la posición y la duración de la canción de fuera."""
+        ext = self._externo if self._origen == "externo" else None
+        if ext is None:
+            return None
+
+        def leer(clave):
+            fn = ext.get(clave)
+            try:
+                v = fn() if callable(fn) else None
+                v = float(v) if v is not None else None
+            except Exception:
+                return None
+            return v if v is not None and math.isfinite(v) and v >= 0 else None
+        pos, dur = leer("posicion"), leer("duracion")
+        return _mmss(pos or 0) + (f"/{_mmss(dur)}" if dur else "")
+
     def _pulso_actual(self, t: float) -> Pulso:
+        ext = self._pulso_externo(t)
+        if ext is not None:
+            return ext
         ref = self._pulso_ref
         if ref is not None and t - ref.t <= VIGENCIA_PULSO_S:
             det = self._pulso_det
@@ -298,6 +414,8 @@ class BaileTerminal:
             p = self._pulso_actual(t)
             cuadro = self._cuadro(p, nb.frames_ascii(True))
             app = self._app if self._musica else ""
+            if self._externo is not None and self._origen == "externo":
+                app = self._externo["titulo"]
         return f"{cuadro} ♪ " + (f"{app} · " if app else "") + f"{int(round(p.bpm))} BPM"
 
     def linea(self, t: Optional[float] = None) -> str:
@@ -311,6 +429,9 @@ class BaileTerminal:
             cuadro = frames[(golpes * 2 + int(f * 2)) % len(frames)]
             app = self._app if self._musica else ""
             reloj = _mmss(self._t_fin - t) if self._t_fin is not None else _mmss(t - self._t0)
+            if self._externo is not None and self._origen == "externo":
+                app = self._externo["titulo"]
+                reloj = self._reloj_externo() or reloj
         n = int(round(min(1.0, max(0.0, p.energia)) * 3))
         barra = "▮" * n + "▯" * (3 - n)
         bpm = f"{int(round(p.bpm))} BPM"

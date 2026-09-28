@@ -109,6 +109,43 @@ ui/alarmas_qt y ui/baile_qt):
     de emoción mientras baila) y `pulso(bpm, fase, energia)` → lunePulso. Bailando
     no se duerme sola.
   Si la página recarga, se le vuelve a pedir lo que estaba a la vista.
+
+Cortes 7 y 8 (contrato de la mascota; los controladores son ui/asiento_qt.ControlAsiento y
+ui/comida_qt.ControlComida):
+  - señal `arrastre_cambio(bool)`: True al pasar el umbral del arrastre (antes del
+    delegado en ese mismo MouseMove), False al soltar ANTES de devolverla a la pantalla
+    y de guardar la posición (y si el arrastre se corta: menú, pantalla grande, ocultarla).
+  - señal `antes_de_colocar()`: la emite `llevar_a_esquina()` antes de moverla (su propio
+    menú no pasa por el Despachador); ui/montaje_vida la conecta a asiento.bajar("usuario").
+  - `set_arrastre_delegado(fn | None)`: fn() en cada MouseMove del arrastre; si devuelve
+    True ya movió la ventana (px físicos) y aquí no se hace `move` (luneDrag sigue).
+  - `hwnd()`, `punto_asiento(cb)` → luneSeatPx: cb({"asiento": [x, y], "sonda": [x, y]} |
+    None) en px lógicos de la ventana; `asiento(on, modo, variante, cb=)` → luneSentar
+    (VRM: pose sentada y encuadre de cuerpo entero; animada: apoyada en el borde) con la
+    frase «sentarse»/«bajar»; `sentada` ('' | 'barra' | 'ventana'): mientras está sentada
+    no se devuelve a la pantalla ni se toca su orden Z (lo lleva ControlAsiento), salvo
+    `restaurar_orden_z()`. Arrastrándola sentada, la página no se balancea (velocidad 0).
+  - clic CENTRAL soltado sobre ella → `menu_pedido('secundario', QPoint)` (batido, pastel…).
+  - `cabeza(cb)` → cb((cx, cy, r) | None) en px lógicos GLOBALES (luneCabeza(0.1));
+    `comer(tipo, ms)` → luneComer + frase «comer» (y la despierta); `set_comida_activa(on)`
+    → luneComidaActiva (sin caricia): con comida en la mano el clic no comenta, el doble
+    clic no abre el chat y no se duerme.
+  Se repite si la página recarga (como lo de los cortes 5 y 6).
+
+Cortes 9 y 10 (contrato de la mascota; los controladores son ui/mmd_qt.ControlMMD y
+ui/minecraft_qt.ControlMinecraft):
+  - `mmd(orden, datos)` → window.luneMMD(orden, datos) con orden cargar · pausa · parar ·
+    volumen · offset · en_sitio · bucle. «cargar» pasa por `datos_mmd_seguros()` (id de 12
+    hex, tipo vmd|vrma en la VRM y «audio» en la animada, URL solo de /bailes/ o
+    /bailes_cache/ ya codificadas, números en rango): si no vale devuelve False (error). La
+    primera vez publica bailes/ y cache/bailes/ en el servidor local (nunca file://).
+    Mientras hay un baile (`mmd_activo`) no se duerme sola ni se libera su página oculta;
+    oculta, el baile se pausa y sigue al volver a verla. Si la página aún no cargó, lo
+    pedido se guarda y se repite en _on_cargado; si RECARGA con un baile en marcha →
+    evento_js('mmd', {fase:'error', mensaje:'recarga'}) (ControlMMD para sin avisar).
+  - `decir_reaccion(texto, estado, ms)`: la reacción a la partida de Minecraft en la
+    burbuja (a máquina, 35 c/s) con su cara. False (no la dice) cerrada u oculta, en
+    pantalla grande o salvapantallas, con una alarma o con algo de la IA en la burbuja.
 """
 from __future__ import annotations
 
@@ -259,6 +296,176 @@ def _finito(v, defecto=None):
     return f if math.isfinite(f) else defecto
 
 
+# ── Cortes 7 y 8: sentarse y comida ─────────────────────────────────────────────
+MODOS_ASIENTO = ("ventana", "barra")
+VARIANTES_ASIENTO = 4                # poses de ventana (la barra tiene una)
+MS_COMER = 2500
+MS_COMER_MAX = 10_000
+# luneCabeza(0.1): la cabeza + 0.1 m (como la comida de Mate-Engine) en px de la página.
+_JS_CABEZA_COMIDA = ("(function () { try { var r = window.luneCabeza ? window.luneCabeza(0.1) : null;"
+                     " return (r && typeof r === 'object') ? JSON.stringify(r) : r; } catch (e) { return null; } })()")
+_JS_SEAT = "(function () { try { return window.luneSeatPx ? window.luneSeatPx() : null; } catch (e) { return null; } })()"
+
+
+# ── Cortes 9 y 10: reproductor de bailes (MMD/VRMA) y reacciones a Minecraft ─────
+ORDENES_MMD = ("cargar", "pausa", "parar", "volumen", "offset", "en_sitio", "bucle")
+TIPOS_MMD = ("vmd", "vrma", "audio")
+MAX_URL_MMD = 1024
+MAX_MOTION_MMD = 3
+MAX_CARA_MMD = 2
+MAX_TITULO_MMD = 80
+# /bailes/ o /bailes_cache/ + la ruta YA codificada (quote(…, safe="/")): solo letras y
+# números ASCII, «._~-», «/» y %XX. Nada de «..», «//», «\», query ni fragmento.
+_RE_URL_MMD = re.compile(r"/(?:bailes|bailes_cache)/[A-Za-z0-9._~%/-]+")
+_RE_PCT_MMD = re.compile(r"%(?![0-9A-Fa-f]{2})")
+_PCT_PROHIBIDOS = ("%2e%2e", "%2f", "%5c", "%00", "%25")
+_RE_ID_MMD = re.compile(r"[0-9a-f]{12}")
+# (clave, mínimo, máximo): números de «cargar»; fuera de rango → no se acepta.
+_RANGOS_MMD = (("offsetMs", -500.0, 500.0), ("brazoGrados", 25.0, 45.0), ("volumen", 0.0, 1.0),
+               ("bpm", 40.0, 240.0), ("fase0", 0.0, 1.0))
+_BOOLS_MMD = ("enSitio", "bucle", "autoplay")
+AVISO_SIN_ESQUELETO = "Esta mascota no tiene esqueleto: baila a su manera."
+MS_AVISO_SIN_ESQUELETO = 5000
+CPS_REACCION = 35                    # la burbuja de Minecraft se escribe a 35 c/s (Mate-Engine)
+MS_REACCION = 8000
+MS_REACCION_MIN, MS_REACCION_MAX = 1500, 20_000
+MAX_TEXTO_REACCION = 300
+
+
+def url_mmd_segura(url) -> str | None:
+    """Una URL de la biblioteca de bailes para la página, o None: empieza por /bailes/ o
+    /bailes_cache/, ASCII ya codificado con %, ≤1024, sin '..', '//', '\\', query ni hash
+    (ni esas cosas escondidas con %)."""
+    if not isinstance(url, str) or not url or len(url) > MAX_URL_MMD:
+        return None
+    if not _RE_URL_MMD.fullmatch(url) or _RE_PCT_MMD.search(url):
+        return None
+    if ".." in url or "//" in url:
+        return None
+    bajo = url.lower()
+    if any(p in bajo for p in _PCT_PROHIBIDOS):
+        return None
+    return url
+
+
+def _urls_mmd(datos: dict, clave: str, maximo: int):
+    """La lista `clave` ([url]) o los planos clave0..clave{n-1} → lista de URL válidas, o
+    None si alguna no vale o hay demasiadas."""
+    crudo = datos.get(clave)
+    if crudo is None:
+        crudo = [datos.get(f"{clave}{i}") for i in range(maximo)]
+        crudo = [u for u in crudo if u not in (None, "")]
+    elif not isinstance(crudo, (list, tuple)):
+        return None
+    if len(crudo) > maximo:
+        return None
+    urls = [url_mmd_segura(u) for u in crudo]
+    return None if any(u is None for u in urls) else urls
+
+
+def datos_mmd_seguros(datos) -> dict | None:
+    """Los datos de `mmd("cargar", …)` para la página → dict limpio o None si no valen.
+
+    id ^[0-9a-f]{12}$; tipo vmd|vrma (motion 1..3 —el .vrma, 1—, cara ≤2, audio opcional)
+    o audio (la mascota animada: audio obligatorio y sin motion/cara); URL con
+    `url_mmd_segura`; offsetMs −500..500, brazoGrados 25..45, volumen 0..1, bpm 40..240,
+    fase0 0..1 (fuera de rango → None); enSitio/bucle/autoplay bool; titulo ≤80 sin
+    controles. Las claves que no son del contrato se descartan."""
+    if not isinstance(datos, dict):
+        return None
+    id_ = datos.get("id")
+    tipo = datos.get("tipo")
+    if not isinstance(id_, str) or not _RE_ID_MMD.fullmatch(id_) or tipo not in TIPOS_MMD:
+        return None
+    motion = _urls_mmd(datos, "motion", MAX_MOTION_MMD)
+    cara = _urls_mmd(datos, "cara", MAX_CARA_MMD)
+    if motion is None or cara is None:
+        return None
+    audio = datos.get("audio")
+    if audio in (None, ""):
+        audio = None
+    else:
+        audio = url_mmd_segura(audio)
+        if audio is None:
+            return None
+    if tipo == "audio":
+        if motion or cara or audio is None:
+            return None
+    elif not motion or (tipo == "vrma" and len(motion) != 1):
+        return None
+    res = {"id": id_, "tipo": tipo, "audio": audio}
+    if tipo != "audio":
+        res["motion"], res["cara"] = motion, cara
+    for clave, lo, hi in _RANGOS_MMD:
+        v = datos.get(clave)
+        if v is None:
+            continue
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(float(v)):
+            return None
+        if not lo <= float(v) <= hi:
+            return None
+        res[clave] = v
+    for clave in _BOOLS_MMD:
+        v = datos.get(clave)
+        if v is None:
+            continue
+        if not isinstance(v, bool):
+            return None
+        res[clave] = v
+    titulo = datos.get("titulo")
+    if titulo is not None:
+        if not isinstance(titulo, str):
+            return None
+        t = "".join(ch if ch.isprintable() else " " for ch in titulo)
+        res["titulo"] = " ".join(t.split())[:MAX_TITULO_MMD]
+    return res
+
+
+def _js_mmd(orden: str, arg) -> str:
+    """La llamada a window.luneMMD con el argumento como literal JSON (ASCII)."""
+    a = "null" if arg is None else json.dumps(arg, ensure_ascii=True, sort_keys=True)
+    return f"window.luneMMD && window.luneMMD({json.dumps(orden)}, {a})"
+
+
+def _par_finito(v):
+    """{x, y} o [x, y] con números finitos → (x, y) o None."""
+    if isinstance(v, dict):
+        x, y = _finito(v.get("x")), _finito(v.get("y"))
+    elif isinstance(v, (list, tuple)) and len(v) >= 2:
+        x, y = _finito(v[0]), _finito(v[1])
+    else:
+        return None
+    return (x, y) if x is not None and y is not None else None
+
+
+def punto_de_pagina(resultado) -> dict | None:
+    """Respuesta de luneSentar/luneSeatPx ('{"asiento":{x,y},"sonda":{x,y}}', 'null', un
+    dict o basura) → {"asiento": [x, y], "sonda": [x, y]} en px de la página, o None."""
+    datos = resultado
+    if isinstance(datos, (str, bytes)):
+        try:
+            datos = json.loads(datos)
+        except ValueError:
+            return None
+    if not isinstance(datos, dict):
+        return None
+    a = _par_finito(datos.get("asiento"))
+    if a is None:
+        return None
+    s = _par_finito(datos.get("sonda")) or a
+    return {"asiento": [a[0], a[1]], "sonda": [s[0], s[1]]}
+
+
+def _llamar_cb(cb, valor):
+    """Llama al callback de un controlador sin dejar que un fallo suyo tumbe la mascota."""
+    if not callable(cb):
+        return
+    try:
+        cb(valor)
+    except Exception as e:                           # noqa: BLE001
+        _log(f"[companion] un callback de la mascota falló: {e}")
+
+
 def mapa_tema(css_json):
     """css_json de nucleo/tema.css_json ("null", '{"--cyan-500": "#…", …}', un dict
     o None) → dict saneado (solo --variables con valores de color) o None.
@@ -404,6 +611,9 @@ class CompanionFlotante(QMainWindow):
     recrear = pyqtSignal()               # "ya puedo ser VRM": quien me creó debe recrearme
     evento_js = pyqtSignal(str, dict)    # evento de la página (tipo, datos), vía luneEventos()
     menu_pedido = pyqtSignal(str, object)  # ('principal'|'secundario', QPoint global): menú radial
+    arrastre_cambio = pyqtSignal(bool)   # cortes 7/8: empieza (True) o acaba (False) el arrastre
+    antes_de_colocar = pyqtSignal()      # cortes 7/8: la va a colocar el código (su menú «Llevar a la
+                                         # esquina»): quien la tiene sentada la baja antes (montaje_vida)
     _sondeo_listo = pyqtSignal(object)   # interna: el sondeo de Ollama (hilo aparte) terminó
 
     UMBRAL_ARRASTRE = 6                  # px: menos que esto es un CLIC, no arrastre
@@ -442,6 +652,22 @@ class CompanionFlotante(QMainWindow):
         self._alarma_texto = None        # alarma a la vista (mostrar_alarma)
         self._bailando = False
         self._baile_opts = {}
+        # Cortes 7 y 8: sentarse (ControlAsiento) y comida (ControlComida).
+        self._sentada = ""               # '' | 'barra' | 'ventana'
+        self._asiento_var = 0
+        self._delegado_arrastre = None   # fn() → bool en cada MouseMove del arrastre
+        self._arrastre_senal = False     # último arrastre_cambio emitido
+        self._comida_activa = False
+        self._medio_pulsado = False      # clic central pulsado sobre ella (menú secundario al soltar)
+        # Cortes 9 y 10: reproductor de bailes (ControlMMD → mmd) y Minecraft (decir_reaccion).
+        self._mmd_activo = False         # hay un baile pedido (de «cargar» a parar/parado/error)
+        self._mmd_id = ""
+        self._mmd_en_pagina = False      # el «cargar» llegó a una página cargada (si recarga, se pierde)
+        self._mmd_pendiente = []         # [(orden, arg)] pedidos antes de que cargara la página
+        self._mmd_pausa_pedida = False   # lo último que pidió el controlador: en pausa
+        self._mmd_pausa_oculta = False   # en pausa porque la ventana está oculta (sigue al mostrarla)
+        self._bailes_publicados = False
+        self._aviso_d1_dado = False
         self._ai = ai_manager
         self._worker = None
         self._pensando = False
@@ -716,8 +942,10 @@ class CompanionFlotante(QMainWindow):
             self._aplicar_fps()                      # avatar.fps_max (o el del modo juego)
         self._reaplicar_tema()                       # la página recargada vuelve al cian
         self._reaplicar_ocio()                       # pantalla grande, alarma, baile…
+        self._reaplicar_vida()                       # sentada, comida en la mano
         self.cargar_pack_sonidos()
         self._aparecer()
+        self._reaplicar_mmd()                        # el baile pedido antes de cargar (o perdido al recargar)
 
     # ── Pack de sonidos de reacción (nucleo/packs_sonido.py → luneSonidos) ────────
     def cargar_pack_sonidos(self):
@@ -872,8 +1100,8 @@ class CompanionFlotante(QMainWindow):
 
     def _clic_simple(self):
         """Clic limpio (sin doble clic detrás): comenta la pantalla. No con una alarma
-        a la vista (ese clic es para apagarla) ni en pantalla grande."""
-        if self._alarma_texto is not None or self._grande_fase is not None:
+        a la vista (ese clic es para apagarla), en pantalla grande ni con comida en la mano."""
+        if self._alarma_texto is not None or self._grande_fase is not None or self._comida_activa:
             return
         if not self.cerrado and self.isVisible():
             self.comentar_pantalla()
@@ -944,6 +1172,13 @@ class CompanionFlotante(QMainWindow):
             _log(f"[companion] pantalla grande: {str(datos.get('fase'))[:20]}")
         elif tipo == "baile":
             _log(f"[companion] baile {'on' if datos.get('on') else 'off'} ({str(datos.get('estilo'))[:20]})")
+        elif tipo == "mmd":                          # cortes 9 y 10: fin del baile en la página
+            fase = str(datos.get("fase") or "")
+            id_ = datos.get("id")
+            if fase in ("parado", "error") and self._mmd_activo and id_ in (None, "", self._mmd_id):
+                if fase == "error":
+                    _log(f"[companion] baile: {str(datos.get('mensaje') or '')[:120]}")
+                self._mmd_reset()
 
     # ── Frases de la mascota (lune_core/frases_mascota.py) ───────────────────────
     def _burbuja_ocupada(self) -> bool:
@@ -1158,6 +1393,10 @@ class CompanionFlotante(QMainWindow):
             return "está en pantalla grande"
         if self._bailando and not forzado:
             return "está bailando"
+        if self._mmd_activo:                         # un baile de la biblioteca: ni pidiéndoselo
+            return "está bailando"
+        if self._comida_activa:
+            return "está comiendo"
         return self._regla.motivo_no(
             self._estado_regla(forzado),
             arrastrando=bool(self._arrastre and self._arrastre.get("movido")),
@@ -1170,8 +1409,8 @@ class CompanionFlotante(QMainWindow):
         self._regla = ReglaSueno.desde_config(self.config)
         if self.cerrado or self._durmiendo or not self._pagina_lista or not self._regla.activa:
             return
-        if self._grande_fase is not None:
-            return                                   # en pantalla grande no se duerme sola
+        if self._grande_fase is not None or self._comida_activa or self._mmd_activo:
+            return                                   # en pantalla grande, con comida o con un baile no se duerme sola
         self._timer_sueno.start(int(ms) if ms is not None else int(self._regla.umbral_s * 1000))
 
     def _sueno_vencido(self):
@@ -1288,7 +1527,12 @@ class CompanionFlotante(QMainWindow):
 
     def _on_sondeo(self, sondeo):
         """Respuesta del sondeo (hilo de Qt): elige proveedor y lanza el comentario."""
-        if self.cerrado or not self._pensando:
+        if self.cerrado:
+            if self._pensando:                       # cerrada mientras sondeaba: deja de pensar
+                self._pensando = False
+                self._estado_bus(pensando=False)
+            return
+        if not self._pensando:
             return
         proveedor, con_imagen = self._elegir_proveedor(sondeo, self._automatico)
         if con_imagen and not self._b64:
@@ -1572,6 +1816,10 @@ class CompanionFlotante(QMainWindow):
             # Menú radial: se abre al SOLTAR (así el soltar no cae en el propio menú).
             self._der_pulsado = not self._click_through and not self._menu_abierto
             return
+        if ev.button() == Qt.MouseButton.MiddleButton:
+            # Menú secundario (comida…): también al soltar.
+            self._medio_pulsado = not self._click_through and not self._menu_abierto
+            return
         if ev.button() != Qt.MouseButton.LeftButton or self._click_through or self._menu_abierto:
             return
         if self._grande_fase is not None:
@@ -1604,15 +1852,19 @@ class CompanionFlotante(QMainWindow):
             a["movido"] = True
             self._estado_bus(arrastrando=True)       # el arrastre empieza al pasar el umbral, no al pulsar
             self._js("window.luneDrag && window.luneDrag(true, 0, 0)")
+            self._emitir_arrastre(True)              # cortes 7/8: antes del delegado de este mismo movimiento
         if a["movido"]:
-            self.move(a["ventana"] + delta)
+            if not self._mover_por_delegado():       # ControlAsiento ya movió la ventana (o no hay delegado)
+                self.move(a["ventana"] + delta)
             ahora = time.monotonic()
             dt = max(1e-3, ahora - a["t"])
             v = p - a["ultimo"]
             a["t"], a["ultimo"] = ahora, p
             if ahora - a["envio"] >= 1 / 60:          # px/ms, para la página
                 a["envio"] = ahora
-                self._js(f"window.luneDrag && window.luneDrag(true, {v.x() / dt / 1000:.3f}, {v.y() / dt / 1000:.3f})")
+                # Sentada se desliza por el borde: sin balanceo (velocidad 0).
+                vx, vy = (0.0, 0.0) if self._sentada else (v.x() / dt / 1000, v.y() / dt / 1000)
+                self._js(f"window.luneDrag && window.luneDrag(true, {vx:.3f}, {vy:.3f})")
 
     def _raton_release(self, ev):
         if ev.button() == Qt.MouseButton.RightButton:
@@ -1620,6 +1872,11 @@ class CompanionFlotante(QMainWindow):
             if pulsado:
                 self._pedir_menu(ev.globalPosition().toPoint())
             return                                   # no toca un arrastre izquierdo en curso
+        if ev.button() == Qt.MouseButton.MiddleButton:
+            pulsado, self._medio_pulsado = self._medio_pulsado, False
+            if pulsado:
+                self._pedir_menu(ev.globalPosition().toPoint(), "secundario")
+            return
         if self._hold and ev.button() == Qt.MouseButton.LeftButton:
             self._soltar_hold()
             return
@@ -1631,6 +1888,9 @@ class CompanionFlotante(QMainWindow):
             return
         if a["movido"]:
             self._js("window.luneDrag && window.luneDrag(false, 0, 0)")
+            # Cortes 7/8: ANTES de devolverla a la pantalla y de guardar (ControlAsiento
+            # decide aquí si queda sentada; sentada no se devuelve a la pantalla).
+            self._emitir_arrastre(False)
             self._asegurar_en_pantalla()
             self._guardar_posicion()
         else:
@@ -1645,19 +1905,24 @@ class CompanionFlotante(QMainWindow):
             return
         if self._grande_fase is not None:
             return                                   # en pantalla grande no se abre el chat
-        if self._arrastre:
-            self._arrastre = None
-            self._estado_bus(arrastrando=False)
+        self._cortar_arrastre()
+        if self._comida_activa:
+            self._clic.cancelar()                    # con comida en la mano, ni chat ni comentario
+            return
         self._clic.doble_clic()
 
     def eventFilter(self, obj, ev):
         t = ev.type()
         if t == QEvent.Type.MouseButtonPress:
             self._raton_press(ev)
+            if ev.button() == Qt.MouseButton.MiddleButton:
+                return True                          # el central es del menú: nada de autoscroll
         elif t == QEvent.Type.MouseMove:
             self._raton_move(ev)
         elif t == QEvent.Type.MouseButtonRelease:
             self._raton_release(ev)
+            if ev.button() == Qt.MouseButton.MiddleButton:
+                return True
         elif t == QEvent.Type.MouseButtonDblClick:
             self._raton_doble(ev)
         elif t == QEvent.Type.Wheel:
@@ -1678,9 +1943,10 @@ class CompanionFlotante(QMainWindow):
         self._raton_doble(ev); ev.accept()
 
     # ── Menú radial (corte 4: ui/menu_radial.ControlMenuRadial) ──────────────────
-    def _pedir_menu(self, punto: QPoint):
-        """Clic derecho soltado sobre ella → menu_pedido. Arrastrándola, en modo
-        fantasma o con el menú ya abierto, no."""
+    def _pedir_menu(self, punto: QPoint, tipo: str = "principal"):
+        """Clic derecho (menú principal) o central (secundario: la comida) soltado
+        sobre ella → menu_pedido. Arrastrándola, en modo fantasma o con el menú ya
+        abierto, no."""
         if self.cerrado or self._click_through or self._menu_abierto:
             return
         if self._arrastre and self._arrastre.get("movido"):
@@ -1688,7 +1954,7 @@ class CompanionFlotante(QMainWindow):
         if not self.frameGeometry().contains(punto):
             return                                   # soltó fuera de ella: se arrepintió
         self._clic.cancelar()                        # un clic izquierdo pendiente ya no comenta
-        self.menu_pedido.emit("principal", QPoint(punto))
+        self.menu_pedido.emit(tipo, QPoint(punto))
 
     def set_menu_abierto(self, on: bool):
         """El menú radial se abre (True) o se cierra sobre ella. Abierto: sin
@@ -1700,11 +1966,7 @@ class CompanionFlotante(QMainWindow):
         self._menu_abierto = on
         if on:
             self._clic.cancelar()
-            a, self._arrastre = self._arrastre, None
-            if a:
-                self._estado_bus(arrastrando=False)
-                if a.get("movido"):
-                    self._js("window.luneDrag && window.luneDrag(false, 0, 0)")
+            self._cortar_arrastre()
             self._timer_sueno.stop()
             if not self._click_through:
                 self._sobre_modelo = True
@@ -1872,11 +2134,7 @@ class CompanionFlotante(QMainWindow):
     def _entrar_en_grande(self):
         self._geom_normal = QRect(self.geometry())
         self._clic.cancelar()
-        a, self._arrastre = self._arrastre, None
-        if a:
-            self._estado_bus(arrastrando=False)
-            if a.get("movido"):
-                self._js("window.luneDrag && window.luneDrag(false, 0, 0)")
+        self._cortar_arrastre()
         if self._timer_escala.isActive():
             self._timer_escala.stop()
             self._escala_obj = self._escala
@@ -2022,6 +2280,351 @@ class CompanionFlotante(QMainWindow):
         if self._bailando:
             self._js(f"window.luneBailar && window.luneBailar(true, {_js_opciones(self._baile_opts)})")
 
+    # ── Sentarse y comida (cortes 7 y 8: ui/asiento_qt y ui/comida_qt) ───────────
+    def hwnd(self) -> int:
+        """HWND de la ventana (0 si está cerrada)."""
+        if self.cerrado:
+            return 0
+        try:
+            return int(self.winId())
+        except Exception:                            # noqa: BLE001
+            return 0
+
+    @property
+    def sentada(self) -> str:
+        """'' | 'barra' | 'ventana' (lo último pedido con `asiento`)."""
+        return self._sentada
+
+    def _emitir_arrastre(self, on: bool):
+        """arrastre_cambio(on) solo en los cambios (un arrastre cortado no se cierra dos veces)."""
+        on = bool(on)
+        if on == self._arrastre_senal:
+            return
+        self._arrastre_senal = on
+        try:
+            self.arrastre_cambio.emit(on)
+        except Exception as e:                       # noqa: BLE001 — un receptor roto no corta el arrastre
+            _log(f"[companion] arrastre_cambio({on}) falló en un receptor: {e}")
+
+    def _cortar_arrastre(self):
+        """El arrastre izquierdo se corta sin soltar (menú, pantalla grande, doble clic,
+        ocultarla): la página y ControlAsiento se enteran de que acabó."""
+        a, self._arrastre = self._arrastre, None
+        if a:
+            self._estado_bus(arrastrando=False)
+            if a.get("movido"):
+                self._js("window.luneDrag && window.luneDrag(false, 0, 0)")
+                self._emitir_arrastre(False)
+        return a
+
+    def set_arrastre_delegado(self, fn):
+        """fn() → bool en cada MouseMove del arrastre (ControlAsiento). True = ya movió
+        la ventana (px físicos) y aquí no se hace move; None lo quita."""
+        self._delegado_arrastre = fn if callable(fn) else None
+
+    def _mover_por_delegado(self) -> bool:
+        fn = self._delegado_arrastre
+        if fn is None:
+            return False
+        try:
+            return bool(fn())
+        except Exception as e:                       # noqa: BLE001 — sin delegado, el arrastre de siempre
+            _log(f"[companion] el delegado del arrastre falló: {e}")
+            return False
+
+    def punto_asiento(self, cb):
+        """cb({"asiento": [x, y], "sonda": [x, y]} | None): px lógicos relativos a la
+        ventana (luneSeatPx: VRM con la pose que tenga; animada, el centro de abajo del
+        #stage). Asíncrono."""
+        if not callable(cb):
+            return
+        if self.cerrado or not self._pagina_lista or self.web is None:
+            _llamar_cb(cb, None)
+            return
+        self._js(_JS_SEAT, lambda r: _llamar_cb(cb, None if self.cerrado else punto_de_pagina(r)))
+
+    def asiento(self, on: bool, modo: str = "", variante: int = 0, cb=None):
+        """Sentada (ControlAsiento): luneSentar(modo, variante) → cb(punto con la pose
+        sentada completa y el encuadre de cuerpo entero | None). off → luneSentar(null).
+        Frases «sentarse» y «bajar» al cambiar. Se puede llamar varias veces seguidas."""
+        if self.cerrado:
+            _llamar_cb(cb, None)
+            return
+        if not on:
+            antes, self._sentada = self._sentada, ""
+            self._asiento_var = 0
+            if antes:
+                self._js("window.luneSentar && window.luneSentar(null)")
+                self._frase("bajar")
+            _llamar_cb(cb, None)
+            return
+        m = str(modo or "").strip().lower()
+        if m not in MODOS_ASIENTO:
+            m = "ventana"
+        try:
+            v = int(variante)
+        except (TypeError, ValueError):
+            v = 0
+        v = 0 if m == "barra" else max(0, min(VARIANTES_ASIENTO - 1, v))
+        antes = self._sentada
+        self._sentada, self._asiento_var = m, v
+        codigo = f"window.luneSentar ? window.luneSentar({json.dumps(m)}, {v}) : null"
+        if callable(cb):
+            if self._pagina_lista and self.web is not None:
+                self._js(codigo, lambda r: _llamar_cb(cb, None if self.cerrado else punto_de_pagina(r)))
+            else:
+                self._js(codigo)                     # se repite al cargar (_reaplicar_vida)
+                _llamar_cb(cb, None)
+        else:
+            self._js(codigo)
+        if not antes:
+            self._frase("sentarse")
+
+    def restaurar_orden_z(self):
+        """Vuelve el orden Z de siempre (avatar.siempre_encima o el plan del modo juego)."""
+        if self.cerrado or not self.isVisible():
+            return
+        self._aplicar_encima(forzar=True)
+
+    def cabeza(self, cb):
+        """cb((cx, cy, r) | None): la cabeza + 0.1 m (luneCabeza(0.1)) en px lógicos
+        GLOBALES, el mismo espacio que QCursor.pos() (ControlComida)."""
+        if not callable(cb):
+            return
+        if self.cerrado or not self._pagina_lista or self.web is None:
+            _llamar_cb(cb, None)
+            return
+        self._js(_JS_CABEZA_COMIDA, lambda r: _llamar_cb(cb, self._cabeza_global(r)))
+
+    def _cabeza_global(self, respuesta):
+        if self.cerrado:
+            return None
+        datos = respuesta
+        if isinstance(datos, (str, bytes)):
+            try:
+                datos = json.loads(datos)
+            except ValueError:
+                return None
+        if not isinstance(datos, dict):
+            return None
+        x, y, r = _finito(datos.get("x")), _finito(datos.get("y")), _finito(datos.get("r"))
+        if x is None or y is None or r is None or r <= 0:
+            return None
+        try:
+            o = self.web.mapToGlobal(QPoint(0, 0))
+        except Exception:                            # noqa: BLE001
+            return None
+        return (o.x() + x, o.y() + y, r)
+
+    def comer(self, tipo: str, ms: int = MS_COMER):
+        """Le pasaron la comida por la cabeza (ControlComida): luneComer(tipo, ms) (VRM:
+        boca, cabeceos y happy; animada: clip happy y un rebote), frase «comer» y la
+        despierta."""
+        if self.cerrado:
+            return
+        t = "beber" if str(tipo or "").strip().lower() == "beber" else "comer"
+        n = _finito(ms, MS_COMER)
+        n = int(max(100.0, min(float(MS_COMER_MAX), n)))
+        self._despertar(usuario=True)
+        self._js(f"window.luneComer && window.luneComer({json.dumps(t)}, {n})")
+        self._frase("comer")
+
+    def set_comida_activa(self, on: bool):
+        """Comida en el cursor (ControlComida): luneComidaActiva (sin caricia) y, mientras
+        dure, el clic no comenta, el doble clic no abre el chat y no se duerme sola."""
+        if self.cerrado:
+            return
+        on = bool(on)
+        self._comida_activa = on
+        self._js(f"window.luneComidaActiva && window.luneComidaActiva({'true' if on else 'false'})")
+        if on:
+            self._clic.cancelar()
+            self._timer_sueno.stop()
+        else:
+            self._rearmar_sueno()
+
+    @property
+    def comida_activa(self) -> bool:
+        return self._comida_activa
+
+    def _reaplicar_vida(self):
+        """La página recargó: vuelve a sentarla y a decirle que hay comida en la mano."""
+        if self._sentada:
+            self._js(f"window.luneSentar && window.luneSentar({json.dumps(self._sentada)}, {int(self._asiento_var)})")
+        if self._comida_activa:
+            self._js("window.luneComidaActiva && window.luneComidaActiva(true)")
+
+    # ── Reproductor de bailes (corte 9: ui/mmd_qt.ControlMMD) ────────────────────
+    @property
+    def mmd_activo(self) -> bool:
+        """¿Hay un baile de la biblioteca pedido a la página (de «cargar» a parar/fin)?"""
+        return self._mmd_activo
+
+    def mmd(self, orden: str, datos: dict | None = None) -> bool:
+        """Orden del reproductor de bailes → window.luneMMD(orden, datos) (ver el
+        docstring del módulo). False si no se acepta (cerrada, orden o datos que no
+        valen, o un «cargar» que no es de esta mascota: la VRM baila vmd/vrma y la
+        animada «audio»)."""
+        if self.cerrado or self.web is None:
+            return False
+        orden = str(orden or "").strip().lower()
+        if orden not in ORDENES_MMD:
+            return False
+        d = datos if isinstance(datos, dict) else {}
+        if orden == "cargar":
+            arg = datos_mmd_seguros(datos)
+            if arg is None:
+                _log("[companion] baile rechazado: datos que no valen")
+                return False
+            if (arg["tipo"] == "audio") != (self.render != "vrm"):
+                _log(f"[companion] baile rechazado: un «{arg['tipo']}» no es para la mascota {self.render}")
+                return False
+            self._publicar_bailes()
+            self._mmd_activo, self._mmd_id = True, arg["id"]
+            self._mmd_en_pagina = False
+            self._mmd_pausa_pedida = False
+            self._mmd_pausa_oculta = False
+            self._mmd_pendiente = []
+            self._timer_sueno.stop()                 # bailando no se duerme sola
+            self._timer_liberar.stop()
+            self._mandar_mmd("cargar", arg)
+            if not self.isVisible():                 # oculta: queda en pausa hasta que se la vea
+                self._mmd_pausa_oculta = True
+                self._mandar_mmd("pausa", {"on": True})
+            if arg["tipo"] == "audio":
+                self._aviso_sin_esqueleto()
+            return True
+        if orden == "parar":
+            self._mmd_reset()
+            self._mandar_mmd("parar", None)
+            return True
+        if orden == "pausa":
+            on = d.get("on") if isinstance(datos, dict) else datos
+            if on is not None and not isinstance(on, bool):
+                return False
+            if on is None:
+                on = not self._mmd_pausa_pedida
+            self._mmd_pausa_pedida = on
+            if not on and not self.isVisible() and self._mmd_activo:
+                self._mmd_pausa_oculta = True        # sigue al volver a verla
+                return True
+            if on:
+                self._mmd_pausa_oculta = False       # ya no es por estar oculta
+            self._mandar_mmd("pausa", {"on": on})
+            return True
+        clave, lo, hi = {"volumen": ("volumen", 0.0, 1.0), "offset": ("offsetMs", -500.0, 500.0),
+                         "en_sitio": ("enSitio", None, None), "bucle": ("bucle", None, None)}[orden]
+        v = d.get(clave) if isinstance(datos, dict) else datos
+        if lo is None:
+            if not isinstance(v, bool):
+                return False
+        elif isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(float(v)) \
+                or not lo <= float(v) <= hi:
+            return False
+        self._mandar_mmd(orden, {clave: v})
+        return True
+
+    def _mandar_mmd(self, orden: str, arg):
+        """A la página si ya cargó; si no, se guarda (el último «cargar» y sus banderas) y
+        se repite en _on_cargado."""
+        if not self._pagina_lista:
+            if orden in ("cargar", "parar"):
+                self._mmd_pendiente = [] if orden == "parar" else [(orden, arg)]
+            else:
+                self._mmd_pendiente = [(o, a) for o, a in self._mmd_pendiente if o != orden] + [(orden, arg)]
+            return
+        if orden == "cargar":
+            self._mmd_en_pagina = True
+        self._js(_js_mmd(orden, arg))
+
+    def _reaplicar_mmd(self):
+        """Página cargada: lo pedido antes se repite; si recargó con un baile en marcha, el
+        baile se perdió → evento 'mmd' error «recarga» (ControlMMD para sin avisar)."""
+        if self._mmd_activo and self._mmd_en_pagina:
+            id_ = self._mmd_id
+            self._mmd_reset()
+            self.evento_js.emit("mmd", {"fase": "error", "id": id_, "mensaje": "recarga"})
+            return
+        pendientes, self._mmd_pendiente = self._mmd_pendiente, []
+        for orden, arg in pendientes:
+            self._mandar_mmd(orden, arg)
+
+    def _mmd_reset(self):
+        """El baile acabó (parado, error, parar o recarga): vuelve el sueño y, oculta y
+        VRM, el temporizador que libera la página."""
+        estaba = self._mmd_activo
+        self._mmd_activo = False
+        self._mmd_id = ""
+        self._mmd_en_pagina = False
+        self._mmd_pendiente = []
+        self._mmd_pausa_pedida = False
+        self._mmd_pausa_oculta = False
+        if estaba and not self.cerrado:
+            self._rearmar_sueno()
+            if self.render == "vrm" and not self.isVisible() and not self._liberada:
+                self._timer_liberar.start(LIBERAR_OCULTA_MS)
+
+    def _publicar_bailes(self):
+        """bailes/ y cache/bailes/ en el servidor local de la mascota (una vez). Solo se
+        sirve lo que hay DENTRO (ui/servidor_web: nada de salir con '..' ni de enlaces)."""
+        if self._bailes_publicados or self._servidor is None:
+            return
+        try:
+            from nucleo import bailes as nbl
+            carpetas = ((nbl.PREFIJO_WEB, nbl.CARPETA), (nbl.PREFIJO_CACHE, nbl.CACHE))
+        except Exception:                            # noqa: BLE001 — sin la biblioteca, sus rutas de siempre
+            carpetas = (("/bailes/", RAIZ / "bailes"), ("/bailes_cache/", RAIZ / "cache" / "bailes"))
+        try:
+            for prefijo, carpeta in carpetas:
+                self._servidor.publicar_carpeta(prefijo, carpeta)
+            self._bailes_publicados = True
+        except Exception as e:                       # noqa: BLE001 — la página dará error al pedirlos
+            _log(f"[companion] no pude publicar la carpeta de bailes: {e}")
+
+    def _aviso_sin_esqueleto(self):
+        """D1: la animada no tiene esqueleto; lo dice una vez (si la burbuja está libre)."""
+        if self._aviso_d1_dado or not self._pagina_lista or not self.isVisible() or self._burbuja_ocupada():
+            return
+        self._aviso_d1_dado = True
+        self._js(f"window.comentar && window.comentar({_js_str(AVISO_SIN_ESQUELETO)}, {MS_AVISO_SIN_ESQUELETO})")
+
+    def _mmd_al_ocultarse(self):
+        """Oculta con un baile sonando: en pausa hasta que se la vuelva a ver (la canción
+        suena donde se ve y, oculta, la página no dibuja)."""
+        if self._mmd_activo and not self._mmd_pausa_pedida and not self._mmd_pausa_oculta:
+            self._mmd_pausa_oculta = True
+            self._mandar_mmd("pausa", {"on": True})
+
+    def _mmd_al_mostrarse(self):
+        if not self._mmd_pausa_oculta:
+            return
+        self._mmd_pausa_oculta = False
+        if self._mmd_activo and not self._mmd_pausa_pedida:
+            self._mandar_mmd("pausa", {"on": False})
+
+    # ── Minecraft (corte 10: ui/minecraft_qt.ControlMinecraft) ───────────────────
+    def decir_reaccion(self, texto: str, estado: str = "happy", ms: int = MS_REACCION) -> bool:
+        """Una reacción a la partida en la burbuja (a máquina, 35 c/s) con su cara durante
+        `ms`. False si no la dice: cerrada, oculta o sin página; en pantalla grande o
+        salvapantallas; con una alarma, el menú abierto, arrastrándola, o con algo de la
+        IA en la burbuja (pensando, respondiendo o aún a la vista): esa burbuja manda."""
+        t = " ".join(str(texto or "").split())[:MAX_TEXTO_REACCION]
+        if not t or self.cerrado or not self._pagina_lista or not self.isVisible():
+            return False
+        if self._grande_fase is not None or self._salvapantallas or self._alarma_texto is not None:
+            return False
+        if self._menu_abierto or (self._arrastre and self._arrastre.get("movido")):
+            return False
+        if self._burbuja_ocupada():
+            return False
+        n = _finito(ms, MS_REACCION)
+        n = int(max(float(MS_REACCION_MIN), min(float(MS_REACCION_MAX), n)))
+        self.set_emocion(str(estado or "neutral"), n)
+        s = _js_str(t)
+        self._js(f"window.comentarTipeado ? window.comentarTipeado({s}, {CPS_REACCION}, {n})"
+                 f" : (window.comentar && window.comentar({s}, {n}))")
+        return True
+
     # ── Orden Z, FPS y tema (corte 4) ────────────────────────────────────────────
     @property
     def siempre_encima(self) -> bool:
@@ -2037,8 +2640,12 @@ class CompanionFlotante(QMainWindow):
         if self.isVisible() and not self.cerrado:
             self._aplicar_encima()
 
-    def _aplicar_encima(self):
-        """HWND_TOPMOST / NOTOPMOST (o al fondo en modo juego) sobre ESTA ventana."""
+    def _aplicar_encima(self, forzar: bool = False):
+        """HWND_TOPMOST / NOTOPMOST (o al fondo en modo juego) sobre ESTA ventana.
+        Sentada, el orden Z lo lleva ControlAsiento (justo encima de su ventana o sobre
+        la barra): aquí no se toca salvo `forzar` (restaurar_orden_z)."""
+        if self._sentada and not forzar:
+            return
         if not _ventana_nativa():
             return
         try:
@@ -2105,9 +2712,11 @@ class CompanionFlotante(QMainWindow):
         self._js(_js_tema(self._tema))
 
     def llevar_a_esquina(self):
-        """A la esquina inferior derecha de su monitor (y se guarda la posición)."""
+        """A la esquina inferior derecha de su monitor (y se guarda la posición). Sentada,
+        `antes_de_colocar` deja que la baje quien la sentó (si no, la volvería a clavar)."""
         if self.cerrado or self._grande_fase is not None:
             return
+        self.antes_de_colocar.emit()
         self._esquina_inferior_derecha()
         self._guardar_posicion()
 
@@ -2157,7 +2766,10 @@ class CompanionFlotante(QMainWindow):
             self.move(g.right() - self.width() - 24, g.bottom() - self.height() - 24)
 
     def _asegurar_en_pantalla(self):
-        """Que al soltarla o crecer no quede fuera del monitor (Mate-Engine la devuelve)."""
+        """Que al soltarla o crecer no quede fuera del monitor (Mate-Engine la devuelve).
+        Sentada no: la ventana la clava ControlAsiento en el borde."""
+        if self._sentada:
+            return
         p = self.screen() or QApplication.primaryScreen()
         if not p:
             return
@@ -2260,6 +2872,7 @@ class CompanionFlotante(QMainWindow):
             self._eventos_en_vuelo = 0.0
             self._timer_eventos.start()
             self._aparecer()
+            self._mmd_al_mostrarse()                 # el baile que se pausó al ocultarla sigue
 
     def hideEvent(self, ev):
         super().hideEvent(ev)
@@ -2267,6 +2880,8 @@ class CompanionFlotante(QMainWindow):
         self._clic.cancelar()
         self._chat.cerrar()
         self._soltar_hold()
+        self._cortar_arrastre()                      # oculta a mitad de un arrastre: se acabó
+        self._der_pulsado = self._medio_pulsado = False
         self._aparecer_pendiente = True              # al volver a mostrarse, «aparecer»
         # Oculta no recibe caras del chat: una actividad a medias (escribiendo una
         # respuesta…) se quedaría puesta al volver y no la dejaría dormirse nunca.
@@ -2281,8 +2896,10 @@ class CompanionFlotante(QMainWindow):
         self._burbuja_ia = False
         self.visibilidad.emit(False)
         self._estado_bus(visible=False)
+        if not self.cerrado:
+            self._mmd_al_ocultarse()                 # oculta no baila: en pausa hasta que vuelva
         self._js("window.luneSetFPS && window.luneSetFPS(0)")
-        if self.render == "vrm" and not self.cerrado:
+        if self.render == "vrm" and not self.cerrado and not self._mmd_activo:
             self._timer_liberar.start(LIBERAR_OCULTA_MS)
 
     # ── VRM oculta un rato: se libera su WebGL (la barra lateral ya dibuja a Lune) ──
@@ -2292,6 +2909,8 @@ class CompanionFlotante(QMainWindow):
         se recarga sola al volver a mostrarla. Si Qt no deja, sigue como estaba."""
         if self.cerrado or self.isVisible() or self._liberada or self.render != "vrm":
             return
+        if self._mmd_activo:
+            return                                   # con un baile (en pausa) se conserva; al acabar se rearma
         try:
             pagina = self.web.page()
             pagina.setLifecycleState(pagina.LifecycleState.Discarded)
@@ -2324,9 +2943,16 @@ class CompanionFlotante(QMainWindow):
         self._timer_eventos.stop(); self._timer_sueno_pedido.stop(); self._timer_liberar.stop()
         self._timer_revertir.stop(); self._timer_ancla.stop()
         self._ancla_cb = None
+        self._cortar_arrastre()
+        self._delegado_arrastre = None
+        self._mmd_activo = False                     # la página se va con el baile (ControlMMD lo ve por set_mascota)
+        self._mmd_pendiente = []
         self._clic.cancelar()
         self._chat.destruir()
-        self._estado_bus(visible=False, arrastrando=False, hablando=False)
+        # Un «Comentar pantalla» a medias se va con ella: si no, `pensando` se quedaba
+        # pegado en el bus (bot de Minecraft en pausa, Discord «Pensando…», sin sueño).
+        self._pensando = False
+        self._estado_bus(visible=False, arrastrando=False, hablando=False, pensando=False)
         self.quitar_bandeja()
         if self._servidor is not None:
             self._servidor.detener()

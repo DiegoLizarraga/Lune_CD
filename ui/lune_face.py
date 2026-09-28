@@ -6,6 +6,9 @@ Maneja imágenes/videos de expresión y los packs intercambiables
 La mascota de sprites (avatar_overlay.py) pinta el sprite girado/respirando con
 `set_pixmap_compuesto(pm)` sin cambiar de estado, y duerme con el estado
 `sleeping` (lune_sleeping.png si el pack lo trae; si no, la cara más cercana).
+Sentada (corte 7) usa `sitting` (lune_sitting.png) como cara de reposo SOLO si el pack
+la trae (`tiene_cara`): `set_reposo('sitting')` hace que las vueltas a normal caigan
+ahí; sin archivo, la de siempre.
 """
 from pathlib import Path
 
@@ -20,7 +23,7 @@ STATE_LABELS = {
     "normal": "EN LÍNEA", "happy": "OK", "reading": "LEYENDO",
     "thinking": "PENSANDO", "typing": "ESCRIBIENDO",
     "sad": "EN PAUSA", "confused": "???", "error": "ERROR",
-    "sleeping": "DURMIENDO",
+    "sleeping": "DURMIENDO", "sitting": "SENTADA",
 }
 
 try:
@@ -42,6 +45,7 @@ FACE_FILES = {
     "confused":  ("lune_confused.png",  "image"),
     "error":     ("lune_error.png",     "image"),
     "sleeping":  ("lune_sleeping.png",  "image"),
+    "sitting":   ("lune_sitting.png",   "image"),     # opcional (corte 7): sentada en un borde
 }
 
 FACE_FALLBACK_IMAGE = {
@@ -53,6 +57,7 @@ FACE_FALLBACK_IMAGE = {
 # Dormida: «EN PAUSA» (sad) es la de ojos bajos; la mascota además la oscurece.
 FACE_FALLBACK_STATE = {
     "sleeping": "sad",
+    "sitting": "normal",
 }
 
 # ── Avatar packs (base para "modelos" intercambiables estilo Mate-Engine) ───────
@@ -122,6 +127,16 @@ def detect_emotion(text: str) -> str:
     return "normal"
 
 
+def tiene_cara(state: str) -> bool:
+    """¿El estado tiene archivo PROPIO (en el pack activo o en lune_face/), sin caer
+    en la cara más cercana? (p. ej. `sitting` solo si existe lune_sitting.png)."""
+    entry = FACE_FILES.get(state)
+    if entry is None:
+        return False
+    filename = entry[0]
+    return _pack_path(filename) is not None or (FACE_DIR / filename).exists()
+
+
 def get_face_info(state: str) -> tuple:
     entry = FACE_FILES.get(state, FACE_FILES["normal"])
     filename, kind = entry
@@ -157,6 +172,7 @@ class LuneFaceWidget(QFrame):
             f"border:2px solid {COLORS['cyan_dark']}; border-radius:3px; }}"
         )
         self._current_state = "normal"
+        self._reposo = "normal"          # a dónde vuelve sola la cara (sentada: `sitting`)
 
         layout = QVBoxLayout(self); layout.setContentsMargins(0, 0, 0, 0); layout.setSpacing(0)
 
@@ -198,7 +214,12 @@ class LuneFaceWidget(QFrame):
         self._revert_timer.timeout.connect(self._volver_a_normal); self._load_face("normal")
 
     def _volver_a_normal(self):
-        self.set_state("normal")
+        self.set_state(self._reposo)
+
+    def set_reposo(self, state: str):
+        """La cara de reposo (a la que vuelven las caras con tiempo): `normal` o, sentada
+        y si el pack la trae, `sitting`."""
+        self._reposo = str(state or "normal")
 
     def _on_media_status(self, status):
         if self._player and status == QMediaPlayer.MediaStatus.EndOfMedia:
@@ -220,7 +241,7 @@ class LuneFaceWidget(QFrame):
                 scaled = pixmap.scaled(190, 250, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
                 self._pixmap_actual = scaled
                 self.image_label.setPixmap(scaled); self.image_label.show(); self._fallback_label.hide(); return
-        fallback_marks = { "normal": "月", "happy": "月", "thinking": "…", "typing": "…", "reading": "夜", "sad": "夜", "confused": "?", "error": "✕", "sleeping": "z" }
+        fallback_marks = { "normal": "月", "happy": "月", "thinking": "…", "typing": "…", "reading": "夜", "sad": "夜", "confused": "?", "error": "✕", "sleeping": "z", "sitting": "月" }
         self._fallback_label.setText(fallback_marks.get(state, "月")); self._fallback_label.show(); self.image_label.hide()
 
     def set_pixmap_compuesto(self, pm):

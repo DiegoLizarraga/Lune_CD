@@ -4,8 +4,9 @@ marcha, como el cambio de interfaz en caliente: `servicios.desmontar()`,
 `escritorio.cerrar()`, la mascota fuera y el dueño (la «ventana vieja») borrado con
 deleteLater, en plena faena:
 
-  · «Liberar memoria» en su hilo (recorte lento), el radial esperando el ancla de la
-    mascota, los atajos capturando una tecla y una vista previa del tema;
+  · «Liberar memoria» en su hilo (el recorte sigue hasta después del cambio y avisa a un
+    objeto que ya se fue), el radial esperando el ancla de la mascota, los atajos
+    capturando una tecla y una vista previa del tema;
   · escenario «ocio»: una alarma sonando que abre la pantalla grande (VentanaReloj);
   · escenario «baile»: baile a mano con el detector de música de verdad en su hilo
     (sesión de Spotify simulada que manda el pulso) y el modo juego forzado encima.
@@ -56,14 +57,15 @@ def _comprobar(r, *esperado):
 
 def test_desmontaje_real_con_alarma_y_pantalla_grande():
     r = _correr("ocio")
-    _comprobar(r, "alarma sonando: True", "pantalla grande: True", "hilo de música vivo: False",
-               "liberar memoria terminó: True")
+    _comprobar(r, "alarma sonando: True", "pantalla grande: True", "con el recorte en marcha (True)",
+               "hilo de música vivo: False", "liberar memoria terminó: True")
 
 
 def test_desmontaje_real_con_baile_y_modo_juego_forzado():
     r = _correr("baile")
     _comprobar(r, "baile a mano: True", "detector midiendo: True", "modo juego: True",
-               "hilo de música vivo: False", "liberar memoria terminó: True")
+               "con el recorte en marcha (True)", "hilo de música vivo: False",
+               "liberar memoria terminó: True")
 
 
 # ═══ El escenario (proceso hijo) ═══════════════════════════════════════════════
@@ -114,6 +116,7 @@ def _escenario(esc: str) -> int:                                    # pragma: no
     cfg.set("juego", "activo", False)          # el detector no lee la pantalla: se fuerza a mano
 
     t0 = time.monotonic()
+    TOPE_S = 5.0
 
     def log(m):
         print(f"[{time.monotonic() - t0:5.2f}] {m}", flush=True)
@@ -211,10 +214,11 @@ def _escenario(esc: str) -> int:                                    # pragma: no
         def set_en_barra(self, on): pass
         def ventana_visible(self): return True
 
-    liberado = threading.Event()
+    recortando, soltar_recorte, liberado = threading.Event(), threading.Event(), threading.Event()
 
-    def recortar_lento():                         # EmptyWorkingSet
-        time.sleep(0.5)
+    def recortar_lento():                         # EmptyWorkingSet: sigue en su hilo hasta después del cambio
+        recortando.set()
+        soltar_recorte.wait(TOPE_S)
         liberado.set()
         return (100.0, 80.0)
 
@@ -257,7 +261,8 @@ def _escenario(esc: str) -> int:                                    # pragma: no
     fab = {"gestor_atajos": GestorAtajosFalso(), "recortar": recortar_lento, "autoinicio": None,
            "sonar": lambda n: None, "mezclador": MezcladorFalso, "traer_al_frente": None,
            "modelos_vrm": lambda: [], "juego": juego_fab,
-           "ocio": {"grande": grande_fab, "alarmas": alarmas_fab, "baile": baile_fab}}
+           "ocio": {"grande": grande_fab, "alarmas": alarmas_fab, "baile": baile_fab},
+           "escenario": False}
     s = montar_escritorio(escritorio, anf, cfg, fabricas=fab)
     escritorio.iniciar()
     montados = [n for n in ("tema", "atajos", "juego", "radial", "bandeja") if getattr(s, n) is not None]
@@ -268,9 +273,8 @@ def _escenario(esc: str) -> int:                                    # pragma: no
     m.show()
 
     def en_vuelo():
-        log("en vuelo: liberar memoria (hilo), radial esperando ancla, atajos capturando, vista previa del tema")
+        log("en vuelo: liberar memoria (hilo), atajos capturando, vista previa del tema")
         s.despachador.ejecutar("liberar_memoria")
-        s.radial.abrir("principal")
         s.atajos.capturando(True)
         s.tema.previsualizar({"hue": 200, "preset": "personalizado"})
         if esc == "ocio":
@@ -281,24 +285,51 @@ def _escenario(esc: str) -> int:                                    # pragma: no
         else:
             log(f"baile a mano: {s.ocio.baile.bailar(10)}")
 
-    def juego_encima():
+    def listo_para_cambiar() -> bool:
+        if not recortando.is_set():
+            return False                          # el recorte aún no empezó en su hilo
+        return esc != "baile" or any(x.lecturas > 0 for x in medidores)   # el detector ya mide (50 Hz)
+
+    def justo_antes():
         if esc == "baile":
-            log(f"detector midiendo: {any(x.lecturas > 0 for x in medidores)}")   # su hilo, a 50 Hz
+            log(f"detector midiendo: {any(x.lecturas > 0 for x in medidores)}")
             s.despachador.ejecutar("modo_juego_forzar", "on")
             log(f"modo juego: {s.juego.activo()}")
+        s.radial.abrir("principal")               # espera el ancla (350 ms): el cambio llega antes
 
     def cambio():
-        log("cambio de interfaz: desmontar + escritorio.cerrar + mascota fuera + dueño.deleteLater")
+        log(f"cambio de interfaz con el recorte en marcha ({not liberado.is_set()}): desmontar + "
+            "escritorio.cerrar + mascota fuera + dueño.deleteLater")
         s.desmontar()
         escritorio.cerrar()
         m.close()
         m.deleteLater()
         duenio.deleteLater()
+        soltar_recorte.set()                      # el hilo acaba y avisa a un objeto que ya se fue
 
-    QTimer.singleShot(300, en_vuelo)
-    QTimer.singleShot(1200, juego_encima)
-    QTimer.singleShot(1300, cambio)
-    QTimer.singleShot(2600, app.quit)
+    # Por condiciones (con tope amplio), no por tiempos fijos: estable bajo carga.
+    fase = {"n": 0, "t": time.monotonic()}
+
+    def paso():
+        n, desde = fase["n"], time.monotonic() - fase["t"]
+        if n == 0:
+            en_vuelo()
+        elif n == 1:
+            if not listo_para_cambiar() and desde < TOPE_S:
+                return
+            justo_antes()
+            QTimer.singleShot(100, cambio)
+        elif n == 2:
+            if not liberado.is_set() and desde < TOPE_S:
+                return
+            reloj.stop()
+            QTimer.singleShot(400, app.quit)      # los deleteLater y los avisos en cola, atendidos
+        fase["n"], fase["t"] = n + 1, time.monotonic()
+
+    reloj = QTimer()
+    reloj.timeout.connect(paso)
+    reloj.start(50)
+    QTimer.singleShot(int(4 * TOPE_S * 1000), app.quit)   # red de seguridad
     app.exec()
 
     vivos = [d for d in detectores if d._hilo is not None and d._hilo.is_alive()]

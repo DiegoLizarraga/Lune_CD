@@ -31,7 +31,9 @@ Todo pasa en el hilo «LuneDiscordRPC» (nunca en el de Qt):
   dice que el Application ID no vale (cierre 4000), no reintenta hasta que
   cambie el ID.
 - Mutex `Local\\LuneDiscordRPC`: si la app o patata ya publican, esta instancia
-  no conecta y dice «otra Lune ya publica».
+  no conecta y dice «otra Lune ya publica»; lo vuelve a mirar cada 5 s (mirar el
+  mutex no cuesta nada, y tras un cambio de interfaz el hilo de la ventana vieja
+  lo suelta en cuanto borra su actividad).
 - Conectado: `atender()` (PeekNamedPipe) cada 100 ms y la foto del estado cada
   1 s o al instante con `actualizar()`. Antirrebote de 1.5 s, al menos 4 s entre
   envíos (Discord admite 5 cada 20 s), coalescencia (solo sale el último) y
@@ -71,6 +73,7 @@ ANTIRREBOTE_S = 1.5
 INTERVALO_MIN_S = 4.0
 COALESCER_MAX_S = 10.0          # un estado que no para de cambiar sale igual a los 10 s
 REINTENTOS_S = (15.0, 30.0, 60.0)
+REINTENTO_OTRA_LUNE_S = 5.0     # el mutex lo tiene otra Lune (o el hilo de la ventana de antes)
 TIC_S = 0.1                     # PeekNamedPipe conectado
 SONDEO_ESTADO_S = 1.0           # la foto del estado, por si nadie llama a actualizar()
 TIMEOUT_CONECTAR_S = 5.0
@@ -496,7 +499,7 @@ class Presencia:
             except Exception:
                 dueno = False
         if not dueno:
-            self._programar_reintento(ahora)
+            self._proximo_intento = ahora + REINTENTO_OTRA_LUNE_S
             self._poner_estado(activo=True, conectado=False, usuario="", error=TXT_OTRA_LUNE,
                                publicando=None, sin_id=False)
             return self._proximo_intento - ahora
@@ -646,5 +649,5 @@ _CONECTADO = object()
 
 
 __all__ = ("ESTADOS", "NOMBRE_MUTEX", "ETIQUETA_BOTON", "ANTIRREBOTE_S", "INTERVALO_MIN_S",
-           "REINTENTOS_S", "clave_estado", "cabe", "construir_actividad", "actividad_de",
+           "REINTENTOS_S", "REINTENTO_OTRA_LUNE_S", "clave_estado", "cabe", "construir_actividad", "actividad_de",
            "url_boton", "client_id", "detalle", "render_visible", "es_patata", "Presencia")

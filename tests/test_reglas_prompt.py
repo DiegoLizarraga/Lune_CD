@@ -33,14 +33,17 @@ def listadas(texto):
 def test_solo_las_del_modo(reg):
     patata = listadas(reglas_herramientas(reg, "patata", TODAS))
     assert "temporizador" in patata and "sistema_info" in patata
-    assert not {n for n in patata if n.startswith("mascota_")}
+    # Cortes 9/10: bailar sí (el título baila al ritmo de la canción); las demás de la mascota, no.
+    assert {n for n in patata if n.startswith("mascota_")} == {"mascota_bailar"}
+    assert {"listar_bailes", "parar_baile"} <= patata
     assert "comentar_pantalla" not in patata
 
     vrm = listadas(reglas_herramientas(reg, "vrm", TODAS))
     assert {"mascota_sentarse", "mascota_dormir", "comentar_pantalla"} <= vrm
 
     mascota = listadas(reglas_herramientas(reg, "mascota", TODAS))
-    assert "mascota_dormir" in mascota and "mascota_sentarse" not in mascota
+    assert "mascota_dormir" in mascota and "mascota_sentarse" in mascota   # cortes 7/8
+    assert "mascota_tamano" not in mascota
 
     normal = listadas(reglas_herramientas(reg, "normal", TODAS))
     assert "mascota_bailar" in normal and "mascota_dormir" not in normal
@@ -121,7 +124,7 @@ def test_marca_pide_permiso(reg):
 def test_solo_lectura(reg):
     texto = reglas_herramientas(reg, "vrm", TODAS, solo_lectura=True)
     assert listadas(texto) == {"sistema_info", "listar_alarmas", "comentar_pantalla",
-                               "minecraft_estado"}
+                               "minecraft_estado", "listar_bailes"}
 
 
 def test_titulo(reg):

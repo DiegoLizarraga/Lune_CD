@@ -40,7 +40,10 @@ si la metió la alarma), cierra la tarjeta, `prioridad.terminar("alarma")`, emit
 `ceder(c)` (entra un juego): quita lo visual, SIGUE SONANDO y avisa por la bandeja.
 
 Las herramientas del modelo (`herramientas()`) van directas al Almacen (sin
-hilo de Qt): el tic siguiente, o `_refresco`, emite `cambio`.
+hilo de Qt): el tic siguiente, o `_refresco`, emite `cambio`. Su `al_cambiar` pasa por un
+`PuenteHilo` (ui/escritorio.py), no el `emit` ligado de `_refresco`: una herramienta
+en curso en el Ejecutor durante un cambio de interfaz lo llamaba sobre el
+controlador ya borrado.
 """
 from __future__ import annotations
 
@@ -55,6 +58,7 @@ from PyQt6.QtCore import QObject, Qt, QTimer, pyqtSignal, pyqtSlot
 from nucleo import alarmas as al
 from nucleo.alarmas import Almacen, Disparo, Programador, texto_visible
 from servicios.alarmas_aviso import SONIDOS, ControlAviso, elegir_visual
+from ui.escritorio import PuenteHilo
 
 _log = logging.getLogger("lune.alarmas")
 
@@ -146,6 +150,8 @@ class ControlAlarmasQt(QObject):
         # Ranura propia (no una lambda): si el controlador se borra (cambio de interfaz)
         # con un refresco en cola, Qt lo descarta en vez de llamar a un objeto borrado.
         self._refresco.connect(self._al_refresco, Qt.ConnectionType.QueuedConnection)
+        # Lo que las herramientas llaman desde el hilo del Ejecutor (nunca el emit ligado).
+        self._puente_refresco = PuenteHilo(self, "_refresco")
 
     @pyqtSlot()
     def _al_refresco(self) -> None:
@@ -204,6 +210,8 @@ class ControlAlarmasQt(QObject):
         if self._iniciado:
             return
         self._iniciado = True
+        if not self._puente_refresco.abierto:
+            self._puente_refresco = PuenteHilo(self, "_refresco")
         self.recargar_config()
         self._asegurar_presencia()
         self._timer.start()
@@ -212,6 +220,7 @@ class ControlAlarmasQt(QObject):
         """Para los relojes y calla. Lo que sonaba se queda en alarmas.json
         (`sonando`) para que lo recupere quien arranque después."""
         self._iniciado = False
+        self._puente_refresco.cerrar()               # el montaje lo borra justo después
         self._timer.stop()
         self._timer_entrada.stop()
         _llamar(self.aviso, "detener")
@@ -229,10 +238,14 @@ class ControlAlarmasQt(QObject):
         self._presente = False
         self._ultimo_intento_app = None
         self.programador.reiniciar()
+        # Tarjeta y editor no tienen padre: sin deleteLater quedaban huérfanos en cada cambio
+        # de interfaz (revisión 4-5-6, VS8).
         for w in (self._dialogo, self._editor):
             if w is not None:
                 _llamar(w, "close")
+                _llamar(w, "deleteLater")
         self._dialogo = None
+        self._editor = None
 
     def set_mascota(self, v) -> None:
         if v is self._mascota:
@@ -724,7 +737,12 @@ class ControlAlarmasQt(QObject):
 
     def herramientas(self) -> Dict[str, Callable]:
         """temporizador, alarma, cancelar_alarma y listar_alarmas sobre este almacén."""
-        return al.handlers(self.almacen, self.config, al_cambiar=self._refresco.emit)
+        return al.handlers(self.almacen, self.config, al_cambiar=self._pedir_refresco)
+
+    def _pedir_refresco(self) -> None:
+        """`al_cambiar` de las herramientas (hilo del Ejecutor), por el puente de ahora:
+        cerrado tras `detener` o si el controlador ya se borró, no hace nada."""
+        self._puente_refresco()
 
 
 def _epoch_de(o: datetime, ahora: datetime, epoch: float) -> float:

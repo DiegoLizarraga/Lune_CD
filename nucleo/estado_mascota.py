@@ -51,6 +51,11 @@ BAILE_MMD = "mmd"
 SENTADA_BARRA = "barra"
 SENTADA_VENTANA = "ventana"
 
+# Fuentes de `pensando` (BusEstado.pensar): lo escrito con actualizar(pensando=…) (la
+# mascota comentando la pantalla) y el chat de la ventana web o nativa.
+PENSANDO_DIRECTO = "directo"
+PENSANDO_CHAT = "chat"
+
 
 @dataclass(frozen=True)
 class EstadoMascota:
@@ -249,6 +254,11 @@ class BusEstado:
       (`terminar_actividad` devuelve reanudaciones compatibles entre sí, de
       mayor a menor prioridad; `reanudar_despues` deja pendiente una que al
       final no pudo empezar).
+    - `pensar(fuente, on)` → `pensando` con VARIAS fuentes a la vez (cortes 9/10):
+      el chat de la ventana web o nativa («chat») y la mascota comentando la
+      pantalla (que escribe `actualizar(pensando=…)`, la fuente PENSANDO_DIRECTO).
+      `pensando` es True mientras alguna siga pensando: que una acabe no apaga la
+      otra (Discord, el sueño, el salvapantallas y el bot de Minecraft lo leen).
     """
 
     def __init__(self, inicial: Optional[EstadoMascota] = None):
@@ -259,6 +269,8 @@ class BusEstado:
         self._notificando = False
         # actividad que interrumpió → cesiones pendientes de reanudar cuando acabe
         self._pendientes: Dict[str, List[Cesion]] = {}
+        # Quién está pensando ahora (ver pensar()).
+        self._pensando_fuentes: set = {PENSANDO_DIRECTO} if self._estado.pensando else set()
 
     # ── Lectura y suscripción ────────────────────────────────────────────────────
     def actual(self) -> EstadoMascota:
@@ -284,12 +296,32 @@ class BusEstado:
 
         Un campo desconocido es un error (TypeError): así una errata no pasa
         inadvertida. En los campos de texto, None o False equivalen a "".
+        `pensando` escrito aquí es la fuente PENSANDO_DIRECTO de `pensar()`.
         """
         with self._lock:
+            if "pensando" in campos:
+                campos = dict(campos)
+                campos["pensando"] = self._fuente_pensando_locked(PENSANDO_DIRECTO, campos["pensando"])
             hay = self._aplicar_locked(campos)
         if hay:
             self._vaciar()
         return hay
+
+    def pensar(self, fuente: str, on: Any) -> bool:
+        """`fuente` («chat»: la ventana esperando al modelo) empieza o deja de pensar.
+        `pensando` queda True mientras alguna fuente siga. True si cambió."""
+        with self._lock:
+            hay = self._aplicar_locked({"pensando": self._fuente_pensando_locked(str(fuente or ""), on)})
+        if hay:
+            self._vaciar()
+        return hay
+
+    def _fuente_pensando_locked(self, fuente: str, on: Any) -> bool:
+        if self._normalizar("pensando", on):
+            self._pensando_fuentes.add(fuente)
+        else:
+            self._pensando_fuentes.discard(fuente)
+        return bool(self._pensando_fuentes)
 
     def iniciar_actividad(self, nueva: str, valor: Any = None) -> Resultado:
         """Intenta empezar `nueva` según la tabla de prioridades, de forma atómica.

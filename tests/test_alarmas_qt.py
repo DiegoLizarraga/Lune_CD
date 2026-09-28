@@ -548,3 +548,59 @@ def test_el_tic_que_falla_traza_una_vez_y_vuelve_a_trazar_si_cambia(entorno, cap
         e.ctl._tic()
         e.ctl._tic()
     assert sum("el tic falló" in r.getMessage() for r in caplog.records) == 2
+
+
+def test_detener_borra_la_tarjeta_y_el_editor(entorno, qapp):
+    """VS8: tarjeta y editor (sin padre) se quedaban huérfanos en cada cambio de interfaz:
+    detener() solo los cerraba y el editor seguía en `_editor`."""
+    from PyQt6 import sip
+    from PyQt6.QtCore import QCoreApplication, QEvent
+    from ui.alarmas_dialogo import DialogoAlarma, DialogoAlarmas
+    e = entorno()
+    tarjeta = DialogoAlarma()
+    editor = DialogoAlarmas(e.ctl)
+    e.ctl._dialogo, e.ctl._editor = tarjeta, editor
+    e.esc.detener()
+    assert e.ctl._dialogo is None and e.ctl._editor is None
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete.value)
+    qapp.processEvents()
+    assert sip.isdeleted(tarjeta) and sip.isdeleted(editor)
+
+
+# ── Revisión 7-10 (sospecha RR1) ───────────────────────────────────────────────
+
+def test_herramienta_en_curso_con_el_controlador_ya_borrado(entorno, qapp, caplog):
+    """Una herramienta del modelo en curso (hilo del Ejecutor) mientras el cambio de
+    interfaz borra el controlador: `al_cambiar` era el `emit` ligado de `_refresco` y se
+    llamaba sobre el objeto borrado (AttributeError tragado… o una access violation).
+    Ahora pasa por un PuenteHilo: cerrado en `detener`, no hace nada."""
+    import logging
+    import threading
+    from PyQt6 import sip
+    e = entorno()
+    h = e.ctl.herramientas()["temporizador"]
+    e.esc.quitar("alarmas")                          # el desmontaje: detener…
+    sip.delete(e.ctl)                                # …y el objeto de C++ se va
+    caplog.set_level(logging.DEBUG, logger="lune.alarmas")
+    caja = {}
+    hilo = threading.Thread(target=lambda: caja.update(r=h({"segundos": 60, "texto": "té"}, None)))
+    hilo.start()
+    hilo.join()
+    qapp.processEvents()
+    assert "t1" in caja["r"] and e.alm.temporizadores()[0].texto == "té"
+    assert not [r for r in caplog.records if "al_cambiar" in r.getMessage()]
+
+
+def test_detener_e_iniciar_otra_vez_vuelve_a_avisar_del_cambio(entorno, qapp):
+    e = entorno()
+    h = e.ctl.herramientas()["temporizador"]
+    e.ctl.detener()
+    e.ctl.iniciar()
+    n = len(e.senales["cambio"])
+    import threading
+    hilo = threading.Thread(target=lambda: h({"segundos": 30, "texto": "otra"}, None))
+    hilo.start()
+    hilo.join()
+    for _ in range(10):
+        qapp.processEvents()
+    assert len(e.senales["cambio"]) > n

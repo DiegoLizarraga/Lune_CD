@@ -185,13 +185,20 @@ _LISTA: List[Herramienta] = [
        resumen="Mirar las alarmas"),
 
     # ── Mascota (P02, P03, P04, P05, P14) ──
-    _h("mascota_bailar", "Bailar", _E, False, 0, {"normal", "br", "mascota"},
+    # Cortes 9/10: con «cancion», una de la biblioteca de bailes (bailes/); en patata también
+    # (el título baila al ritmo de la canción: servicios/bailes_terminal).
+    _h("mascota_bailar", "Bailar (cancion: uno de tus bailes)", _E, False, 0,
+       {"normal", "br", "mascota", "patata"},
        {"segundos": Arg("int", min=5, max=300, defecto=30),
         "cancion": Arg("str", maxlen=80, recortar=True)},
        handler="nucleo.baile.herramienta_bailar",
        resumen="Bailar {segundos} s", ejemplo={"segundos": 30}),
-    _h("parar_baile", "Dejar de bailar", _E, False, 0, {"normal", "br", "mascota"},
+    _h("parar_baile", "Dejar de bailar", _E, False, 0, {"normal", "br", "mascota", "patata"},
        handler="nucleo.baile.herramienta_parar", resumen="Dejar de bailar"),
+    # Títulos saneados (son nombres de archivo). Sin controlador lee bailes/ sin tocar nada.
+    _h("listar_bailes", "Ver tus bailes", _L, False, 0, TODOS,
+       {"texto": _TEXTO_CORTO},
+       handler="nucleo.bailes.herramienta_listar", resumen="Mirar tus bailes"),
     _h("mascota_dormir", "Echarte a dormir", _E, False, 0, _MASCOTA,
        handler="nucleo.sueno.herramienta_dormir", resumen="Echarse a dormir"),
     _h("mascota_despertar", "Despertarte", _E, False, 0, _MASCOTA,
@@ -203,8 +210,11 @@ _LISTA: List[Herramienta] = [
        handler="nucleo.pantalla_grande.herramienta",
        resumen="Pantalla grande: {activar}", ejemplo={"activar": True, "minutos": 5}),
     # «ventana» solo si avatar.sentarse_ventanas está activo: lo comprueba el handler.
-    _h("mascota_sentarse", "Sentarte en la barra de tareas o en una ventana, o bajarte",
-       _E, False, 0, {"vrm"},
+    # Cortes 7/8: con cualquier mascota a la vista (la 3D se sienta; la animada y los
+    # sprites se apoyan de pie en el borde y lo siguen igual).
+    _h("mascota_sentarse", "Sentarte en la barra de tareas o en una ventana, o bajarte "
+                           "(la animada y la ligera se apoyan en el borde)",
+       _E, False, 0, _MASCOTA,
        {"sitio": Arg("str", requerido=True, enum=("barra", "ventana", "bajar"))},
        handler="nucleo.asiento.herramienta",
        resumen="Sentarse: {sitio}", ejemplo={"sitio": "barra"}),

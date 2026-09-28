@@ -238,6 +238,8 @@ def fabricas():
         "sonar": lambda nombre: None,
         "traer_al_frente": None,
         "ocio": False,               # cortes 5/6 aparte (tests/test_anfitriones_c56.py)
+        "vida": False,               # cortes 7/8 aparte (tests/test_anfitriones_c78_int.py)
+        "escenario": False,          # cortes 9/10 aparte (tests/test_anfitriones_c910_int.py)
     }
 
 
@@ -564,7 +566,7 @@ def test_web_registra_el_puente_antes_de_cargar_y_monta_un_solo_icono(entorno, s
     v = entorno.web()
     # La página ve window.lune Y window.luneEscritorio (y los de ocio de los cortes 5/6):
     # todos estaban antes de setUrl.
-    assert v.web.objetos_al_cargar == ["alarmas", "escritorio", "lune", "musica"]
+    assert v.web.objetos_al_cargar == ["alarmas", "escenario", "escritorio", "lune", "musica", "vida"]
     s = v._servicios_c4
     assert s is not None and v.bridge._servicios_c4 is s
     assert v._puente_esc.servicios is s and v._puente_esc.anfitrion is v._anfitrion
@@ -634,7 +636,7 @@ def test_web_respaldo_si_el_montaje_falla(entorno, sistema, monkeypatch):
     assert v._servicios_c4 is None
     assert len(sistema.iconos) == 1 and v.tray is v._tray_respaldo      # el icono de siempre
     # El puente sigue en la página (sin servicios: estado por defecto, sin lanzar).
-    assert v.web.objetos_al_cargar == ["alarmas", "escritorio", "lune", "musica"]
+    assert v.web.objetos_al_cargar == ["alarmas", "escenario", "escritorio", "lune", "musica", "vida"]
     assert json.loads(v._puente_esc.acciones_catalogo("radial")) == []
     assert json.loads(v._puente_esc.efectos()) == {"fondo": True, "barrido": True, "micro": True}
 
@@ -647,7 +649,7 @@ def test_web_diferida_no_toca_nada_hasta_que_la_vieja_suelta(entorno, sistema, q
     entorno.cfg.set("tema", "preset", "magenta_mate")
     nueva = entorno.web(diferir=True)
     # La nueva ya tiene su puente en la página, pero ni bandeja ni atajos: son de la vieja.
-    assert nueva.web.objetos_al_cargar == ["alarmas", "escritorio", "lune", "musica"]
+    assert nueva.web.objetos_al_cargar == ["alarmas", "escenario", "escritorio", "lune", "musica", "vida"]
     assert nueva._servicios_c4 is None and nueva._puente_esc.servicios is None
     assert len(sistema.iconos) == 1 and sistema.combos == combos_vieja and sistema.choques == []
     # Sin servicios, el tema de la página sale de la config (sin el cian de siempre).
@@ -1070,12 +1072,14 @@ class DetectorFalso:
 class AutoFalso:
     def __init__(self):
         self.on = False
+        self.modos = []
 
     def activo(self):
         return self.on
 
-    def establecer(self, q):
+    def establecer(self, q, modo=None):             # como servicios/autoinicio.establecer
         self.on = bool(q)
+        self.modos.append(modo)
         return self.on
 
 
@@ -1193,6 +1197,7 @@ def test_patata_menu(patata_):
     assert p.cfg.get("patata", "tema") == "rojo_neon"
     _cmd(p, f"/menu {n['Arrancar con Windows']}")
     assert p._autoinicio.on is True and p.cfg.get("sistema", "autoinicio") is True
+    assert p._autoinicio.modos[-1] == "patata"              # cortes 7/8: la variante de patata
     _cmd(p, "/menu modo_juego_forzar")                                 # también por id
     assert p._juego_activo is True and p.prioridades == [True]
     assert "No hay la opción" in _cmd(p, "/menu 99")[0]

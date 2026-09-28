@@ -253,6 +253,47 @@ def test_el_bot_de_telegram_solo_puede_pedir_lectura():
     correr(caso())
 
 
+def test_el_bot_de_telegram_no_recibe_la_memoria_del_usuario():
+    """SN1: el hub no puede saber quién escribe por Telegram (el peer es kind «bot») →
+    su turno va SIN el «CONTEXTO DE MEMORIA DEL USUARIO»; la app (web) sí lo lleva."""
+    async def caso():
+        hub = Hub(TOKEN, host="127.0.0.1", puerto=0)
+        ai = FakeAI("Hola.")
+        ServicioChat(hub, ai, memoria=FakeMem(), tools=FakeTools(), persona="Eres Lune.")
+        await hub.iniciar()
+        vistos = {}
+        try:
+            for nombre, kind in (("bot-telegram", "bot"), ("raro", "desconocido"), ("term", "web")):
+                eventos = []
+                cli = Cliente(f"ws://127.0.0.1:{hub.puerto}", TOKEN, nombre, kind,
+                              on_evento=eventos.append)
+                try:
+                    assert await cli.conectar(reintentar=False)
+                    ev = await cli.enviar(P.Tipo.INPUT_TEXT, {"text": "¿cómo me llamo?"})
+                    assert await _esperar(eventos, _done_de(ev)) is not None
+                    vistos[kind] = ai.system
+                finally:
+                    await cli.cerrar()
+        finally:
+            await hub.detener()
+        for kind in ("bot", "desconocido"):
+            assert "Diego" not in vistos[kind] and "CONTEXTO DE MEMORIA" not in vistos[kind], kind
+            assert "Eres Lune." in vistos[kind]                      # la persona, sí
+        assert "CONTEXTO DE MEMORIA DEL USUARIO:\nEl usuario se llama Diego." in vistos["web"]
+
+    correr(caso())
+
+
+def test_ve_la_memoria_solo_los_terminales_de_la_persona():
+    class Peer:
+        def __init__(self, kind):
+            self.kind = kind
+
+    v = ServicioChat.ve_la_memoria
+    assert v(Peer("app")) and v(Peer("web")) and v(Peer("overlay")) and v(Peer(" APP "))
+    assert not v(Peer("bot")) and not v(Peer("")) and not v(Peer(None)) and not v(Peer("otro"))
+
+
 def test_origen_del_turno():
     class Peer:
         def __init__(self, kind):

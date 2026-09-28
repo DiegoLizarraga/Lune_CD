@@ -39,6 +39,7 @@ import shutil
 import subprocess
 import sys
 import threading
+import unicodedata
 import urllib.parse
 import weakref
 import webbrowser
@@ -206,6 +207,109 @@ class ToolManager:
     _BAILA = re.compile(rf"[¡!\s]*{_RELLENO_BAILE}(?:baila|ponte\s+a\s+bailar|bailemos|a\s+bailar){_FIN_BAILE}")
     _PARA_BAILE = re.compile(rf"[¡!\s]*{_RELLENO_BAILE}(?:ya\s+)?(?:para|deja)\s+de\s+bailar{_FIN_BAILE}")
 
+    # «siéntate (en la barra)», «siéntate en una ventana», «bájate (de ahí)», «toma un batido»
+    # (cortes 7/8): igual de estricto que el baile y las alarmas (revisión 4-5-6, MO1). Solo
+    # la ORDEN sola, en imperativo y dirigida a Lune (con relleno como «oye Lune» o «porfa»),
+    # sobre el texto sin tildes y con fullmatch: nunca preguntas («¿te puedes sentar?»,
+    # «siéntate?»), negaciones («no te sientes»), pasado («te sentaste en la barra», «me tomé
+    # un batido»), otra persona («toma un batido, Ana») ni frases sobre el tema («me siento
+    # cansada», «baja el volumen», «siéntate conmigo a ver una peli»). En la duda, None: lo
+    # decide el modelo con su herramienta.
+    _BARRA = r"la\s+barra(?:\s+de\s+tareas)?"
+    _SIENTATE_BARRA = re.compile(
+        rf"[¡!\s]*{_RELLENO_BAILE}(?:sientate(?:\s+en\s+{_BARRA})?|ponte\s+en\s+{_BARRA}){_FIN_BAILE}")
+    _SIENTATE_VENTANA = re.compile(
+        rf"[¡!\s]*{_RELLENO_BAILE}sientate\s+en\s+(?:la|una|esta|esa)\s+ventana{_FIN_BAILE}")
+    _BAJATE = re.compile(
+        rf"[¡!\s]*{_RELLENO_BAILE}(?:ya\s+)?(?:bajate(?:\s+de\s+(?:ahi|alli|{_BARRA}|la\s+ventana))?"
+        rf"|baja\s+de\s+(?:ahi|alli)){_FIN_BAILE}")
+    _TOMA_COMIDA = re.compile(
+        rf"[¡!\s]*{_RELLENO_BAILE}(?:toma(?:te)?|ten|te\s+doy)\s+(?:un|una|este|esta)\s+"
+        rf"(batid(?:o|ito)|pastel(?:ito)?)(?:\s+de\s+[a-z]+)?{_FIN_BAILE}")
+
+    # Cortes 9/10, igual de estrictos (solo la ORDEN, al principio tras el relleno, sobre el
+    # texto sin tildes y con fullmatch; nunca preguntas, negaciones, pasado ni frases sobre el
+    # tema; en la duda, None y lo decide el modelo):
+    #   · «ponme el baile de X», «pon la canción X», «baila "X"» (título entre comillas) →
+    #     mascota_bailar {cancion: X}. «baila X» a secas NO: «baila fatal», «baila salsa» o
+    #     «baila bonito» no son títulos; el modelo tiene mascota_bailar{cancion} y listar_bailes.
+    #     Sin comillas, tampoco «pon la canción de nuevo» ni un X que siga la frase («… y dime
+    #     algo», «… para mañana»): con comillas, el título va tal cual. «Pon la canción X» SIN
+    #     comillas, solo si X es un baile de tu biblioteca (nucleo.bailes.coincide_con_biblioteca):
+    #     «pon la canción más alta / a todo volumen / en bucle / despacito en youtube» no son
+    #     bailes y las decide el modelo (antes bailaba sin pasar por él: revisión 7-10, BM5);
+    #   · «para el baile» / «quita el baile» → parar_baile;
+    #   · «conecta / desconecta el bot de Minecraft» → minecraft_bot {accion} (conectar pide
+    #     permiso en el Ejecutor, como la herramienta; instalarlo nunca: D3).
+    _TITULO_BAILE = r"([^?¿\"«»“”\n]{2,60}?)"
+    _PON_BAILE = re.compile(
+        rf"[¡!\s]*{_RELLENO_BAILE}(?:ponme|pon|bailame|baila)\s+(?:el\s+baile\s+de|la\s+cancion)\s+"
+        rf"{_TITULO_BAILE}{_FIN_BAILE}")
+    # Un título sin comillas que en realidad sigue la frase o no es un título.
+    _NO_TITULO = re.compile(r"(?:^|\s)(?:y|e|o|pero|porque|para|que|si|con)(?:\s|$)|^(?:de|otra|otro|nuevo)(?:\s|$)")
+    _BAILA_COMILLAS = re.compile(
+        rf"[¡!\s]*{_RELLENO_BAILE}(?:ponme|pon|bailame|baila)\s+(?:el\s+baile\s+de\s+|la\s+cancion\s+(?:de\s+)?)?"
+        rf"[\"«“]([^\"«»“”?¿\n]{{2,60}})[\"»”]{_FIN_BAILE}")
+    _PARA_EL_BAILE = re.compile(rf"[¡!\s]*{_RELLENO_BAILE}(?:ya\s+)?(?:para|quita)\s+el\s+baile{_FIN_BAILE}")
+    _BOT_MINECRAFT = re.compile(
+        rf"[¡!\s]*{_RELLENO_BAILE}(conecta|desconecta)\s+(?:el|tu)\s+bot\s+(?:de|del)\s+minecraft{_FIN_BAILE}")
+
+    @staticmethod
+    def _sin_tildes(texto: str) -> str:
+        return "".join(c for c in unicodedata.normalize("NFD", texto) if not unicodedata.combining(c))
+
+    @classmethod
+    def _detectar_escenario(cls, texto: str, texto_lower: str) -> Optional[Tuple[str, dict]]:
+        """Cortes 9/10: bailes de la biblioteca y el bot de Minecraft (ver arriba) o None."""
+        plano = cls._sin_tildes(texto_lower)
+        m = cls._BOT_MINECRAFT.fullmatch(plano)
+        if m:
+            return "minecraft_bot", {"accion": "conectar" if m.group(1) == "conecta" else "desconectar"}
+        if cls._PARA_EL_BAILE.fullmatch(plano):
+            return "parar_baile", {}
+        comillas = True
+        m = cls._BAILA_COMILLAS.fullmatch(plano)
+        if m is None:
+            comillas = False
+            m = cls._PON_BAILE.fullmatch(plano)
+            if m is not None and cls._NO_TITULO.search(m.group(1).strip()):
+                m = None
+        if m:
+            # El título como lo escribiste (mayúsculas y tildes) si el texto sin tildes mide
+            # lo mismo; si no, el de la versión plana (la biblioteca busca sin tildes igual).
+            original = unicodedata.normalize("NFC", texto)
+            cancion = (original[m.start(1):m.end(1)] if len(original) == len(plano) else m.group(1)).strip()
+            if len(cancion) < 2:
+                return None
+            if not comillas and "cancion" in plano[:m.start(1)] and not cls._es_baile_conocido(cancion):
+                return None                    # «pon la canción X» que no es un baile tuyo: el modelo
+            return "mascota_bailar", {"cancion": cancion}
+        return None
+
+    @staticmethod
+    def _es_baile_conocido(titulo: str) -> bool:
+        """¿«titulo» es un baile de la biblioteca? Solo su foto (nunca escanea aquí)."""
+        try:
+            from nucleo import bailes as nbl
+            return bool(nbl.coincide_con_biblioteca(titulo))
+        except Exception:                       # sin numpy (patata mínima) o lo que sea: el modelo
+            return False
+
+    @classmethod
+    def _detectar_vida(cls, texto_lower: str) -> Optional[Tuple[str, dict]]:
+        """Cortes 7/8: sentarse, bajarse y darle de comer (ver arriba) o None."""
+        plano = cls._sin_tildes(texto_lower)
+        if cls._SIENTATE_VENTANA.fullmatch(plano):
+            return "mascota_sentarse", {"sitio": "ventana"}
+        if cls._SIENTATE_BARRA.fullmatch(plano):
+            return "mascota_sentarse", {"sitio": "barra"}
+        if cls._BAJATE.fullmatch(plano):
+            return "mascota_sentarse", {"sitio": "bajar"}
+        m = cls._TOMA_COMIDA.fullmatch(plano)
+        if m:
+            return "dar_de_comer", {"comida": "batido" if m.group(1).startswith("batid") else "pastel"}
+        return None
+
     @classmethod
     def _detectar_pedido(cls, texto: str) -> Optional[Tuple[str, dict]]:
         """(herramienta, args) de un comando escrito por la persona, o None."""
@@ -229,6 +333,14 @@ class ToolManager:
             return "mascota_bailar", {}
         if cls._PARA_BAILE.fullmatch(texto_lower):
             return "parar_baile", {}
+        # 0c. Sentarse, bajarse y darle de comer (cortes 7/8), igual de estrictos.
+        vida = cls._detectar_vida(texto_lower)
+        if vida is not None:
+            return vida
+        # 0d. Bailes de la biblioteca y el bot de Minecraft (cortes 9/10), igual de estrictos.
+        escenario = cls._detectar_escenario(texto, texto_lower)
+        if escenario is not None:
+            return escenario
 
         # 1. Búsqueda web (YouTube o Google), respetando mayúsculas de la consulta.
         if texto_lower.startswith(("busca ", "buscar ", "investiga ")):
@@ -271,7 +383,9 @@ class ToolManager:
         """
         Lo que la persona pide con sus palabras («abre youtube», «lanza paint»,
         «busca gatos», «estado del pc», «avísame en 10 minutos», «pon una alarma a
-        las 7», «baila») como `lune_core.acciones.Llamada`s, SIN
+        las 7», «baila», «siéntate en la barra», «bájate», «toma un batido», «ponme el
+        baile de Senbonzakura», «conecta el bot de Minecraft») como
+        `lune_core.acciones.Llamada`s, SIN
         ejecutar nada. Van al Ejecutor como cualquier otra acción (Política,
         denegación, presupuesto, aprobación de lanzar_app y auditoría):
 

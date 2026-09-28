@@ -227,11 +227,14 @@ def test_editor_dice_la_fecha_y_al_ponerle_dias_la_quita(editor):
     """MO3: editar «mañana a las 7» y ponerle días dejaba la fecha oculta (no volvía a
     sonar nunca). El editor enseña la fecha y, al guardar con días, se quita."""
     ed, ctl, alm, _ = editor
-    a = alm.crear_alarma(7, 0, fecha="2026-09-27")
+    # Una fecha lejos de «hoy» y de «mañana» (una fija caducaba el día que tocaba).
+    import datetime as _dt
+    dia = _dt.date.today() + _dt.timedelta(days=10)
+    a = alm.crear_alarma(7, 0, fecha=dia.isoformat())
     ed.refrescar()
-    assert "27/09" in ed.filas_alarma[a.id]["etiqueta"].text() or "mañana" in ed.filas_alarma[a.id]["etiqueta"].text()
+    assert dia.strftime("%d/%m") in ed.filas_alarma[a.id]["etiqueta"].text()
     ed.filas_alarma[a.id]["editar"].click()
-    assert ed.nota_fecha.isVisibleTo(ed) and "27/09/2026" in ed.nota_fecha.text()
+    assert ed.nota_fecha.isVisibleTo(ed) and dia.strftime("%d/%m/%Y") in ed.nota_fecha.text()
     for letra in "lmxjv":
         ed.botones_dia["lmxjvsd".index(letra)].setChecked(True)
     ed.una_vez.setChecked(False)

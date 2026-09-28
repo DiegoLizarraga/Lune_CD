@@ -32,13 +32,19 @@ Estructura de un personaje (en datos.json -> "personajes"):
   },
   "frases_mascota": {         # opcional: frases de la mascota por evento (ver lune_core/frases_mascota.py)
     "arrastre": ["¡Eh, que me mareo!"],     # eventos: arrastre, soltar, caricia, dormir,
-    "caricia": ["Jeje~"]                    #   despertar, mareo, aparecer, pudor
-  }                           # las que falten salen de FRASES_BASE
+    "caricia": ["Jeje~"]                    #   despertar, mareo, aparecer, pudor, sentarse,
+  },                          #   bajar, comer · las que falten salen de FRASES_BASE
+  "frases_minecraft": {       # opcional (corte 10): reacciones a tu partida de Minecraft
+    "muerte": ["Otra vez al suelo."],       # claves de lune_core/minecraft.FRASES: muerte, muerte_otro,
+    "logro": ["«{logro}». Bien."]           #   logro, logro_otro, conexion, peligro, dia, noche, lluvia,
+  }                           #   bot_*… · huecos {jugador} {logro} {mob} {causa} · las que falten, de serie
 }
 
 La voz del personaje manda sobre la de config (voz.edge_voz, edge_rate…), que a
 su vez manda sobre la de por defecto (es-MX-DaliaNeural). La lee también el bot
 de Telegram (telegram-bot-or/voz.js), así que suena igual en los dos sitios.
+El bot de Minecraft usa el personaje (nombre para su nick y su prompt), pero nunca la
+memoria: el chat del juego es público.
 """
 import json
 import base64

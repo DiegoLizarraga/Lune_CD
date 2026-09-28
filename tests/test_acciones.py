@@ -522,5 +522,7 @@ def test_resultado_a_dict(env):
 
 def test_disponibles(env):
     assert "mascota_sentarse" in env.ej.disponibles("vrm")
-    assert "mascota_sentarse" not in env.ej.disponibles("mascota")
+    assert "mascota_sentarse" in env.ej.disponibles("mascota")      # cortes 7/8: también sprites y animada
+    assert "mascota_sentarse" not in env.ej.disponibles("normal")
+    assert "mascota_tamano" not in env.ej.disponibles("mascota")
     assert "mascota_dormir" not in env.ej.disponibles("patata")

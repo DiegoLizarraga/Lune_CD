@@ -24,7 +24,10 @@ Qué hace, en este orden:
     prioridades: grande → ("grande", "salvapantallas"), alarmas → ("alarma",),
     baile → ("baile",);
  3. handlers del Despachador: pantalla_grande, bailar, baile_pausa, alarma y
-    temporizador_rapido (aparecen solos en el radial, la bandeja y los atajos);
+    temporizador_rapido (aparecen solos en el radial, la bandeja y los atajos).
+    Corte 9: con un baile del reproductor MMD puesto (`escritorio.obtener("mmd").activo`,
+    ui/montaje_escenario), «bailar» lo para y «baile_pausa» lo pausa o lo sigue
+    (✔ = en pausa → «Seguir el baile»); sin él, el baile procedural de siempre;
  4. las herramientas del modelo de cada controlador (`herramientas()`) con
     `escritorio.registrar_herramienta`;
  5. `atajos.recargar()`: pantalla_grande y baile_pausa ya tienen handler;
@@ -285,7 +288,7 @@ def montar_ocio(servicios_c4: Any, config: Any, *, voice: Any = None,
 
     # 3. Handlers del Despachador.
     if desp is not None:
-        _registrar_acciones(ocio, desp, anfitrion, avisar, d)
+        _registrar_acciones(ocio, desp, anfitrion, avisar, d, escritorio=escritorio)
 
     # 4. Herramientas del modelo.
     if escritorio is not None:
@@ -319,7 +322,8 @@ def montar_ocio(servicios_c4: Any, config: Any, *, voice: Any = None,
 
 
 def _registrar_acciones(ocio: ServiciosOcio, desp: Any, anfitrion: Any,
-                        avisar: Optional[Callable[[str], None]], deshacer: List[Callable[[], None]]) -> None:
+                        avisar: Optional[Callable[[str], None]], deshacer: List[Callable[[], None]],
+                        escritorio: Any = None) -> None:
     g, a, b = ocio.grande, ocio.alarmas, ocio.baile
     propios: List[Tuple[str, Callable]] = []
 
@@ -337,17 +341,48 @@ def _registrar_acciones(ocio: ServiciosOcio, desp: Any, anfitrion: Any,
             except Exception:
                 _log.exception("montaje ocio: el aviso falló")
 
+    def mmd_sonando() -> Any:
+        """El reproductor de bailes (corte 9, ui/mmd_qt.ControlMMD, registrado como «mmd» por
+        ui/montaje_escenario) si tiene un baile puesto (sonando, en pausa o cargando); si no, None.
+        Se busca en cada llamada: el escenario se monta después que el ocio."""
+        obtener = getattr(escritorio, "obtener", None) if escritorio is not None else None
+        if not callable(obtener):
+            return None
+        try:
+            m = obtener("mmd")
+        except Exception:
+            return None
+        return m if m is not None and bool(getattr(m, "activo", False)) else None
+
+    def mmd_en_pausa() -> bool:
+        m = mmd_sonando()
+        if m is None:
+            return False
+        e = _llamar(m, "estado")
+        return isinstance(e, dict) and e.get("pausado") is True and e.get("cedida") is not True
+
     if g is not None:
         reg("pantalla_grande", lambda: g.alternar(), marcado=lambda: bool(getattr(g, "activo", False)))
 
     if b is not None:
         def bailar():
-            if getattr(b, "bailando", False):
+            m = mmd_sonando()
+            if m is not None:                           # corte 9: el reproductor manda si suena
+                m.parar()
+            elif getattr(b, "bailando", False):
                 b.parar()
             else:
                 b.bailar()
-        reg("bailar", bailar, marcado=lambda: bool(getattr(b, "bailando", False)))
-        reg("baile_pausa", lambda: b.pausa())
+
+        def baile_pausa():
+            m = mmd_sonando()
+            if m is not None:
+                m.pausa()                               # alterna (D5: al reposo y sigue desde t)
+            else:
+                b.pausa()
+        reg("bailar", bailar,
+            marcado=lambda: bool(getattr(b, "bailando", False)) or mmd_sonando() is not None)
+        reg("baile_pausa", baile_pausa, marcado=lambda: mmd_en_pausa())
 
     if a is not None:
         def abrir_alarmas():

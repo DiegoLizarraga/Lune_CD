@@ -3,8 +3,9 @@ lune_core/servicio_chat.py — El chat de Lune, servido por el host (el "agente"
 
 Hasta ahora cada terminal (la app, el bot, el navegador) llamaba a Ollama por su
 cuenta. Con esto, el HOST corre el modelo una sola vez y sirve la conversación a
-todos por el hub: reciben el mismo cerebro, la misma memoria y —si el host las
-tiene activadas— las mismas herramientas de escritorio (9.5).
+todos por el hub: reciben el mismo cerebro, la misma memoria (solo los terminales
+de la persona: el bot de Telegram no, ver «Memoria» abajo) y —si el host las tiene
+activadas— las mismas herramientas de escritorio (9.5).
 
 Atiende:
     input:text {text, images?, provider?, session_id?, origen?}
@@ -33,6 +34,11 @@ formato antiguo (`ABRIR_URL:`/`TOOL:`) ya no se ejecuta.
     queda marcado en el historial y contamina los turnos de los demás mientras
     siga en la ventana: ahí todo lo que no sea de LECTURA pide permiso, y en un
     terminal que no puede aprobar se rechaza (y el prompt solo ofrece lectura).
+  · Memoria (revisión final, SN1): el «CONTEXTO DE MEMORIA DEL USUARIO» solo va
+    en el system prompt de los terminales de la persona (KINDS_USUARIO). El hub no
+    sabe quién escribe por el bot de Telegram (solo que el peer es kind «bot»), así
+    que a esos turnos no se les inyecta: nada de lo que recuerdas sale hacia un chat
+    que no se puede verificar como tuyo.
   · Los resultados inmediatos van en output:chat:done.tools; los que llegan
     tras una aprobación, en tool:result. Los fallos y rechazos inmediatos se
     cuentan también en el texto del done (los terminales descartan `tools`).
@@ -141,17 +147,20 @@ class ServicioChat:
     def _system(self, texto_usuario: str, *, origen: str = ORIGEN_USUARIO,
                 ejecutor: Optional[Ejecutor] = None, ctx: Optional[dict] = None,
                 fragmentos: Optional[list] = None, puede_aprobar: bool = True,
-                contaminado: bool = False) -> str:
+                contaminado: bool = False, con_memoria: bool = True) -> str:
         """
         puede_aprobar  False: el terminal no contesta aprobaciones → no se le
                        ofrecen herramientas que las piden (se rechazarían).
         contaminado    el historial lleva texto de terceros: sin poder aprobar,
                        solo lectura (lo demás pediría permiso).
+        con_memoria    False: sin el contexto de memoria del usuario (turnos de
+                       un terminal que no es de la persona: ver ve_la_memoria).
         """
         base = self._persona() if callable(self._persona) else (self._persona or "")
         partes = [base] if base else []
         try:
-            ctx_mem = self.memoria.obtener_contexto_para_prompt() if self.memoria else ""
+            ctx_mem = (self.memoria.obtener_contexto_para_prompt()
+                       if self.memoria and con_memoria else "")
         except Exception:
             ctx_mem = ""
         if ctx_mem:
@@ -211,6 +220,13 @@ class ServicioChat:
         if con_notas or imagenes:
             return ORIGEN_NO_CONFIABLE
         return ORIGEN_USUARIO
+
+    @staticmethod
+    def ve_la_memoria(peer: Peer) -> bool:
+        """¿Lleva este terminal la memoria del usuario en el system prompt? Solo los de
+        la persona (app, web, overlay). El bot de Telegram (kind «bot») o un kind
+        desconocido, no: el hub no puede verificar que quien escribe sea el dueño."""
+        return str(getattr(peer, "kind", "") or "").strip().lower() in KINDS_USUARIO
 
     # ── Un Ejecutor por terminal ────────────────────────────────────────────────
     def _terminal(self, peer: Peer, loop) -> Optional[_Terminal]:
@@ -371,7 +387,8 @@ class ServicioChat:
         ctx = self._ctx(provider, turno)
         system = self._system(text, origen=origen, ejecutor=ejecutor, ctx=ctx, fragmentos=frags,
                               puede_aprobar=self.puede_aprobar(peer),
-                              contaminado=self._contaminado(provider))
+                              contaminado=self._contaminado(provider),
+                              con_memoria=self.ve_la_memoria(peer))
 
         self.hub.estado_extra["busy"] = True
         await self.hub.publicar(Tipo.HOST_STATUS, self.hub.estado())

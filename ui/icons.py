@@ -110,6 +110,9 @@ ICONS = {
     "taskbar":    ("stroke", '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 16h20"/><path d="M6 18h3"/>'),
     "box":        ("stroke", '<path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73'
                              'l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/>'),
+    # Corte 9: «Mis bailes» (la biblioteca del reproductor MMD/VRMA).
+    "film":       ("stroke", '<rect x="2" y="2" width="20" height="20" rx="2.18"/><path d="M7 2v20M17 2v20"/>'
+                             '<path d="M2 12h20M2 7h5M2 17h5M17 17h5M17 7h5"/>'),
 }
 
 

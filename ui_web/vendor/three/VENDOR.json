@@ -1,0 +1,62 @@
+[
+  {
+    "archivo": "three.module.min.js",
+    "paquete": "three",
+    "version": "0.160.0",
+    "origen": "https://registry.npmjs.org/three/-/three-0.160.0.tgz",
+    "ruta_en_paquete": "package/build/three.module.min.js",
+    "integridad_npm": "sha512-DLU8lc0zNIPkM7rH5/e1Ks1Z8tWCGRq6g8mPowdDJpw1CFBJMU7UoJjC6PefXW7z//SSl0b2+GCw14LB+uDhng==",
+    "bytes": 670681,
+    "sha256": "3e690ac7d180b0aadf0891bea39eec643e29e2d3e75c99b18689518665f69ba6",
+    "licencia": "MIT",
+    "archivo_licencia": "LICENSE.three"
+  },
+  {
+    "archivo": "loaders/GLTFLoader.js",
+    "paquete": "three",
+    "version": "0.160.0",
+    "origen": "https://registry.npmjs.org/three/-/three-0.160.0.tgz",
+    "ruta_en_paquete": "package/examples/jsm/loaders/GLTFLoader.js",
+    "integridad_npm": "sha512-DLU8lc0zNIPkM7rH5/e1Ks1Z8tWCGRq6g8mPowdDJpw1CFBJMU7UoJjC6PefXW7z//SSl0b2+GCw14LB+uDhng==",
+    "bytes": 108522,
+    "sha256": "d073b438e6a07e1359741dd5d6c76c953420cc0d4fd84eb1bdde94315540e6a3",
+    "licencia": "MIT",
+    "archivo_licencia": "LICENSE.three"
+  },
+  {
+    "archivo": "utils/BufferGeometryUtils.js",
+    "paquete": "three",
+    "version": "0.160.0",
+    "origen": "https://registry.npmjs.org/three/-/three-0.160.0.tgz",
+    "ruta_en_paquete": "package/examples/jsm/utils/BufferGeometryUtils.js",
+    "integridad_npm": "sha512-DLU8lc0zNIPkM7rH5/e1Ks1Z8tWCGRq6g8mPowdDJpw1CFBJMU7UoJjC6PefXW7z//SSl0b2+GCw14LB+uDhng==",
+    "bytes": 31906,
+    "sha256": "9be041e96308775d00e2695cc607645b9a9b64fd7c0e759dd8f7c00a8d92becb",
+    "licencia": "MIT",
+    "archivo_licencia": "LICENSE.three"
+  },
+  {
+    "archivo": "three-vrm.module.min.js",
+    "paquete": "@pixiv/three-vrm",
+    "version": "3.1.6",
+    "origen": "https://registry.npmjs.org/@pixiv/three-vrm/-/three-vrm-3.1.6.tgz",
+    "ruta_en_paquete": "package/lib/three-vrm.module.min.js",
+    "integridad_npm": "sha512-maz2QvE1wKjK4ZKiwZu39UOOZNYOcthfxqes55wdhVijZrE1to57qskarBiX46JVSru3Koh2+JFbV//o3u0ytg==",
+    "bytes": 145059,
+    "sha256": "b0d95e6a3b541c8e6e7d28f915a1fd8223e3187079360a209e5048dddbb3583d",
+    "licencia": "MIT",
+    "archivo_licencia": "LICENSE.three-vrm"
+  },
+  {
+    "archivo": "three-vrm-animation.module.min.js",
+    "paquete": "@pixiv/three-vrm-animation",
+    "version": "3.1.6",
+    "origen": "https://registry.npmjs.org/@pixiv/three-vrm-animation/-/three-vrm-animation-3.1.6.tgz",
+    "ruta_en_paquete": "package/lib/three-vrm-animation.module.min.js",
+    "integridad_npm": "sha512-N677ck4PHR2j8zVKaaddFkAp0CseW2KtuHbrvTWtw2A23r9N75j8pWvExR9RCkvJkEP5ZAwCe6IVQJfCrqkkLg==",
+    "bytes": 33233,
+    "sha256": "4d8261ce303fa5bedf1f88353a5d7fdd40f2b5a2e12558bdc7cba42eb661a1ec",
+    "licencia": "MIT",
+    "archivo_licencia": "LICENSE.three-vrm-animation"
+  }
+]

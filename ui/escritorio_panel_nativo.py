@@ -32,6 +32,12 @@ rendimiento → mascota.set_fps_max / set_encima…; radial → nada (se lee al 
     panel = PanelEscritorioNativo(config, atajos=servicios.atajos)
     panel.cambiado.connect(lambda s: aplicar(s, panel.ultimo_guardado.get(s)))
     panel.set_atajos(gestor)      # si el gestor llega después (la nativa monta al final)
+    panel.enlazar_servicios(servicios)   # main._montar_servicios_c4
+
+Lo que cambian la bandeja, el radial o un atajo con Ajustes abierto (tema, siempre
+encima, barra de tareas) se ve al momento (ControlTema.cambio y
+ServiciosCorte4.config_cambio) y al enseñarse el panel relee config.json. Cada control
+escribe SOLO sus claves: nunca devuelve lo que otro cambió.
 
 Estilo de ui/theme.py (COLORS), como el resto de la nativa.
 """
@@ -358,8 +364,10 @@ class PanelEscritorioNativo(QWidget):
 
     def _tema_guardado(self) -> Dict[str, Any]:
         """La sección `tema` guardada: la del ControlTema enlazado (lo que tendrá
-        config.json en ≤ 400 ms si la bandeja acaba de cambiarlo) o la de config."""
-        f = getattr(self._tema_ctl, "guardado", None)
+        config.json en ≤ 400 ms si la bandeja acaba de cambiarlo) o la de config.
+        Se lee su `actual()`: ControlTema avisa (`cambio`) antes de apuntar lo nuevo
+        como guardado, y en la nativa nadie previsualiza (lo visible es lo guardado)."""
+        f = getattr(self._tema_ctl, "actual", None)
         if callable(f):
             try:
                 d = f()

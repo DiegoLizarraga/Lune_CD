@@ -135,3 +135,57 @@ def test_ordenes_claras_se_detectan(texto, esperado):
 def test_lo_que_no_es_una_orden_sigue_al_modelo(texto):
     assert ToolManager._detectar_pedido(texto) is None
     assert ToolManager().detectar_llamadas(texto) == []
+
+
+# ── «pon la canción X»: solo con comillas o si X es un baile tuyo (revisión 7-10, BM5/RR4) ──
+
+@pytest.fixture
+def con_biblioteca(tmp_path, monkeypatch):
+    """La biblioteca compartida (nucleo.bailes) en una carpeta temporal con dos bailes
+    («Despacito» y «Senbonzakura (Full ver.)») ya escaneada: su foto es lo que mira la detección."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import bailes_falsos as bf
+    from nucleo import bailes as nbl
+    carpeta = tmp_path / "bailes"
+    bf.hacer_baile(carpeta, "Despacito")
+    bf.hacer_baile(carpeta, "Senbon", meta={"titulo": "Senbonzakura (Full ver.)", "autor_cancion": "Kurousa-P"})
+    bib = nbl.Biblioteca(carpeta, tmp_path / "cache", config=bf.ConfigFalsa())
+    bib.escanear()
+    monkeypatch.setattr(nbl, "_COMPARTIDA", bib)
+    return bib
+
+
+@pytest.mark.parametrize("texto, cancion", [
+    ("pon la canción Despacito", "Despacito"),
+    ("oye Lune, ponme la canción senbonzakura porfa", "senbonzakura"),
+    ("baila la canción Senbonzakura", "Senbonzakura"),
+    ("pon la canción «Despacito en YouTube»", "Despacito en YouTube"),       # con comillas, tal cual
+    ("ponme el baile de Caramelldansen", "Caramelldansen"),                   # «el baile de X» no cambia
+])
+def test_pon_la_cancion_de_tu_biblioteca_o_entre_comillas(con_biblioteca, texto, cancion):
+    assert ToolManager._detectar_pedido(texto) == ("mascota_bailar", {"cancion": cancion})
+
+
+@pytest.mark.parametrize("texto", [
+    "pon la canción más alta", "pon la canción a todo volumen", "pon la canción más fuerte",
+    "pon la cancion en bucle", "pon la canción más triste", "pon la canción del momento",
+    "pon la canción despacito en youtube", "pon la canción Despacito en Spotify",
+    "pon la canción Gangnam Style", "pon la canción zakura",                 # palabras enteras, no trozos
+])
+def test_pon_la_cancion_que_no_es_un_baile_la_decide_el_modelo(con_biblioteca, texto):
+    assert ToolManager._detectar_pedido(texto) is None
+    assert ToolManager().detectar_llamadas(texto) == []
+
+
+def test_pon_la_cancion_sin_foto_de_la_biblioteca_la_decide_el_modelo(tmp_path, monkeypatch):
+    """Sin biblioteca compartida, o sin escanear aún, no se escanea aquí (hilo de Qt): el modelo."""
+    from nucleo import bailes as nbl
+    monkeypatch.setattr(nbl, "_COMPARTIDA", None)
+    assert ToolManager._detectar_pedido("pon la canción Despacito") is None
+    bib = nbl.Biblioteca(tmp_path / "no_escaneada", tmp_path / "cache")
+    monkeypatch.setattr(nbl, "_COMPARTIDA", bib)
+    assert ToolManager._detectar_pedido("pon la canción Despacito") is None and not bib.escaneada
+    # «baila» / «para el baile» / alarmas / Minecraft siguen igual
+    assert ToolManager._detectar_pedido("baila") == ("mascota_bailar", {})
+    assert ToolManager._detectar_pedido("para el baile") == ("parar_baile", {})
+    assert ToolManager._detectar_pedido("conecta el bot de Minecraft") == ("minecraft_bot", {"accion": "conectar"})

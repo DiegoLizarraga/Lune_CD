@@ -1,7 +1,7 @@
 import {
-  readdirSync, statSync, existsSync, mkdirSync, renameSync
+  readdirSync, statSync, existsSync, mkdirSync, renameSync, realpathSync
 } from "fs";
-import { join, extname, basename, dirname } from "path";
+import { join, extname, basename, dirname, resolve, relative, isAbsolute } from "path";
 import { homedir } from "os";
 
 export const HOME = homedir();
@@ -11,16 +11,31 @@ const EXTENSIONES_VIDEO = [".mp4", ".mov", ".avi", ".mkv", ".webm"];
 const EXTENSIONES_AUDIO = [".mp3", ".ogg", ".wav", ".flac", ".m4a"];
 const EXTENSIONES_DOC   = [".pdf", ".doc", ".docx", ".txt", ".xlsx", ".csv", ".zip", ".rar"];
 
-// Resolver ruta relativa al home
+// ¿`ruta` (ya resuelta) está dentro de `base`? relative() sin «..» ni unidad.
+function dentroDe(base, ruta) {
+  const r = relative(base, ruta);
+  return r === "" || (!r.startsWith("..") && !isAbsolute(r));
+}
+
+// La ruta real (enlaces y junctions resueltos) si existe; si no, la misma.
+function rutaReal(ruta) {
+  try { return realpathSync.native(ruta); } catch { return ruta; }
+}
+
+// Resolver una ruta pedida por Telegram SIEMPRE dentro de la carpeta del usuario.
+// Antes join(HOME, "../..") salía a C:\ y /ls listaba todo el disco. Ahora «..»,
+// absolutas de Windows (C:\…, C:…), rutas de red (\\servidor, //servidor) y
+// enlaces que apunten fuera vuelven a HOME.
 export function resolverRuta(ruta) {
-  if (!ruta || ruta === "~" || ruta === "") return HOME;
-  if (ruta.startsWith("/")) {
-    // Rutas absolutas solo permitidas dentro del home
-    if (!ruta.startsWith(HOME)) return HOME;
-    return ruta;
-  }
-  if (ruta.startsWith("~/")) return join(HOME, ruta.slice(2));
-  return join(HOME, ruta);
+  if (ruta === undefined || ruta === null) return HOME;
+  let s = String(ruta).trim();
+  if (s === "" || s === "~") return HOME;
+  if (s.startsWith("\\") || s.startsWith("//")) return HOME;          // red (UNC) o raíz de la unidad
+  if (s.startsWith("~/") || s.startsWith("~\\")) s = s.slice(2);
+  const candidata = isAbsolute(s) ? resolve(s) : resolve(HOME, s);
+  if (!dentroDe(HOME, candidata)) return HOME;
+  if (existsSync(candidata) && !dentroDe(rutaReal(HOME), rutaReal(candidata))) return HOME;
+  return candidata;
 }
 
 // Listar contenido de una carpeta

@@ -25,8 +25,14 @@ ARRASTRE MANUAL (VRM y animada: CompanionFlotante)
    `cb` trae el asiento medido con la pose completa y se vuelve a clavar con
    SmoothDamp. Sentada, desliza por el borde. Devuelve True (la mascota no se
    mueve sola).
+   Con el ratón QUIETO no hay MouseMove: un QTimer propio (66 ms; 16 ms mientras
+   se desliza con SmoothDamp) da la misma muestra con la última posición, así el
+   medio segundo sobre el borde cuenta y el deslizamiento acaba aunque no muevas
+   el ratón (revisión 7-10).
 3. `arrastre_cambio(False)` → para la enumeración; si sigue sentada, queda
-   clavada.
+   clavada; si no, un último intento con la sonda (`al_soltar(muestreado=True)`).
+   Levantarse en la misma pasada vuelve al punto de asiento DE PIE (el sentado
+   encajaría con el pecho).
 
 ARRASTRE NATIVO (sprites: AvatarOverlay, startSystemMove)
 ---------------------------------------------------------
@@ -51,7 +57,17 @@ AL LEVANTARSE
 mascota se queda donde estaba, flotando, como en ME. Con `ceder` (juego,
 alarma, pantalla grande, MMD) se levanta igual pero recuerda dónde estaba y
 `reanudar` la vuelve a sentar si la ventana sigue bien (si no, suelta la
-actividad). «Bájate» durante la cesión → `prioridad.olvidar("sentada")`.
+actividad). «Bájate», arrastrarla o colocarla por código (esquina,
+`antes_de_colocar`: ui/montaje_vida) durante la cesión → `bajar()`: ya no vuelve
+(`prioridad.olvidar("sentada")`).
+
+LA BARRA DE QUÉ MONITOR
+-----------------------
+La del monitor del punto que importa (sentada: el asiento sobre su barra; buscando:
+la sonda), no la del centro de la ventana: con monitores uno encima de otro y el
+asiento por encima del centro, el centro caía en el de abajo. Si la barra se oculta
+sola, `barra_auto_oculta()` (SHAppBarMessage, un mensaje a Explorer) se guarda 2 s
+(`_PantallaConCache`): el tic de 15 Hz no se lo pregunta cada vez.
 
 Señales: `sentada(modo, variante)`, `levantada(motivo)` y `cambio(json)` con
 `estado()`. Herramienta: `mascota_sentarse` (`herramientas()`).
@@ -71,6 +87,7 @@ from nucleo import asiento as na
 from nucleo.asiento import Desnap, MaquinaAsiento, Mover, Objetivo, Snap, punto_fisico, radio_sonda
 from nucleo.fisica import clamp
 from servicios import ventanas_ajenas as va
+from servicios import win_pantalla as wp
 
 _log = logging.getLogger("lune.asiento")
 
@@ -141,6 +158,30 @@ def leer_punto(p: Any) -> Optional[Tuple[Tuple[float, float], Tuple[float, float
     return a, s
 
 
+class _PantallaConCache:
+    """La API de pantalla (win_pantalla) con `barra_auto_oculta()` guardado `TTL_S`:
+    es SHAppBarMessage (un SendMessage a Explorer) y, con la barra que se oculta sola,
+    el tic de sentada lo pedía a 15 Hz en el hilo de Qt. Lo demás pasa tal cual."""
+
+    TTL_S = 2.0
+
+    def __init__(self, api: Any, reloj: Callable[[], float]):
+        self._api = api
+        self._reloj = reloj
+        self._oculta: Optional[bool] = None
+        self._t = -math.inf
+
+    def barra_auto_oculta(self) -> bool:
+        t = self._reloj()
+        if self._oculta is None or t - self._t >= self.TTL_S:
+            self._oculta = bool(self._api.barra_auto_oculta())
+            self._t = t
+        return self._oculta
+
+    def __getattr__(self, nombre: str) -> Any:
+        return getattr(self._api, nombre)
+
+
 class ControlAsiento(QObject):
     """Controlador de «sentada» (ver la cabecera del módulo)."""
 
@@ -155,6 +196,7 @@ class ControlAsiento(QObject):
     TOPMOST_BARRA_MS = 2000
     ENUM_MS = 66
     BARRA_MS = 250
+    ARRASTRE_MS = 66                  # muestras del arrastre manual con el ratón quieto
 
     def __init__(self, escritorio: Any, config: Any, *, api: Any = None, ventana: Any = None, entrada: Any = None,
                  pantalla: Any = None, hwnd_principal: Optional[Callable[[], int]] = None,
@@ -169,6 +211,7 @@ class ControlAsiento(QObject):
         self._win = ventana
         self._entrada = entrada
         self._pantalla = pantalla
+        self._pantalla_cache: Optional[_PantallaConCache] = None
         self._hwnd_principal = hwnd_principal
         self._en_ui = en_ui
         self._reloj = reloj
@@ -185,6 +228,7 @@ class ControlAsiento(QObject):
         self._candidatas: List[Any] = []
         self._asiento_rel: Optional[Tuple[float, float]] = None
         self._sonda_rel: Optional[Tuple[float, float]] = None
+        self._rel_de_pie: Optional[Tuple[Tuple[float, float], Tuple[float, float]]] = None
         self._medido = False
         self._gen = 0
         self._rect_obj_prev: Optional[va.Rect] = None
@@ -201,12 +245,44 @@ class ControlAsiento(QObject):
         self._t_remedir = QTimer(self)
         self._t_remedir.setInterval(self.REMEDIR_MS)
         self._t_remedir.timeout.connect(self._remedir)
+        self._t_arrastre = QTimer(self)
+        self._t_arrastre.setInterval(self.ARRASTRE_MS)
+        self._t_arrastre.timeout.connect(self._tic_arrastre)
 
     # ── Lo compartido ────────────────────────────────────────────────────────────
     def _va(self) -> Any:
         if self._api is None:
             self._api = va.api_defecto()
         return self._api
+
+    def _api_pantalla(self) -> Any:
+        if self._pantalla_cache is None:
+            self._pantalla_cache = _PantallaConCache(self._pantalla or wp.api_defecto(), self._reloj)
+        return self._pantalla_cache
+
+    def _barra_en(self, punto: Optional[Tuple[float, float]], rm: Optional[va.Rect]) -> Optional[va.Candidata]:
+        """La barra de abajo del monitor que contiene `punto` (px físicos: el asiento sobre
+        la barra, o la sonda). Solo si el punto no cae en ningún monitor, la del centro
+        de `rm` (la ventana de la mascota)."""
+        api = self._api_pantalla()
+        if punto is not None:
+            x, y = int(round(punto[0])), int(round(punto[1]))
+            try:
+                mons = wp.monitores(api)
+            except Exception:
+                mons = []
+            for mon in mons:
+                if va._rect(mon.rect).contiene(x, y):
+                    return va.barra_asiento(mon, api)
+        return va.barra_asiento(rm, api) if rm is not None else None
+
+    def _punto_barra(self, o: Objetivo, rm: Optional[va.Rect]) -> Tuple[float, float]:
+        """Sentada en la barra `o`: el asiento (x) sobre su borde (y − 1: dentro de su
+        monitor aunque la barra se oculte sola y su rect empiece en el borde de abajo)."""
+        x = o.rect.izq + o.rect.ancho / 2.0
+        if rm is not None and self._asiento_rel is not None:
+            x = punto_fisico(rm, self._asiento_rel, self._dpr())[0]
+        return x, o.rect.arriba - 1
 
     def _cursor(self) -> Optional[Tuple[int, int]]:
         if self._entrada is None:
@@ -324,6 +400,11 @@ class ControlAsiento(QObject):
         s = self.maquina.sentada
         return s.modo if s is not None else ""
 
+    @property
+    def cedida(self) -> bool:
+        """De pie porque algo le quitó «sentada» (juego, MMD…) y `reanudar` la volvería a sentar."""
+        return self._cedido is not None
+
     def estado(self) -> dict:
         s = self.maquina.sentada
         return {
@@ -368,7 +449,7 @@ class ControlAsiento(QObject):
         if self.maquina.sentada is not None:
             self._levantar("usuario")
         self._cedido = None
-        for t in (self._t_enum, self._t_tic, self._t_remedir):
+        for t in (self._t_enum, self._t_tic, self._t_remedir, self._t_arrastre):
             t.stop()
         self._desconectar_pantalla()
         if self._bus_conectado:
@@ -398,8 +479,10 @@ class ControlAsiento(QObject):
                 _llamar(vieja, "set_arrastre_delegado", None)
         self._delegado_puesto = False
         self._mascota = v
+        self._gen += 1                                    # lo que conteste la de antes ya no vale
         self._medido = False
         self._asiento_rel = self._sonda_rel = None
+        self._rel_de_pie = None
         if v is not None:
             s = getattr(v, "arrastre_cambio", None)
             if s is not None and hasattr(s, "connect"):
@@ -428,7 +511,7 @@ class ControlAsiento(QObject):
             o: Objetivo = ced["objetivo"]
             if o.es_barra:
                 rm = self._rect_m()
-                b = va.barra_asiento(rm, self._pantalla) if rm is not None else None
+                b = self._barra_en((o.rect.izq + o.rect.ancho / 2.0, o.rect.arriba - 1), rm)
                 if b is not None:
                     obj = Objetivo(int(b.hwnd), True, b.rect)
             elif self._cfg_ventanas() and va.estado_ventana(self._va(), o.hwnd) == "ok":
@@ -485,7 +568,7 @@ class ControlAsiento(QObject):
         dpr = self._dpr()
         seat_x = punto_fisico(rm, self._asiento_rel, dpr)[0]
         if sitio == na.MODO_BARRA:
-            c = va.barra_asiento(rm, self._pantalla)
+            c = self._barra_en(None, rm)
             if c is None:
                 return False, TEXTO_SIN_BARRA
         else:
@@ -592,6 +675,9 @@ class ControlAsiento(QObject):
         m = self._mascota
         if m is None or self._arrastrando:
             return
+        if self._cedido is not None:
+            # La mueves mientras estaba cedida (MMD, juego…): al acabar ya no vuelve a su sitio.
+            self.bajar("usuario")
         t = self._reloj()
         self._arrastrando = True
         self._manual = not self._nativa()
@@ -610,11 +696,13 @@ class ControlAsiento(QObject):
             self._delegado_puesto = True
             self._refrescar()
             self._t_enum.start(self.ENUM_MS if self._cfg_ventanas() else self.BARRA_MS)
+            self._intervalo_arrastre()
         self._emitir()
 
     def _cortar_arrastre(self) -> None:
         """Deja el arrastre sin intentar sentarse (mascota cambiada, detener)."""
         self._t_enum.stop()
+        self._t_arrastre.stop()
         if self._delegado_puesto:
             _llamar(self._mascota, "set_arrastre_delegado", None)
             self._delegado_puesto = False
@@ -627,16 +715,24 @@ class ControlAsiento(QObject):
             return
         t = self._reloj()
         self._t_enum.stop()
+        self._t_arrastre.stop()
+        con_delegado = self._delegado_puesto
         if self._delegado_puesto:
             _llamar(self._mascota, "set_arrastre_delegado", None)
             self._delegado_puesto = False
         snap = None
-        if self._manual or not self._buscar_algo():
+        # Manual: un último intento con la sonda (el medio segundo sobre el borde ya contado
+        # por las muestras). Nativo (sprites): el SO la movió; se enumera UNA vez al soltar.
+        intentar = (self.maquina.sentada is None and self._buscar_algo()
+                    and (con_delegado if self._manual else True))
+        if not intentar:
             self.maquina.al_soltar(t)
         else:
-            self._refrescar()                            # una sola enumeración al soltar
+            if not self._manual:
+                self._refrescar()                        # una sola enumeración al soltar
             rm = self._rect_m()
-            self._pedir_punto()                          # síncrono en los sprites
+            if not self._manual:
+                self._pedir_punto()                      # síncrono en los sprites
             if rm is not None:
                 self._asegurar_rel(rm)
                 dpr = self._dpr()
@@ -644,7 +740,7 @@ class ControlAsiento(QObject):
                 snap = self.maquina.al_soltar(
                     t, sonda=punto_fisico(rm, self._sonda_rel, dpr), radio=radio_sonda(rm.alto, dpr, self.maquina.p),
                     candidatas=self._candidatas, ocluida=self._ocluida, cursor=self._cursor(), dpr=dpr,
-                    asiento=punto_fisico(rm, self._asiento_rel, dpr))
+                    asiento=punto_fisico(rm, self._asiento_rel, dpr), muestreado=self._manual)
             else:
                 self.maquina.al_soltar(t)
         self._arrastrando = False
@@ -691,11 +787,33 @@ class ControlAsiento(QObject):
             else:
                 if isinstance(mov, Mover):
                     self._win.mover(h, mov.x, mov.y)
+                self._intervalo_arrastre()
                 return True
+        self._intervalo_arrastre()
         try:
             return bool(self._win.mover(h, lx, ly))
         except Exception:
             return False
+
+    def _tic_arrastre(self) -> None:
+        """Arrastre manual con el ratón QUIETO: sin MouseMove la mascota no llama al
+        delegado, así que aquí se da la muestra con la última posición (el medio segundo
+        sobre el borde cuenta y el SmoothDamp termina)."""
+        if not (self._arrastrando and self._delegado_puesto):
+            self._t_arrastre.stop()
+            return
+        if (self._reloj() - self._t_ult) * 1000.0 >= self.RAPIDO_MS / 2.0:   # si no acaba de moverse
+            self._delegado()
+        self._intervalo_arrastre()
+
+    def _intervalo_arrastre(self) -> None:
+        if not (self._arrastrando and self._delegado_puesto):
+            return
+        ms = self.RAPIDO_MS if self.maquina.suavizando else self.ARRASTRE_MS
+        if self._t_arrastre.interval() != ms:
+            self._t_arrastre.setInterval(ms)
+        if not self._t_arrastre.isActive():
+            self._t_arrastre.start()
 
     def _refrescar(self) -> None:
         """Candidatas del arrastre (timer de 66 ms con ventanas, 250 ms con solo la barra)."""
@@ -713,7 +831,11 @@ class ControlAsiento(QObject):
                 _log.debug("asiento: no pude listar ventanas", exc_info=True)
         if (self._cfg_barra() and puede) or (s is not None and s.objetivo.es_barra):
             rm = self._rect_m() or self._inicio
-            b = va.barra_asiento(rm, self._pantalla) if rm is not None else None
+            if s is not None and s.objetivo.es_barra:
+                punto = self._punto_barra(s.objetivo, rm)
+            else:
+                punto = punto_fisico(rm, self._sonda_rel, self._dpr()) if rm is not None and self._sonda_rel else None
+            b = self._barra_en(punto, rm)
             if b is not None:
                 cands.append(b)
         self._candidatas = cands
@@ -739,7 +861,7 @@ class ControlAsiento(QObject):
         if s is None:
             return None
         if s.objetivo.es_barra:
-            b = va.barra_asiento(rm, self._pantalla) if rm is not None else None
+            b = self._barra_en(self._punto_barra(s.objetivo, rm), rm)
             return b.rect if b is not None else None
         try:
             r = self._va().rect_visible(s.objetivo.hwnd)
@@ -777,6 +899,8 @@ class ControlAsiento(QObject):
         antes = self._asiento_rel
         self._asiento_rel, self._sonda_rel = a, s
         self._medido = True
+        if self.maquina.sentada is None:
+            self._rel_de_pie = (a, s)                     # la pose de pie (para después de levantarse)
         if self.maquina.sentada is not None and not self._arrastrando:
             if antes is None or abs(a[0] - antes[0]) > 1 or abs(a[1] - antes[1]) > 1:
                 self._rect_obj_prev = None
@@ -876,6 +1000,17 @@ class ControlAsiento(QObject):
         m = self._mascota
         _llamar(m, "asiento", False)
         _llamar(m, "restaurar_orden_z")
+        if motivo != "cede":
+            # De pie otra vez: fuera el punto de la pose sentada (en la misma pasada de un
+            # arrastre, la sonda sentada encajaría con el pecho y saltaría). La cesión lo
+            # conserva: `reanudar` la vuelve a sentar con él.
+            if self._rel_de_pie is not None:
+                self._asiento_rel, self._sonda_rel = self._rel_de_pie
+            else:
+                self._asiento_rel = self._sonda_rel = None
+                self._medido = False
+            if self._arrastrando:
+                self._pedir_punto()                       # y se vuelve a medir de pie
         if terminar:
             pr = self._prioridad()
             if pr is not None:
@@ -934,7 +1069,7 @@ class ControlAsiento(QObject):
             return
         o = s.objetivo
         if o.es_barra:
-            b = va.barra_asiento(rm, self._pantalla)
+            b = self._barra_en(self._punto_barra(o, rm), rm)
             if b is None:
                 self._levantar("cerrada")
                 return

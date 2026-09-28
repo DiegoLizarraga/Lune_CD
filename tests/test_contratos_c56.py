@@ -256,7 +256,9 @@ def montaje(qapp, tmp_path):
     gestor = tme.GestorFalso()
     fab = {"tema": lambda c, p: tme.TemaFalso(c, p), "juego": tme.JuegoFalso, "gestor_atajos": gestor,
            "tray": tme.TrayFalso, "autoinicio": tme.AutoinicioFalso(), "sonar": lambda n: None,
-           "modelos_vrm": lambda: [], "traer_al_frente": None, "ocio": of.fabricas_ocio(reg)}
+           "modelos_vrm": lambda: [], "traer_al_frente": None, "ocio": of.fabricas_ocio(reg),
+           "vida": False,                 # cortes 7/8 aparte (tests/test_contratos_c78.py)
+           "escenario": False}            # cortes 9/10 aparte (tests/test_contratos_c910.py)
     anf = tme.AnfitrionFalso(modo="br")
     s = montar_escritorio(esc, anf, cfg, fabricas=fab)
     s.reg, s.cfg, s.esc, s.tm, s.gestor, s.anf = reg, cfg, esc, tm, gestor, anf

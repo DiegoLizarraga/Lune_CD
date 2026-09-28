@@ -3,6 +3,9 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
+<!-- Corte 9: fetch/XHR solo al servidor local de la mascota (y blob:/data:), aunque un
+     .vrma o un script lo intenten (crítica d). Si rompiera algo en pantalla, se quita. -->
+<meta http-equiv="Content-Security-Policy" content="connect-src 'self' blob: data:" />
 <title>Lune VRM</title>
 <link rel="stylesheet" href="styles.css" />
 <link rel="stylesheet" href="css/burbuja.css" />
@@ -74,6 +77,9 @@
 <script src="lune_ritmo.js"></script>
 <script src="lune_alarma.js"></script>
 <script src="lune_pantalla.js"></script>
+<!-- Corte 9 (script clásico, también en companion.html): la canción de un baile en esta
+     página, su reloj y el pulso (LuneMMDAudio). -->
+<script src="lune_mmd_audio.js"></script>
 <script>
   // Calibración del modelo (luz, altura, pesos de seguimiento, invertir*): Python puede
   // llamarla antes de que cargue el módulo. Se guarda la última y el módulo la aplica.
@@ -104,6 +110,34 @@
   window.luneBailar = function (on, o) { window.__luneOcioPendiente.bailar = [on, o]; return false; };
   window.lunePulso = function (b, f, e) { window.__luneOcioPendiente.pulso = [b, f, e]; return false; };
 
+  // Cortes 7 y 8 (ui/companion.py: asiento, punto_asiento, comer, set_comida_activa):
+  // sentarse y la reacción a la comida son módulos del avatar (vrm/lune_sentarse.js,
+  // vrm/lune_comida.js). Hasta que cargan se guarda la última llamada de cada una y el
+  // módulo la repite; el punto de asiento aún no se sabe ('null': Python usa su respaldo).
+  window.__luneVidaPendiente = {};
+  window.luneSentar = function (modo, v) { window.__luneVidaPendiente.sentar = [modo, v]; return 'null'; };
+  window.luneSeatPx = function () { return 'null'; };
+  window.luneComer = function (tipo, ms) { window.__luneVidaPendiente.comer = [tipo, ms]; return false; };
+  window.luneComidaActiva = function (on) { window.__luneVidaPendiente.comida = [on]; return false; };
+
+  // Corte 9 (ui/companion.py: mmd): el reproductor de bailes es un módulo del avatar
+  // (vrm/lune_mmd.js) que se importa y registra al pedir el primer baile. Hasta que carga
+  // el módulo de abajo, se guarda el último «cargar» con las banderas que lleguen detrás
+  // (pausa, volumen, offset, en_sitio, bucle) y se repiten; «parar» lo olvida todo.
+  window.luneMMD = function (orden, o) {
+    var p = window.__luneOcioPendiente;
+    if (!p) return false;
+    var m = p.mmd || (p.mmd = { cargar: null, banderas: [] });
+    orden = String(orden || '');
+    if (orden === 'estado') return JSON.stringify({ fase: m.cargar ? 'cargando' : 'parado', pendiente: true });
+    if (orden === 'cargar') { m.cargar = o; m.banderas = []; return true; }
+    if (orden === 'parar') { m.cargar = null; m.banderas = []; return true; }
+    if (['pausa', 'volumen', 'offset', 'en_sitio', 'bucle'].indexOf(orden) < 0) return false;
+    m.banderas = m.banderas.filter(function (b) { return b[0] !== orden; });
+    m.banderas.push([orden, o]);
+    return true;
+  };
+
   // Si el módulo principal no llega a ejecutarse (404 o error de sintaxis en lune_vrm.js,
   // lune_modulos.js o three), su propio aviso nunca se registra: este lo cubre. En captura
   // para ver también el 'error' del <script> (no burbujea). Como texto, nunca innerHTML.
@@ -126,13 +160,15 @@
   }, true);
 </script>
 
-<!-- three.js y @pixiv/three-vrm empaquetados en ui_web/vendor (sin red). -->
+<!-- three.js, @pixiv/three-vrm y @pixiv/three-vrm-animation (corte 9) empaquetados en
+     ui_web/vendor (sin red; versiones y hashes en vendor/three/VENDOR.json). -->
 <script type="importmap">
 {
   "imports": {
     "three": "./vendor/three/three.module.min.js",
     "three/addons/": "./vendor/three/",
-    "@pixiv/three-vrm": "./vendor/three/three-vrm.module.min.js"
+    "@pixiv/three-vrm": "./vendor/three/three-vrm.module.min.js",
+    "@pixiv/three-vrm-animation": "./vendor/three/three-vrm-animation.module.min.js"
   }
 }
 </script>
@@ -262,10 +298,13 @@ const sinModulo = (nombre) => (e) => {
 };
 // three-vrm también con import() tolerante (y como espacio de nombres): si no trae el
 // colisionador, la página sigue y solo «sujetar el pelo» no hace nada.
-const [modGrande, modBaile, VRMLib] = await Promise.all([
+const [modGrande, modBaile, VRMLib, modSentarse, modComida] = await Promise.all([
   import('./vrm/lune_grande.js').catch(sinModulo('lune_grande.js')),
   import('./vrm/lune_baile_proc.js').catch(sinModulo('lune_baile_proc.js')),
   import('@pixiv/three-vrm').catch(() => ({})),
+  // Cortes 7 y 8 (sentarse y comida): igual de opcionales
+  import('./vrm/lune_sentarse.js').catch(sinModulo('lune_sentarse.js')),
+  import('./vrm/lune_comida.js').catch(sinModulo('lune_comida.js')),
 ]);
 const pantalla = window.__lunePantalla || null;
 const notas = window.LuneNotas ? window.LuneNotas.crear({ doc: document }) : null;
@@ -305,6 +344,137 @@ window.__luneOcioPendiente = null;
 if (ocioPendiente.grande) window.luneGrande(...ocioPendiente.grande);
 if (ocioPendiente.bailar) window.luneBailar(...ocioPendiente.bailar);
 if (ocioPendiente.pulso) window.lunePulso(...ocioPendiente.pulso);
+
+// ── Cortes 7 y 8: sentarse (vrm/lune_sentarse.js) y comida (vrm/lune_comida.js) ──
+// También se registran la primera vez que se usan. El punto de asiento se puede medir
+// sin registrar el módulo (medirAsiento con la pose que tenga).
+let modS = null, modC = null;
+function moduloSentarse() {
+  if (!modS && modSentarse && typeof modSentarse.instalar === 'function') modS = mascota.registrar(modSentarse.instalar);
+  return modS;
+}
+function moduloComida() {
+  if (!modC && modComida && typeof modComida.instalar === 'function') modC = mascota.registrar(modComida.instalar);
+  return modC;
+}
+const jsonPunto = (p) => (p ? JSON.stringify(p) : 'null');
+// modo 'ventana' | 'barra' → JSON {asiento:{x,y}, sonda:{x,y}} (px de la página, pose
+// sentada completa y encuadre de cuerpo entero); null → se levanta ('null').
+window.luneSentar = (modo, variante) => {
+  try {
+    if (modo == null || modo === '') { if (modS) modS.api.levantar(); return 'null'; }
+    const m = moduloSentarse();
+    return m ? jsonPunto(m.api.sentar(modo, variante)) : 'null';
+  } catch (e) { return 'null'; }
+};
+window.luneSeatPx = () => {
+  try {
+    if (modS) return jsonPunto(modS.api.puntos());
+    return modSentarse && typeof modSentarse.medirAsiento === 'function' ? jsonPunto(modSentarse.medirAsiento(mascota.ctx)) : 'null';
+  } catch (e) { return 'null'; }
+};
+window.luneComer = (tipo, ms) => { const m = moduloComida(); return m ? !!m.api.comer(tipo, ms) : false; };
+window.luneComidaActiva = (on) => { const m = on ? moduloComida() : modC; return m ? !!m.api.activa(!!on) : false; };
+const vidaPendiente = window.__luneVidaPendiente || {};
+window.__luneVidaPendiente = null;
+if (vidaPendiente.sentar) window.luneSentar(...vidaPendiente.sentar);
+if (vidaPendiente.comida) window.luneComidaActiva(...vidaPendiente.comida);
+if (vidaPendiente.comer) window.luneComer(...vidaPendiente.comer);
+
+// ── Corte 9: reproductor de bailes MMD/VRMA (vrm/lune_mmd.js; lo pide ui/mmd_qt.ControlMMD) ──
+// Se importa y se registra al pedir el primer baile (sin bailes no cuesta nada): lune_mmd.js,
+// el parser VMD (lune_vmd.js), @pixiv/three-vrm-animation y el GLTFLoader, todos con import()
+// tolerante (si falta uno, ese baile da error y la mascota sigue). La canción suena en esta
+// página (lune_mmd_audio.js) y el módulo avisa con eventos 'mmd' por luneEventos. Mientras
+// se importa, lo pedido se guarda (el último «cargar» y sus banderas) y se repite.
+// Cuándo suena lo decide esta capa: el «cargar» va siempre sin autoplay y empieza al acabar
+// de cargar si nadie pidió pausa entretanto (ventana oculta, juego): esa pausa no se pierde.
+// Pausa → el módulo lleva a Lune al reposo, brazos abajo, en 0.6 s (D5); seguir → mismo t.
+const ORDENES_MMD = ['cargar', 'pausa', 'parar', 'volumen', 'offset', 'en_sitio', 'bucle', 'estado'];
+const mmdCola = { cargar: null, banderas: new Map() };
+let modM = null, promMMD = null, quiereSonar = false, genMMD = 0;
+const datosMMD = (o) => {
+  if (typeof o !== 'string') return o;
+  try { return JSON.parse(o); } catch (e) { return null; }
+};
+const valorMMD = (d, clave) => (d && typeof d === 'object' && !Array.isArray(d) ? d[clave] : d);
+const emitirMMD = (datos) => { try { if (typeof window.luneEmitir === 'function') window.luneEmitir('mmd', datos); } catch (e) { /* sin cola */ } };
+// Las órdenes van al api.orden del módulo (las de Python tal cual) salvo «cargar», que va sin
+// autoplay y se pone a sonar aquí, y «seguir» con el baile listo, que es «reproducir».
+function ordenMMD(mod, orden, o) {
+  const api = mod.api, d = datosMMD(o);
+  if (orden === 'estado') return JSON.stringify({ ...api.estado(), quiereSonar });
+  if (orden === 'cargar') {
+    if (!d || typeof d !== 'object' || Array.isArray(d)) return false;
+    quiereSonar = d.autoplay !== false;
+    const g = ++genMMD;
+    Promise.resolve(api.orden('cargar', { ...d, autoplay: false })).then((ok) => {
+      if (ok && g === genMMD && quiereSonar) api.orden('reproducir');
+    }, () => { /* el módulo ya avisó con 'error' */ });
+    return true;
+  }
+  if (orden === 'pausa') {
+    const on = valorMMD(d, 'on');
+    const fase = api.estado().fase;
+    const quiere = on === true || on === false ? on : fase === 'sonando';
+    quiereSonar = !quiere;
+    if (!quiere && fase === 'listo') api.orden('reproducir');
+    else api.orden('pausa', { on: quiere });
+    return true;
+  }
+  if (orden === 'parar') { genMMD++; quiereSonar = false; return !!api.orden('parar'); }
+  api.orden(orden, d);
+  return true;
+}
+function importarMMD() {
+  if (!promMMD) {
+    promMMD = Promise.all([
+      import('./vrm/lune_mmd.js').catch(sinModulo('lune_mmd.js')),
+      import('./vrm/lune_vmd.js').catch(sinModulo('lune_vmd.js')),
+      import('@pixiv/three-vrm-animation').catch(sinModulo('three-vrm-animation')),
+      import('three/addons/loaders/GLTFLoader.js').catch(sinModulo('GLTFLoader.js')),
+    ]).then(([m, vmd, vrma, gltf]) => {
+      if (!m || typeof m.instalar !== 'function') return null;
+      const V = vrma || {};
+      modM = mascota.registrar((ctx) => m.instalar(ctx, {
+        GLTFLoader: gltf && gltf.GLTFLoader, VRMAnimationLoaderPlugin: V.VRMAnimationLoaderPlugin,
+        createVRMAnimationClip: V.createVRMAnimationClip, VRMAnimation: V.VRMAnimation,
+        VRMLookAtQuaternionProxy: V.VRMLookAtQuaternionProxy, vmd: vmd || null, audio: window.LuneMMDAudio || null,
+      })) || null;
+      return modM;
+    }, () => null);
+  }
+  return promMMD.then((mod) => {
+    const cargar = mmdCola.cargar, banderas = [...mmdCola.banderas];
+    mmdCola.cargar = null; mmdCola.banderas.clear();
+    if (!mod) {
+      const d = datosMMD(cargar);
+      if (cargar) emitirMMD({ fase: 'error', id: String(valorMMD(d, 'id') || ''), mensaje: 'no se pudo cargar el reproductor de bailes' });
+      return;
+    }
+    if (cargar) ordenMMD(mod, 'cargar', cargar);
+    for (const [orden, o] of banderas) ordenMMD(mod, orden, o);
+  });
+}
+// orden: cargar · pausa · parar · volumen · offset · en_sitio · bucle → bool; estado → JSON
+window.luneMMD = (orden, o) => {
+  try {
+    orden = String(orden || '');
+    if (!ORDENES_MMD.includes(orden)) return false;
+    if (modM) return ordenMMD(modM, orden, o);
+    if (orden === 'estado') return JSON.stringify({ fase: mmdCola.cargar ? 'cargando' : 'parado', pendiente: true });
+    if (orden === 'cargar') { mmdCola.cargar = o; mmdCola.banderas.clear(); importarMMD(); }
+    else if (orden === 'parar') { mmdCola.cargar = null; mmdCola.banderas.clear(); }
+    else mmdCola.banderas.set(orden, o);
+    return true;
+  } catch (e) { return false; }
+};
+// Lo que Python pidió antes de que cargara este módulo (script clásico de arriba)
+const mmdAntes = ocioPendiente.mmd;
+if (mmdAntes && mmdAntes.cargar) {
+  window.luneMMD('cargar', mmdAntes.cargar);
+  for (const [orden, o] of mmdAntes.banderas || []) window.luneMMD(orden, o);
+}
 </script>
 </body>
 </html>

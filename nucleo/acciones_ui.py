@@ -21,9 +21,15 @@ cada uno sepa qué hacer, todos hablan con un `Despachador`:
   atajos: las funciones de cortes siguientes aparecen solas cuando su
   controlador registra el handler.
 - Visibilidad por estado (reglas de Mate-Engine): sin ajustes ni chat en
-  pantalla grande; «bajar» solo sentada; «dormir» pasa a «Despertar»; tamaño y
-  encuadre solo con la mascota 3D; «llamada» solo en la piel web; expresiones y
-  bailar también con Lune en la barra lateral de la web (`Contexto.mascota_barra`)…
+  pantalla grande; «bajar» solo sentada y «sentarse» solo de pie (con la mascota a
+  la vista); «dormir» pasa a «Despertar»; tamaño y encuadre solo con la mascota 3D;
+  «llamada» solo en la piel web; expresiones, bailar y comer (batido, pastel) también
+  con Lune en la barra lateral de la web (`Contexto.mascota_barra`); «guardar la
+  comida» solo con comida en la mano (`comiendo`) y «Comida» pasa a «Guardar la
+  comida»; Discord también en patata (/menu); «Pausar el baile» solo bailando (también
+  el reproductor MMD, `bailando == "mmd"`) y pasa a «Seguir el baile» si su handler
+  dice que está en pausa; «Mis bailes» (corte 9) en todos los modos salvo en pantalla
+  grande; «Reacciones a Minecraft» y «Bot de Minecraft» (corte 10) en todos los modos…
 - `items_radial()` y `menu_bandeja()` construyen lo que pintan el radial y la
   bandeja (datos puros; los widgets están en ui/menu_radial.py y ui/bandeja.py).
 
@@ -135,7 +141,8 @@ _R, _B, _T = USO_RADIAL, USO_BANDEJA, USO_ATAJO
 
 # Orden = orden de presentación en el catálogo de la web. Modos: casi todo es de
 # las ventanas (web y nativa); en patata (/menu) solo lo que la terminal sabe hacer:
-# voz, modo juego, tema, autoinicio, liberar memoria y salir.
+# voz, modo juego, tema, autoinicio, liberar memoria, Discord, bailes (/bailes),
+# Minecraft (/mc) y salir.
 ACCIONES: Dict[str, Accion] = {a.id: a for a in (
     # ── Lune (ventana y app) ──
     _a("mostrar_lune", "Abrir Lune", "window", "lune", MODOS_VENTANA, usos={_R, _B, _T}),
@@ -156,20 +163,22 @@ ACCIONES: Dict[str, Accion] = {a.id: a for a in (
     _a("encuadre", "Encuadre", "frame", "mascota", usos={_R, _B}),
     _a("esquina", "Llevar a la esquina", "corner", "mascota"),
     _a("cerrar_mascota", "Cerrar mascota", "close", "mascota", usos={_R, _B}),
+    _a("sentarse", "Sentarse en la barra", "taskbar", "mascota", usos={_R, _B}),  # corte 7
     _a("bajar", "Bajar", "arrow_down", "mascota"),                               # corte 7
     _a("pantalla_grande", "Pantalla grande", "monitor", "mascota",
        etiqueta_on="Salir de pantalla grande"),                                    # corte 5
     # ── Voz ──
     _a("voz", "Voz", "volume", "voz", MODOS_TODOS, interruptor=True, icono_on="volume"),
     _a("llamada", "Llamada", "phone", "voz", SOLO_WEB, interruptor=True),
-    # ── Baile (corte 6) ──
+    # ── Baile (corte 6) y reproductor de bailes MMD/VRMA (corte 9) ──
     _a("bailar", "Bailar", "music", "baile", etiqueta_on="Parar el baile"),
-    _a("baile_pausa", "Pausar el baile", "pause", "baile"),
+    _a("baile_pausa", "Pausar el baile", "pause", "baile", etiqueta_on="Seguir el baile", icono_on="music"),
+    _a("bailes", "Mis bailes", "film", "baile", MODOS_TODOS, usos={_R, _B, _T}),              # corte 9
     # ── Alarmas (corte 5) ──
     _a("alarma", "Alarmas", "alarm", "alarma"),
     _a("temporizador_rapido", "Temporizador rápido", "timer", "alarma"),
     # ── Comida (corte 8) ──
-    _a("comida", "Comida", "cake", "comida"),
+    _a("comida", "Comida", "cake", "comida", etiqueta_on="Guardar la comida"),
     _a("comer_batido", "Batido", "cup", "comida"),
     _a("comer_pastel", "Pastel", "cake", "comida"),
     _a("guardar_comida", "Guardar la comida", "package", "comida"),
@@ -181,8 +190,11 @@ ACCIONES: Dict[str, Accion] = {a.id: a for a in (
     _a("en_barra_tareas", "Mostrar en la barra de tareas", "taskbar", "sistema",
        interruptor=True, usos={_B}),
     # ── Integraciones (corte 8 y 10) ──
-    _a("discord", "Discord", "message", "integraciones", interruptor=True, usos={_B, _R}),
-    _a("minecraft", "Minecraft", "box", "integraciones", interruptor=True, usos={_B, _R}),
+    _a("discord", "Discord", "message", "integraciones", MODOS_TODOS, interruptor=True, usos={_B, _R}),
+    # Minecraft (corte 10): «minecraft» alterna las reacciones a tu partida (latest.log) y
+    # «minecraft_bot» conecta o desconecta el bot (nunca lo instala: eso es un botón de Ajustes).
+    _a("minecraft", "Reacciones a Minecraft", "box", "integraciones", MODOS_TODOS, interruptor=True, usos={_B, _R}),
+    _a("minecraft_bot", "Bot de Minecraft", "box", "integraciones", MODOS_TODOS, interruptor=True, usos={_B, _R}),
 )}
 
 # Segundo radial de «expresiones»: (arg para set_estado, etiqueta, icono).
@@ -209,12 +221,15 @@ MOTIVOS_JUEGO: Dict[str, str] = {
 
 # Acciones que solo tienen sentido con la mascota a la vista (se ocultan si no).
 _NECESITAN_MASCOTA = frozenset({"dormir", "esquina", "cerrar_mascota", "expresiones", "expresion",
-                                "tamano", "encuadre", "bajar", "bailar", "baile_pausa",
-                                "comer_batido", "comer_pastel", "guardar_comida"})
+                                "tamano", "encuadre", "sentarse", "bajar", "bailar", "baile_pausa",
+                                "comer_batido", "comer_pastel"})
 # Las que también hace Lune en la barra lateral de la web (sin la flotante a la vista):
-# la barra pone la expresión y baila con el estado del baile. Dormir no: el sueño es de
-# la flotante (BusEstado.durmiendo) y la barra no tiene a quién despertar.
-_VALEN_CON_BARRA = frozenset({"expresiones", "expresion", "bailar", "baile_pausa"})
+# la barra pone la expresión y baila con el estado del baile; la comida sigue al ratón
+# dentro de la ventana (ComidaWeb de extra/vida.jsx) y se come sobre la de la barra.
+# Dormir no: el sueño es de la flotante (BusEstado.durmiendo) y la barra no tiene a quién
+# despertar. Sentarse tampoco: se sienta la flotante.
+_VALEN_CON_BARRA = frozenset({"expresiones", "expresion", "bailar", "baile_pausa",
+                              "comer_batido", "comer_pastel"})
 # Solo la mascota con página (animada o 3D) comenta la pantalla.
 _SIN_SPRITES = frozenset({"comentar", "comentarios_auto"})
 
@@ -241,10 +256,14 @@ def visible(id_: str, estado: Any, ctx: Contexto) -> bool:
     if a is None or ctx.modo not in a.modos:
         return False
     grande = bool(getattr(estado, "grande", False))
-    if id_ in ("ajustes", "chat") and grande:
-        return False                                   # como ME: nada de ajustes en pantalla grande
+    if id_ in ("ajustes", "chat", "bailes") and grande:
+        return False                                   # como ME: nada de ajustes (ni paneles) en pantalla grande
     if id_ == "bajar" and not getattr(estado, "sentada", ""):
         return False
+    if id_ == "sentarse" and getattr(estado, "sentada", ""):
+        return False                                   # ya sentada: sale «Bajar»
+    if id_ == "guardar_comida" and not getattr(estado, "comiendo", False):
+        return False                                   # sin comida en la mano no hay qué guardar
     if id_ in ("tamano", "encuadre") and ctx.render != "vrm":
         return False
     if id_ in _NECESITAN_MASCOTA and not hay_mascota(id_, ctx):
@@ -272,6 +291,8 @@ def marcado_por_defecto(id_: str, estado: Any, ctx: Contexto) -> Optional[bool]:
         return bool(getattr(estado, "bailando", ""))
     if id_ == "pantalla_grande":
         return bool(getattr(estado, "grande", False))
+    if id_ == "comida":
+        return bool(getattr(estado, "comiendo", False))
     return None
 
 
@@ -471,7 +492,8 @@ def menu_bandeja(desp: Despachador, estado: Any, ctx: Contexto, rapidas: Any,
                  presets: Iterable[Any]) -> List[ItemMenu]:
     """El menú de la bandeja (se reconstruye cada vez que se abre).
 
-    Abrir Lune (negrita) · Mascota ▸ · Lune ▸ (rápidas de bandeja.acciones) ·
+    Abrir Lune (negrita) · Mascota ▸ (con «Sentarse en la barra» / «Bajar» según esté
+    sentada) · Lune ▸ (rápidas de bandeja.acciones) ·
     Modo juego ✔ · Tema ▸ · Arrancar con Windows ✔ · Liberar memoria · Mostrar en
     la barra de tareas ✔ · Salir. `presets`: nombres de tema o pares (id, texto).
     """
@@ -481,7 +503,8 @@ def menu_bandeja(desp: Despachador, estado: Any, ctx: Contexto, rapidas: Any,
     items: List[Optional[ItemMenu]] = [it("mostrar_lune", negrita=True), _SEP]
 
     # Mascota ▸
-    mascota = [it("mascota"), it("chat", etiqueta="Escribirle…"), it("comentar"), it("dormir"), _SEP,
+    mascota = [it("mascota"), it("chat", etiqueta="Escribirle…"), it("comentar"), it("dormir"),
+               it("sentarse"), it("bajar"), _SEP,
                it("fantasma"), it("comentarios_auto"), it("siempre_encima"), _SEP,
                _submenu_opciones(desp, estado, ctx, "tamano", "Tamaño", TAMANOS, ctx.tamano),
                _submenu_opciones(desp, estado, ctx, "encuadre", "Encuadre", ENCUADRES, ctx.encuadre),

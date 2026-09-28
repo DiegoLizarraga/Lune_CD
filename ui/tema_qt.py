@@ -185,11 +185,13 @@ class ControlTema(QObject):
     def guardar(self, cfg: Any = None) -> Dict[str, Any]:
         """Enseña y guarda `cfg` (parcial); la escritura va a los 400 ms."""
         nuevo = self._fusionar(cfg if cfg is not None else {})
-        self._mostrar(nuevo)
+        # Lo guardado se actualiza ANTES de avisar: quien escucha `cambio` (el
+        # panel nativo) lee guardado() dentro del aviso y debe ver ya lo nuevo.
         if nuevo != self._guardado:
             self._guardado = dict(nuevo)
             self._pendiente = True
             self._timer.start()
+        self._mostrar(nuevo)
         return self.actual()
 
     def restablecer(self) -> Dict[str, Any]:

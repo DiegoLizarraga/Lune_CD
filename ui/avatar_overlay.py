@@ -66,9 +66,37 @@ Cortes 5 y 6 (lo que aplica del contrato de ui/companion.py):
   ni las frases ni el chat la tapan.
 - `soporta_grande = False`: la pantalla grande y el salvapantallas de los sprites
   son ui/ventana_reloj.VentanaReloj (decisión D2).
+
+Cortes 7 y 8 (lo que aplica del contrato de ui/companion.py; ui/asiento_qt.ControlAsiento
+y ui/comida_qt.ControlComida):
+- `arrastre_cambio(bool)`: el arrastre es el NATIVO del SO (startSystemMove), así que sale
+  de `nativeEvent` con WM_ENTERSIZEMOVE (True) / WM_EXITSIZEMOVE (False) de SU ventana
+  (solo lee el mensaje y devuelve (False, 0): Windows lo procesa igual); con el arrastre
+  de respaldo (sin startSystemMove), al pasar el umbral y al soltar. SIN
+  `set_arrastre_delegado` (así ControlAsiento sabe que el arrastre es nativo: encaja al
+  soltar).
+- `antes_de_colocar()`: la emite `llevar_a_esquina()` antes de moverla (como en companion).
+- `hwnd()`, `punto_asiento(cb)` SÍNCRONO (asiento = sonda = centro de abajo de la
+  figura), `asiento(on, modo, variante, cb=)`: sentada «de pie sobre el borde» (D2): cara
+  `sitting` si el pack trae lune_sitting.png (si no, la de siempre), sin balanceo de la
+  física (la ventana la mueve ControlAsiento) y con respiración; frases «sentarse» y
+  «bajar». Mientras `sentada` no se toca su orden Z salvo `restaurar_orden_z()`.
+  Puede dormirse sentada (D5).
+- clic CENTRAL soltado sobre ella → `menu_pedido('secundario', QPoint)`.
+- `cabeza(cb)` síncrono: la figura (35 % del alto, r = 0.22·ancho) en px lógicos
+  globales; `comer(tipo, ms)` → cara happy, frase «comer» y la despierta;
+  `set_comida_activa(on)`: sin reacción al clic, sin chat con doble clic y sin sueño.
+
+Cortes 9 y 10 (lo que aplica del contrato de ui/companion.py):
+- SIN `mmd`: los sprites no tienen página ni esqueleto. Con un baile de la biblioteca,
+  ui/mmd_qt.ControlMMD pone la canción por el Mezclador y usa `bailar`/`pulso` (D1).
+- `decir_reaccion(texto, estado, ms)` (ui/minecraft_qt.ControlMinecraft): la reacción a la
+  partida en la burbuja nativa con su cara durante `ms`. False (no la dice) cerrada u
+  oculta, con una alarma, el menú abierto, arrastrándola o con la IA en la burbuja.
 """
 from __future__ import annotations
 
+import ctypes
 import dataclasses
 import json
 import os
@@ -85,7 +113,7 @@ from PyQt6.QtGui import QAction, QIcon, QRegion, QImage, QPixmap
 from lune_core.frases_mascota import frases_para
 from nucleo.sueno import ReglaSueno
 from ui.chat_mascota import BurbujaQt, ChatMascota, DesambiguadorClic, ms_lectura
-from ui.lune_face import LuneFaceWidget, estado_desde_emocion
+from ui.lune_face import LuneFaceWidget, estado_desde_emocion, tiene_cara
 from ui.sprites_baile import DY_MAX as BAILE_DY_MAX, BaileSpriteQt
 from ui.sprites_fx import (
     CARA_SPRITE, PIVOTE, TOPE_GRADOS, FisicaSpriteQt, RespiracionSpriteQt, SpriteRotado,
@@ -121,6 +149,41 @@ ESTADOS_ACTIVIDAD = frozenset({"thinking", "typing", "working", "talking", "list
 ALTO_CABEZA = 0.35               # ancla del menú radial: la cabeza, al 35 % de la figura
 FPS_MIN, FPS_MAX = 15, 144
 _RE_HEX = re.compile(r"#[0-9a-fA-F]{6}")
+
+# Cortes 7 y 8: sentarse (arrastre nativo) y comida.
+WM_ENTERSIZEMOVE = 0x0231        # empieza el bucle modal de mover (startSystemMove)
+WM_EXITSIZEMOVE = 0x0232         # …y acaba al soltar
+MODOS_ASIENTO = ("ventana", "barra")
+RADIO_CABEZA = 0.22              # radio de la cabeza (comida) = 0.22 · ancho de la figura
+MS_COMER = 2500
+
+# Corte 10: reacciones a Minecraft en la burbuja (como ui/companion.py decir_reaccion).
+MS_REACCION = 8000
+MS_REACCION_MIN, MS_REACCION_MAX = 1500, 20_000
+MAX_TEXTO_REACCION = 300
+
+
+def _offset_mensaje() -> int:
+    """Desplazamiento del campo `message` en MSG (8 en 64 bits: detrás del HWND)."""
+    try:
+        from ctypes import wintypes
+        return int(wintypes.MSG.message.offset)
+    except Exception:                                # noqa: BLE001
+        return ctypes.sizeof(ctypes.c_void_p)
+
+
+_OFFSET_MSG = _offset_mensaje()
+
+
+def mensaje_win(mensaje) -> int | None:
+    """El `message` (WM_…) de un MSG de Windows en la dirección `mensaje` (nativeEvent)."""
+    try:
+        direccion = int(mensaje)
+    except (TypeError, ValueError):
+        return None
+    if not direccion:
+        return None
+    return int(ctypes.c_uint.from_address(direccion + _OFFSET_MSG).value)
 
 
 def _acento_de(css_json):
@@ -166,6 +229,9 @@ class AvatarOverlay(QMainWindow):
 
     visibilidad = pyqtSignal(bool)       # se muestra / se oculta o cierra
     menu_pedido = pyqtSignal(str, object)  # ('principal'|'secundario', QPoint global): menú radial
+    arrastre_cambio = pyqtSignal(bool)   # cortes 7/8: WM_ENTERSIZEMOVE (True) / WM_EXITSIZEMOVE (False)
+    antes_de_colocar = pyqtSignal()      # cortes 7/8: la va a colocar el código (su menú «Llevar a la
+                                         # esquina»): quien la tiene sentada la baja antes (montaje_vida)
 
     UMBRAL_ARRASTRE = 6                  # px: menos que esto es un CLIC, no arrastre
 
@@ -229,6 +295,12 @@ class AvatarOverlay(QMainWindow):
         self._alarma_texto = None        # texto de la alarma que suena (None: ninguna)
         self._alarma_mostrada = ""       # lo ya escrito en la burbuja
         self._estilo_rojo = False        # la burbuja lleva ahora el estilo de alarma
+        # Cortes 7 y 8: sentarse y comida.
+        self._sentada = ""               # '' | 'barra' | 'ventana'
+        self._asiento_var = 0
+        self._arrastre_senal = False     # último arrastre_cambio emitido
+        self._comida_activa = False
+        self._medio_pulsado = False      # clic central pulsado (menú secundario al soltar)
 
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
@@ -358,7 +430,15 @@ class AvatarOverlay(QMainWindow):
         dormia = self._durmiendo
         self._despertar()                        # también rearma el sueño
         if not dormia and not (self._arrastrando or self._mareada):
-            self.cara.set_state(estado, auto_revert_ms=ms)
+            self.cara.set_state(self._cara_de(estado), auto_revert_ms=ms)
+
+    def _cara_reposo(self) -> str:
+        """La cara de reposo: `sitting` sentada si el pack la trae; si no, `normal`."""
+        return "sitting" if self._sentada and tiene_cara("sitting") else "normal"
+
+    def _cara_de(self, estado: str) -> str:
+        """El estado de la app → la cara (el reposo, sentada, es `sitting`)."""
+        return self._cara_reposo() if estado == "normal" else estado
 
     def _restaurar_cara(self, soltar: bool = False):
         """Vuelve a la cara de fondo tras arrastre, mareo o sueño (con lo que le
@@ -378,7 +458,7 @@ class AvatarOverlay(QMainWindow):
             self.cara.set_state(CARA_SPRITE["soltar"], auto_revert_ms=MS_SOLTAR)
             return
         ms = max(1, int((fin - ahora) * 1000)) if fin is not None else 0
-        self.cara.set_state(estado, auto_revert_ms=ms)
+        self.cara.set_state(self._cara_de(estado), auto_revert_ms=ms)
 
     def set_hablando(self, hablando: bool):
         """Los sprites no tienen boca animada; cuenta para el sueño (no se duerme
@@ -559,13 +639,18 @@ class AvatarOverlay(QMainWindow):
             self._componer()
 
     def _actualizar_fisica(self):
-        """Física solo si está permitida y no hay vídeo de lune_face a la vista."""
+        """Física solo si está permitida, no hay vídeo de lune_face a la vista y no está
+        sentada (sentada, la ventana la mueve ControlAsiento: nada de balanceo)."""
         video = False
         try:
             video = bool(self.cara.video_activo())
         except Exception:
             video = False
-        self._fx.set_habilitado(self._fisica_permitida and not video)
+        antes = self._fx.habilitado
+        on = self._fisica_permitida and not video and not self._sentada
+        self._fx.set_habilitado(on)
+        if on and not antes:
+            self._fx.saltar(self.x(), self.y())      # sin el salto de lo que se movió apagada
 
     def set_habilitado_fisica(self, on: bool):
         """Modo juego (o ajuste): False = quieta y recta, sin balanceo ni respiración."""
@@ -754,6 +839,8 @@ class AvatarOverlay(QMainWindow):
             return "hay una alarma sonando"
         if self._bailando:
             return "está bailando"
+        if self._comida_activa:
+            return "está comiendo"
         arrastrando = self._arrastrando or bool(self._pulsado and self._pulsado.get("movido"))
         return self._regla.motivo_no(self._estado_regla(forzado), arrastrando=arrastrando,
                                      hablando=self._hablando and not forzado)
@@ -764,6 +851,8 @@ class AvatarOverlay(QMainWindow):
         self._regla = ReglaSueno.desde_config(self.config)
         if self.cerrado or self._durmiendo or not self.isVisible() or not self._regla.activa:
             return
+        if self._comida_activa:
+            return                                   # con comida en la mano no se duerme sola
         self._timer_sueno.start(int(ms) if ms is not None else int(self._regla.umbral_s * 1000))
 
     def _sueno_vencido(self):
@@ -855,7 +944,8 @@ class AvatarOverlay(QMainWindow):
         if self._base[0] in ESTADOS_ACTIVIDAD and not self.cerrado:
             self._base = ("normal", None)
             if not (self._durmiendo or self._arrastrando or self._mareada):
-                self.cara.set_state("normal")
+                self.cara.set_state(self._cara_reposo())
+        self._medio_pulsado = self._der_pulsado = False
         self.visibilidad.emit(False)
         self._estado_bus(visible=False)
 
@@ -903,6 +993,9 @@ class AvatarOverlay(QMainWindow):
         if ev.button() == Qt.MouseButton.RightButton:
             # Menú radial: se abre al SOLTAR.
             self._der_pulsado = not self._click_through and not self._menu_abierto
+        elif ev.button() == Qt.MouseButton.MiddleButton:
+            # Menú secundario (comida…): también al soltar.
+            self._medio_pulsado = not self._click_through and not self._menu_abierto
         elif ev.button() == Qt.MouseButton.LeftButton and not self._click_through and not self._menu_abierto:
             self._clic.cancelar()             # pulsar de nuevo: el clic anterior no cuenta solo
             self._pulsado = {"origen": ev.globalPosition().toPoint(), "movido": False}
@@ -931,10 +1024,11 @@ class AvatarOverlay(QMainWindow):
             try:
                 if wh.startSystemMove():      # arrastre nativo del SO (Qt ≥ 5.15)
                     self._arrastrando_desde = None
-                    return
+                    return                    # arrastre_cambio: WM_ENTERSIZEMOVE/EXITSIZEMOVE (nativeEvent)
             except Exception:
                 pass
         self._arrastrando_desde = pos - self.frameGeometry().topLeft()
+        self._emitir_arrastre(True)           # arrastre de respaldo (sin bucle modal del SO)
 
     def mouseReleaseEvent(self, ev):
         if ev.button() == Qt.MouseButton.RightButton:
@@ -943,10 +1037,18 @@ class AvatarOverlay(QMainWindow):
                 self._pedir_menu(ev.globalPosition().toPoint())
             super().mouseReleaseEvent(ev)
             return                            # no toca un arrastre izquierdo en curso
+        if ev.button() == Qt.MouseButton.MiddleButton:
+            pulsado, self._medio_pulsado = self._medio_pulsado, False
+            if pulsado:
+                self._pedir_menu(ev.globalPosition().toPoint(), "secundario")
+            super().mouseReleaseEvent(ev)
+            return
         p, self._pulsado = self._pulsado, None
-        self._arrastrando_desde = None
+        respaldo, self._arrastrando_desde = self._arrastrando_desde, None
         if p is not None and ev.button() == Qt.MouseButton.LeftButton:
             if p["movido"]:
+                if respaldo is not None:
+                    self._emitir_arrastre(False)   # antes de guardar (ControlAsiento encaja aquí)
                 self._guardar_posicion()
             else:
                 self._clic.clic()             # ¿clic simple o el primero de un doble clic?
@@ -955,11 +1057,31 @@ class AvatarOverlay(QMainWindow):
     def mouseDoubleClickEvent(self, ev):
         if ev.button() == Qt.MouseButton.LeftButton and not self._click_through and not self._menu_abierto:
             self._pulsado = None
-            self._arrastrando_desde = None
-            self._clic.doble_clic()           # cancela el clic simple y abre el chat
+            if self._arrastrando_desde is not None:
+                self._arrastrando_desde = None
+                self._emitir_arrastre(False)
+            if self._comida_activa:
+                self._clic.cancelar()         # con comida en la mano, ni chat ni reacción
+            else:
+                self._clic.doble_clic()       # cancela el clic simple y abre el chat
             ev.accept()
             return
         super().mouseDoubleClickEvent(ev)
+
+    def nativeEvent(self, tipo, mensaje):
+        """Arrastre nativo (startSystemMove): el bucle modal de Windows avisa con
+        WM_ENTERSIZEMOVE / WM_EXITSIZEMOVE a ESTA ventana → arrastre_cambio. Solo se lee
+        el mensaje; Windows lo procesa igual (False, 0)."""
+        try:
+            if bytes(tipo) == b"windows_generic_MSG":
+                m = mensaje_win(mensaje)
+                if m == WM_ENTERSIZEMOVE:
+                    self._emitir_arrastre(True)
+                elif m == WM_EXITSIZEMOVE:
+                    self._emitir_arrastre(False)
+        except Exception:                             # noqa: BLE001 — nunca romper el bucle de mensajes
+            pass
+        return False, 0
 
     def moveEvent(self, ev):
         super().moveEvent(ev)
@@ -969,9 +1091,10 @@ class AvatarOverlay(QMainWindow):
                 self._burbuja._colocar()      # la burbuja la sigue
 
     # ── Menú radial (corte 4: ui/menu_radial.ControlMenuRadial) ────────────────
-    def _pedir_menu(self, punto: QPoint):
-        """Clic derecho soltado sobre ella → menu_pedido (no arrastrándola, ni en
-        modo fantasma, ni con el menú ya abierto)."""
+    def _pedir_menu(self, punto: QPoint, tipo: str = "principal"):
+        """Clic derecho (principal) o central (secundario: la comida) soltado sobre
+        ella → menu_pedido (no arrastrándola, ni en modo fantasma, ni con el menú ya
+        abierto)."""
         if self.cerrado or self._click_through or self._menu_abierto:
             return
         if self._arrastrando or (self._pulsado is not None and self._pulsado.get("movido")):
@@ -979,7 +1102,7 @@ class AvatarOverlay(QMainWindow):
         if not self.frameGeometry().contains(punto):
             return                            # soltó fuera de ella: se arrepintió
         self._clic.cancelar()
-        self.menu_pedido.emit("principal", QPoint(punto))
+        self.menu_pedido.emit(tipo, QPoint(punto))
 
     def set_menu_abierto(self, on: bool):
         """El menú radial se abre (True) o se cierra: abierto, sin arrastre ni sueño
@@ -997,8 +1120,8 @@ class AvatarOverlay(QMainWindow):
             self._rearmar_sueno()
 
     def ancla_menu(self, callback):
-        """`callback(QPoint global)` con la cabeza: el 35 % del alto de la figura
-        (los sprites no tienen luneCabeza). Se llama en el acto."""
+        """`callback(QPoint global)` con la cabeza: el 35 % del alto de la ventana sin su
+        margen (los sprites no tienen luneCabeza). Se llama en el acto."""
         if not callable(callback):
             return
         fig = self._rect_figura(self.x(), self.y())
@@ -1068,7 +1191,11 @@ class AvatarOverlay(QMainWindow):
         if self.isVisible() and not self.cerrado:
             self._aplicar_encima()
 
-    def _aplicar_encima(self):
+    def _aplicar_encima(self, forzar: bool = False):
+        """Siempre encima o no (o sin «siempre encima» en modo juego «fondo»). Sentada,
+        el orden Z lo lleva ControlAsiento: no se toca salvo `forzar` (restaurar_orden_z)."""
+        if self._sentada and not forzar:
+            return
         if not _ventana_nativa():
             return
         try:
@@ -1117,9 +1244,11 @@ class AvatarOverlay(QMainWindow):
         self._estilo_burbuja()
 
     def llevar_a_esquina(self):
-        """A la esquina inferior derecha de su monitor (y se guarda la posición)."""
+        """A la esquina inferior derecha de su monitor (y se guarda la posición). Sentada,
+        `antes_de_colocar` deja que la baje quien la sentó (si no, la volvería a clavar)."""
         if self.cerrado:
             return
+        self.antes_de_colocar.emit()
         self._esquina_inferior_derecha()
         self._guardar_posicion()
 
@@ -1129,7 +1258,9 @@ class AvatarOverlay(QMainWindow):
             return
         if self._alarma_texto is not None:
             return                                   # con una alarma sonando el clic la apaga (fuera)
-        if getattr(self.cara, "_current_state", "normal") == "normal":
+        if self._comida_activa:
+            return                                   # con comida en la mano el clic no reacciona
+        if getattr(self.cara, "_current_state", "normal") in ("normal", "sitting"):
             self.cara.set_state("happy", auto_revert_ms=1500)
 
     # ── Chat con la mascota ────────────────────────────────────────────────────
@@ -1163,6 +1294,29 @@ class AvatarOverlay(QMainWindow):
             vista = ms_lectura(self._burbuja_ultimo) if ms is None else max(0, int(ms))
             self._burbuja_ia = False
             self._burbuja_ia_hasta = max(self._burbuja_ia_hasta, time.monotonic() + vista / 1000.0)
+
+    # ── Minecraft (corte 10: ui/minecraft_qt.ControlMinecraft) ─────────────────
+    def decir_reaccion(self, texto: str, estado: str = "happy", ms: int = MS_REACCION) -> bool:
+        """La reacción a la partida en la burbuja nativa, con la cara de `estado` durante
+        `ms`. False si no la dice: cerrada u oculta, con una alarma, el menú abierto,
+        arrastrándola o con algo de la IA en la burbuja (esa burbuja manda)."""
+        t = " ".join(str(texto or "").split())[:MAX_TEXTO_REACCION]
+        if not t or self.cerrado or not self.isVisible():
+            return False
+        if self._burbuja_ocupada():                  # respuesta de la IA o alarma
+            return False
+        if self._menu_abierto or self._arrastrando or bool(self._pulsado and self._pulsado.get("movido")):
+            return False
+        try:
+            n = int(float(ms))
+        except (TypeError, ValueError):
+            n = MS_REACCION
+        n = max(MS_REACCION_MIN, min(MS_REACCION_MAX, n))
+        self._poner_cara(estado_desde_emocion(str(estado or "neutral")), n)
+        b = self._burbuja_qt()
+        b.texto(t)
+        b.fin(n)
+        return True
 
     # ── Baile (corte 6: ui/baile_qt.ControlBaile) ──────────────────────────────
     @property
@@ -1299,6 +1453,145 @@ class AvatarOverlay(QMainWindow):
             self._estilo_burbuja()
         b.texto(texto)
 
+    # ── Sentarse y comida (cortes 7 y 8: ui/asiento_qt y ui/comida_qt) ─────────
+    # Sin set_arrastre_delegado A PROPÓSITO: el arrastre de los sprites es nativo y
+    # ControlAsiento lo detecta por eso (encaja al soltar, WM_EXITSIZEMOVE).
+    def hwnd(self) -> int:
+        """HWND de la ventana (0 si está cerrada)."""
+        if self.cerrado:
+            return 0
+        try:
+            return int(self.winId())
+        except Exception:                            # noqa: BLE001
+            return 0
+
+    @property
+    def sentada(self) -> str:
+        """'' | 'barra' | 'ventana' (lo último pedido con `asiento`)."""
+        return self._sentada
+
+    def _emitir_arrastre(self, on: bool):
+        """arrastre_cambio(on) solo en los cambios (ENTER/EXIT repetidos no cuentan dos veces)."""
+        on = bool(on)
+        if on == self._arrastre_senal:
+            return
+        self._arrastre_senal = on
+        try:
+            self.arrastre_cambio.emit(on)
+        except Exception:                            # noqa: BLE001
+            pass
+
+    def _rect_figura_ventana(self) -> QRect:
+        """El sprite recto (sin giro ni respiración) en coordenadas de la ventana; sin
+        imagen (vídeo), la ventana sin el margen de giro."""
+        r = self._rect_figura_en_cara()
+        if r is not None and self.cara is not None:
+            try:
+                return QRect(self.cara.mapTo(self, r.topLeft()), r.size())
+            except Exception:                        # noqa: BLE001
+                pass
+        return self._rect_figura(0, 0)
+
+    def _punto_asiento(self) -> dict:
+        """asiento = sonda = centro de abajo de la figura (px lógicos de la ventana)."""
+        fig = self._rect_figura_ventana()
+        p = [fig.x() + fig.width() / 2.0, float(fig.y() + fig.height())]
+        return {"asiento": list(p), "sonda": list(p)}
+
+    def punto_asiento(self, cb):
+        """cb({"asiento": [x, y], "sonda": [x, y]}): SÍNCRONO (ControlAsiento lo usa al soltar)."""
+        if not callable(cb):
+            return
+        try:
+            cb(None if self.cerrado else self._punto_asiento())
+        except Exception:                            # noqa: BLE001
+            pass
+
+    def asiento(self, on: bool, modo: str = "", variante: int = 0, cb=None):
+        """Sentada «de pie sobre el borde» (D2): cara `sitting` si el pack la trae, sin
+        balanceo (la ventana la mueve ControlAsiento) y con respiración; frases «sentarse»
+        y «bajar». cb(punto) síncrono, ya con la cara nueva."""
+        if self.cerrado:
+            if callable(cb):
+                try:
+                    cb(None)
+                except Exception:                    # noqa: BLE001
+                    pass
+            return
+        antes = self._sentada
+        if on:
+            m = str(modo or "").strip().lower()
+            m = m if m in MODOS_ASIENTO else "ventana"
+            try:
+                v = max(0, min(3, int(variante)))
+            except (TypeError, ValueError):
+                v = 0
+            self._sentada, self._asiento_var = m, (0 if m == "barra" else v)
+        else:
+            self._sentada, self._asiento_var = "", 0
+        if bool(antes) != bool(self._sentada):
+            self._actualizar_fisica()                # sentada: sin balanceo
+            self.cara.set_reposo(self._cara_reposo())
+            if not (self._durmiendo or self._arrastrando or self._mareada) \
+                    and getattr(self.cara, "_current_state", "normal") in ("normal", "sitting"):
+                self._restaurar_cara()
+            self._frase("sentarse" if self._sentada else "bajar")
+        if callable(cb):
+            try:
+                cb(self._punto_asiento() if self._sentada else None)
+            except Exception:                        # noqa: BLE001
+                pass
+
+    def restaurar_orden_z(self):
+        """Vuelve el orden Z de siempre (avatar.siempre_encima o el plan del modo juego)."""
+        if self.cerrado or not self.isVisible():
+            return
+        self._aplicar_encima(forzar=True)
+
+    def cabeza(self, cb):
+        """cb((cx, cy, r)) SÍNCRONO en px lógicos globales: la cabeza al 35 % del alto de
+        la figura y r = 0.22·ancho (ControlComida)."""
+        if not callable(cb):
+            return
+        res = None
+        if not self.cerrado:
+            fig = self._rect_figura_ventana()
+            o = self.mapToGlobal(QPoint(0, 0))
+            res = (o.x() + fig.x() + fig.width() / 2.0,
+                   o.y() + fig.y() + fig.height() * ALTO_CABEZA,
+                   max(1.0, RADIO_CABEZA * fig.width()))
+        try:
+            cb(res)
+        except Exception:                            # noqa: BLE001
+            pass
+
+    def comer(self, tipo: str, ms: int = MS_COMER):
+        """Le pasaron la comida por la cabeza: la despierta, cara feliz `ms` y frase «comer»."""
+        if self.cerrado:
+            return
+        try:
+            ms = max(100, min(10_000, int(ms)))
+        except (TypeError, ValueError):
+            ms = MS_COMER
+        self._despertar(usuario=True)
+        self._poner_cara("happy", ms)
+        self._frase("comer")
+
+    def set_comida_activa(self, on: bool):
+        """Comida en el cursor: sin reacción al clic, sin chat con doble clic y sin sueño."""
+        if self.cerrado:
+            return
+        self._comida_activa = bool(on)
+        if self._comida_activa:
+            self._clic.cancelar()
+            self._timer_sueno.stop()
+        else:
+            self._rearmar_sueno()
+
+    @property
+    def comida_activa(self) -> bool:
+        return self._comida_activa
+
     # ── Posición persistida ────────────────────────────────────────────────────
     def _mover_por_codigo(self, x: int, y: int):
         """Colocarla sin arrastre (restaurar, esquina): sin balanceo."""
@@ -1412,6 +1705,8 @@ class AvatarOverlay(QMainWindow):
     def closeEvent(self, ev):
         self.cerrado = True
         self._clic.cancelar()
+        self._arrastrando_desde = None
+        self._emitir_arrastre(False)                 # cerrada a mitad de un arrastre: se acabó
         self._t_guardar.stop()
         self._timer_sueno.stop(); self._timer_sueno_pedido.stop(); self._timer_mareo.stop()
         self._t_alarma.stop(); self._t_tipeo.stop()

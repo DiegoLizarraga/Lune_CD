@@ -82,8 +82,12 @@ function BgNube() {
 }
 window.NubeSvg = NubeSvg;
 
-// Vistas a las que se puede ir con el evento de window 'lune-vista' (extra/alarmas.jsx: «Abrir alarmas»).
-const VISTAS_APP = ['chat', 'settings', 'personajes', 'memoria', 'historial', 'optimizar', 'tools', 'alarmas'];
+// Vistas a las que se puede ir con el evento de window 'lune-vista' (extra/alarmas.jsx: «Abrir alarmas»; cortes 9/10:
+// extra/bailes_mmd.jsx y extra/minecraft.jsx) o con la señal vista_pedida de window.luneEscenario (acción «Mis bailes»).
+const VISTAS_APP = ['chat', 'settings', 'personajes', 'memoria', 'historial', 'optimizar', 'tools', 'alarmas', 'bailes', 'minecraft'];
+// Cortes 7/8: caras que la página puede pedir a Lune de la barra con 'lune-mascota-cara' ({estado, ms}; la comida
+// de extra/vida.jsx: 'happy' al comer). Lo demás se ignora; la cara vuelve a «normal» a los ms (0.2–10 s).
+const CARAS_EVENTO = ['happy', 'surprised', 'wave', 'thinking', 'sad', 'angry', 'nervous', 'laughing', 'curious'];
 
 /** Baile (extra/baile.jsx): estado y pulso para la barra lateral y el CommandMenu. null si ese archivo
  *  no cargó. window.LuneBaileWeb no aparece ni desaparece en la vida de la página: el orden de los
@@ -267,6 +271,23 @@ function App() {
     window.addEventListener('lune-vista', alVista);
     return () => window.removeEventListener('lune-vista', alVista);
   }, []);
+  // Cortes 9/10: window.luneEscenario.vista_pedida('bailes'|'minecraft') (la acción «Mis bailes» de la bandeja, el radial
+  // o un atajo) → 'lune-vista'. Solo vistas conocidas; sin ese objeto (backend viejo), nada.
+  React.useEffect(() => {
+    let quitar = () => {};
+    const alPedida = (v) => {
+      const vista = String(v || '');
+      if (!VISTAS_APP.includes(vista)) return;
+      try { window.dispatchEvent(new window.CustomEvent('lune-vista', { detail: vista })); } catch (e) { setView(vista); }
+    };
+    const cablear = () => {
+      const s = window.luneEscenario && window.luneEscenario.vista_pedida;
+      if (!s || typeof s.connect !== 'function') return;
+      try { s.connect(alPedida); quitar = () => { try { s.disconnect(alPedida); } catch (e) { /* ya no está */ } }; } catch (e) { /* sin señal */ }
+    };
+    if (window.luneEscenario) cablear(); else window.addEventListener('lune-ready', cablear, { once: true });
+    return () => { window.removeEventListener('lune-ready', cablear); quitar(); };
+  }, []);
   // F1 → menú radial (SVG) sobre la mascota de la barra.
   React.useEffect(() => {
     const onKey = (e) => {
@@ -282,6 +303,21 @@ function App() {
     setMascot(x);
     const t = setTimeout(() => setMascot((m) => (m === x ? 'normal' : m)), 4000);
     timers.current.push(t);
+  }, []);
+  // Cortes 7/8: 'lune-mascota-cara' ({detail: {estado, ms}}) → la cara de Lune de la barra durante ms
+  // (ComidaWeb de extra/vida.jsx al acertar en su cabeza).
+  React.useEffect(() => {
+    const alCara = (e) => {
+      const d = (e && e.detail) || {};
+      const estado = String(d.estado || '');
+      if (!CARAS_EVENTO.includes(estado)) return;
+      const ms = Math.min(10000, Math.max(200, Number(d.ms) || 2500));
+      setMascot(estado);
+      const t = setTimeout(() => setMascot((m) => (m === estado ? 'normal' : m)), ms);
+      timers.current.push(t);
+    };
+    window.addEventListener('lune-mascota-cara', alCara);
+    return () => window.removeEventListener('lune-mascota-cara', alCara);
   }, []);
 
   // Si la API compatible deja de estar configurada, se vuelve al modelo local.
@@ -425,6 +461,8 @@ function App() {
            : view === 'optimizar' ? <window.OptimizarPanel />
            : view === 'tools' ? <window.ToolsPanel />
            : view === 'alarmas' && window.AlarmasPanel ? <window.AlarmasPanel />
+           : view === 'bailes' && window.BailesPanel ? <window.BailesPanel />
+           : view === 'minecraft' && window.MinecraftPanel ? <window.MinecraftPanel />
            : <window.SettingsPanel voiceOn={voiceOn} onVoice={toggleVoz} fx={fx} setFxKey={setFxKey} />}
         </div>
         {view === 'chat' && (
@@ -441,6 +479,8 @@ function App() {
         { label:'Historial', desc:'Conversaciones previas', onClick:()=>setView('historial') },
         { label:'Optimizar', desc:'Rendimiento del modelo', onClick:()=>setView('optimizar') },
         ...(window.AlarmasPanel ? [{ label:'Alarmas', desc:'Alarmas y temporizadores', onClick:()=>setView('alarmas') }] : []),
+        ...(window.BailesPanel ? [{ label:'Mis bailes', desc:'Bailes MMD y VRMA con su canción', onClick:()=>setView('bailes') }] : []),
+        ...(window.MinecraftPanel ? [{ label:'Minecraft', desc:'Reacciones a tu partida y el bot de Lune', onClick:()=>setView('minecraft') }] : []),
         { label:'Temporizador rápido', desc:'Un temporizador de 5 minutos', onClick:()=>accionEscritorio('temporizador_rapido', '5') },
         { label:'Pantalla grande', desc:'Lune llena la pantalla (otra vez para salir)', onClick:()=>accionEscritorio('pantalla_grande') },
         { label: bailando ? 'Parar el baile' : 'Bailar', desc:'Lune baila (con música, al ritmo)', on: baile ? bailando : undefined,
@@ -454,6 +494,8 @@ function App() {
       {toast && <div className="ln-toast" role="status">{toast}</div>}
       {/* Cortes 5/6: la alarma que está sonando, con «Apagar» (bloqueado los primeros segundos) y «Posponer». */}
       {window.AlarmaBanner && <window.AlarmaBanner />}
+      {/* Cortes 7/8: la comida dentro de la ventana con la mascota flotante guardada (extra/vida.jsx). */}
+      {window.ComidaWeb && <window.ComidaWeb />}
       {/* Acciones del modelo que piden permiso (señal aprobacion_pedida): modal global
           con cuenta atrás de 60 s; «Sí, hazlo» / «No» → window.lune.resolver_aprobacion. */}
       {window.AprobacionHost && <window.AprobacionHost />}

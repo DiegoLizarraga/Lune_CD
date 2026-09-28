@@ -718,3 +718,70 @@ test('barra en VRM: baileProc por usarModulo, bailar con las opciones, pulsos al
   assert.deepEqual(plano(mods().slice(-1)[0]), ['baileProc', 'bailar', false]);
   assert.equal(llamadas.filter((l) => l[0] === 'usarModulo').length, 2, 'usarModulo es idempotente en vrm_barra');
 });
+
+// ── Revisión 4-5-6 (MO3, MO4, MO13) ──────────────────────────────────────────
+test('AlarmaBanner: «Posponer» también bloqueado durante el bloqueo (como la tarjeta nativa)', () => {
+  const { P } = backendAlarmas();
+  const S = cargar({ alarmas: P.obj });
+  const el = S.h(S.sb.AlarmaBanner);
+  S.render(el);                                                   // monta y conecta las señales
+  P.obj.alarma_sonando.emit(JSON.stringify({ texto: 'gimnasio', tipo: 'alarma', apagar_en_ms: 5000 }));
+  let a = S.render(el);
+  assert.equal(boton(a, 'Posponer').props.disabled, true, 'durante el bloqueo no hace nada: que no lo parezca');
+  S.avanzar(5100);
+  a = S.render(el);
+  assert.equal(boton(a, 'Posponer').props.disabled, false);
+});
+
+test('AlarmaBanner: con dos en cola, apagar la primera no oculta el banner de la segunda', () => {
+  // Python: alarma_apagar → ControlAviso pasa a la siguiente → alarma_sonando(segunda) LLEGA ANTES que la
+  // respuesta (true) de alarma_apagar. Antes el callback hacía setSon(null) y ocultaba la segunda.
+  let P;
+  ({ P } = backendAlarmas({
+    alarma_apagar: () => { P.obj.alarma_sonando.emit(JSON.stringify({ texto: 'segunda', tipo: 'alarma', apagar_en_ms: 0 })); return true; },
+    alarma_posponer: () => { P.obj.alarma_sonando.emit(JSON.stringify({ texto: 'tercera', tipo: 'alarma', apagar_en_ms: 0 })); return true; },
+  }));
+  const S = cargar({ alarmas: P.obj });
+  const el = S.h(S.sb.AlarmaBanner);
+  S.render(el);
+  P.obj.alarma_sonando.emit(JSON.stringify({ texto: 'primera', tipo: 'alarma', apagar_en_ms: 0, cola: 2 }));
+  boton(S.render(el), 'Apagar').props.onClick();
+  let a = S.render(el);
+  assert.equal(conClase(a, 'ln-alarma-banner').length, 1, 'sigue el banner');
+  assert.match(todoTexto(a), /segunda/);
+  boton(a, 'Posponer').props.onClick();
+  a = S.render(el);
+  assert.match(todoTexto(a), /tercera/);
+  // La última: la respuesta llega sin otra alarma_sonando → se quita.
+  P.respuestas.alarma_apagar = true;
+  boton(S.render(el), 'Apagar').props.onClick();
+  assert.deepEqual(S.render(el), []);
+});
+
+test('alarmas con fecha: «Una vez · 27/09», próxima solo ese día y aviso al editarla con días', () => {
+  const A = cargar().sb.LuneAlarmas;
+  assert.equal(A.textoDias(0, true, '2026-09-27'), 'Una vez · 27/09');
+  assert.equal(A.textoDias(0, true, '<img>'), 'Una vez');
+  assert.equal(A.normalizarAlarma({ id: 'a1', hora: 7, minuto: 0, fecha: '2026-09-27' }).fecha, '2026-09-27');
+  assert.equal(A.normalizarAlarma({ id: 'a1', hora: 7, minuto: 0, fecha: 'mañana' }).fecha, '');
+  const sab10 = new Date(2026, 8, 26, 10, 0);
+  const f = A.proximaVez({ activa: true, hora: 7, minuto: 0, dias: 0, fecha: '2026-09-28' }, sab10);
+  assert.deepEqual([f.getDate(), f.getHours()], [28, 7], 'el lunes 28, no mañana domingo');
+  assert.equal(A.proximaVez({ activa: true, hora: 7, minuto: 0, dias: 0, fecha: '2026-09-26' }, sab10), null, 'ya pasó');
+
+  const { P, poner } = backendAlarmas();
+  poner({ alarmas: [{ id: 'a1', activa: true, hora: 7, minuto: 0, dias: 0, una_vez: true, texto: '', fecha: '2026-09-27' }] });
+  const S = cargar({ alarmas: P.obj });
+  const el = S.h(S.sb.AlarmasPanel);
+  let a = S.render(el);
+  assert.match(todoTexto(a), /Una vez · 27\/09 · a1/);
+  boton(a, 'Editar').props.onClick();
+  a = S.render(el);
+  assert.match(texto(porId(a, 'al-nota-fecha')), /Solo el 27\/09/);
+  buscar(a, (n) => n.props && n.props['aria-label'] === 'lunes')[0].props.onClick();
+  a = S.render(el);
+  assert.match(texto(porId(a, 'al-nota-fecha')), /deja de ser solo el 27\/09/);
+  boton(a, 'Guardar cambios').props.onClick();
+  assert.deepEqual(plano(JSON.parse(P.de('alarma_guardar').slice(-1)[0][0])),
+    { hora: '07:00', dias: 'l', una_vez: true, texto: '', id: 'a1' }, 'el contrato no cambia: la fecha la quita Python');
+});

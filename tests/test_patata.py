@@ -509,7 +509,11 @@ def test_main_sale_sin_traceback_con_ctrl_c_al_arrancar(monkeypatch):
     def revienta(*a, **k):
         raise KeyboardInterrupt
     monkeypatch.setattr(patata, "Patata", revienta)
-    assert patata.main([]) == 130
+    sueltas = []
+    inst = type("Inst", (), {"adquirir": lambda self: True, "escuchar": lambda self, fn: True,
+                             "liberar": lambda self: sueltas.append(1)})()
+    assert patata.main([], instancia=inst) == 130
+    assert sueltas == [1]                                   # el mutex de instancia se suelta igual
 
 
 # ── Revisión 4-5-6: título base desde el arranque y todo el ocio a la vez ──────────
@@ -531,6 +535,24 @@ def test_correr_pone_el_titulo_normal_al_empezar(crear):
     p.entrada.put("/salir\n")
     hilo.join(5)
     assert not hilo.is_alive()
+
+
+def test_la_aprobacion_no_se_come_el_enter_de_una_alarma_que_suena(crear):
+    # MO5 (lado patata): aunque la alarma reclamara con la misma prioridad (detrás),
+    # el Enter en vacío con una alarma sonando no responde «no» a la aprobación.
+    from types import SimpleNamespace
+    tm, lanzadas = _tm_con_lanzar()
+    p = crear('Vale. <|CALL ["lanzar_app", {"app": "calc"}]|>', tools=tm)
+    p.alarmas = SimpleNamespace(aviso=SimpleNamespace(sonando=object()))
+    p.responder("hola")
+    alarma = []
+    p.consola.reclamar(alarma.append, prompt="⏰ Enter apaga > ")
+    p.entrada.put("\n")
+    assert esperar(lambda: alarma == [""])
+    assert p.ejecutor.pendientes() and lanzadas == [] and p._reclamos
+    p.alarmas.aviso.sonando = None
+    p.entrada.put("s\n")
+    assert esperar(lambda: lanzadas == [("calc", "usuario")])
 
 
 class _Mez:

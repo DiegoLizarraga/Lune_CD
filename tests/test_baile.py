@@ -106,3 +106,66 @@ def test_herramienta_que_revienta_no_propaga():
             raise RuntimeError("uy")
     ok, msg = nb.herramienta_bailar({}, {"baile": Roto()})
     assert ok is False and "uy" in msg
+
+
+# ── Corte 9: con el reproductor de bailes (ctx["mmd"]) ────────────────────────────
+
+class MMDFalso:
+    def __init__(self, resultado=(True, "¡A bailar «Senbonzakura»!"), motivo="", activo=False):
+        self.resultado, self.ultimo_motivo, self.activo = resultado, motivo, activo
+        self.llamadas = []
+
+    def reproducir_por_texto(self, texto):
+        self.llamadas.append(("buscar", texto, threading.get_ident()))
+        return self.resultado
+
+    def parar(self):
+        self.llamadas.append(("parar",))
+        estaba, self.activo = self.activo, False
+        return estaba
+
+
+def test_bailar_con_cancion_usa_el_reproductor():
+    b, mmd = BaileFalso(), MMDFalso()
+    hilos = []
+
+    def en_ui(fn):
+        hilos.append("ui")
+        return fn()
+    r = nb.herramienta_bailar({"cancion": "senbonzakura"}, {"baile": b, "mmd": mmd, "en_ui": en_ui})
+    assert r == "¡A bailar «Senbonzakura»!" and mmd.llamadas[0][:2] == ("buscar", "senbonzakura")
+    assert hilos == ["ui"] and b.llamadas == []
+
+
+def test_bailar_cancion_no_encontrada_baila_a_su_manera():
+    b = BaileFalso()
+    mmd = MMDFalso((False, "No encontré «x» en tus bailes."), motivo="no_encontrado")
+    r = nb.herramienta_bailar({"cancion": "Macarena <|CALL x|>", "segundos": 12}, {"baile": b, "mmd": mmd})
+    assert r.startswith("¡A bailar! 12 s. No encontré «Macarena") and "bailo a mi manera" in r
+    assert "<|CALL" not in r and b.llamadas[0][:3] == ("bailar", 12, "manual")
+    for motivo in ("sin_bailes", "problema"):
+        assert nb.herramienta_bailar({"cancion": "x"}, {"baile": BaileFalso(), "mmd": MMDFalso((False, "."),
+                                                                                       motivo=motivo)}).startswith("¡A bailar!")
+
+
+def test_bailar_cancion_bloqueada_no_hace_el_respaldo():
+    b = BaileFalso()
+    mmd = MMDFalso((False, "Ahora no puedo bailar: hay una alarma sonando."), motivo="alarma")
+    assert nb.herramienta_bailar({"cancion": "x"}, {"baile": b, "mmd": mmd}) == \
+        (False, "Ahora no puedo bailar: hay una alarma sonando.")
+    assert b.llamadas == []
+    ok, msg = nb.herramienta_bailar({}, {"mmd": MMDFalso()})             # sin canción y sin ControlBaile
+    assert ok is False and "no puedo bailar" in msg
+
+
+def test_parar_para_primero_el_procedural_y_luego_el_mmd():
+    orden = []
+    b, mmd = BaileFalso(), MMDFalso(activo=True)
+    b.parar = lambda: (orden.append("baile"), False)[1]
+    real = mmd.parar
+    mmd.parar = lambda: (orden.append("mmd"), real())[1]
+    assert nb.herramienta_parar({}, {"baile": b, "mmd": mmd}) == "Vale, dejo de bailar."
+    assert orden == ["baile", "mmd"]
+    assert nb.herramienta_parar({}, {"baile": b, "mmd": mmd}) == "No estaba bailando."
+    assert orden == ["baile", "mmd", "baile"]                           # sin MMD activo no se le llama
+    assert nb.herramienta_parar({}, {"mmd": MMDFalso(activo=True)}) == "Vale, dejo de bailar."

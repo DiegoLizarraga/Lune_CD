@@ -1,5 +1,5 @@
 {
-  "_nota": "Plantilla de configuración. Al arrancar, datos.py copia este archivo a datos.json si no existe. NO pongas claves reales aquí: datos.json está en .gitignore, esta plantilla no. Personajes: 'voz' = {motor: 'auto' | 'edge' | 'gtts' | 'kokoro', id: voz del motor (en edge el ShortName, p. ej. es-MX-DaliaNeural; en kokoro ef_dora…), rate: '+0%' (de -50% a +50%), pitch: '+0Hz' (de -50Hz a +50Hz)}; manda sobre la voz de config.json y la usa también el bot de Telegram (ver nucleo/personajes.py). 'frases_mascota' = {evento: [frases]} con eventos arrastre, soltar, caricia, dormir, despertar, mareo, aparecer o pudor; vacío = las frases de serie.",
+  "_nota": "Plantilla de configuración. Al arrancar, datos.py copia este archivo a datos.json si no existe. NO pongas claves reales aquí: datos.json está en .gitignore, esta plantilla no. Personajes: 'voz' = {motor: 'auto' | 'edge' | 'gtts' | 'kokoro', id: voz del motor (en edge el ShortName, p. ej. es-MX-DaliaNeural; en kokoro ef_dora…), rate: '+0%' (de -50% a +50%), pitch: '+0Hz' (de -50Hz a +50Hz)}; manda sobre la voz de config.json y la usa también el bot de Telegram (ver nucleo/personajes.py). 'frases_mascota' = {evento: [frases]} con eventos arrastre, soltar, caricia, dormir, despertar, mareo, aparecer, pudor, sentarse (en la barra o en una ventana), bajar o comer; vacío = las frases de serie. 'frases_minecraft' = {clave: [frases]} para las reacciones a tu partida de Minecraft (claves de lune_core/minecraft.FRASES: muerte, muerte_otro, logro, logro_otro, conexion, desconexion, peligro, dia, noche, lluvia, bot_*…; huecos {jugador} {logro} {mob} {causa}); las que falten salen de serie.",
   "apis": {
     "telegram_token": "",
     "telegram_admin_id": "",
@@ -21,7 +21,7 @@
     "preset_muestreo": "equilibrado"
   },
   "bot": {
-    "_proveedor_nota": "A quien pregunta el bot de Telegram: 'ollama' (modelo local, en esta maquina o en otra de la red segun modelos.ollama_url) u 'openrouter' (nube).",
+    "_proveedor_nota": "A quien pregunta el bot de Telegram (y el de Minecraft): 'ollama' (modelo local, en esta maquina o en otra de la red segun modelos.ollama_url), 'openrouter' (nube) o 'compat' (la API compatible con OpenAI de modelos.compat_url / compat_model / compat_key, la misma que la app). Con el hub (host), el chat de Telegram lo responde el host con su proveedor.",
     "proveedor": "openrouter",
     "personaje_default": "Lune",
     "max_historial": 20,
@@ -51,7 +51,7 @@
     "url_host": ""
   },
   "minecraft": {
-    "_nota": "Bot de Minecraft de Lune (minecraft-bot/). host/port del servidor; version vacía = autodetectar; usuario = nick del bot; dueno = tu nick. solo_dueno filtra por nick y en servidores con online-mode=false el nick se puede suplantar: no es una garantía de seguridad. pensar_cada_s comparte el modelo con el chat, no lo bajes de 30.",
+    "_nota": "Bot de Minecraft de Lune (minecraft-bot/; se instala con el botón de Ajustes → Minecraft, ~400 MB, necesita Node 18+). Solo servidores con online-mode=false (uno local o uno tuyo con esa opción): «Abrir en LAN» de Minecraft normal no sirve porque pide cuenta. Sin visor ni puertos abiertos (visor se ignora). host/port del servidor; version vacía = autodetectar; usuario = nick del bot; dueno = tu nick. solo_dueno filtra por nick y en servidores con online-mode=false el nick se puede suplantar: no es una garantía de seguridad. pensar_cada_s comparte el modelo con el chat, no lo bajes de 30.",
     "host": "localhost",
     "port": 25565,
     "version": "",

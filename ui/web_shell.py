@@ -43,6 +43,18 @@ y `musica` del canal (ui/puentes_ocio.py) se registran también antes de setUrl;
 controladores llegan con el corte 4 (ServiciosCorte4.ocio, ui/montaje_ocio.py) y se
 enlazan en _montar_servicios_c4; _liberar_todo los cierra una vez, antes de desmontar.
 
+CORTES 7 Y 8 (sentarse, comida, Discord y arranque con Windows): el objeto `vida` del
+canal (ui/puente_vida.py → window.luneVida), igual que los de ocio: registrado antes de
+setUrl, enlazado con ServiciosCorte4.vida en _montar_servicios_c4 y cerrado una vez en
+_liberar_todo.
+
+CORTES 9 Y 10 (reproductor de bailes MMD/VRMA y Minecraft): el objeto `escenario` del
+canal (ui/puente_escenario.py → window.luneEscenario), igual: antes de setUrl, enlazado
+con ServiciosCorte4.escenario en _montar_servicios_c4 y cerrado una vez en _liberar_todo.
+El bot de Minecraft conectado sigue conectado tras un cambio de interfaz en caliente:
+estado_para_cambio lleva "minecraft_bot" e iniciar_servicios lo vuelve a conectar (la
+ventana vieja lo paró al desmontar; nunca se instala solo).
+
 CORTE 4 (bandeja única, menú radial, atajos globales, modo juego y tema): el segundo
 objeto del canal, `escritorio` (ui/puente_escritorio.py → window.luneEscritorio), se
 registra en __init__ ANTES de cargar la página (el JS solo ve lo registrado al crear su
@@ -72,10 +84,11 @@ from PyQt6.QtGui import QColor, QDesktopServices, QIcon, QAction
 # El servidor http vive en ui/servidor_web.py (sin WebEngine) para que la
 # mascota lo comparta; aquí se conservan los nombres antiguos por compatibilidad.
 from ui.servidor_web import RAIZ, DIR_WEB, ServidorEstatico as _ServidorEstatico, HandlerSilencioso as _HandlerSilencioso  # noqa: F401
-from ui.cambio_interfaz import (PROVEEDOR_A_WEB, PROVEEDOR_DESDE_WEB, TOPE_CARGA_MS, callar_voz,
-                                cerrar_mascota, desmontar_servicios_c4, detener_bot,
+from ui.cambio_interfaz import (PROVEEDOR_A_WEB, PROVEEDOR_DESDE_WEB, TOPE_CARGA_MS, bot_minecraft_de,
+                                callar_voz, cerrar_mascota, desmontar_servicios_c4, detener_bot,
                                 detener_hilo_ia, hilo_vivo, instantanea_sesion, ordenes_cortadas,
-                                parar_temporizadores, quitar_bandeja, soltar_hilos)
+                                parar_temporizadores, quitar_bandeja, reconectar_bot_minecraft,
+                                soltar_hilos)
 
 PAGINA = "ui_kits/lune-desktop/index.html"
 RUTA_VRM = "/vrm/actual.vrm"          # la misma que RUTA_MODELO de vrm_barra.js
@@ -273,6 +286,8 @@ class VentanaWeb(QMainWindow):
         self._anfitrion = None        # ui/anfitrion_web.AnfitrionWeb
         self._puente_esc = None       # ui/puente_escritorio.PuenteEscritorio («escritorio»)
         self._puentes_ocio = None     # ui/puentes_ocio.PuentesOcio («alarmas» y «musica»)
+        self._puente_vida = None      # ui/puente_vida.PuenteVida («vida», cortes 7/8)
+        self._puente_escenario = None  # ui/puente_escenario.PuenteEscenario («escenario», cortes 9/10)
         self.setWindowTitle("Lune CD")
         self.resize(1280, 820)
         self._icono = QIcon()
@@ -317,6 +332,11 @@ class VentanaWeb(QMainWindow):
         # Cortes 5/6: `alarmas` y `musica` (window.luneAlarmas / luneMusica), igual: antes
         # de setUrl y sin servicios (los enlaza _montar_servicios_c4).
         self._registrar_puentes_ocio()
+        # Cortes 7/8: `vida` (window.luneVida: sentarse, comida, Discord y arranque con
+        # Windows), igual: antes de setUrl y sin servicios.
+        self._registrar_puente_vida()
+        # Cortes 9/10: `escenario` (window.luneEscenario: bailes MMD/VRMA y Minecraft), igual.
+        self._registrar_puente_escenario()
         # Ajustes → «Modo de interfaz»: el puente lo pide y el gestor hace el cambio.
         senal = getattr(self.bridge, "interfaz_pedida", None)
         if senal is not None and hasattr(senal, "connect"):
@@ -406,6 +426,12 @@ class VentanaWeb(QMainWindow):
                     b.telegram_toggle()
             except Exception as e:
                 _log_error(f"[interfaz] no pude relanzar el bot de Telegram: {e}")
+        # Cortes 9/10: el bot de Minecraft que estaba conectado se vuelve a conectar (la
+        # ventana vieja lo paró al desmontar; nunca se instala solo).
+        if estado.get("minecraft_bot"):
+            ok, texto = reconectar_bot_minecraft(getattr(self, "_servicios_c4", None))
+            if not ok and texto:
+                _log_error(f"[interfaz] no pude volver a conectar el bot de Minecraft: {texto}")
 
     # ── Corte 4: puente `escritorio`, montaje y bandeja única ───────────────────
     def _registrar_puente_escritorio(self):
@@ -436,6 +462,35 @@ class VentanaWeb(QMainWindow):
             self._puentes_ocio = None
             _log_error(f"[ocio] no pude registrar los puentes de alarmas y música: {e}")
         return self._puentes_ocio
+
+    def _registrar_puente_vida(self):
+        """El objeto `vida` del canal (cortes 7/8: window.luneVida), registrado en
+        __init__ ANTES de cargar la página, sin servicios: _montar_servicios_c4 le da
+        ServiciosCorte4 (con su `.vida`) con enlazar(). Lo que es solo config (tarjetas,
+        opciones del arranque con Windows) funciona igual sin ellos."""
+        try:
+            from ui.puente_vida import registrar_puente_vida
+            self._puente_vida = registrar_puente_vida(self._canal, self.bridge.config,
+                                                      getattr(self, "_servicios_c4", None))
+        except Exception as e:
+            self._puente_vida = None
+            _log_error(f"[vida] no pude registrar el puente de sentarse, comida y Discord: {e}")
+        return self._puente_vida
+
+    def _registrar_puente_escenario(self):
+        """El objeto `escenario` del canal (cortes 9/10: window.luneEscenario, bailes MMD/VRMA y
+        Minecraft), registrado en __init__ ANTES de cargar la página, sin servicios:
+        _montar_servicios_c4 le da ServiciosCorte4 (con su `.escenario`) con enlazar(). Lo que es
+        solo config (tarjetas de Ajustes, datos del bot) funciona igual sin ellos. La ventana es
+        el padre del diálogo de importar bailes."""
+        try:
+            from ui.puente_escenario import registrar_puente_escenario
+            self._puente_escenario = registrar_puente_escenario(
+                self._canal, self.bridge.config, getattr(self, "_servicios_c4", None), ventana=self)
+        except Exception as e:
+            self._puente_escenario = None
+            _log_error(f"[escenario] no pude registrar el puente de bailes y Minecraft: {e}")
+        return self._puente_escenario
 
     def _montar_servicios_c4(self):
         """Bandeja única, atajos globales, menú radial, modo juego y tema
@@ -471,6 +526,18 @@ class VentanaWeb(QMainWindow):
                 po.enlazar(s)                        # se suelta solo al desmontar (s._deshacer)
             except Exception as e:
                 _log_error(f"[ocio] los puentes de alarmas y música no tomaron los servicios: {e}")
+        pv = getattr(self, "_puente_vida", None)
+        if pv is not None:
+            try:
+                pv.enlazar(s)                        # cortes 7/8; se suelta solo con s._deshacer
+            except Exception as e:
+                _log_error(f"[vida] el puente de sentarse, comida y Discord no tomó los servicios: {e}")
+        pe = getattr(self, "_puente_escenario", None)
+        if pe is not None:
+            try:
+                pe.enlazar(s)                        # cortes 9/10; se suelta solo con s._deshacer
+            except Exception as e:
+                _log_error(f"[escenario] el puente de bailes y Minecraft no tomó los servicios: {e}")
         return s
 
     @property
@@ -511,6 +578,8 @@ class VentanaWeb(QMainWindow):
         estado["telegram"] = hilo_vivo(getattr(b, "_tg_worker", None))
         # Modo juego forzado desde la bandeja (VS6): True/False a mano, None = detectar.
         estado["juego_forzado"] = juego_forzado_de(getattr(self, "_servicios_c4", None))
+        # Cortes 9/10: el bot de Minecraft conectado (o conectándose) se reconecta en la nueva.
+        estado["minecraft_bot"] = bot_minecraft_de(getattr(self, "_servicios_c4", None))
         return estado
 
     def aplicar_estado(self, estado: dict) -> None:
@@ -621,6 +690,20 @@ class VentanaWeb(QMainWindow):
             except Exception:
                 pass
             self._puentes_ocio = None
+        pv = getattr(self, "_puente_vida", None)      # cortes 7/8, igual
+        if pv is not None:
+            try:
+                pv.cerrar()                          # idempotente
+            except Exception:
+                pass
+            self._puente_vida = None
+        pe = getattr(self, "_puente_escenario", None)  # cortes 9/10, igual
+        if pe is not None:
+            try:
+                pe.cerrar()                          # idempotente
+            except Exception:
+                pass
+            self._puente_escenario = None
         # Corte 4 lo primero (bandeja única, atajos, detector de juego, radial, tema y
         # el puente `escritorio`), una sola vez: el modo juego devuelve lo que cambió
         # (prioridad, voz, la mascota que escondió: cuenta como «fuera») antes de que

@@ -19,6 +19,11 @@ lo registra el montaje (`("discord", d)`, sin actividades de la tabla) y recibe
   client_id_ok, vista_previa}. `vista_previa` es lo que Discord vería AHORA
   ({details, state} o None con un juego), para la línea «Discord ve: …» de la
   tarjeta aunque todavía no haya conexión. `estado_cambio(str)` lleva ese JSON.
+- Del hilo de la presencia al de Qt se pasa por `PuenteHilo` (nunca un `emit`
+  ligado guardado): `detener` lo cierra ANTES de soltar la presencia y no espera
+  más de `ESPERA_DETENER_S` a su hilo (Discord lento: borra la actividad y suelta
+  el mutex por su cuenta, sin avisar a nadie). Antes, un hilo que sobrevivía al
+  deleteLater del desmontaje emitía sobre el objeto borrado y tumbaba la app.
 """
 from __future__ import annotations
 
@@ -33,6 +38,7 @@ from PyQt6.QtCore import QObject, Qt, pyqtSignal
 
 from servicios import discord_presencia as dp
 from servicios.discord_ipc import ID_OK
+from ui.escritorio import PuenteHilo
 
 _log = logging.getLogger("lune.discord")
 
@@ -41,6 +47,10 @@ CAMPOS_PUBLICADOS = frozenset({
     "render", "visible", "arrastrando", "durmiendo", "pensando", "hablando", "llamada",
     "bailando", "sentada", "grande", "salvapantallas", "alarma", "comiendo", "juego",
 })
+
+# Lo que `detener` espera al hilo de la presencia (el hilo de Qt no se queda 1 s parado:
+# si Discord tarda, el hilo acaba solo, sin avisar).
+ESPERA_DETENER_S = 0.25
 
 
 class ControlDiscord(QObject):
@@ -60,23 +70,31 @@ class ControlDiscord(QObject):
         self._foto: dict = {"modo": self.modo}
         self._iniciado = False
         self._conectado_bus = False
+        self._vista_emitida: Any = None              # la «vista_previa» del último estado_cambio
         self._mascota = getattr(escritorio, "mascota", None)
         self._presencia = presencia if presencia is not None else dp.Presencia(config, self.foto)
         try:
             self._presencia.estado_fn = self.foto
         except Exception:
             pass
+        self._puente = PuenteHilo(self, "_desde_hilo")    # se cierra solo si lo borran sin detener
+        self._poner_puente()
+        self._desde_hilo.connect(self._on_estado_presencia, Qt.ConnectionType.QueuedConnection)
+
+    def _poner_puente(self) -> None:
         try:
-            self._presencia.on_estado = self._desde_hilo.emit
+            self._presencia.on_estado = self._puente
         except Exception:
             pass
-        self._desde_hilo.connect(self._on_estado_presencia, Qt.ConnectionType.QueuedConnection)
 
     # ── Contrato de controlador ────────────────────────────────────────────────
     def iniciar(self) -> None:
         if self._iniciado:
             return
         self._iniciado = True
+        if not self._puente.abierto:                # un iniciar tras detener: puente nuevo
+            self._puente = PuenteHilo(self, "_desde_hilo")
+            self._poner_puente()
         senal = getattr(self.escritorio, "estado_cambio", None)
         if senal is not None and hasattr(senal, "connect"):
             try:
@@ -98,8 +116,16 @@ class ControlDiscord(QObject):
             except (TypeError, RuntimeError, AttributeError):
                 pass
             self._conectado_bus = False
+        # Primero, que el hilo de la presencia ya no pueda avisar a este objeto (el
+        # montaje lo borra justo después); luego cerrarla sin esperar más de la cuenta.
+        self._puente.cerrar()
         try:
-            self._presencia.cerrar(timeout=1.0)
+            if self._presencia.on_estado is self._puente:
+                self._presencia.on_estado = None
+        except Exception:
+            pass
+        try:
+            self._presencia.cerrar(timeout=ESPERA_DETENER_S)
         except Exception:
             _log.exception("discord: cerrar la presencia falló")
 
@@ -207,20 +233,27 @@ class ControlDiscord(QObject):
     # ── Señales ────────────────────────────────────────────────────────────────
     def _on_bus(self, est: Any, cambios: Any = None) -> None:
         self._refrescar_foto(est)
-        if not self._iniciado or not self.activo:
+        if not self._iniciado:
             return
         if isinstance(cambios, dict) and cambios and not (set(cambios) & CAMPOS_PUBLICADOS):
             return
-        self._presencia.actualizar()
+        # «Discord ve: …» de la tarjeta sigue a Lune aunque la presencia no avise (Discord
+        # cerrado o apagada: su estado no cambia y antes la línea se quedaba vieja).
+        if self.vista_previa() != self._vista_emitida:
+            self._emitir()
+        if self.activo:
+            self._presencia.actualizar()
 
     def _on_estado_presencia(self, _estado: Any = None) -> None:
         self._emitir()
 
     def _emitir(self) -> None:
         try:
-            self.estado_cambio.emit(json.dumps(self.estado(), ensure_ascii=False))
+            e = self.estado()
+            self._vista_emitida = e.get("vista_previa")
+            self.estado_cambio.emit(json.dumps(e, ensure_ascii=False))
         except Exception:
             _log.debug("discord: no pude emitir el estado", exc_info=True)
 
 
-__all__ = ("ControlDiscord", "CAMPOS_PUBLICADOS")
+__all__ = ("ControlDiscord", "CAMPOS_PUBLICADOS", "ESPERA_DETENER_S")

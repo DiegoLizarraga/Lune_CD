@@ -140,13 +140,23 @@ def mover_cursor(e, x, y, dt=0.02):
 
 
 def sentar_arrastrando(e):
-    """Arrastra la mascota hasta que la sonda (150, 420) queda en (700, 410): borde del Bloc."""
+    """Arrastra la mascota hasta que la sonda (150, 420) queda en (700, 410), el borde del
+    Bloc, y la deja ahí quieta medio segundo (sin MouseMove: el tic del arrastre)."""
     e.m.arrastre_cambio.emit(True)
     assert e.m.delegado is not None
     mover_cursor(e, 520, 500)
-    e.reloj.t += 0.6                                  # agarre ≥ 0.5 s
-    assert mover_cursor(e, 950, 390) is True
+    assert mover_cursor(e, 950, 390) is True          # llega al borde
+    assert bus(e).sentada == ""
+    quieta(e, 0.5)
     assert bus(e).sentada == "ventana"
+
+
+def quieta(e, s, paso=1 / 15):
+    """El ratón quieto `s` segundos durante el arrastre: solo corre el tic del arrastre."""
+    fin = e.reloj.t + s
+    while e.reloj.t < fin - 1e-9:
+        e.reloj.t = min(fin, e.reloj.t + paso)
+        e.ctl._tic_arrastre()
 
 
 def tics_hasta_quieta(e, n=200):
@@ -210,8 +220,8 @@ def test_sin_sentarse_en_ventanas_no_enumera(entorno):
     e = entorno(config=Config(sentarse_ventanas=False, sentarse_barra=True))
     sentar = e.m.arrastre_cambio.emit
     sentar(True)
-    e.reloj.t += 0.6
     mover_cursor(e, 950, 390)
+    quieta(e, 0.6)
     assert e.api.n_enumerar == 0 and bus(e).sentada == ""
     assert e.pantalla.n > 0                            # la barra sí se mira…
     assert e.ctl._t_enum.interval() == e.ctl.BARRA_MS  # …a 4 Hz
@@ -238,8 +248,8 @@ def test_si_la_tabla_no_deja_no_se_sienta(entorno):
     e.esc.prioridad.iniciar("alarma")
     assert e.ctl.sentar("barra") == (False, "Ahora no puedo sentarme: está sonando una alarma.")
     e.m.arrastre_cambio.emit(True)
-    e.reloj.t += 0.6
     mover_cursor(e, 950, 390)
+    quieta(e, 0.6)
     assert bus(e).sentada == "" and e.m.asientos == []
 
 
@@ -354,8 +364,8 @@ def test_el_punto_de_un_pedido_viejo_no_pisa_el_asiento(entorno):
     viejo = e.m.pendientes[-1]                          # pedido antes de sentarse
     e.m.pendientes.clear()
     mover_cursor(e, 520, 500)
-    e.reloj.t += 0.6
     mover_cursor(e, 950, 390)
+    quieta(e, 0.5)
     assert bus(e).sentada == "ventana"
     rel = e.ctl._asiento_rel
     viejo({"asiento": [1, 1], "sonda": [1, 1]})
@@ -512,7 +522,7 @@ def test_detener_idempotente_sin_timers_vivos(entorno):
     sentar_arrastrando(e)
     e.ctl.detener()
     e.ctl.detener()
-    assert not any(t.isActive() for t in (e.ctl._t_tic, e.ctl._t_enum, e.ctl._t_remedir))
+    assert not any(t.isActive() for t in (e.ctl._t_tic, e.ctl._t_enum, e.ctl._t_remedir, e.ctl._t_arrastre))
     assert e.m.delegado is None and bus(e).sentada == "" and e.ctl.maquina.sentada is None
 
 
@@ -523,3 +533,139 @@ def test_estado_json(entorno):
                   "disponible": True, "juego": False, "arrastrando": False, "cedida": False}
     e.ctl.sentar("barra")
     assert e.estados[-1]["sentada"] == "barra"
+
+
+# ── Revisión 7-10 ──────────────────────────────────────────────────────────────
+
+def test_quieta_medio_segundo_sobre_el_borde_se_sienta_sin_mover_el_raton(entorno):
+    """SV1: VRM/animada llegan al borde (antes del medio segundo) y se quedan QUIETAS: sin
+    MouseMove no había muestra y no se sentaba nunca (README: «mantenme medio segundo»)."""
+    e = entorno(config=Config(sentarse_ventanas=True))
+    e.m.arrastre_cambio.emit(True)
+    assert e.ctl._t_arrastre.isActive()              # el tic del arrastre manual
+    mover_cursor(e, 950, 390, dt=0.2)                # en el borde a los 0.2 s
+    assert bus(e).sentada == ""
+    quieta(e, 0.4)
+    assert bus(e).sentada == ""                      # 0.4 s sobre el borde: aún no
+    quieta(e, 0.15)
+    assert bus(e).sentada == "ventana"
+    e.m.arrastre_cambio.emit(False)
+    assert not e.ctl._t_arrastre.isActive() and bus(e).sentada == "ventana"
+
+
+def test_soltarla_tras_medio_segundo_en_el_borde_la_sienta(entorno):
+    """SV1: al soltar se intenta con la sonda (antes el manual soltaba sin mirar)."""
+    e = entorno(config=Config(sentarse_ventanas=True))
+    e.m.arrastre_cambio.emit(True)
+    mover_cursor(e, 950, 390, dt=0.2)                # llega al borde
+    e.reloj.t += 0.6                                 # sin tics (el timer no llegó a correr)
+    e.m.arrastre_cambio.emit(False)
+    assert bus(e).sentada == "ventana" and e.m.asientos[-1][:2] == (True, "ventana")
+    e2 = entorno(config=Config(sentarse_ventanas=True))
+    e2.m.arrastre_cambio.emit(True)
+    mover_cursor(e2, 950, 390, dt=0.2)
+    e2.reloj.t += 0.2                                # soltarla de pasada: no
+    e2.m.arrastre_cambio.emit(False)
+    assert bus(e2).sentada == ""
+
+
+def test_el_smoothdamp_acaba_con_el_raton_quieto(entorno):
+    """SV1: sentada arrastrando, llega el asiento medido con la pose sentada y se desliza
+    hasta él con SmoothDamp; con el ratón quieto se quedaba a medias (sin MouseMove)."""
+    e = entorno(config=Config(sentarse_ventanas=True))
+    sentar_arrastrando(e)
+    quieta(e, 0.3, paso=1 / 60)
+    e.m.cbs_asiento[-1]({"asiento": [150, 250], "sonda": [150, 230]})     # 170 px más arriba
+    assert e.ctl.maquina.suavizando
+    quieta(e, 1 / 60, paso=1 / 60)
+    assert e.ctl._t_arrastre.interval() == e.ctl.RAPIDO_MS                # 60 Hz mientras desliza
+    quieta(e, 1.0, paso=1 / 60)
+    assert not e.ctl.maquina.suavizando
+    assert e.win.rects[PROPIA][:2] == (550, 150)     # el asiento (150, 250) clavado en (700, 400)
+    assert e.ctl._t_arrastre.interval() == e.ctl.ARRASTRE_MS
+
+
+def test_moverla_durante_la_cesion_ya_no_la_devuelve_a_la_ventana(entorno):
+    """SV2: sentada, empieza un MMD (cede), la arrastras lejos y al acabar el MMD cruzaba la
+    pantalla de vuelta a la ventana de antes."""
+    e = entorno(config=Config(sentarse_ventanas=True))
+    sentar_arrastrando(e)
+    e.m.arrastre_cambio.emit(False)
+    tics_hasta_quieta(e)
+    e.esc.prioridad.iniciar("mmd")
+    assert e.ctl.cedida and bus(e).sentada == ""
+    e.cursor.c = (500, 500)
+    e.m.arrastre_cambio.emit(True)                   # la coges durante el baile
+    assert not e.ctl.cedida
+    mover_cursor(e, 100, 100)
+    e.m.arrastre_cambio.emit(False)
+    dejada = e.win.rects[PROPIA][:2]
+    e.esc.prioridad.terminar("mmd")
+    assert bus(e).sentada == "" and e.ctl.maquina.sentada is None
+    assert e.win.rects[PROPIA][:2] == dejada and e.m.asientos[-1][0] is False
+
+
+def test_levantarse_en_la_misma_pasada_vuelve_a_la_sonda_de_pie(entorno):
+    """SV3: sentada, la página da el asiento de la pose sentada; al soltarse arrastrando
+    seguía con esa sonda (encajaba con el pecho). Vuelve la de pie."""
+    e = entorno(config=Config(sentarse_ventanas=True))
+    sentar_arrastrando(e)
+    e.m.cbs_asiento[-1]({"asiento": [150, 250], "sonda": [150, 230]})     # pose sentada
+    assert e.ctl._sonda_rel == (150, 230)
+    e.reloj.t += 1.0
+    mover_cursor(e, 950, 150)                        # tira hacia arriba: se suelta
+    assert e.levantadas == ["arrastre"]
+    assert e.ctl._asiento_rel == (150, 400) and e.ctl._sonda_rel == (150, 420)   # la de pie
+    quieta(e, 0.3)                                   # un momento lejos (fin del bloqueo vertical)
+    mover_cursor(e, 950, 390)                        # de vuelta: la sonda DE PIE en el borde
+    quieta(e, 0.5)
+    assert bus(e).sentada == "ventana"
+    quieta(e, 1.0, paso=1 / 60)
+    assert e.win.rects[PROPIA][1] == 400 - 420       # clavada por la sonda de pie, sin salto
+
+
+def test_con_monitores_apilados_sigue_en_la_barra_de_su_monitor(entorno):
+    """Sospecha: con un monitor debajo de otro y el asiento por encima del centro de la
+    ventana (pose sentada, altura del asiento), el centro caía en el monitor de abajo y la
+    clavaba en SU barra. Manda el monitor del asiento."""
+    from servicios.win_pantalla import Monitor
+    arriba = Monitor(101, Rect(0, 0, 1920, 1080), Rect(0, 0, 1920, 1032), True, "A")
+    abajo = Monitor(202, Rect(0, 1080, 1920, 2160), Rect(0, 1080, 1920, 2112), False, "B")
+    pant = PantallaFalsa(monitores=(arriba, abajo),
+                         bandejas={"Shell_TrayWnd": {0x100: Rect(0, 1032, 1920, 1080)},
+                                   "Shell_SecondaryTrayWnd": {0x200: Rect(0, 2112, 1920, 2160)}})
+    e = entorno(pantalla=pant)
+    assert e.ctl.sentar("barra")[0] is True
+    e.m.cbs_asiento[-1]({"asiento": [150, 150], "sonda": [150, 170]})     # asiento muy arriba
+    tics_hasta_quieta(e)
+    for _ in range(5):
+        e.reloj.t += 1 / 15
+        e.ctl._tic()
+    y = e.win.rects[PROPIA][1]
+    assert y + 150 == 1032 and bus(e).sentada == "barra"                    # en la barra de A
+    assert e.win.rects[PROPIA][1] + e.win.rects[PROPIA].alto // 2 > 1080    # (el centro está en B)
+
+
+class PantallaAutoOculta(PantallaFalsa):
+    def __init__(self):
+        from servicios.win_pantalla import Monitor
+        mon = Monitor(101, Rect(0, 0, 1920, 1080), Rect(0, 0, 1920, 1080), True, "A")
+        super().__init__(monitores=(mon,), bandejas={"Shell_TrayWnd": {0x100: Rect(0, 1078, 1920, 1080)}},
+                         auto_oculta=True)
+        self.preguntas = 0
+
+    def barra_auto_oculta(self):
+        self.preguntas += 1                          # SHAppBarMessage: un mensaje a Explorer
+        return True
+
+
+def test_barra_auto_oculta_no_pregunta_a_explorer_en_cada_tic(entorno):
+    e = entorno(pantalla=PantallaAutoOculta())
+    assert e.ctl.sentar("barra")[0] is True
+    tics_hasta_quieta(e)
+    antes = e.pantalla.preguntas
+    for _ in range(30):                              # 2 s sentada a 15 Hz
+        e.reloj.t += 1 / 15
+        e.ctl._tic()
+    assert bus(e).sentada == "barra"
+    assert e.pantalla.preguntas - antes <= 2         # antes: 30 (una por tic)

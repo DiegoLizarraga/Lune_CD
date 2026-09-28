@@ -423,6 +423,8 @@ function SettingsPanel({ voiceOn, onVoice, fx = { bg:true, sweep:true, micro:tru
           <div className="ln-toggle-row">
             <Switch label="Arrancar Lune junto con Windows" checked={!!c.autoinicio} onChange={setBl('autoinicio')} accent="blue" />
           </div>
+          {/* Cortes 7/8 (extra/vida.jsx): cómo aparece al arrancar con Windows y cuánto espera. */}
+          {window.AutoinicioOpciones && <window.AutoinicioOpciones activo={!!c.autoinicio} />}
           <div style={{height:14}} />
           <div className="ln-settings-grid">
             <Input label="Lune se aburre tras (minutos sin escribirle)" type="number" min="0" value={c.aburrimiento_min ?? 10}
@@ -471,6 +473,16 @@ function SettingsPanel({ voiceOn, onVoice, fx = { bg:true, sweep:true, micro:tru
         {window.AlarmasCard && <window.AlarmasCard />}
         {window.PantallaGrandeCard && <window.PantallaGrandeCard />}
         {window.BaileCard && <window.BaileCard />}
+
+        {/* Cortes 7/8 (extra/vida.jsx): sentarse, comida y Discord; guardan al momento por window.luneVida. */}
+        {window.SentarseCard && <window.SentarseCard />}
+        {window.ComidaCard && <window.ComidaCard />}
+        {window.DiscordCard && <window.DiscordCard />}
+
+        {/* Cortes 9/10 (extra/bailes_mmd.jsx y extra/minecraft.jsx): bailes MMD/VRMA y Minecraft; guardan
+            al momento por window.luneEscenario. */}
+        {window.BailesCard && <window.BailesCard />}
+        {window.MinecraftCard && <window.MinecraftCard />}
 
         <Card eyebrow={<><window.IconCpu width={13} height={13}/> Rendimiento</>} title="Modo de interfaz" tone="yellow">
           <p style={{margin:'0 0 12px', font:'var(--text-data)', fontSize:12, color:'var(--text-dim)'}}>

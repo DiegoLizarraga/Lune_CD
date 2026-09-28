@@ -36,8 +36,9 @@ export function loadConfig() {
     openrouterKey:    datos.apis?.openrouter_key     ?? "",
     adminId:          datos.apis?.telegram_admin_id  ?? "",
 
-    // "ollama" (modelo local, en esta máquina o en otra de la red) u "openrouter" (nube)
-    proveedor:        (datos.bot?.proveedor ?? "openrouter").toLowerCase(),
+    // "ollama" (modelo local, en esta máquina o en otra de la red), "openrouter" (nube)
+    // o "compat" (cualquier API compatible con OpenAI, la misma que la app)
+    proveedor:        String(datos.bot?.proveedor ?? "openrouter").trim().toLowerCase(),
 
     // La app escribe `openrouter_model`; `openrouter` es el nombre viejo de la
     // clave y se mantiene solo para no romper datos.json de versiones previas.
@@ -49,6 +50,12 @@ export function loadConfig() {
     ollamaNumCtx:     Number(m.ollama_num_ctx) || 8192,
     ollamaTimeoutMs:  (Number(m.ollama_timeout) || 300) * 1000,
     temperatura:      Number(m.temperatura ?? 0.7),
+
+    // Proveedor "compat": las MISMAS claves que la app (nucleo/datos.py compat_*).
+    compatUrl:        String(m.compat_url ?? "").trim(),
+    compatKey:        String(m.compat_key || datos.apis?.compat_key || "").trim(),
+    compatModelo:     String(m.compat_model ?? "").trim(),
+    compatTimeoutMs:  Math.max(5, Number(m.compat_timeout) || 120) * 1000,
 
     // Hub de Lune: en modo 'host' el bot corre junto al núcleo (127.0.0.1);
     // en 'terminal' se conecta a la URL del host; en 'local' no hay hub.

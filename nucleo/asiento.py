@@ -28,9 +28,13 @@ LA SONDA Y EL ASIENTO
 
 REGLAS (de ME, valores de la escena)
 ------------------------------------
-- Ventanas: encaja arrastrando ≥ 0.5 s y ≥ 10 px cuando la sonda está dentro
-  de [izq, der] del objetivo y a ≤ radio de su borde superior y ese punto no
-  está tapado por otra ventana. Tras soltarse arrastrando: enfriamiento de
+- Ventanas: encaja cuando la sonda lleva ≥ 0.5 s sobre el borde (dentro de
+  [izq, der] del objetivo, a ≤ radio de su borde superior y sin otra ventana
+  tapando ese punto) y el arrastre ya movió ≥ 10 px. El medio segundo cuenta
+  desde que la sonda llega al borde (no desde que se cogió: pasar por encima no
+  la sienta), así que el arrastre manual necesita muestras aunque el ratón esté
+  quieto (el tic de ControlAsiento). En el arrastre nativo (sprites) no hay
+  muestras: al soltar cuenta desde que se cogió. Tras soltarse arrastrando: enfriamiento de
   0.275 s, zona de guardia (hasta que la sonda sale de 1.15·radio) y bloqueo
   vertical (hasta alejarse max(banda, radio) del borde en vertical).
 - Barra: la zona rosa de 100×10 px (−5 px) alrededor de la sonda toca la franja
@@ -185,9 +189,10 @@ class MaquinaAsiento:
     """El estado de «sentada» (ver la cabecera del módulo).
 
     Uso en un arrastre manual (VRM y animada): `al_pulsar` al empezar,
-    `al_arrastrar` en cada movimiento (Snap = acaba de sentarse; Desnap = se
-    soltó; None = nada nuevo) y `pin` para saber dónde poner la ventana mientras
-    está sentada; `al_soltar` al acabar. En un arrastre nativo (sprites) solo
+    `al_arrastrar` en cada movimiento y también con el ratón quieto (el medio
+    segundo sobre el borde se mide con esas muestras; Snap = acaba de sentarse;
+    Desnap = se soltó; None = nada nuevo) y `pin` para saber dónde poner la ventana
+    mientras está sentada; `al_soltar(…, muestreado=True)` al acabar. En un arrastre nativo (sprites) solo
     `al_pulsar` y `al_soltar(sonda=…, candidatas=…)`, que es quien encaja.
     Sentada y quieta: `pin` y `comprobar` en cada tic.
 
@@ -202,6 +207,7 @@ class MaquinaAsiento:
         self._arrastrando = False
         self._t0 = 0.0
         self._c0: Optional[Punto] = None
+        self._sobre: Optional[Tuple[int, float]] = None                # (hwnd, desde cuándo) sobre su borde
         self._cooldown_hasta = -math.inf
         self._guardia: Optional[Tuple[float, float, float]] = None      # (x, y, r²)
         self._reciente = False
@@ -228,25 +234,29 @@ class MaquinaAsiento:
         self._arrastrando = True
         self._t0 = float(t)
         self._c0 = (float(cursor[0]), float(cursor[1])) if cursor else None
+        self._sobre = None
         self._latch_hasta = -math.inf                  # al volver a cogerla sentada no hay bloqueo
         if self.sentada is not None and cursor:
             self.sentada = dataclasses.replace(self.sentada, cursor_y=int(round(cursor[1])))
 
     def al_soltar(self, t: float, *, sonda: Optional[Punto] = None, radio: float = 0,
                   candidatas: Iterable[Any] = (), ocluida: Optional[Callable[[int, int, int], bool]] = None,
-                  cursor: Optional[Punto] = None, dpr: float = 1.0, asiento: Optional[Punto] = None
-                  ) -> Optional[Snap]:
-        """Acaba el arrastre. Con `sonda` (sprites, arrastre nativo) intenta sentarse
-        ahí mismo con las mismas reglas (agarre ≥ 0.5 s y ≥ 10 px si llega `cursor`)."""
+                  cursor: Optional[Punto] = None, dpr: float = 1.0, asiento: Optional[Punto] = None,
+                  muestreado: bool = False) -> Optional[Snap]:
+        """Acaba el arrastre. Con `sonda` intenta sentarse ahí mismo con las mismas
+        reglas (≥ 10 px si llega `cursor`). `muestreado` (arrastre manual, con
+        `al_arrastrar` en marcha): el medio segundo cuenta desde que la sonda llegó al
+        borde; sin él (sprites, arrastre nativo), desde que se cogió."""
         snap = None
         try:
             if self.sentada is None and sonda is not None:
                 snap = self._intentar(float(t), cursor, sonda, float(radio), list(candidatas or ()), ocluida,
-                                      dpr, asiento)
+                                      dpr, asiento, muestreado=muestreado)
         finally:
             self._arrastrando = False
             self._reciente = False
             self._c0 = None
+            self._sobre = None
         return snap
 
     def al_arrastrar(self, t: float, cursor: Optional[Punto], sonda: Punto, radio: float,
@@ -264,7 +274,7 @@ class MaquinaAsiento:
         if self._reciente and self._ultimo_borde is not None and abs(sy - self._ultimo_borde) >= vband:
             self._reciente = False                     # ya se alejó del borde en vertical
         if self.sentada is None:
-            return self._intentar(t, cursor, sonda, float(radio), cands, ocluida, dpr, asiento)
+            return self._intentar(t, cursor, sonda, float(radio), cands, ocluida, dpr, asiento, muestreado=True)
         s = self.sentada
         c = self._buscar(s.objetivo, cands)
         if c is not None:
@@ -417,9 +427,10 @@ class MaquinaAsiento:
 
     def _intentar(self, t: float, cursor: Optional[Punto], sonda: Punto, radio: float, cands: Sequence[Any],
                   ocluida: Optional[Callable[[int, int, int], bool]], dpr: float,
-                  asiento: Optional[Punto]) -> Optional[Snap]:
+                  asiento: Optional[Punto], *, muestreado: bool = True) -> Optional[Snap]:
         """TrySnap de ME (ventanas) + la zona rosa (barra)."""
         if t < self._cooldown_hasta:
+            self._sobre = None
             return None
         d = self._d(dpr)
         sx, sy = float(sonda[0]), float(sonda[1])
@@ -437,9 +448,25 @@ class MaquinaAsiento:
                     continue
             if toca_barra(zona, rb, self.p.franja_barra * d):
                 return self._encajar(t, c, cursor, px)
-        # Ventanas: agarre, arrastre mínimo, guardia y bloqueo vertical.
-        if t - self._t0 < self.p.hold_s:
+        # Ventanas: arrastre mínimo, guardia, bloqueo vertical y medio segundo sobre el borde.
+        borde = self._borde_libre(cursor, sx, sy, radio, cands, ocluida, d)
+        if borde is None:
+            self._sobre = None
             return None
+        hwnd = int(_campo(borde, "hwnd", 0))
+        if not muestreado:
+            desde = self._t0                           # sin muestras (sprites): desde que se cogió
+        else:
+            if self._sobre is None or self._sobre[0] != hwnd:
+                self._sobre = (hwnd, t)
+            desde = self._sobre[1]
+        if t - desde < self.p.hold_s:
+            return None
+        return self._encajar(t, borde, cursor, px)
+
+    def _borde_libre(self, cursor: Optional[Punto], sx: float, sy: float, radio: float, cands: Sequence[Any],
+                     ocluida: Optional[Callable[[int, int, int], bool]], d: float) -> Any:
+        """La ventana en cuyo borde está ahora la sonda (y se puede sentar), o None."""
         if cursor and self._c0 is not None:
             minimo = self.p.min_px * d
             if abs(cursor[0] - self._c0[0]) < minimo and abs(cursor[1] - self._c0[1]) < minimo:
@@ -466,7 +493,7 @@ class MaquinaAsiento:
                         continue
                 except Exception:
                     continue
-            return self._encajar(t, c, cursor, px)
+            return c
         return None
 
     def _encajar(self, t: float, c: Any, cursor: Optional[Punto], px: float) -> Snap:
@@ -478,6 +505,7 @@ class MaquinaAsiento:
         self.sentada = Snap(obj, frac, modo, variante, cy)
         self._guardia = None
         self._reciente = False
+        self._sobre = None
         self._ultimo_borde = obj.rect.arriba
         self._latch_hasta = t + self.p.latch_s
         self.suavizar()

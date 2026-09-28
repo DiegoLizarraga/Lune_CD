@@ -92,6 +92,10 @@ voices-*.bin
 *.pth
 *.index
 
+# Bailes del usuario (reproductor MMD/VRMA, corte 9): movimientos y canciones con
+# autor y licencia propios; su caché de audio convertido va en cache/bailes/
+bailes/
+
 # Notas personales y su índice RAG (no se versionan)
 notas/
 *.rag.db

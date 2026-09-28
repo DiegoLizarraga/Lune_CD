@@ -1,0 +1,17 @@
+/*
+ * ui_web/css/sentarse.css — la mascota ANIMADA «sentada» (corte 7, decisión D2): los
+ * clips no tienen pose sentada, así que se apoya DE PIE sobre el borde de la ventana o
+ * de la barra de tareas (ui_web/anim/lune_anim_sentarse.js pone .lune-sentada en el
+ * #stage y Python pega la ventana al borde con el centro de abajo del #stage).
+ * Sin borde inferior ni esquinas redondas abajo (pisa el borde) y una sombra fina con el
+ * color del tema. Colores solo con tokens (--x-rgb con respaldo): el tema los recolorea.
+ */
+#stage.lune-sentada {
+  border-bottom-color: transparent;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  box-shadow:
+    0 1px 0 0 rgb(var(--cyan-500-rgb, 0 229 255) / .45),
+    0 5px 8px -5px rgb(var(--ink-950-rgb, 5 7 15) / .85);
+  transition: border-color .25s, box-shadow .25s;
+}

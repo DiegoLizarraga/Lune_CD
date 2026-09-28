@@ -10,6 +10,7 @@ import copy
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -113,7 +114,10 @@ def test_la_escritura_espera_quieta(qapp, hacer):
     for v in (10, 20, 30, 40):
         p.slider_tono.setValue(v)
     p.chk_juego.setChecked(False)
-    QTest.qWait(120)
+    fin = time.monotonic() + 5.0                   # espera a SU temporizador, con tope amplio
+    while cfg.escrituras == 0 and time.monotonic() < fin:
+        QTest.qWait(10)
+    QTest.qWait(60)                                # y nada más detrás
     assert cfg.escrituras == 1 and p.senales == ["tema", "juego"]
     assert cfg.config["tema"]["hue"] == 40 and cfg.config["juego"]["activo"] is False
 
@@ -233,7 +237,11 @@ def test_detectar_se_cancela_solo_y_con_teclas_de_verdad(qapp, hacer):
     p, _ = hacer(atajos=gestor)
     p._timer_captura.setInterval(20)
     p.detectar("voz")
-    QTest.qWait(80)
+    # Lo cancela SU temporizador (aquí 20 ms): se espera a que ocurra, con un tope amplio
+    # (bajo carga el bucle de eventos puede tardar bastante más que 20 ms en atenderlo).
+    fin = time.monotonic() + 5.0
+    while p.capturando is not None and time.monotonic() < fin:
+        QTest.qWait(10)
     assert p.capturando is None and gestor.capturas == [True, False], "a los 15 s (aquí 20 ms) se reanudan"
     # Un QKeyEvent de verdad al campo en captura
     p.detectar("voz")

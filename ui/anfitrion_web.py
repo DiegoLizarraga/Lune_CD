@@ -11,7 +11,9 @@ Lo que aún no es público se busca con getattr y un respaldo:
 - ir a Ajustes: `navegar("settings")` si la integración lo conecta a la señal
   `navegar` del puente web (ui/puente_escritorio.py); si no, solo enseña la ventana;
 - Lune en la barra lateral (la flotante guardada): `mascota_barra()` la cuenta como
-  mascota para expresiones y baile, y `expresion_barra()` le pone la cara (`acto`).
+  mascota para expresiones y baile, y `expresion_barra()` le pone la cara (`acto`);
+- cortes 7/8: `reaccion(estado, ms)` (comer sin mascota fuera → la cara de la barra) y
+  `hwnd_principal()` (la mascota puede sentarse en la ventana principal).
 
 Mostrar/ocultar la ventana de la barra de tareas es común a web y nativa:
 `poner_en_barra()` (WS_EX_TOOLWINDOW por servicios/win_ventana del agente A).
@@ -52,6 +54,32 @@ def ventana_visible(v: Any) -> bool:
         return bool(v.isVisible() and not v.isMinimized())
     except Exception:
         return False
+
+
+def hwnd_de(v: Any) -> int:
+    """HWND de la ventana `v` (0 si no hay, está borrada o aún no tiene ventana nativa).
+
+    No fuerza a crear la ventana nativa (winId() la crearía; PyQt6 no trae
+    internalWinId): una ventana que nunca se mostró no puede ser asiento de la mascota."""
+    if v is None:
+        return 0
+    probar = getattr(v, "testAttribute", None)
+    if callable(probar):
+        try:
+            from PyQt6.QtCore import Qt
+            if not probar(Qt.WidgetAttribute.WA_WState_Created):
+                return 0
+        except RuntimeError:                                   # el objeto de C++ ya se borró
+            return 0
+        except Exception:
+            pass
+    f = getattr(v, "winId", None)
+    if not callable(f):
+        return 0
+    try:
+        return max(0, int(f() or 0))
+    except (TypeError, ValueError, RuntimeError, OverflowError):   # borrada o sin handle
+        return 0
 
 
 def poner_en_barra(ventana: Any, on: bool, config: Any, *, set_en_barra: Optional[Callable] = None) -> bool:
@@ -114,6 +142,11 @@ class AnfitrionWeb:
 
     def ventana_visible(self) -> bool:
         return ventana_visible(self.ventana)
+
+    def hwnd_principal(self) -> int:
+        """HWND de la ventana principal (cortes 7/8: la mascota puede sentarse en ella
+        aunque sea del mismo proceso). 0 si no hay."""
+        return hwnd_de(self.ventana)
 
     def abrir_ajustes(self, seccion: str = "") -> None:
         """Enseña la ventana y va a Ajustes (`navegar("settings")` o
@@ -204,9 +237,42 @@ class AnfitrionWeb:
                 senal.emit("normal")
             except RuntimeError:
                 pass
-        from PyQt6.QtCore import QTimer
-        QTimer.singleShot(max(0, int(ms)), volver)
+        from PyQt6.QtCore import QObject, QThread, QTimer
+        b = self.bridge
+        if isinstance(b, QObject) and b.thread() is QThread.currentThread():
+            # Temporizador HIJO del puente (integración de los cortes 9/10): si el puente se
+            # borra antes (cambio de interfaz en caliente, salir) se va con él, en vez de
+            # emitir luego en un objeto borrado (access violation). Lo destapó la reacción de
+            # Minecraft a «bot conectado» justo antes de un relevo.
+            t = QTimer(b)
+            t.setSingleShot(True)
+
+            def fin():
+                try:
+                    volver()
+                finally:
+                    try:
+                        t.deleteLater()
+                    except RuntimeError:
+                        pass
+            t.timeout.connect(fin)
+            t.start(max(0, int(ms)))
+        else:
+            QTimer.singleShot(max(0, int(ms)), volver)
         return True
+
+    def reaccion(self, estado: str, ms: int = 2500) -> bool:
+        """Reacción sin la mascota flotante (corte 8: comer sin mascota fuera): la cara en
+        Lune de la barra lateral durante `ms` (lo que dure la reacción, 0.2–10 s). Con la
+        vista web de la comida la cara ya la pone la página (evento 'lune-mascota-cara')."""
+        e = str(estado or "").strip().lower()
+        if not re.fullmatch(r"[a-z_]{1,24}", e):
+            return False
+        try:
+            n = int(ms)
+        except (TypeError, ValueError):
+            n = 2500
+        return self.expresion_barra(e, max(200, min(10000, n)))
 
     # ── Voz y llamada ──────────────────────────────────────────────────────
     def voz_on(self) -> bool:

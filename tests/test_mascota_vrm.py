@@ -604,10 +604,80 @@ def test_companion_aplicar_opciones_en_caliente(qapp, web_falso, config_vrm, mon
         c.close()
 
 
-def test_main_nativo_conecta_la_voz_con_la_boca():
+class _PararInit(Exception):
+    pass
+
+
+def test_main_nativo_conecta_la_voz_con_la_boca(qapp, monkeypatch, tmp_path):
+    """LuneCDWindow.__init__ de verdad (con dobles de lo pesado) engancha la voz a la
+    boca con envoltorios que resuelven la señal en cada llamada: con la ventana viva
+    llega `_hablando` / `_voz_error`; borrada (el hilo de audio llama tarde: cambio de
+    interfaz, salir), no hace nada. Antes era `self._hablando.emit` ligado (caída)."""
+    import threading
+    import types
+    import main
+    from PyQt6 import sip
+    from nucleo.config import Config
+    cfg = Config(str(tmp_path / "config.json"))
+    voces = []
+
+    class Nada:
+        def __init__(self, *a, **k):
+            self.activo = False
+            self.providers = {}
+            self.available = False
+            self._enabled = False
+            self.al_hablar = self.on_error = None
+            self.resultado = types.SimpleNamespace(connect=lambda *a: None)
+            voces.append(self)
+
+        def __getattr__(self, n):
+            return lambda *a, **k: None
+
+    for nombre in ("AIManager", "VoiceEngine", "MemoriaManager", "ToolManager", "AccionesQt",
+                   "GestorConversaciones", "NotasService", "RedService", "BancoRespuestas"):
+        monkeypatch.setattr(main, nombre, Nada)
+    monkeypatch.setattr(main, "Config", lambda: cfg)
+    monkeypatch.setattr(main, "datos", types.SimpleNamespace(
+        hub_modo=lambda: "local", get_bot=lambda: {}, get_personaje=lambda n: {}))
+    monkeypatch.setattr(main, "lune_face", types.SimpleNamespace(set_active_pack=lambda p: None,
+                                                                 set_anim_video=lambda v: None))
+
+    def init_ui(self):
+        raise _PararInit()
+    monkeypatch.setattr(main.LuneCDWindow, "_init_ui", init_ui)
+    with pytest.raises(_PararInit):
+        main.LuneCDWindow()
+    voz = next(v for v in voces if callable(v.al_hablar))
+    ventana = voz.al_hablar.__self__
+    assert isinstance(ventana, main.LuneCDWindow) and voz.on_error.__self__ is ventana
+    ventana._hablando.disconnect()
+    ventana._voz_error.disconnect()
+    vistos = []
+    ventana._hablando.connect(lambda on: vistos.append(("boca", on)))
+    ventana._voz_error.connect(lambda m: vistos.append(("error", m)))
+
+    def desde_el_hilo_de_audio():
+        voz.al_hablar(True)
+        voz.on_error("sin red")
+    hilo = threading.Thread(target=desde_el_hilo_de_audio)
+    hilo.start()
+    hilo.join()
+    for _ in range(10):
+        qapp.processEvents()
+    assert vistos == [("boca", True), ("error", "sin red")]
+    sip.delete(ventana)                                   # la ventana se va; el hilo sigue
+    hilo = threading.Thread(target=desde_el_hilo_de_audio)
+    hilo.start()
+    hilo.join()                                           # sin excepción ni caída
+    qapp.processEvents()
+    assert vistos == [("boca", True), ("error", "sin red")]
+    # al salir se sueltan, solo si siguen siendo suyos
+    otro = lambda *a: None                                 # noqa: E731
+    voz.on_error = otro
+    main.soltar_avisos_voz(ventana)
+    assert voz.al_hablar is None and voz.on_error is otro
     src = (RAIZ / "main.py").read_text("utf-8")
-    assert "_hablando = pyqtSignal(bool)" in src
-    assert "self.voice.al_hablar = self._hablando.emit" in src
     assert "def _on_hablando" in src and "ov.recrear.connect(self._mascota_recrear)" in src
 
 

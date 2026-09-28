@@ -372,3 +372,50 @@ def test_las_claves_nuevas_no_se_podan_al_releer(tmp_path):
     cfg = Config(config_path=str(ruta))
     assert cfg.get("baile", "favoritos") == ["caramelldansen"]
     assert cfg.get("atajos", "lista") == [{"id": "voz", "combo": "ctrl+alt+shift+j"}]
+
+
+# ── Migraciones únicas (revisión 4-5-6, RH2) ───────────────────────────────────
+
+def _config_10_3(umbral=0.2, **extra) -> dict:
+    """Un config.json como lo dejaba la 10.3: su _merge_defaults escribía baile.umbral = 0.2
+    (el defecto de entonces) y no había sección «esquema»."""
+    d = {
+        "features": {"respuestas_predeterminadas": True, "voz_auto": False},
+        "interfaz": {"modo": "web", "en_barra_tareas": True},
+        "avatar": {"render": "vrm", "vrm_tamano": "normal"},
+        "baile": {"auto": True, "umbral": umbral, "apps": ["Spotify", "MusicBee", "foobar2000", "vlc", "AppleMusic"],
+                  "cambiar": False, "cambiar_s": 15, "volumen": 0.25, "en_el_sitio": True, "particulas": True,
+                  "favoritos": [], "desactivados": []},
+        "alarmas": {"activo": True, "bloqueo_s": 5},
+    }
+    d.update(extra)
+    return d
+
+
+def test_config_de_la_10_3_pasa_el_umbral_del_baile_a_005_una_vez(tmp_path):
+    ruta = tmp_path / "config.json"
+    ruta.write_text(json.dumps(_config_10_3()), encoding="utf-8")
+    c = Config(config_path=str(ruta))
+    assert c.get("baile", "umbral") == 0.05
+    guardado = leer(ruta)
+    assert guardado["baile"]["umbral"] == 0.05 and guardado["esquema"]["version"] == 1
+    assert guardado["avatar"]["render"] == "vrm", "lo demás se conserva"
+    # Una vez migrado, si la persona vuelve a elegir 0.2, se respeta.
+    c.set("baile", "umbral", 0.2)
+    assert Config(config_path=str(ruta)).get("baile", "umbral") == 0.2
+    assert leer(ruta)["baile"]["umbral"] == 0.2
+
+
+def test_la_migracion_no_pisa_un_umbral_elegido(tmp_path):
+    ruta = tmp_path / "config.json"
+    ruta.write_text(json.dumps(_config_10_3(umbral=0.35)), encoding="utf-8")
+    assert Config(config_path=str(ruta)).get("baile", "umbral") == 0.35
+    assert leer(ruta)["esquema"]["version"] == 1
+
+
+def test_config_nuevo_ya_nace_migrado(tmp_path):
+    ruta = tmp_path / "config.json"
+    c = Config(config_path=str(ruta))
+    assert c.get("baile", "umbral") == 0.05 and leer(ruta)["esquema"]["version"] == 1
+    c.set("baile", "umbral", 0.2)
+    assert Config(config_path=str(ruta)).get("baile", "umbral") == 0.2

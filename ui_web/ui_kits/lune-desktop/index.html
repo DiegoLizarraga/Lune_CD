@@ -541,6 +541,12 @@
         // baile con la música (ui/puente_musica.py). null con un backend que no los registra.
         window.luneAlarmas = channel.objects.alarmas || null;
         window.luneMusica = channel.objects.musica || null;
+        // Cortes 7/8: sentarse, comida, Discord y arranque con Windows (ui/puente_vida.py). null con un
+        // backend que no lo registra.
+        window.luneVida = channel.objects.vida || null;
+        // Cortes 9/10: reproductor de bailes MMD/VRMA y Minecraft (ui/puente_escenario.py). null con un backend que
+        // no lo registra.
+        window.luneEscenario = channel.objects.escenario || null;
         window.dispatchEvent(new Event('lune-ready'));
       });
     }
@@ -572,6 +578,13 @@
        window.luneMusica. -->
   <script type="text/babel" src="extra/alarmas.jsx"></script>
   <script type="text/babel" src="extra/baile.jsx"></script>
+  <!-- Cortes 7/8 (se registran solos, antes de app.jsx): vida.jsx (SentarseCard, ComidaCard, DiscordCard,
+       AutoinicioOpciones, ComidaWeb, LuneVida) con window.luneVida. -->
+  <script type="text/babel" src="extra/vida.jsx"></script>
+  <!-- Cortes 9/10 (se registran solos, antes de app.jsx): bailes_mmd.jsx (BailesPanel, BailesCard, LuneBailesWeb) y
+       minecraft.jsx (MinecraftPanel, MinecraftCard, LuneMinecraftWeb) con window.luneEscenario. -->
+  <script type="text/babel" src="extra/bailes_mmd.jsx"></script>
+  <script type="text/babel" src="extra/minecraft.jsx"></script>
   <script type="text/babel" src="app.jsx"></script>
   <script type="text/babel">
     ReactDOM.createRoot(document.getElementById('root')).render(<window.LuneApp/>);
