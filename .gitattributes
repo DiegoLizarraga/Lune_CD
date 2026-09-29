@@ -1,0 +1,11 @@
+# Código de terceros con huella (tests/test_vendor_integridad.py compara su sha256 con
+# el del paquete npm): se guarda y se saca TAL CUAL, sin convertir LF a CRLF al clonar
+# en Windows. Sin esto, cada clon nuevo (y GitHub Actions) daba «cambió respecto al
+# paquete» aunque nadie lo hubiera tocado.
+ui_web/vendor/** -text
+
+# Lanzadores de Windows: siempre con CRLF (también en el ZIP que se baja de GitHub).
+# Con solo LF, cmd.exe puede no encontrar las etiquetas de un .bat (call :etiqueta).
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.vbs text eol=crlf

@@ -83,7 +83,11 @@ Sub LanzarApp()
         "C:\Program Files\Python311\pythonw.exe", _
         shell.ExpandEnvironmentStrings("%LOCALAPPDATA%\Programs\Python\Python313\pythonw.exe"), _
         shell.ExpandEnvironmentStrings("%LOCALAPPDATA%\Programs\Python\Python312\pythonw.exe"), _
-        shell.ExpandEnvironmentStrings("%LOCALAPPDATA%\Programs\Python\Python311\pythonw.exe"))
+        shell.ExpandEnvironmentStrings("%LOCALAPPDATA%\Programs\Python\Python311\pythonw.exe"), _
+        shell.ExpandEnvironmentStrings("%LOCALAPPDATA%\Programs\Python\Python314\pythonw.exe"), _
+        shell.ExpandEnvironmentStrings("%LOCALAPPDATA%\Programs\Python\Python310\pythonw.exe"), _
+        "C:\Program Files\Python314\pythonw.exe", _
+        "C:\Program Files\Python310\pythonw.exe")
 
     exe = ""
     For i = 0 To UBound(candidatos)
@@ -145,7 +149,11 @@ Sub LanzarPatata()
         "C:\Program Files\Python311\python.exe", _
         shell.ExpandEnvironmentStrings("%LOCALAPPDATA%\Programs\Python\Python313\python.exe"), _
         shell.ExpandEnvironmentStrings("%LOCALAPPDATA%\Programs\Python\Python312\python.exe"), _
-        shell.ExpandEnvironmentStrings("%LOCALAPPDATA%\Programs\Python\Python311\python.exe"))
+        shell.ExpandEnvironmentStrings("%LOCALAPPDATA%\Programs\Python\Python311\python.exe"), _
+        shell.ExpandEnvironmentStrings("%LOCALAPPDATA%\Programs\Python\Python314\python.exe"), _
+        shell.ExpandEnvironmentStrings("%LOCALAPPDATA%\Programs\Python\Python310\python.exe"), _
+        "C:\Program Files\Python314\python.exe", _
+        "C:\Program Files\Python310\python.exe")
 
     exe = ""
     For i = 0 To UBound(candidatos)

@@ -66,10 +66,24 @@ ventanas.
 
 ## Instalación
 
-**La forma fácil (usuarios nuevos):** doble clic en **`instalar_lune.bat`**. Se
-abre una ventana que te explica **para qué sirve cada componente** —*"esto es para
-que Lune hable"*, *"esto para hablarle por micrófono"*— marca lo que ya tienes, e
-instala lo que elijas. Solo necesita Python.
+**La forma fácil (usuarios nuevos):** doble clic en **`instalar_lune.bat`** y yo
+me encargo del resto:
+
+1. **Busco un Python de verdad** (3.10 o más nuevo). El «python» que trae Windows
+   sin instalar nada es un atajo a la Microsoft Store que no ejecuta nada: lo
+   descarto y sigo buscando.
+2. **Si no tienes Python, te ofrezco instalarlo yo** (Python 3.13 con winget, solo
+   para tu usuario, sin permisos de administrador). Si prefieres hacerlo tú, te
+   abro python.org.
+3. **Se abre una ventana** que te explica **para qué sirve cada componente**
+   —*"esto es para que Lune hable"*, *"esto para hablarle por micrófono"*—, marca
+   lo que ya tienes y deja **marcado lo recomendado**. Lo pesado (dictado, Kokoro,
+   RVC) lo eliges tú.
+4. **Instalo cada cosa por separado:** si alguna no se puede (por ejemplo, porque
+   tu Python es tan nuevo que aún no tiene versión), el resto sigue y al final te
+   digo qué faltó. Todo queda apuntado en `instalacion.log`.
+5. **Al terminar** compruebo que puedo arrancar, te dejo el acceso directo
+   **«Lune CD»** en el escritorio y en el menú Inicio, y un botón **Abrir Lune**.
 
 Antes de nada compruebo lo imprescindible: `numpy`, `sounddevice`,
 `imageio-ffmpeg` y, en Windows, `pywin32` y `comtypes`. `psutil` y `gTTS` son
@@ -78,7 +92,7 @@ que va aparte, te lo recuerdo con un botón **Descargar Node.js**.
 
 | Componente | Versión | Necesario para |
 |---|---|---|
-| Python | 3.10+ | La app (obligatorio) — desde python.org, marca *"Add to PATH"* |
+| Python | 3.10+ (mejor 3.13) | La app (obligatorio) — te lo instalo yo con winget, o desde python.org marcando *"Add python.exe to PATH"* |
 | Ollama | cualquiera | Modelos locales (opcional) — ollama.com |
 | Node.js | 18+ | Bot de Telegram y bot de Minecraft (opcional) — nodejs.org |
 

@@ -8,6 +8,9 @@ name: Tests
 # Hasta 10.0 este job instalaba solo requests+psutil, y desde la serie 9 los
 # tests tocan PyQt6, pygame y compañía: por eso fallaba SIEMPRE. Ahora instala
 # requirements.txt (igual que instalar_lune.bat) y corre Qt sin pantalla.
+# Desde 10.3 también PyQt6-WebEngine: es la «Interfaz completa» que ofrece el
+# instalador y la usan la piel web, la mascota animada y el VRM. Sin él fallaban
+# ~100 tests (la cruz roja «1 / 2» de cada commit hasta 10.7).
 
 on:
   push:
@@ -32,7 +35,7 @@ jobs:
       - name: Instalar dependencias
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt pytest numpy
+          pip install -r requirements.txt pytest numpy PyQt6-WebEngine
 
       - name: Tests
         run: python -m pytest -q

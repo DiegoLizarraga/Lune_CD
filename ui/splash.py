@@ -232,9 +232,6 @@ class PantallaInicio(QMainWindow):
         else:
             self._pintar_botones_modo(self._cuenta)
 
-        # Red de seguridad: si en MS_RENDIRSE el video no ha avanzado, entramos.
-        QTimer.singleShot(MS_RENDIRSE, self._rendirse_si_no_arranco)
-
     # ── Video ─────────────────────────────────────────────────────────────────
     def _montar_video(self, marco_layout):
         # OJO: nada de WA_NativeWindow aquí.
@@ -262,6 +259,14 @@ class PantallaInicio(QMainWindow):
         # play() cuando el widget ya está en el layout y la ventana mostrada:
         # llamarlo antes deja al reproductor sin superficie donde pintar.
         QTimer.singleShot(0, self._reproducir)
+
+        # Red de seguridad: si en MS_RENDIRSE el video no ha avanzado (un códec que
+        # falla sin avisar), se entra igual. Temporizador hijo: muere con la ventana.
+        # (Antes estaba dentro de la cuenta atrás, que solo corre al ACABAR el video.)
+        self._timer_rendirse = QTimer(self)
+        self._timer_rendirse.setSingleShot(True)
+        self._timer_rendirse.timeout.connect(self._rendirse_si_no_arranco)
+        self._timer_rendirse.start(MS_RENDIRSE)
 
     def _reproducir(self):
         try:

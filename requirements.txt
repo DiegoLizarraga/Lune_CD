@@ -42,6 +42,11 @@ pygame>=2.5.0
 pypdf>=4.0.0
 python-docx>=1.1.0
 
+# ── MASCOTA: comentar lo que ves en pantalla ─────────────────────
+# Pillow: la captura (PIL.ImageGrab) de ui/companion.py. Sin él la mascota no
+# puede mirar la pantalla (falla en silencio). Nunca captura con un juego abierto.
+Pillow>=10.0
+
 # ══════════════════════════════════════════════════════════════════
 # OPCIONALES — la app funciona sin ellos y avisa si los necesitas.
 # Instálalos a mano según lo que quieras usar.

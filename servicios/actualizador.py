@@ -64,6 +64,11 @@ OPCIONALES: Dict[str, Dict] = {
         "modulos": {"zeroconf": "zeroconf"},
         "nota": "Para que Lune encuentre otros equipos con Lune en tu red (host/terminales).",
     },
+    "Comentar lo que ves en pantalla": {
+        "modulos": {"PIL": "Pillow"},
+        "nota": "La captura de pantalla con la que la mascota comenta lo que tienes delante. "
+                "Sin esto no puede mirar la pantalla (nunca lo hace con un juego abierto).",
+    },
     "Voz 100% local (Kokoro)": {
         "modulos": {"kokoro_onnx": "kokoro-onnx"},
         "nota": "Lune habla sin internet. Además necesita espeak-ng y los pesos en modelos_voz/.",

@@ -337,7 +337,7 @@ function Sidebar({ provider, onProvider, mascotState, mascotaFuera = false, onTr
         <div className="ln-brand-mark lune-jp">月</div>
         <div className="ln-brand-tx">
           <div className="ln-brand-name">LUNE <span>CD</span></div>
-          <div className="ln-brand-sub"><span className="lune-jp">ルネ</span> · HÍBRIDO v9.0</div>
+          <div className="ln-brand-sub"><span className="lune-jp">ルネ</span> · ASISTENTE PERSONAL</div>
         </div>
       </div>
 

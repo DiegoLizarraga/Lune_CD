@@ -131,37 +131,65 @@ def test_el_codigo_deshace_el_arranque_oculto():
 
 # ── Pantalla de inicio ─────────────────────────────────────────────────────────
 
-def test_el_splash_no_abre_dos_ventanas(qapp):
+@pytest.fixture
+def pantalla(qapp):
+    """Crea pantallas de inicio y las CIERRA al acabar el test. Si se quedan vivas, su
+    video sigue sonando y, al terminar (10 s + la cuenta atrás), «entran en la app» a
+    mitad de otro test: con el Qt de GitHub Actions eso colgaba la suite entera."""
+    from PyQt6.QtCore import QCoreApplication, QEvent
     from ui.splash import PantallaInicio
+    creadas = []
+
+    def crear(al_terminar=lambda: None):
+        s = PantallaInicio(al_terminar=al_terminar)
+        creadas.append(s)
+        return s
+
+    yield crear
+    for s in creadas:
+        s.entrar()                       # idempotente: para el video y cierra
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete.value)
+
+
+def test_el_splash_no_abre_dos_ventanas(pantalla):
     llamadas = []
-    s = PantallaInicio(al_terminar=lambda: llamadas.append(1))
+    s = pantalla(al_terminar=lambda: llamadas.append(1))
     # Fin del video + botón de saltar + red de seguridad, casi a la vez
     s.entrar(); s.entrar(); s.entrar()
     assert len(llamadas) == 1
 
 
-def test_el_splash_marca_que_termino(qapp):
-    from ui.splash import PantallaInicio
-    s = PantallaInicio(al_terminar=lambda: None)
+def test_el_splash_marca_que_termino(pantalla):
+    s = pantalla()
     assert s._terminado is False
     s.entrar()
     assert s._terminado is True
 
 
-def test_el_fondo_no_es_el_padre_del_video(qapp):
+def test_la_red_de_seguridad_se_arma_al_cargar_el_video(pantalla):
+    """Si el video no arranca (un códec que falla sin avisar), se entra igual a los
+    MS_RENDIRSE. Antes solo se armaba en la cuenta atrás, que corre al ACABAR el video:
+    con un video que nunca empezaba, la pantalla se quedaba en negro."""
+    from ui import splash
+    s = pantalla()
+    if not hasattr(s, "video_widget"):
+        pytest.skip("Sin multimedia o sin inicio.mp4")
+    assert s._timer_rendirse.isActive() and s._timer_rendirse.interval() == splash.MS_RENDIRSE
+
+
+def test_el_fondo_no_es_el_padre_del_video(pantalla):
     """
     El fondo repinta a 30 fps y el video va a 24: si el video colgara de él,
     lo taparía de negro entre fotogramas. Deben ser hermanos.
     """
-    from ui.splash import PantallaInicio
-    s = PantallaInicio(al_terminar=lambda: None)
+    s = pantalla()
     if not hasattr(s, "video_widget"):
         pytest.skip("Sin multimedia o sin inicio.mp4")
     assert s.marco_video.parent() is not s.fondo
     assert s.fondo.parent() is s.centralWidget()
 
 
-def test_el_video_no_es_una_ventana_suelta(qapp):
+def test_el_video_no_es_una_ventana_suelta(pantalla):
     """
     El video tiene que ser un widget hijo, no una ventana independiente.
 
@@ -170,8 +198,7 @@ def test_el_video_no_es_una_ventana_suelta(qapp):
     jerarquía del splash quedaba rota. No hace falta ninguna ventana nativa —
     el fondo de estrellas ya es hermano del contenido, no su padre.
     """
-    from ui.splash import PantallaInicio
-    s = PantallaInicio(al_terminar=lambda: None)
+    s = pantalla()
     if not hasattr(s, "video_widget"):
         pytest.skip("Sin multimedia o sin inicio.mp4")
     assert s.video_widget.isWindow() is False

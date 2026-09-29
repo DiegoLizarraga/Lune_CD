@@ -21,6 +21,9 @@ alarmas.json.corrupto-*
 
 # Memoria personal del usuario
 memoria.json
+
+# Registro del instalador (rutas de tu equipo)
+instalacion.log
 telegram-bot-or/data/
 
 # ─── Python ─────────────────────────────────────────────────────
