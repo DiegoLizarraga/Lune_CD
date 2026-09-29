@@ -43,8 +43,9 @@ from typing import Any, Callable, Dict, List, Optional
 from PyQt6.QtCore import QObject, Qt, pyqtSignal
 from PyQt6.QtWidgets import QMessageBox, QWidget
 
-from lune_core.acciones import (AVISO_CONTAMINADO, AVISO_LLAMADA, AVISO_REMOTO, NO_CONFIABLE, REMOTO,
-                                USUARIO, Llamada, ResultadoAccion, limpiar_texto)
+from lune_core.acciones import (AVISO_CONTAMINADO, AVISO_LLAMADA, AVISO_OFRECIDA, AVISO_REMOTO,
+                                NO_CONFIABLE, REMOTO, USUARIO, Llamada, ResultadoAccion,
+                                limpiar_texto)
 
 _log = logging.getLogger(__name__)
 
@@ -91,6 +92,8 @@ def texto_pregunta(pendiente: dict) -> str:
         partes.append("Ojo: " + AVISO_LLAMADA)
     if pendiente.get("contaminado"):
         partes.append("Ojo: " + AVISO_CONTAMINADO)
+    if pendiente.get("ofrecida"):
+        partes.append("Ojo: " + AVISO_OFRECIDA)
     partes.append(f"¿Lo hago? Si no contestas en {segundos} s, no lo hago.")
     return "\n\n".join(partes)
 

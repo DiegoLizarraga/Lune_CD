@@ -77,14 +77,14 @@ def neutralizar_marcadores(texto: str) -> str:
     Rompe los marcadores de control que vengan en contenido no confiable, para
     que no puedan simular emociones ni pedir herramientas, tampoco en las formas
     que el parser tolera: `<|…` → `< |…`, `|<…` → `| <…`, `<ACT …>` → `< ACT …>`,
-    `|ACT …|` → `| ACT …|`. Sigue siendo legible.
+    `|ACT …|` → `| ACT …|`, `|CALL …|>` → `| CALL …|>`. Sigue siendo legible.
     """
     t = str(texto or "")
     t = re.sub(r"<\|", "< |", t)
     t = re.sub(r"\|<", "| <", t)
     t = re.sub(r"<(\s*)(ACT|DELAY|CALL)\b", r"< \1\2", t, flags=re.IGNORECASE)
-    # |ACT …| suelto (lo ya neutralizado, «< |ACT», se queda como estaba).
-    t = re.sub(r"(?<!<)(?<!<\s)\|(ACT|DELAY)\b", r"| \1", t, flags=re.IGNORECASE)
+    # |ACT …| y |CALL …|> sueltos (lo ya neutralizado, «< |ACT», se queda como estaba).
+    t = re.sub(r"(?<!<)(?<!<\s)\|(ACT|DELAY|CALL)\b", r"| \1", t, flags=re.IGNORECASE)
     return t
 
 

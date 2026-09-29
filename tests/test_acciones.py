@@ -535,3 +535,59 @@ def test_disponibles(env):
     assert "mascota_sentarse" not in env.ej.disponibles("normal")
     assert "mascota_tamano" not in env.ej.disponibles("mascota")
     assert "mascota_dormir" not in env.ej.disponibles("patata")
+
+
+# ── Acción ofrecida y pedida a la vez (prueba real 2026-09-28) ────────────────────
+
+def test_ofrecida_y_pedida_a_la_vez_se_pregunta_en_vez_de_hacerse(env):
+    """«¿Cómo funciona un temporizador?» → «… ¿Quieres que te ponga uno?» + la marca: el
+    modelo lo ponía sin que nadie lo pidiera. Ahora se pregunta; con un No, no se hace."""
+    texto = ("Cuenta hacia atrás y suena al llegar a cero. ¿Quieres que te ponga uno para 5 "
+             "minutos? " + call("temporizador", {"segundos": 300}))
+    _, llamadas = env.correr(texto)
+    assert llamadas[0].ofrecida and env.llamados == []
+    [(pendiente, responder)] = env.preguntas
+    assert pendiente["ofrecida"] is True and A.AVISO_OFRECIDA in pendiente["motivo"]
+    assert "ofrecida" in env.eventos_audit()
+    responder(False)
+    assert env.llamados == [] and env.resultados[-1].ok is False
+
+
+def test_ofrecida_con_un_si_se_hace(env):
+    env.correr("¿Te interesa que busque cómo se hace? " + call("buscar_web", {"consulta": "alarmas"}))
+    [(_, responder)] = env.preguntas
+    responder(True)
+    assert env.nombres_llamados() == ["buscar_web"]
+
+
+def test_sin_oferta_el_temporizador_se_hace_sin_preguntar(env):
+    env.correr("Hecho, te aviso en 15 minutos. " + call("temporizador", {"segundos": 900}))
+    assert env.nombres_llamados() == ["temporizador"] and env.preguntas == []
+
+
+def test_ofrecida_del_cuerpo_de_la_mascota_no_pregunta(env):
+    """«baila» → «¡Claro! ¿Quieres que bailemos?» + la marca (prueba real): era un pedido."""
+    env.correr("¡Claro! ¿Quieres que bailemos? " + call("mascota_bailar"), ctx={"modo": "mascota"})
+    assert env.nombres_llamados() == ["mascota_bailar"] and env.preguntas == []
+
+
+def test_ofrecida_de_lectura_no_pregunta(env):
+    """Mirar tus alarmas no cambia nada: aunque la ofrezca, se hace."""
+    env.correr("¿Quieres que mire tus alarmas? " + call("listar_alarmas"))
+    assert env.nombres_llamados() == ["listar_alarmas"] and env.preguntas == []
+
+
+def test_ofrece_accion_reconoce_las_formas_vistas():
+    si = ["¿Quieres que te ponga uno?", "¿Te interesa que busque cómo?", "¿Te lo pongo?",
+          "¿Te interesa programar algo en particular?", "¿Te gustaría que lo abra?",
+          "Puedo ponerte uno de 5 minutos, ¿te interesa?",                 # ronda 4
+          "¿Tienes un modelo en particular? ¿O prefieres que te dé un ejemplo general?"]
+    # Una pregunta cualquiera tras hacerlo NO es ofrecerlo (el modelo cierra así la mitad de
+    # las acciones pedidas de verdad).
+    no = ["Hecho, te aviso en 15 minutos.", "¡Te la abro!", "¿Qué hora es?",
+          'Listo <|ACT {"emotion":"happy"}|>.', "¡Hecho! ¿Necesitas algo más?",
+          "Ya estoy en la barra de tareas. ¿En qué puedo ayudarte?",
+          "Puedo mostrarte algunos movimientos divertidos.",
+          "¡Perfecto! Ahora sueno como Elena. ¿Hay algo más en lo que pueda ayudarte?"]
+    assert all(A.ofrece_accion(t) for t in si), [t for t in si if not A.ofrece_accion(t)]
+    assert not any(A.ofrece_accion(t) for t in no), [t for t in no if A.ofrece_accion(t)]

@@ -103,26 +103,29 @@ _NADA = object()                      # «no se pudo leer» (None es un JSON vá
 _CLAVE = r"(?:[Aa][Cc][Tt]|[Dd][Ee][Ll][Aa][Yy]|[Cc][Aa][Ll][Ll])\b"
 #   e  <|ACT {…}    sin cerrar, pero con su JSON entero (si no, se comería el texto
 #                   hasta la marca siguiente)
+#   f  |CALL …|>    (prueba real: «|<ACT {…}|>|CALL ["x", {}]|>», pegada a un ACT; mismas
+#                   salvaguardas que c: nunca tras «<» o «< »)
 _MARCA = re.compile(
     r"\|?<\|(?=\s*" + _CLAVE + r"|[A-Za-z_])(?P<a>(?:(?!<\|)[\s\S]){0,%d}?)\|>\|?"
     r"|\|<(?P<b>[A-Za-z_][^<>|\n]{0,%d}?)(?:>\|?|\|>)"
     r"|(?<![<\w])(?<!<\s)>?\|(?P<c>(?:ACT|DELAY)\b[^|<>\n]{0,%d}?)\|(?!>)"
     r"|<(?P<d>(?:ACT|DELAY|CALL)\b[^<>\n]{0,%d}?)>"
     r"|\|?<\|(?P<e>\s*ACT\b\s*:?\s*\{[^{}<>|\n]{0,%d}\})"
-    % (_MAX_CUERPO, _MAX_CUERPO, _MAX_CUERPO, _MAX_CUERPO, _MAX_CUERPO))
+    r"|(?<![<\w])(?<!<\s)>?\|(?P<f>CALL\b[^|<>\n]{0,%d}?)\|>"
+    % (_MAX_CUERPO, _MAX_CUERPO, _MAX_CUERPO, _MAX_CUERPO, _MAX_CUERPO, _MAX_CUERPO))
 
 # Streaming: dónde puede empezar una marca que aún no se ha cerrado (se retiene).
 _PARCIAL = r"(?:A(?:CT?)?|D(?:E(?:L(?:AY?)?)?)?|C(?:A(?:LL?)?)?)"
 _INICIO_ABIERTO = re.compile(
     r"<\|"
     r"|\|<(?=[A-Za-z_|]|$)"
-    r"|(?<![<\w])(?<!<\s)>?\|(?=(?:ACT|DELAY)\b|(?:A(?:C)?|D(?:E(?:L(?:A)?)?)?)?$)"
+    r"|(?<![<\w])(?<!<\s)>?\|(?=(?:ACT|DELAY|CALL)\b|(?:A(?:C)?|D(?:E(?:L(?:A)?)?)?|C(?:A(?:L)?)?)?$)"
     r"|<(?=(?:ACT|DELAY|CALL)\b|" + _PARCIAL + r"?$)")
 # Texto ya completo: solo arranques «fuertes» de marca (un «|» o un «<» sueltos al
 # final son texto, p. ej. una tabla; «<| f» de F# también).
 _INICIO_FUERTE = re.compile(
     r"<\|(?:\s*" + _CLAVE + r"|[A-Za-z_]|$)|\|<(?:[A-Za-z_|]|$)"
-    r"|(?<![<\w])(?<!<\s)>?\|(?:ACT|DELAY)\b|<(?:ACT|DELAY|CALL)\b")
+    r"|(?<![<\w])(?<!<\s)>?\|(?:ACT|DELAY|CALL)\b|<(?:ACT|DELAY|CALL)\b")
 
 
 def normalizar_emocion(nombre: Optional[str]) -> str:
@@ -425,7 +428,7 @@ def interpretar_cuerpo(cuerpo: str) -> Optional[Pieza]:
 
 
 def _cuerpo_de(m: "re.Match") -> str:
-    for g in ("a", "b", "c", "d", "e"):
+    for g in ("a", "b", "c", "d", "e", "f"):
         if m.group(g) is not None:
             return m.group(g)
     return ""

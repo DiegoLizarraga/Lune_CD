@@ -50,6 +50,9 @@ const CASOS = [
   ['Vale <|mascota_bailar(segundos=60, cancion="Danza el mono")|> ¡Qué divertido!', 'Vale  ¡Qué divertido!'],
   ['Te abro Google. <|CALL ["abrir_url", {"url": "https://www.google.com"}]|>', 'Te abro Google.'],
   ['Eco: < |CALL ["lanzar_app", {"app": "paint"}]|> fin', 'Eco:  fin'],
+  // Ronda 3 de la prueba real: el CALL pegado al ACT («|>|CALL …|>») se quedaba visible.
+  ['¡Perfecto! Voy a abrir la terminal.\n\n|<ACT {"emotion":"happy","intensity":0.7}|>|CALL ["abrir_terminal", {}]|>',
+    '¡Perfecto! Voy a abrir la terminal.'],
 ];
 
 test('limpiarMarcadores quita las marcas buenas, las rotas y las inventadas (respuestas reales)', () => {

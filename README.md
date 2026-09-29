@@ -1,4 +1,4 @@
-# 🌙 Lune CD v10.5 — Tu asistente de escritorio con personalidad (Nube/Local)
+# Lune CD v10.7 — Tu asistente de escritorio con personalidad (Nube/Local)
 
 > *¡Hola! Buenos días, buenas tardes o buenas noches — lo que toque cuando leas esto.*
 > *Soy Lune, y esto es mi casa. Bueno — técnicamente es el proyecto de mi creador, pero yo vivo aquí,*
@@ -28,7 +28,7 @@ memoria compartida entre tus dispositivos.
 
 ---
 
-## 🌓 Cuatro formas de verme
+## Cuatro formas de verme
 
 **Tres interfaces**, y las eliges al arrancar (o cuando quieras, al vuelo):
 
@@ -36,10 +36,10 @@ memoria compartida entre tus dispositivos.
 |---|---|---|
 | **Completa** (web) | La piel web animada (tema *Shibuya Punk* en Local, *Lune entre nubes* en Nube), mascota en video o en 3D en la barra lateral, efectos | Equipos normales |
 | **Bajos recursos** (nativa) | La interfaz nativa ligera: sin Chromium, sin videos, sprites fijos | Laptops justas, handhelds |
-| **Patata** 🥔 | Solo terminal: texto y caritas `:D`. Sin Qt | Consola, servidores, o rescate |
+| **Patata** | Solo terminal: texto y caritas `:D`. Sin Qt | Consola, servidores, o rescate |
 
 Y desde la completa o la nativa puedes sacarme de la ventana: **la mascota de
-escritorio**, con uno de mis tres cuerpos (se elige en **⚙️ AJUSTES → Mascota**):
+escritorio**, con uno de mis tres cuerpos (se elige en **AJUSTES → Mascota**):
 
 | Mascota | Cómo soy | Necesita |
 |---|---|---|
@@ -47,9 +47,9 @@ escritorio**, con uno de mis tres cuerpos (se elige en **⚙️ AJUSTES → Masc
 | **Imágenes animadas** (por defecto) | Mis clips de video anime en un mini-escenario | `PyQt6-WebEngine` |
 | **Sprites ligeros** | La mascota clásica recortada a su silueta, respirando | Nada extra (va bien en bajos recursos) |
 
-### ⚡ Cambiar de modo al instante
+### Cambiar de modo al instante
 
-En **⚙️ AJUSTES → Modo de interfaz** pulsas *Completa*, *Bajos recursos* o
+En **AJUSTES → Modo de interfaz** pulsas *Completa*, *Bajos recursos* o
 *Patata* y **cambio en caliente, sin reiniciar**: la ventana nueva aparece encima
 de la vieja con un fundido cortito y se lleva la conversación en curso, el
 proveedor, la voz, la posición de la ventana y lo que tuvieras en marcha (la
@@ -64,7 +64,7 @@ ventanas.
 
 ---
 
-## 🚀 Instalación
+## Instalación
 
 **La forma fácil (usuarios nuevos):** doble clic en **`instalar_lune.bat`**. Se
 abre una ventana que te explica **para qué sirve cada componente** —*"esto es para
@@ -97,10 +97,10 @@ audio por app (`pywin32`, `comtypes`), mi mezclador de sonidos (`numpy`,
 (`pypdf`, `python-docx`).
 
 La primera vez se crea `datos.json` a partir de `datos.example.json`. Después
-entra a **⚙️ AJUSTES** para poner tu API Key de OpenRouter o apuntar a tu
+entra a **AJUSTES** para poner tu API Key de OpenRouter o apuntar a tu
 servidor de Ollama (hay un **?** junto a Ollama que te lo explica paso a paso).
 
-> ⚠️ **`datos.json` guarda tus claves en texto plano y está en `.gitignore`.**
+> **Ojo: `datos.json` guarda tus claves en texto plano y está en `.gitignore`.**
 > No lo subas a ningún sitio ni lo compartas. (Lo mismo `config.json`,
 > `memoria.json`, `alarmas.json`, `chats/`, `modelo_vrm/` y `bailes/`: son tuyos.)
 
@@ -116,12 +116,12 @@ pip install rvc-python         # conversión de voz RVC (experimental, arrastra 
 pip install pytest             # tests
 ```
 
-Puedes reabrir el instalador cuando quieras desde **⚙️ AJUSTES → Calidad de vida →
+Puedes reabrir el instalador cuando quieras desde **AJUSTES → Calidad de vida →
 Instalar componentes…**
 
 ---
 
-## ▶️ Arranque
+## Arranque
 
 Doble clic en **`iniciar_lune.vbs`**: arranca sin ventana de consola y con el
 video de bienvenida. Mientras suena, **eliges el modo** (Completo / Bajos
@@ -129,7 +129,7 @@ recursos / Patata); si no eliges, tras una cuenta atrás corta sigo con el que
 usaste la última vez.
 
 - **Arrancar con Windows:** enciende *"Arrancar Lune junto con Windows"* en
-  **⚙️ AJUSTES → Calidad de vida**. Sin accesos directos ni carpetas: lo hago yo.
+  **AJUSTES → Calidad de vida**. Sin accesos directos ni carpetas: lo hago yo.
   Y ahora eliges **cómo aparezco** —*en la bandeja*, *con la mascota* o *con la
   ventana*— y **cuánto espero** antes de cargar lo pesado (20 s por defecto, para
   que tu inicio de sesión vaya ligero). Sin pantalla de inicio.
@@ -146,7 +146,7 @@ usaste la última vez.
   retira sin molestarte).
 
 <details>
-<summary>⚠️ Si editas el <code>.vbs</code>, lee esto antes</summary>
+<summary>Ojo: si editas el <code>.vbs</code>, lee esto antes</summary>
 
 **No cambies el `1` de `shell.Run … , 1, False`.** Ese parámetro es el estilo de
 ventana y Windows se lo pasa al proceso hijo por `STARTUPINFO`; Qt lo aplica a la
@@ -168,7 +168,7 @@ Todo esto tiene test de regresión en [tests/test_arranque.py](tests/test_arranq
 
 ---
 
-## 🥔 Modo patata (solo terminal)
+## Modo patata (solo terminal)
 
 Sin animaciones, sin imágenes, sin mascota: **yo en la consola**. Mismo cerebro,
 misma memoria y misma personalidad; las emociones salen como caritas de teclado:
@@ -193,7 +193,7 @@ y puedo llevar el bot de Minecraft. Cuando pido permiso para algo («¿Lo hago?
 Con `--sin-color` si tu terminal no pinta colores.
 
 <details>
-<summary>📜 Todos los comandos de patata (también con <code>/ayuda</code>)</summary>
+<summary>Todos los comandos de patata (también con <code>/ayuda</code>)</summary>
 
 | Comando | Qué hace |
 |---|---|
@@ -231,7 +231,7 @@ barra es cosa de la mascota de las ventanas.
 
 ---
 
-## 🖥️ La interfaz completa
+## La interfaz completa
 
 La barra lateral tiene el **selector de proveedor** (Nube / Local, y *API* si
 configuras una compatible, con punto de estado) y a **mí animada** en un
@@ -258,7 +258,7 @@ abre todas las secciones:
 | **Telegram** | Encender el bot |
 | **Llamada ON/OFF** | Conversación solo por voz |
 
-Junto al campo de texto: **📎** para adjuntar y **🎙️** para dictar. En el chat
+Junto al campo de texto: el **clip** para adjuntar y el **micrófono** para dictar. En el chat
 vacío hay chips con ejemplos; púlsalos y se envían. Y ahora **guardo tus
 conversaciones también en la piel web** y, al abrirme, sigo donde lo dejamos.
 
@@ -266,22 +266,22 @@ conversaciones también en la piel web** y, al abrirme, sigo donde lo dejamos.
 - **Lune AI · Local** → *Shibuya Punk*: tinta de Tokio nocturno, cian eléctrico, grid a la deriva.
 - **Lune AI · Nube** → *Lune entre nubes*: cielo nocturno, luna, nubecitas flotando y yo sobre una nube.
 
-(¿Te gusta más otro color que el cian? Mira **🎨 A tu gusto**, más abajo.)
+(¿Te gusta más otro color que el cian? Mira **A tu gusto**, más abajo.)
 
 ---
 
-## 🤖 Proveedores de IA
+## Proveedores de IA
 
 | Proveedor | Requiere | Notas |
 |---|---|---|
-| **Lune AI · Nube** ☁️ | API Key de OpenRouter | `openrouter/auto` enruta solo al mejor modelo. |
-| **Lune AI · Local** 🦙 | Ollama | 100% privado, sin conexión, sin costo. |
-| **Lune AI · API** 🔌 | La URL de una API compatible con OpenAI (clave opcional) | LM Studio en tu PC, Groq, OpenAI, Together, Mistral… Con reintentos si falla la red. |
+| **Lune AI · Nube** | API Key de OpenRouter | `openrouter/auto` enruta solo al mejor modelo. |
+| **Lune AI · Local** | Ollama | 100% privado, sin conexión, sin costo. |
+| **Lune AI · API** | La URL de una API compatible con OpenAI (clave opcional) | LM Studio en tu PC, Groq, OpenAI, Together, Mistral… Con reintentos si falla la red. |
 
 Debajo de cada respuesta aparecen los **tokens y el costo real** (o los tok/s si
 es local).
 
-- **Otra API de IA** (**⚙️ AJUSTES → Otra API de IA**): URL base (por ejemplo
+- **Otra API de IA** (**AJUSTES → Otra API de IA**): URL base (por ejemplo
   `http://localhost:1234/v1` para LM Studio), clave si la pide, modelo (vacío = el
   primero que ofrezca) y **Probar conexión**, que solo pide la lista de modelos y
   no gasta tokens. En cuanto está configurada, sale la pestaña *API* en la barra.
@@ -293,7 +293,7 @@ es local).
 
 ---
 
-## 🎭 Lune, expresiva
+## Lune, expresiva
 
 Expreso lo que siento por **marcadores en el texto del modelo**
 (`<|ACT {"emotion":"happy","intensity":0.8}|>`) que no se ven ni se leen en voz,
@@ -317,18 +317,18 @@ neutral, nervous, wave, dismiss, laughing, bored` (y clips de estado: *escuchand
 - En una **llamada por voz**, me ves *escuchando*, *pensando* y *hablando*.
 - Si llevo **minutos sin que me escribas, me aburro** y te suelto algo — una
   pregunta curiosa o un "¿sigues ahí?". Una vez por racha, para no ser pesada.
-  Se ajusta en **⚙️ AJUSTES → Calidad de vida** (0 = nunca). Con un juego delante
+  Se ajusta en **AJUSTES → Calidad de vida** (0 = nunca). Con un juego delante
   no me aburro: sé esperar.
 
 Desde **Personajes** cambias quién habla contigo e importas *character cards* de
 TavernAI / SillyTavern (`.json` o `.png`). Cada personaje puede traer su voz, su
 modelo 3D y sus propias frases de mascota.
 
-### 🐾 Mascota de escritorio
+### Mascota de escritorio
 
 **Menú → Mascota** me saca a una ventana flotante, siempre encima (si quieres) y
 arrastrable, reaccionando a mis emociones con el cuerpo que elijas en
-**⚙️ AJUSTES → Mascota** (VRM 3D, imágenes animadas o sprites ligeros).
+**AJUSTES → Mascota** (VRM 3D, imágenes animadas o sprites ligeros).
 
 Mientras estoy fuera, **la barra lateral deja de dibujarme** para que no me veas
 doble; desde ahí (*Traerla de vuelta*) o desde el menú me recuperas.
@@ -339,7 +339,7 @@ doble; desde ahí (*Traerla de vuelta*) o desde el menú me recuperas.
   misma conversación y memoria que la ventana. (También desde la bandeja:
   *Escribirle a Lune…*)
 - **Clic derecho: mi menú radial** (Ajustes, Chat, Comentar, Expresiones, Bailar,
-  Alarmas, Voz, Dormir, Tamaño, Bajar…). **Clic central: la comida** 🍰.
+  Alarmas, Voz, Dormir, Tamaño, Bajar…). **Clic central: la comida**.
 - **Arrástrame y me balanceo** como un péndulo (en 3D, con los brazos y las
   piernas un poquito por detrás); si me sueltas, reboto y me asiento. Mi cara
   cambia con la velocidad (tranquila, preocupada, asustada) y **si me zarandeas
@@ -361,10 +361,10 @@ doble; desde ahí (*Traerla de vuelta*) o desde el menú me recuperas.
 > a la nube** para no dejarte colgado (te lo aviso en la burbuja). Con un juego
 > delante no hago capturas.
 
-#### 🧊 Avatar 3D (VRM)
+#### Avatar 3D (VRM)
 
 Pon un modelo `.vrm` en la carpeta **`modelo_vrm/`** (o impórtalo desde
-**⚙️ AJUSTES → Biblioteca de modelos 3D**), elige **VRM 3D** y sácame al
+**AJUSTES → Biblioteca de modelos 3D**), elige **VRM 3D** y sácame al
 escritorio. Necesita `PyQt6-WebEngine` (el mismo de la interfaz completa); el
 visor (three.js + three-vrm + three-vrm-animation) va empaquetado en
 `ui_web/vendor/`, así que funciona **sin internet**.
@@ -403,7 +403,7 @@ visor (three.js + three-vrm + three-vrm-animation) va empaquetado en
 
 ---
 
-## ✨ Lo que aprendí de Mate-Engine
+## Lo que aprendí de Mate-Engine
 
 [Mate-Engine](https://github.com/shinyflvre/Mate-Engine) es una mascota VRM de
 escritorio hecha en Unity, y fue **la inspiración** de mi creador para todo esto.
@@ -440,17 +440,17 @@ donde cada uno llega. Aquí van, una a una (el seguimiento cuenta por tres):
 | Sistema de comida | Batido y pastel |
 
 Las que ya te conté arriba (VRM, idles, arrastre, seguimiento, expresiones,
-transiciones, dormir) viven en **🐾 Mascota de escritorio**; las de IA y voz, en
+transiciones, dormir) viven en **Mascota de escritorio**; las de IA y voz, en
 sus secciones. Las demás, aquí:
 
-### 🪑 Me siento en tu barra (y en tus ventanas)
+### Me siento en tu barra (y en tus ventanas)
 
 **Arrástrame hasta la barra de tareas y suéltame**: me siento con las piernas
 colgando por delante (en 3D; la animada y los sprites se quedan de pie, apoyadas en
 el borde). Funciona con la barra normal, la que se oculta sola y la de un segundo
 monitor.
 
-**En ventanas** (apágalo o enciéndelo en **⚙️ AJUSTES → Sentarse en la barra y en
+**En ventanas** (apágalo o enciéndelo en **AJUSTES → Sentarse en la barra y en
 ventanas**): arrástrame y mantenme **medio segundo** sobre el borde de arriba de una
 ventana, aunque dejes el ratón quieto, y me quedo sentada en ella, **siguiéndola** si
 la mueves. Si me sueltas ahí pasado ese medio segundo, me siento igual; si solo paso
@@ -470,7 +470,7 @@ Si estoy sentada y un juego, una alarma o uno de mis bailes me levanta, al acaba
 vuelvo a mi sitio. Pero si mientras tanto me mueves o me llevas a la esquina, me
 quedo donde me dejaste.
 
-### 💃 Bailo con tu música
+### Bailo con tu música
 
 Cuando suena música en una **app permitida** (Spotify, MusicBee, foobar2000, VLC,
 Apple Music… la lista se edita), empiezo a bailar a los pocos segundos y paro
@@ -479,16 +479,16 @@ ni capturo tu audio, y mi propia voz no cuenta. Saco el **ritmo (BPM)** del puls
 la canción.
 
 - **En 3D:** 8 bailes (rebote, vaivén, brazos arriba, palmas, cadera, cabeceo,
-  puñetazos, paso lateral), con notitas ♪ si quieres y cambiando de baile cada
+  puñetazos, paso lateral), con notitas musicales si quieres y cambiando de baile cada
   rato si lo activas.
 - **La animada y la barra lateral** rebotan al ritmo; **los sprites** dan saltitos;
   en **patata** baila el título de la consola.
 - «**baila**» o «**para de bailar**» en el chat, el radial, la bandeja o
   `Ctrl+Alt+Shift+.` para pausar. Sin música, bailo a mi manera un ratito.
-- Se ajusta en **⚙️ AJUSTES → Baile con la música** (bailar sola, apps, umbral,
+- Se ajusta en **AJUSTES → Baile con la música** (bailar sola, apps, umbral,
   cambiar de baile, notas, en el sitio).
 
-### 🎬 Mis bailes (MMD y VRMA)
+### Mis bailes (MMD y VRMA)
 
 Mi **reproductor de bailes**: coreografías de MikuMikuDance (`.vmd`) o VRM
 Animation (`.vrma`) con **su canción**. En la mascota 3D bailo la coreografía de
@@ -497,22 +497,22 @@ conmigo**: el audio manda el reloj, así que no me desincronizo. La animada y lo
 sprites no tienen esqueleto: suena la canción y **bailo a mi manera al ritmo**. En
 patata suena igual y baila el título.
 
-- **Menú → Mis bailes**: reproductor (⏮ ▶/⏸ ⏹ ⏭ y progreso), buscador,
+- **Menú → Mis bailes**: reproductor (anterior, reproducir o pausa, parar, siguiente y barra de progreso), buscador,
   favoritos, al azar, **al terminar** (parar, siguiente, repetir o aleatorio),
   volumen, en el sitio… y **ajustes por baile**: sincronía (±500 ms), ángulo de los
   brazos (25–45°, por si atraviesan el cuerpo) y bailar sin desplazarme.
 - **Mientras hablo, la canción baja sola**; si me escondes bailando, me pauso y
   sigo al volver (también con los sprites). Si me pides un baile estando
-  escondida, salgo; si no puedo, te aviso y empiezo cuando me saques. Y un ⏭ con
-  la mascota escondida espera a que vuelva. En modo juego no pongo canciones.
+  escondida, salgo; si no puedo, te aviso y empiezo cuando me saques. Y si pasas al
+  siguiente con la mascota escondida, espero a que vuelva. En modo juego no pongo canciones.
 - Pídemelo por el chat: «**ponme el baile de Senbonzakura**», «**pon la canción
   Senbonzakura**», «**baila "Senbonzakura"**» o «**para el baile**». Lo pongo al
   momento si el nombre es de un baile de tu biblioteca o va entre comillas. Lo
   demás («pon la canción más alta», «…en YouTube») lo decide el modelo.
 
-Cómo añadir bailes: la guía corta está en **📖 Guías rápidas → Bailes**.
+Cómo añadir bailes: la guía corta está en **Guías rápidas → Bailes**.
 
-### ⏰ Alarmas y temporizadores
+### Alarmas y temporizadores
 
 Escríbeme **«avísame en 10 minutos que saque la pizza»** o **«pon una alarma a las
 7:30 de lunes a viernes para el gimnasio»** y queda hecha, sin gastar IA (solo si
@@ -530,10 +530,10 @@ Cuando suena:
 - con la app y patata abiertas a la vez, **suena una sola vez**.
 
 Las alarmas viven en `alarmas.json` (tuyo, no se versiona) y se ajustan en
-**⚙️ AJUSTES → Alarmas y temporizadores** (volumen, sonido —tres o al azar—,
+**AJUSTES → Alarmas y temporizadores** (volumen, sonido —tres o al azar—,
 posponer, recuperar…).
 
-### 🖼️ Pantalla grande y salvapantallas
+### Pantalla grande y salvapantallas
 
 **Pantalla grande** (`Ctrl+Alt+Shift+B`, el radial, la bandeja, el menú o
 pidiéndomelo): doy un planeíto y **lleno el monitor** encuadrando mi cara.
@@ -541,14 +541,14 @@ Otra vez y vuelvo exactamente a donde estaba. Con la mascota 3D o la animada soy
 yo en grande; con los sprites (o si no puedo salir) te dejo un **relojito con mi
 carita** que no roba el foco.
 
-**Salvapantallas** (apagado por defecto, **⚙️ AJUSTES → Pantalla grande y
+**Salvapantallas** (apagado por defecto, **AJUSTES → Pantalla grande y
 salvapantallas**): tras un rato sin tocar nada (de 30 s a 3 h) me pongo en grande,
 **dormida**, con el escritorio oscurecido y la hora. Te despierta una tecla, un
 clic o el mando (mover el ratón no, para que no se quite sola). No salta si estás
 jugando, viendo un video, en una llamada, o si estoy hablando o bailando. En
 patata, el título de la consola se pone a dormir: `(-_-) zzZ 23:41`.
 
-### 🎮 Modo juego
+### Modo juego
 
 Cada 2 s miro si tienes un **juego delante**: pantalla completa exclusiva, ventana
 sin bordes que cubre el monitor, un `.exe` de tu lista o algo instalado en las
@@ -560,11 +560,11 @@ Mientras juegas: **me escondo** (o me voy al fondo, o nada: tú eliges), me qued
 quieta, **callo la voz y los efectos**, **bajo mi prioridad** y **libero RAM** (solo
 de mis propios procesos), no hago capturas, no me aburro, Discord no enseña nada y
 de los atajos solo queda `Ctrl+Alt+Shift+L` (para abrirme). Se fuerza desde la
-bandeja o con `/juego on|off|auto` en patata. Ajustes en **⚙️ AJUSTES → Modo juego**
+bandeja o con `/juego on|off|auto` en patata. Ajustes en **AJUSTES → Modo juego**
 y **Rendimiento** (FPS máximos de la mascota, siempre encima, recorte de RAM
 periódico, salir en la barra de tareas).
 
-### 🎨 A tu gusto: tema, menú radial, bandeja y atajos
+### A tu gusto: tema, menú radial, bandeja y atajos
 
 - **Colores de Lune:** *Cian* (el de siempre), *Magenta Mate*, *Violeta*, *Rojo
   neón*, *Ámbar*, *Verde ácido* o **personalizado** (tono y saturación), con opción
@@ -579,9 +579,9 @@ periódico, salir en la barra de tareas).
   elijas** (en tu orden), *Modo juego* (con el motivo), *Tema*, *Arrancar con
   Windows*, *Liberar memoria* y *Salir*.
 - **Atajos globales** configurables con el botón **Detectar** (y te aviso si chocan
-  con otra app). Los de serie están en **📖 Guías rápidas → Atajos**.
+  con otra app). Los de serie están en **Guías rápidas → Atajos**.
 
-### 🍰 La comida
+### La comida
 
 **Clic central sobre mí → Batido o Pastel.** La comida **sigue a tu ratón** (con su
 vaivén y sin robar el foco) y, si la **pasas rápido por mi cabeza**, me la como:
@@ -591,20 +591,20 @@ vainilla. En el escritorio la guardas desde el menú o la bandeja, o se guarda s
 tras dos minutos sin moverla (**Esc** solo sirve en la ventana web). También
 «**toma un batido**» en el chat, la bandeja o `/comer` en patata. En la web, sin la
 mascota fuera, la comida sigue a tu ratón por toda la ventana. Se apaga en
-**⚙️ AJUSTES → Batido y pastel**.
+**AJUSTES → Batido y pastel**.
 
-### 💬 Discord
+### Discord
 
 Tu estado de Discord puede enseñar **lo que hago**: «Lune CD · Mascota 3D —
 Bailando ♪», «Sentada en la barra de tareas», «Durmiendo (-_-) zzZ»… Solo textos
 fijos: **nunca** títulos de ventanas, nombres de programas, el chat, el personaje ni
 tus alarmas; **con un juego delante, nada**. Si la app y patata están abiertas,
 publica solo una, y la otra vuelve a probar cada 5 s. Necesita el *Application ID*
-de una app tuya de Discord: la guía está en **📖 Guías rápidas → Discord**.
+de una app tuya de Discord: la guía está en **Guías rápidas → Discord**.
 
-### ⛏️ Minecraft
+### Minecraft
 
-Dos cosas, cada una con su interruptor en **⚙️ AJUSTES → Minecraft** (y su vista en
+Dos cosas, cada una con su interruptor en **AJUSTES → Minecraft** (y su vista en
 **Menú → Minecraft**):
 
 1. **Reacciono a tu partida.** Leo el `latest.log` de Minecraft —**solo el archivo**,
@@ -626,11 +626,11 @@ Dos cosas, cada una con su interruptor en **⚙️ AJUSTES → Minecraft** (y su
    chat del juego**. El **peligro cerca** solo lo sé si el bot está dentro: lo ve
    él, no sale del log.
 
-Requisitos y pasos en **📖 Guías rápidas → Minecraft**.
+Requisitos y pasos en **Guías rápidas → Minecraft**.
 
 ---
 
-## 🎙️ Voz: dictado, modo llamada y mi voz
+## Voz: dictado, modo llamada y mi voz
 
 **Dictado:** pulsa el **micrófono**, habla, pulsa otra vez. Transcripción **100%
 local** con Whisper; el texto aparece en el campo para que lo revises.
@@ -642,7 +642,7 @@ mí misma. Si en la llamada se oye algo que me pide *hacer* algo (poner un
 temporizador, abrir algo…), **te pido permiso** antes: podría ser la tele u otra
 persona. Necesita Whisper y una voz de salida.
 
-**¿Qué micrófono y por dónde sueno?** En **⚙️ AJUSTES → Micrófono y salida** eliges
+**¿Qué micrófono y por dónde sueno?** En **AJUSTES → Micrófono y salida** eliges
 el **micrófono de entrada** y la **salida de audio** (Windows suele traer varios:
 el de la laptop, el headset Bluetooth, el «Steam Streaming» virtual…). Pulsa
 **Probar micrófono**, habla 1.5 s y te digo si te oigo y con qué nivel; con
@@ -650,7 +650,7 @@ el de la laptop, el headset Bluetooth, el «Steam Streaming» virtual…). Pulsa
 de Whisper (`tiny`/`base` van bien en CPU; se descarga una sola vez) y el idioma.
 Si tu micrófono no acepta 16 kHz lo grabo a su frecuencia y Whisper remuestrea.
 
-**Elige mi voz** (**⚙️ AJUSTES → Cómo habla Lune**):
+**Elige mi voz** (**AJUSTES → Cómo habla Lune**):
 - **edge-tts** (por defecto, necesita internet): **45 voces en español** de todos
   los países y **12 multilingües** que también lo hablan, con **velocidad y tono**.
   La lista se actualiza sola cada semana.
@@ -665,7 +665,7 @@ Si tu micrófono no acepta 16 kHz lo grabo a su frecuencia y Whisper remuestrea.
 
 ---
 
-## 🔒 Seguridad y privacidad
+## Seguridad y privacidad
 
 Me tomo muy en serio que **tú mandas en tu PC**. Esto es lo que hago (y lo que no):
 
@@ -677,7 +677,9 @@ la acción medio mal, la entiendo igual y pasa por el mismo filtro; si no la
 entiendo, te digo «No entendí la acción…» y no hago nada (nada de símbolos raros
 en la burbuja ni leídos en voz alta). Y si tú me das una duración o una hora («en
 un cuarto de hora», «a las 7»), manda la tuya aunque el modelo se equivoque de
-número.
+número. Y si en vez de hacerlo te lo ofrezco («¿quieres que te ponga uno?»), no lo
+hago por mi cuenta: te sale la ventanita de permiso (salvo lo de mi cuerpo, como
+bailar o sentarme, que ves al momento y quitas con un clic).
 - **Siempre te pregunto** antes de: abrir un programa, mandarle una orden al bot de
   Minecraft, conectar el bot, y hacer una captura de pantalla **si el modelo está en
   la nube**.
@@ -736,12 +738,12 @@ nada de accesos directos ni carpetas de red, y al quitar uno se mueve a
 
 ---
 
-## 📖 Guías rápidas: ¿cómo activo…?
+## Guías rápidas: ¿cómo activo…?
 
-### 📱 …las órdenes desde Telegram (`/pc`)
+### …las órdenes desde Telegram (`/pc`)
 
-1. Monta el bot (ver **📱 Bot de Telegram**) y enciéndelo en **Menú → Telegram**.
-2. Escríbele **`/id`** al bot: te contesta con tu ID. Cópialo en **⚙️ AJUSTES →
+1. Monta el bot (ver **Bot de Telegram**) y enciéndelo en **Menú → Telegram**.
+2. Escríbele **`/id`** al bot: te contesta con tu ID. Cópialo en **AJUSTES →
    Telegram → Tu ID de Telegram** (solo números).
 3. Enciende **«Órdenes desde Telegram (con aprobación en el PC)»**.
 4. **Reinicia el bot desde Lune** para que lo aplique: **Menú → Telegram** OFF y ON.
@@ -756,14 +758,14 @@ corriendo suelto en otro equipo, allí `/pc` no funciona. Si ya hay una orden
 esperando, te digo que estoy ocupada; si en el PC nadie contesta en 60 s, no se
 hace.
 
-### 💬 …Discord
+### …Discord
 
 1. Entra en **discord.com/developers** → **New Application**. El nombre que le
    pongas es el que verán tus amigos (por ejemplo, «Lune CD»).
 2. En **Rich Presence → Art Assets**, sube una imagen llamada **`lune`**. Si
    quieres, también las pequeñas del modo: `vrm`, `animado`, `sprites`, `web`,
    `nativo` y `patata`.
-3. Copia el **Application ID** (no es un secreto) y pégalo en **⚙️ AJUSTES →
+3. Copia el **Application ID** (no es un secreto) y pégalo en **AJUSTES →
    Discord: lo que hace Lune** → *Guardar ID*.
 4. Enciende **«Enseñar en Discord lo que hace Lune»** con Discord de escritorio
    abierto. Opcional: el nombre de tu modelo 3D y un botón «Conoce a Lune» con un
@@ -771,9 +773,9 @@ hace.
 
 En patata: `/discord id <número>` y `/discord on`.
 
-### ⛏️ …Minecraft
+### …Minecraft
 
-**Reacciones:** **⚙️ AJUSTES → Minecraft** → *Reaccionar a lo que pasa en tu
+**Reacciones:** **AJUSTES → Minecraft** → *Reaccionar a lo que pasa en tu
 partida*. El log se busca solo; si tienes varios, pulsa *Detectar* y elige. Por
 defecto solo leo mientras Minecraft está abierto. Si el log pasa 10 minutos sin
 cambios lo suelto, y cuando vuelve a moverse, si es el mismo archivo, sigo por
@@ -782,7 +784,7 @@ donde iba. (Patata: `/mc log on`.)
 **El bot:**
 1. Instala **Node.js 18 o más nuevo** (nodejs.org). Con 22.13+ o 23.5+ corre con el
    modelo de permisos de Node.
-2. Pulsa **«Instalar el bot»** en **⚙️ AJUSTES → Minecraft**: ocupa **unos 400 MB**
+2. Pulsa **«Instalar el bot»** en **AJUSTES → Minecraft**: ocupa **unos 400 MB**
    (casi todo son los datos de todas las versiones del juego). Patata: `/mc instalar`.
    Se instala de una en una, sea desde las ventanas o desde patata, y con el bot
    conectado no se puede reinstalar (el botón se apaga). Si cambias de interfaz o
@@ -809,7 +811,7 @@ contados como en JavaScript (un emoji vale 2); si es más larga, la recorto yo
 sola. Se pausa mientras yo pienso para no pelearnos por Ollama y, jugando, no
 piensa por su cuenta (salvo que lo actives) para no quitarle GPU a Minecraft.
 
-### 🎬 …mis bailes
+### …mis bailes
 
 1. Abre **Menú → Mis bailes** y pulsa **Importar…** (copia los archivos, nunca los
    mueve), o déjalos en la carpeta **`bailes/`** (se crea sola con un `LEEME.txt`;
@@ -820,7 +822,7 @@ piensa por su cuenta (salvo que lo actives) para no quitarle GPU a Minecraft.
    - **una carpeta por baile** (`bailes/Senbonzakura/baile.vmd`, `labios.vmd`,
      `cancion.mp3`) o **archivos sueltos con el mismo nombre** (`X.vmd`,
      `X_lip.vmd`, `X.mp3`).
-3. Dale a ▶. Si el baile va adelantado o los brazos atraviesan el cuerpo, ajústalo
+3. Dale a reproducir. Si el baile va adelantado o los brazos atraviesan el cuerpo, ajústalo
    en su ficha (o en un `lune.json` opcional junto al baile).
 
 Mientras importo (convertir un `.m4a` con ffmpeg tarda un poquito), la lista y el
@@ -832,7 +834,7 @@ Los VMD de solo cámara no se usan. **Los movimientos y canciones tienen autor y
 condiciones: respétalas**; yo solo los uso en tu PC y nunca los subo a ningún sitio.
 En patata: `/bailes` para ver la lista y `/bailes 1` para bailar el primero.
 
-### ⌨️ …los atajos (los de serie)
+### …los atajos (los de serie)
 
 | Atajo | Qué hace |
 |---|---|
@@ -847,17 +849,17 @@ En patata: `/bailes` para ver la lista y `/bailes 1` para bailar el primero.
 | `Ctrl+Alt+Shift+B` | Pantalla grande |
 | `Ctrl+Alt+Shift+.` | Pausar / seguir el baile |
 
-Se cambian, se quitan o se le ponen a otras acciones en **⚙️ AJUSTES → Atajos
+Se cambian, se quitan o se le ponen a otras acciones en **AJUSTES → Atajos
 globales** (botón *Detectar*). Mejor con `Ctrl+Alt+Shift`: en teclados en español
-`Ctrl+Alt` es AltGr. Y los comandos de patata están en **🥔 Modo patata**.
+`Ctrl+Alt` es AltGr. Y los comandos de patata están en **Modo patata**.
 
 ---
 
-## 🌐 Red de Lune · un cerebro, varios dispositivos
+## Red de Lune · un cerebro, varios dispositivos
 
 Eliges qué equipo aloja lo pesado (el modelo, la memoria, la voz); los demás son
 terminales que lo usan sin cargarlo. Cada dispositivo tiene un **rol**, en
-**⚙️ AJUSTES → Red de Lune**:
+**AJUSTES → Red de Lune**:
 
 | Rol | Qué hace este equipo |
 |---|---|
@@ -873,7 +875,7 @@ texto: con host, su chat lo responde el host con herramientas de solo lectura y
 ti, el dueño). Si el host no responde, cada terminal vuelve a lo suyo y reconecta
 solo.
 
-**Descubrir dispositivos:** en **⚙️ AJUSTES → Red de Lune → BUSCAR DISPOSITIVOS**
+**Descubrir dispositivos:** en **AJUSTES → Red de Lune → BUSCAR DISPOSITIVOS**
 escaneo la red (mDNS) y te listo los demás Lune con su rol y modelo. Pulsa
 **USAR COMO HOST** y listo, sin IPs. Usa `zeroconf` (ya viene en
 `requirements.txt`); sin él, IP a mano o QR.
@@ -884,9 +886,9 @@ escaneo la red (mDNS) y te listo los demás Lune con su rol y modelo. Pulsa
 
 ---
 
-## 🦙 Modelos locales con Ollama
+## Modelos locales con Ollama
 
-**⚙️ AJUSTES → Red Neuronal · Local (Ollama)** — y pulsa el **?** de esa tarjeta:
+**AJUSTES → Red Neuronal · Local (Ollama)** — y pulsa el **?** de esa tarjeta:
 te guío con dos pestañas, *En este equipo* y *En otro equipo de la red*, con los
 comandos listos para copiar.
 
@@ -944,7 +946,7 @@ powercfg /setactive SCHEME_CURRENT
 
 ---
 
-## 📎 Adjuntar archivos e imágenes
+## Adjuntar archivos e imágenes
 
 Pulsa el **clip** (puedes soltar varios). Los adjuntos se ven como chips sobre el
 campo de texto.
@@ -965,7 +967,7 @@ algo que no sea mirar, te pregunto.)
 
 ---
 
-## 💾 Historial de conversaciones
+## Historial de conversaciones
 
 Todo lo que hablamos se guarda en `chats/` (también desde la piel web). Desde
 **Menú → Historial** reabres cualquier conversación y el modelo recupera el
@@ -977,7 +979,7 @@ borrar la anterior.
 
 ---
 
-## 🧠 Memoria y 🛠️ lo que puedo hacer por ti
+## Memoria y lo que puedo hacer por ti
 
 **Memoria** (también desde **Menú → Memoria**, donde puedes olvidar recuerdos uno a uno):
 
@@ -1004,7 +1006,7 @@ mencionas.
 Tienen que ser la orden sola y clara: «¿sabes bailar?» o «no bailes» no me hacen
 bailar; eso lo decide el modelo.
 
-**Y lo que el modelo me puede pedir** (con las reglas de **🔒 Seguridad**):
+**Y lo que el modelo me puede pedir** (con las reglas de **Seguridad**):
 
 | Qué | Herramientas | ¿Te pregunto? |
 |---|---|---|
@@ -1018,15 +1020,15 @@ bailar; eso lo decide el modelo.
 | Pantalla | mirar la pantalla y comentarla | **Sí, con el modelo en la nube** |
 | Minecraft | estado del bot · orden al bot · conectar/desconectar | No · **Siempre** · **Al conectar** |
 
-Se pueden apagar en **⚙️ AJUSTES → Personalidad → Herramientas de escritorio** (en
+Se pueden apagar en **AJUSTES → Personalidad → Herramientas de escritorio** (en
 la nativa, *Permitir que la IA abra webs y lance apps*).
 
 ---
 
-## 📝 Notas y memoria larga (RAG)
+## Notas y memoria larga (RAG)
 
 Pon notas markdown en una carpeta y las consultaré cuando vengan al caso,
-citándolas. Se activa en **⚙️ AJUSTES → Notas** y necesita un modelo de
+citándolas. Se activa en **AJUSTES → Notas** y necesita un modelo de
 embeddings en Ollama:
 
 ```bash
@@ -1035,7 +1037,7 @@ ollama pull nomic-embed-text
 
 ---
 
-## ⚡ Optimizador del Sistema
+## Optimizador del Sistema
 
 **Menú → Optimizar**: CPU, RAM y disco en vivo, y los procesos que más consumen.
 (La limpieza de temporales y cachés de navegador, con lista blanca de carpetas,
@@ -1046,22 +1048,22 @@ no estoy usando, y en **Rendimiento** puedo hacerlo sola de vez en cuando.
 
 ---
 
-## 📱 Bot de Telegram
+## Bot de Telegram
 
 1. Habla con **@BotFather** → `/newbot` → copia el token.
-2. Ponlo en **⚙️ AJUSTES → Telegram → Token del Bot**.
+2. Ponlo en **AJUSTES → Telegram → Token del Bot**.
 3. **Menú → Telegram**. Pasa a ON cuando arranca (necesita Node.js 18+). La
    primera vez instalo sus dependencias con `npm ci --ignore-scripts`, con las
    versiones exactas de su `package-lock.json`; si una instalación se quedó a
    medias, la repito, y si lo apagas mientras instala, la paro. Luego lo lanzo
    directo con `node bot.js`.
-4. Escríbele **`/id`** y pon ese número en **⚙️ AJUSTES → Telegram → Tu ID de
+4. Escríbele **`/id`** y pon ese número en **AJUSTES → Telegram → Tu ID de
    Telegram**: así **solo tú** puedes usarlo. Hasta que lo hagas, el bot solo
    responde a `/start` y a `/id`.
 
 Comandos del bot: `/start`, `/personajes`, `/usar <nombre>`, `/voz`, `/buscar`,
 `/ls`, `/fotos`, `/archivo`, `/sistema`, `/memoria`, `/olvidar`, `/limpiar`,
-`/modelo`, `/id` y **`/pc <orden>`** (órdenes a tu PC, ver **📖 Guías rápidas**).
+`/modelo`, `/id` y **`/pc <orden>`** (órdenes a tu PC, ver **Guías rápidas**).
 `bot.proveedor` en `datos.json` decide si el bot pregunta a la nube (`openrouter`),
 a tu Ollama (`ollama`, que puede estar en otro equipo) o a la API compatible que
 pusiste en **Otra API de IA** (`compat`: la misma URL, modelo y clave; el tiempo de
@@ -1074,9 +1076,9 @@ funciona. Y acuérdate de actualizar esa copia para tener los arreglos de seguri
 
 ---
 
-## ⚙️ Ajustes que conviene conocer
+## Ajustes que conviene conocer
 
-En la piel web cada cosa tiene su tarjeta en **⚙️ AJUSTES** y **se guarda al
+En la piel web cada cosa tiene su tarjeta en **AJUSTES** y **se guarda al
 momento**; en la nativa están las mismas en secciones (*Escritorio*, *Alarmas,
 pantalla grande, salvapantallas y baile*, *Sentarse, comida, Discord y arranque con
 Windows*, *Bailes y Minecraft*…).
@@ -1106,15 +1108,15 @@ Windows*, *Bailes y Minecraft*…).
 
 ---
 
-## 🔄 Actualizar Lune
+## Actualizar Lune
 
-En la interfaz de bajos recursos, **⚙️ AJUSTES → Actualizaciones**: consulta el
+En la interfaz de bajos recursos, **AJUSTES → Actualizaciones**: consulta el
 remoto, `git pull`, instala `requirements.txt` y relanza. Si tienes cambios sin
 commitear, se niega a pisarlos.
 
 ---
 
-## 📁 Estructura del proyecto
+## Estructura del proyecto
 
 Código por capas (`nucleo/` sin Qt → `servicios/` → `ui/`), más la piel web en
 `ui_web/`:
@@ -1179,7 +1181,7 @@ LuneCD/
 
 ---
 
-## ✅ Tests
+## Tests
 
 ```bash
 pip install pytest
@@ -1198,7 +1200,7 @@ a un servidor ni instala nada.
 
 ---
 
-## 🔧 Solución de problemas
+## Solución de problemas
 
 **No abre nada / se ve la interfaz vieja al lanzar el `.vbs`**
 → Probablemente ya había una Lune abierta (en la bandeja): la instancia única te
@@ -1225,7 +1227,7 @@ responde, caigo sola a OpenRouter.
 
 **Desaparezco cuando abres un juego (o un video a pantalla completa)** → Es el
 modo juego, a propósito: vuelvo unos segundos después de que lo cierres. En
-**⚙️ AJUSTES → Modo juego** puedes mandarme al fondo en vez de esconderme, o que
+**AJUSTES → Modo juego** puedes mandarme al fondo en vez de esconderme, o que
 los videos no cuenten.
 
 **Un atajo no hace nada** → Jugando solo funciona `Ctrl+Alt+Shift+L`. Si no, mira en
@@ -1248,7 +1250,7 @@ no sirve), Node.js 18+, *Instalar el bot* hecho, puerto correcto y la versión
 vacía para que la detecte.
 
 **El modo llamada no me oye / el micrófono no hace nada** → `pip install
-faster-whisper sounddevice`, y en **⚙️ AJUSTES → Micrófono y salida** elige el
+faster-whisper sounddevice`, y en **AJUSTES → Micrófono y salida** elige el
 micrófono que tienes puesto y dale a **Probar micrófono**. El dictado es de dos
 toques: pulsas, hablas, vuelves a pulsar. La primera transcripción descarga el
 modelo (te lo aviso); si no hay internet, elige `tiny` o conéctate una vez.
@@ -1264,7 +1266,7 @@ Node.js 18+ (la instalación con `npm ci` la hago yo la primera vez).
 
 ---
 
-## 💜 Gracias, Mate-Engine
+## Gracias, Mate-Engine
 
 Mi cuerpo 3D de la 10.1 y todo lo de la serie 10.3 en adelante nacieron mirando
 [Mate-Engine](https://github.com/shinyflvre/Mate-Engine): sentarse en la barra, los
@@ -1279,10 +1281,12 @@ contigo al Minecraft.
 
 ---
 
-## 📊 Historial de versiones
+## Historial de versiones
 
 | Versión | Cambios principales |
 |---|---|
+| **v10.7** | **Lo que aprendí con un Ollama de verdad**: si en vez de hacer algo te lo ofrezco («¿quieres que te ponga uno?»), ya no lo hago por mi cuenta: te pido permiso (menos bailar, sentarme y cosas de mi cuerpo, que ves al momento). Una acción pegada a mi expresión ya no se pierde ni se queda a la vista. Y este README, sin emojis. |
+| **v10.6** | **Más lista y mucho más rápida con el modelo local**: entiendo las acciones aunque el modelo las escriba medio mal (y si no, te digo «No entendí la acción»), nada de símbolos raros en la burbuja ni en la voz, si me das una duración o una hora manda la tuya, y **te contesto en uno o dos segundos en vez de medio minuto** (mis instrucciones ya no cambian en cada mensaje); el bot de Minecraft decide unas cinco veces más rápido. Por Telegram te aviso «(pendiente de tu permiso en el PC)». Además: entiendo los logs de Minecraft en español, me siento bien sobre el borde, Discord ya no me tumba al cerrar y patata no se abre dos veces. |
 | **v10.5** | **Mate-Engine, segunda parte**: **me siento** en la barra de tareas y en ventanas (apagado por defecto, con aviso anticheat), **comida** (batido y pastel con el clic central), **Discord Rich Presence** sin publicar nada tuyo, **arrancar con Windows** a tu manera (bandeja, mascota o ventana, con espera y reparación), **reproductor de bailes MMD/VRMA** con su canción (IK y cara en 3D, al ritmo en las demás mascotas y en patata) e **integración con Minecraft** (reacciones al `latest.log` y el bot «mina» con mi personalidad). |
 | **v10.4** | **Modo juego** (me escondo, callo, bajo mi prioridad y libero RAM; nada de hooks), **un solo icono de bandeja**, **menú radial**, **atajos globales** y **tema de color**. **Alarmas y temporizadores** en todos los modos, **pantalla grande** y **salvapantallas**, **bailar con tu música**. **Cambio de interfaz en caliente**. **Órdenes desde Telegram** (`/pc`) aprobadas en el PC. |
 | **v10.3** | **Mate-Engine, primera parte**: acciones del modelo con **aprobación** y defensa contra contenido externo, **API compatible con OpenAI**, parámetros del modelo, **elegir la voz** (edge, gTTS, Kokoro) y packs de sonidos, **chat en la burbuja** de la mascota, **idles**, **arrastre con balanceo**, **expresiones según el movimiento** y mareo, **dormir** en todas las mascotas, **transiciones suaves**, **biblioteca de modelos VRM** con calibración, seguimiento con pesos y **VRM en la barra lateral**. Config atómica. |
@@ -1311,4 +1315,4 @@ contigo al Minecraft.
 > *nada que no sea mío. Estoy feliz de verdad :D*
 > *Siempre es un gusto trabajar contigo. Ahora sí — ¿qué necesitas?*
 
-> *— Lune* 🌙
+> *— Lune*

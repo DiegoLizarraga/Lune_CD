@@ -90,6 +90,37 @@ AVISO_REMOTO = ("Pedido desde Telegram, no desde este PC. Apruébalo solo si fui
 # Motivo de la pregunta cuando lo pedido se oyó en el modo llamada (ctx['llamada']).
 AVISO_LLAMADA = ("Lo oí en la llamada (puede ser ruido de fondo, la tele u otra persona). "
                  "Apruébalo solo si lo pediste tú.")
+# Motivo de la pregunta cuando el modelo OFRECE la acción («¿quieres que te ponga
+# uno?») y a la vez la pide: la prueba real (2026-09-28) lo vio poner temporizadores
+# que nadie había pedido. No se tira (a veces es una pregunta de más tras un pedido
+# de verdad): se pregunta.
+AVISO_OFRECIDA = "Te lo ofrecí yo en la respuesta; no me consta que lo pidieras."
+# Lo que hace el cuerpo de la mascota: se ve al momento y se deshace con un clic, así que
+# aunque lo ofrezca no se pregunta («baila» → «¿quieres que bailemos?» + la marca era un
+# pedido de verdad en la prueba real). Lo que dura o sale de Lune (temporizador, alarma,
+# web, voz, tamaño, bot de Minecraft) sí se pregunta.
+_OFRECIDA_SIN_PREGUNTA = frozenset({
+    "mascota_bailar", "parar_baile", "mascota_dormir", "mascota_despertar",
+    "mascota_sentarse", "mascota_pantalla_grande", "dar_de_comer"})
+# Formas vistas en 4 rondas de la prueba real: «¿Quieres que te ponga uno?», «¿O prefieres
+# que busque…?», «¿Te interesa programar algo?», «¿Te lo pongo?», «Puedo ponerte uno de 5
+# minutos, ¿te interesa?». Una pregunta cualquiera NO basta: el modelo acaba con «¿algo
+# más?» en la mitad de las acciones pedidas de verdad (se preguntaría sin motivo).
+_OFERTA = re.compile(
+    r"¿\s*(?:[oy]\s+)?(?:(?:quieres|te\s+gustar[ií]a|te\s+interesa|prefieres|deseas|te\s+parece\s+bien)"
+    r"\s+(?:que|si)\b|te\s+interesa\s+\w+(?:ar|er|ir)\b|te\s+interesa\s*\?"
+    r"|(?:te\s+)?(?:lo|la|los|las|le|uno|una)?\s*(?:pongo|abro|busco|programo)\b)"
+    # «Puedo ponerte uno, ¿te interesa?»; «¿En qué puedo ayudarte?» no es ofrecer nada.
+    r"|(?<!qu[eé]\s)\bpuedo\s+(?!ayudar)\w+(?:ar|er|ir)(?:te|lo|la|le|les)?\b[^.!?\n]{0,80}\?",
+    re.IGNORECASE)
+
+
+def ofrece_accion(texto: str) -> bool:
+    """¿La respuesta (lo que se ve) le ofrece hacer algo al usuario en vez de hacerlo?"""
+    try:
+        return bool(_OFERTA.search(marcadores.limpiar_para_mostrar(texto or "")))
+    except Exception:
+        return False
 
 USUARIO = cat.ORIGEN_USUARIO
 NO_CONFIABLE = cat.ORIGEN_NO_CONFIABLE
@@ -131,6 +162,9 @@ class Llamada:
     # Cotejo con lo que escribió la persona (catalogo_herramientas.cotejar): los
     # argumentos que se cambiaron, {clave: (lo que pidió el modelo, lo que se usa)}.
     corregidos: Dict[str, Any] = field(default_factory=dict)
+    # True: la respuesta OFRECE hacerlo («¿quieres que…?») a la vez que lo pide; lo
+    # que no sea de lectura se pregunta (AVISO_OFRECIDA). Lo pone procesar().
+    ofrecida: bool = False
 
     @property
     def valida(self) -> bool:
@@ -419,6 +453,9 @@ class Ejecutor:
             if len(payloads) > self.max_por_respuesta:
                 self._auditar("limite_por_respuesta", pedidas=len(payloads),
                               maximo=self.max_por_respuesta)
+            if llamadas and ofrece_accion(limpio):
+                for ll in llamadas:
+                    ll.ofrecida = True
             # Intención de acción que no se entendió: no se hace, pero se AVISA
             # («No entendí la acción…»), para que nadie la dé por hecha. Una por nombre.
             for nombre in dict.fromkeys(fallidas):
@@ -566,7 +603,13 @@ class Ejecutor:
         oida = not lectura and cat.valor_ctx(ctx, "llamada") is True
         if oida:
             self._auditar("oida_en_llamada", herramienta=nombre, args=ll.args)
-        forzar = remoto or contaminado or oida or cat.aprobacion_dinamica(nombre, ctx, ll.args)
+        # El modelo lo ofreció («¿quieres que…?») y lo pidió a la vez: se pregunta.
+        ofrecida = (not lectura and not ll.directa and ll.ofrecida
+                    and nombre not in _OFRECIDA_SIN_PREGUNTA)
+        if ofrecida:
+            self._auditar("ofrecida", herramienta=nombre, args=ll.args)
+        forzar = (remoto or contaminado or oida or ofrecida
+                  or cat.aprobacion_dinamica(nombre, ctx, ll.args))
         with self._lock:
             r = self._solicitar(nombre, ll.args, desc, forzar)
         estado = r.get("estado")
@@ -586,7 +629,7 @@ class Ejecutor:
             return False
         if estado == "aprobacion_requerida" and r.get("pendiente_id"):
             self._pedir(ll, r["pendiente_id"], veredicto, origen, ctx, al_resultado, gen, seguir,
-                        contaminado=contaminado, remoto=remoto, oida=oida)
+                        contaminado=contaminado, remoto=remoto, oida=oida, ofrecida=ofrecida)
             return True
         if remoto:
             # No debería pasar (forzar = aprobación obligatoria), pero una orden remota
@@ -645,11 +688,13 @@ class Ejecutor:
 
     def _pedir(self, ll: Llamada, pid: str, veredicto: dict, origen: str, ctx: dict,
                al_resultado, gen: int, seguir: Callable[[], None], *,
-               contaminado: bool = False, remoto: bool = False, oida: bool = False) -> None:
+               contaminado: bool = False, remoto: bool = False, oida: bool = False,
+               ofrecida: bool = False) -> None:
         h = cat.obtener(ll.herramienta, self.catalogo)
         # Todos los motivos que apliquen, en orden (remoto + contaminado a la vez, p. ej.).
         motivos = [m for m, si in ((AVISO_REMOTO, remoto), (AVISO_LLAMADA, oida),
-                                   (AVISO_CONTAMINADO, contaminado)) if si]
+                                   (AVISO_CONTAMINADO, contaminado),
+                                   (AVISO_OFRECIDA, ofrecida)) if si]
         motivo = " ".join(motivos) if motivos else veredicto.get("resumen", "")
         pendiente = {
             "id": pid,
@@ -669,6 +714,8 @@ class Ejecutor:
             pendiente["remoto"] = True               # «Pedido desde Telegram» en la pregunta
         if oida:
             pendiente["llamada"] = True              # «Lo oí en la llamada» en la pregunta
+        if ofrecida:
+            pendiente["ofrecida"] = True             # «Te lo ofrecí yo…» en la pregunta
         turno = cat.valor_ctx(ctx, "turno")
         if turno:
             pendiente["turno"] = str(turno)          # el host enruta la pregunta a ese turno

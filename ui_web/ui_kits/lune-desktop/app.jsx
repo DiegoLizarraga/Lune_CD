@@ -24,6 +24,7 @@ const RE_MARCAS = [
   /(?<![<\w])(?<!<\s)>?\|(?:ACT|DELAY)\b[^|<>\n]{0,600}?\|(?!>)/g,       // |ACT …|
   /<(?:ACT|DELAY|CALL)\b[^<>\n]{0,600}?>/g,                              // <ACT …>
   /<\s+\|\s*(?:ACT|DELAY|CALL)\b[\s\S]{0,600}?\|>/gi,                    // < |CALL …|> (neutralizado)
+  /(?<![<\w])(?<!<\s)>?\|CALL\b[^|<>\n]{0,600}?\|>/g,                    // |CALL …|> (pegada a un ACT)
 ];
 const RE_MARCA_ABIERTA = /(?:<\|(?:\s*(?:ACT|DELAY|CALL)\b|[A-Za-z_]|$)|\|<(?:[A-Za-z_|]|$)|<(?:ACT|DELAY|CALL)\b)[^\n]{0,600}$/;
 function limpiarMarcadores(t) {
