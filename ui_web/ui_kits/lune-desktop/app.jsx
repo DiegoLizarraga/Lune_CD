@@ -96,8 +96,10 @@ function BgNube() {
 window.NubeSvg = NubeSvg;
 
 // Vistas a las que se puede ir con el evento de window 'lune-vista' (extra/alarmas.jsx: «Abrir alarmas»; cortes 9/10:
-// extra/bailes_mmd.jsx y extra/minecraft.jsx) o con la señal vista_pedida de window.luneEscenario (acción «Mis bailes»).
-const VISTAS_APP = ['chat', 'settings', 'personajes', 'memoria', 'historial', 'optimizar', 'tools', 'alarmas', 'bailes', 'minecraft'];
+// extra/bailes_mmd.jsx y extra/minecraft.jsx; 10.9: la entrada «Tareas» de la barra lateral) o con la señal vista_pedida
+// de window.luneEscenario (acción «Mis bailes»).
+const VISTAS_APP = ['chat', 'settings', 'personajes', 'memoria', 'historial', 'optimizar', 'tools', 'alarmas', 'bailes', 'minecraft',
+  'tareas'];
 // Cortes 7/8: caras que la página puede pedir a Lune de la barra con 'lune-mascota-cara' ({estado, ms}; la comida
 // de extra/vida.jsx: 'happy' al comer). Lo demás se ignora; la cara vuelve a «normal» a los ms (0.2–10 s).
 const CARAS_EVENTO = ['happy', 'surprised', 'wave', 'thinking', 'sad', 'angry', 'nervous', 'laughing', 'curious'];
@@ -464,7 +466,8 @@ function App() {
     <div className={`ln-app lune-backdrop${fx.bg?'':' fx-no-bg'}${fx.sweep?'':' fx-no-sweep'}${fx.micro?'':' fx-no-micro'}${provider==='cloud'?' tema-nube':''}`}>
       {fx.bg && <BgShards />}
       <window.Sidebar provider={provider} onProvider={setProvider} mascotState={mascot}
-        mascotaFuera={mascotaFuera} onTraer={toggleMascota} compat={compat} modoJuego={modoJuego} baile={baile} />
+        mascotaFuera={mascotaFuera} onTraer={toggleMascota} compat={compat} modoJuego={modoJuego} baile={baile}
+        vista={view} onTareas={() => setView('tareas')} />
       <main className="ln-main">
         {provider==='cloud' && <BgNube />}
         <Topbar provider={provider} status={status} view={view} onView={setView} onMenu={() => setMenuOpen(true)} />
@@ -478,6 +481,7 @@ function App() {
            : view === 'alarmas' && window.AlarmasPanel ? <window.AlarmasPanel />
            : view === 'bailes' && window.BailesPanel ? <window.BailesPanel />
            : view === 'minecraft' && window.MinecraftPanel ? <window.MinecraftPanel />
+           : view === 'tareas' && window.TareasPanel ? <window.TareasPanel />
            : <window.SettingsPanel voiceOn={voiceOn} onVoice={toggleVoz} fx={fx} setFxKey={setFxKey} />}
         </div>
         {view === 'chat' && (
@@ -489,6 +493,7 @@ function App() {
         { label:'Chat', desc:'Volver a la conversación', onClick:()=>setView('chat') },
         { label:'Ajustes', desc:'Configuración general', onClick:()=>setView('settings') },
         { label:'Personajes', desc:'Cambia el personaje activo', onClick:()=>setView('personajes') },
+        ...(window.TareasPanel ? [{ label:'Tareas', desc:'Mi día: lo que me pediste que te recordara', onClick:()=>setView('tareas') }] : []),
         { label:'Memoria', desc:'Nodos de memoria persistente', onClick:()=>setView('memoria') },
         { label:'Tools', desc:'Herramientas de escritorio', onClick:()=>setView('tools') },
         { label:'Historial', desc:'Conversaciones previas', onClick:()=>setView('historial') },

@@ -92,6 +92,7 @@ from PyQt6 import sip
 
 from nucleo.config import Config
 from nucleo.memoria import MemoriaManager
+from nucleo.respuestas import AVISO_MASCOTA_SIN_NUBE, BancoRespuestas
 from nucleo import datos, personajes, sueno, vrm
 from servicios.ai_manager import AIManager
 from servicios.ai_worker import AIWorker, ORIGEN_NO_CONFIABLE, ORIGEN_REMOTO, ORIGEN_USUARIO
@@ -294,6 +295,13 @@ class LuneBridge(QObject):
         self.memoria = memoria or MemoriaManager()
         self.tools = tools or ToolManager()
         self.voice = voice or VoiceEngine(self.config)
+        # Respuestas instantáneas sin modelo (saludos, gracias, hora, fecha, tus tareas…),
+        # como la nativa: antes la web mandaba hasta un «hola» al modelo.
+        try:
+            nombre_bot = datos.get_personaje(datos.get_bot().get("personaje_default", "Lune")).get("nombre", "Lune")
+        except Exception:
+            nombre_bot = "Lune"
+        self.banco = BancoRespuestas(nombre_asistente=nombre_bot, tareas=self._resumen_tareas)
         self._worker: AIWorker | None = None
         self._turno: dict = {}              # origen, ctx y si salió del chat de la mascota
         self._provider_web = "local"        # proveedor elegido en la página (para la mascota)
@@ -668,6 +676,26 @@ class LuneBridge(QObject):
         self.usuario_mascota.emit(texto)
         return self._enviar(texto, self._provider_web, desde_mascota=True)
 
+    def _respuesta_rapida(self, texto: str) -> str:
+        """Respuesta instantánea del banco (sin modelo) o "" si no aplica o está apagado
+        (Ajustes: respuestas_predeterminadas)."""
+        try:
+            if not self.config.feature("respuestas_predeterminadas", True):
+                return ""
+            self.banco.set_nombre_usuario(self.memoria.get_nombre_usuario())
+            return self.banco.responder(texto) or ""
+        except Exception:
+            return ""
+
+    def _resumen_tareas(self):
+        """Las tareas pendientes para «qué tareas tengo» (nucleo.tareas, sobre la MISMA
+        memoria que el panel de tareas). None si no hay módulo: la pregunta va a la IA."""
+        try:
+            from nucleo.tareas import resumen_de
+            return resumen_de(self.memoria)
+        except Exception:
+            return None
+
     def _tomar_lo_oido(self, texto: str) -> bool:
         """¿`texto` es lo último que transcribió el modo llamada? (La página lo mete en el
         chat y lo manda por `enviar`, como si lo hubieras escrito.) Cuenta una sola vez."""
@@ -728,6 +756,31 @@ class LuneBridge(QObject):
                 self._guardar_turno("assistant", resp_mem)
                 self._eco_mascota(resp_mem, fin=True, tipeado=True)
                 return True
+            # Respuestas instantáneas sin modelo. En el modo llamada no: ahí el turno lo
+            # habla el worker de la llamada y luego vuelve a escuchar.
+            rapida = self._respuesta_rapida(texto) if not oido and self._llamada is None else None
+            if rapida:
+                self.done.emit(rapida, "happy")
+                self._mascota_estado("happy")
+                self._guardar_turno("assistant", rapida)
+                self._eco_mascota(rapida, fin=True, tipeado=True)
+                try:
+                    if getattr(self.voice, "_enabled", False):
+                        self.voice.speak(rapida)
+                except Exception:
+                    pass
+                return True
+
+        # La mascota contesta solo con la nube (10.9): sin clave de OpenRouter lo dice
+        # (no cae al modelo local). Lo de arriba (órdenes, memoria, respuestas
+        # instantáneas) no necesita modelo y funciona igual.
+        if desde_mascota:
+            if not str(datos.openrouter_key() or "").strip():
+                self.done.emit(AVISO_MASCOTA_SIN_NUBE, "thinking")
+                self._guardar_turno("assistant", AVISO_MASCOTA_SIN_NUBE)
+                self._eco_mascota(AVISO_MASCOTA_SIN_NUBE, fin=True, tipeado=True)
+                return True
+            provider_id = "openrouter"
 
         try:
             contexto = self.memoria.obtener_contexto_para_prompt()
@@ -1348,6 +1401,7 @@ class LuneBridge(QObject):
             "voz": bool(getattr(self.voice, "_enabled", False)),
             "memoria": self.config.feature("guardar_conversaciones", True),
             "acciones_ia": self.config.feature("acciones_ia", True),
+            "respuestas_rapidas": self.config.feature("respuestas_predeterminadas", True),
             "mascota_render": str(self.config.get("avatar", "render", "animado") or "animado"),
             "interfaz_modo": str(self.config.get("interfaz", "modo", "web") or "web"),
             # Mascota 3D (VRM): qué hay instalado y cómo se muestra
@@ -1481,6 +1535,8 @@ class LuneBridge(QObject):
             self._compat_borrador = None             # ya está guardado: se prueba lo guardado
             if "memoria" in c: self.config.set_feature("guardar_conversaciones", bool(c["memoria"]))
             if "acciones_ia" in c: self.config.set_feature("acciones_ia", bool(c["acciones_ia"]))
+            if "respuestas_rapidas" in c:
+                self.config.set_feature("respuestas_predeterminadas", bool(c["respuestas_rapidas"]))
             # Órdenes desde Telegram: se aplican al (re)iniciar el bot (el token va al lanzarlo).
             if "telegram_ordenes_pc" in c and bool(c["telegram_ordenes_pc"]) != bool(
                     self.config.get("telegram", "ordenes_pc", False)):
@@ -1904,10 +1960,11 @@ class LuneBridge(QObject):
         except Exception:
             pass
         # Chat de la mascota (doble clic → cajita): entra por el flujo normal de la
-        # ventana con el proveedor elegido en la página (y precalienta si es Ollama).
+        # ventana, pero la mascota contesta SOLO con la nube (10.9): nada de precalentar
+        # el modelo local para ella.
         try:
             ov.on_chat = self.enviar_desde_mascota
-            ov.proveedor_chat = lambda: _provider_id(self._provider_web)
+            ov.proveedor_chat = lambda: "openrouter"
         except Exception:
             pass
         self._escritorio_mascota(ov)

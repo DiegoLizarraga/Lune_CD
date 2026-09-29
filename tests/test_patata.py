@@ -168,6 +168,9 @@ def crear(tmp_path, datos_tmp):
         out = io.StringIO()
         consola = ConsolaAsincrona("tú > ", stdout=out, stdin=entrada, api=ApiFalsa(), ansi=False)
         cfg = Config(str(tmp_path / "config.json"))
+        # Estos tests prueban el turno con el modelo («hola» incluido): sin respuestas
+        # instantáneas. Las instantáneas tienen sus propios tests (…_instantanea_…).
+        cfg.set("features", "respuestas_predeterminadas", bool(kw.pop("rapidas", False)))
         tm = tools if tools is not None else ToolManager()
         timers = []
         # Cortes 5/6 aparte (sus hilos: alarmas.json, audio, inactividad): tests/test_anfitriones_c56.py
@@ -709,7 +712,7 @@ def test_alarma_baile_salvapantallas_juego_y_aprobacion_conviven(tmp_path, datos
     try:
         p._poner_titulo()                                   # como correr() al empezar
         base = api.titulos[-1]
-        p.responder("hola")                                 # «¿Lo hago? [s/N]» pendiente
+        p.responder("ábreme la calculadora")                 # «¿Lo hago? [s/N]» pendiente
         assert consola.reclamada and p.ejecutor.pendientes()
         # Salvapantallas (10) y baile a mano (20; su línea viva reclama con -10).
         reloj[0] += 40
@@ -756,3 +759,23 @@ def test_alarma_baile_salvapantallas_juego_y_aprobacion_conviven(tmp_path, datos
     finally:
         entrada.put(None)
         p.cerrar()
+
+
+# ── 10.9: respuestas instantáneas también en patata ────────────────────────────────
+
+def test_instantanea_hola_sin_llamar_al_modelo(crear):
+    p = crear("NO DEBERÍA LLEGAR AL MODELO", rapidas=True)
+    p.responder("hola")
+    assert p.ai.system == "" and "NO DEBERÍA" not in p.out.getvalue()
+    p.responder("¿qué hora es?")
+    assert "Son las" in p.out.getvalue() and p.ai.system == ""
+
+
+def test_instantanea_mis_tareas_con_la_memoria_de_patata(crear, tmp_path):
+    from nucleo.memoria import MemoriaManager
+    from nucleo.tareas import Tareas
+    p = crear("NO DEBERÍA LLEGAR AL MODELO", rapidas=True)
+    p.memoria = MemoriaManager(path=tmp_path / "memoria.json")
+    Tareas(p.memoria).agregar("comprar pan")
+    p.responder("qué tareas tengo")
+    assert "comprar pan" in p.out.getvalue() and p.ai.system == ""

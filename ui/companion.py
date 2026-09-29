@@ -174,6 +174,7 @@ from lune_core import marcadores
 from lune_core.acciones import limpiar_texto
 from lune_core.frases_mascota import frases_para
 from lune_core.prompt import neutralizar_marcadores
+from nucleo.respuestas import AVISO_MASCOTA_SIN_NUBE, COMENTARIO_VACIO
 
 PAGINAS = {"animado": "companion.html", "vrm": "companion_vrm.html"}
 RUTA_MODELO = "/vrm/actual.vrm"          # el .vrm activo, publicado por el http local
@@ -544,6 +545,9 @@ _PROMPT_VENTANA = (
     "como lo haría una compañera ingeniosa. Si no da para mucho, suelta algo ligero."
 )
 _PREFIJOS_ERROR = ("Error Ollama:", "Error OpenRouter:", "Error:")
+# 10.9: la mascota comenta solo con la nube. La primera vez que un comentario manual
+# sube la captura, se avisa (los automáticos nunca la suben: van por el título).
+_AVISO_CAPTURA_NUBE = "Para mirar tu pantalla mando una captura a la nube (OpenRouter)."
 _AVISO_SIN_VISION_NUBE = "Tu modelo local no ve imágenes; para la pantalla uso la nube."
 _AVISO_SIN_VISION_TEXTO = ("Tu modelo local no ve imágenes: comento por la ventana activa. "
                            "Con «ollama pull llava» (u otro con visión) vería la pantalla.")
@@ -1484,6 +1488,12 @@ class CompanionFlotante(QMainWindow):
             if not automatico and self.isVisible() and self._pagina_lista and not self._burbuja_ocupada():
                 self._js(f"window.comentar && window.comentar({_js_str(_AVISO_JUEGO)}, {MS_AVISO_JUEGO})")
             return
+        if not str(datos.openrouter_key() or "").strip():
+            # Solo nube (10.9): sin clave, el manual lo dice (y dónde ponerla); el
+            # automático calla para no insistir cada pocos minutos. Nunca el modelo local.
+            if not automatico:
+                self._decir(AVISO_MASCOTA_SIN_NUBE, "thinking")
+            return
         self._despertar()
         # La captura, antes de ponerse a «pensar» (que no salga en ella); si al final
         # el comentario va sin imagen, se tira aquí mismo.
@@ -1497,9 +1507,13 @@ class CompanionFlotante(QMainWindow):
         self._sondear()
 
     def _sondear(self):
-        """¿Ollama responde y su modelo ve imágenes? Con Ollama apagado o remoto eso
-        tarda hasta 3 + 3 s: se pregunta en un hilo (la mascota no se congela) y el
-        comentario sigue en _on_sondeo con la respuesta."""
+        """10.9: la mascota comenta solo con la nube, así que ya no se sondea Ollama
+        (con él apagado eran hasta 3 + 3 s de espera): sigue directo en _on_sondeo.
+        `_sondear_ollama` queda por si vuelve a hacer falta."""
+        self._on_sondeo({"local": False})
+
+    def _sondear_ollama(self):
+        """(Sin uso desde 10.9.) ¿Ollama responde y su modelo ve imágenes? En un hilo."""
         modelo = datos.ollama_model()
         if not modelo:
             self._on_sondeo({"local": False})
@@ -1547,7 +1561,16 @@ class CompanionFlotante(QMainWindow):
     # ── Proveedor con fallback ───────────────────────────────────────────────────
     def _elegir_proveedor(self, sondeo=None, automatico: bool = False):
         """
-        (proveedor, con_imagen) según el sondeo de Ollama ({local, ok, vision}):
+        10.9 (Diego): la mascota responde SOLO con la nube. El manual manda la captura
+        (avisando la primera vez); el automático, nunca: solo el título de la ventana.
+        """
+        if not automatico:
+            self._avisar_una_vez(_AVISO_CAPTURA_NUBE)
+        return "openrouter", not automatico
+
+    def _elegir_proveedor_local(self, sondeo=None, automatico: bool = False):
+        """
+        (Sin uso desde 10.9.) (proveedor, con_imagen) según el sondeo de Ollama ({local, ok, vision}):
           · Ollama responde y su modelo VE imágenes → Ollama con captura (100 % local).
           · Ollama responde pero el modelo es de solo texto → manual: la nube con
             captura si hay clave (avisando una vez); si no —o si es automático—,
@@ -1666,7 +1689,10 @@ class CompanionFlotante(QMainWindow):
         except Exception:
             hablable, acts = respuesta, []
         estado = EMOCION_A_ESTADO.get(acts[-1].get("emotion"), "happy") if acts else "happy"
-        self._decir((hablable or "").strip() or "…", estado)
+        texto = (hablable or "").strip()
+        if texto.strip(" .…") == "":
+            texto, estado = COMENTARIO_VACIO, "thinking"
+        self._decir(texto, estado)
 
     def _on_error(self, msg):
         self._fallo(str(msg or ""))

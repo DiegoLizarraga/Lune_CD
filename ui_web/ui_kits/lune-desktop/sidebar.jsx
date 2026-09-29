@@ -20,6 +20,11 @@
  *     cabeza de Lune para el acierto de ComidaWeb (extra/vida.jsx). En VRM, el hueso de la cabeza (+0.1 m, como
  *     Mate-Engine) proyectado, r = 0.22·ancho; en vídeo, la misma fórmula que companion.html (luneCabeza) con el
  *     encuadre de la barra (object-fit: cover, abajo al centro). Solo la registra el escenario a la vista.
+ *
+ * Tareas (10.9): la entrada «Tareas» (TareasAcceso), siempre a la vista, con las pendientes de hoy (Mi día) y el
+ * total, de window.luneTareas (ui/puente_tareas.py: estado() y la señal cambio, así se actualiza sola cuando Lune
+ * anota algo desde el chat). Abre la vista «tareas» (extra/tareas.jsx) con `onTareas` o, sin él, con el evento de
+ * window 'lune-vista'. Sin el objeto (navegador, backend viejo) queda como un acceso sin número.
  */
 
 // PNG estático (respaldo si el video de un estado aún no existe).
@@ -313,7 +318,69 @@ function MascotFuera({ onTraer }) {
   );
 }
 
-function Sidebar({ provider, onProvider, mascotState, mascotaFuera = false, onTraer, compat = null, modoJuego = false, baile = null }) {
+// ── Tareas (10.9): acceso siempre a la vista con las pendientes de hoy ───────
+/** {hoy, total, ok} de lo que manda window.luneTareas (estado() o la señal cambio); null si no vale. */
+function contadorTareas(j) {
+  let o = j;
+  if (typeof o === 'string') { try { o = JSON.parse(o); } catch (e) { return null; } }
+  if (!o || typeof o !== 'object') return null;
+  const c = o.contador && typeof o.contador === 'object' ? o.contador : {};
+  const n = (v) => (typeof v === 'number' && isFinite(v) && v >= 0 ? Math.floor(v) : 0);
+  const hoy = n(c.hoy);
+  return { hoy, total: Math.max(hoy, n(c.total)), ok: o.disponible === true };
+}
+/** «3 para hoy · 5 en total» (lo mismo que LuneTareas.textoContador de extra/tareas.jsx). */
+function textoTareas(c) {
+  if (!c || !c.ok) return 'Mi día';
+  if (!c.total) return 'Nada pendiente';
+  if (!c.hoy) return c.total === 1 ? '1 pendiente' : `${c.total} pendientes`;
+  return `${c.hoy} para hoy` + (c.total > c.hoy ? ` · ${c.total} en total` : '');
+}
+const IconoTareas = (p) => React.createElement('svg', { width: 20, height: 20, viewBox: '0 0 24 24', fill: 'none',
+  stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': 'true', ...p },
+  React.createElement('circle', { key: 0, cx: 12, cy: 12, r: 9 }),
+  React.createElement('path', { key: 1, d: 'M8 12.2l2.8 2.8L16.4 9.3' }));
+
+function TareasAcceso({ activo = false, onAbrir }) {
+  const [c, setC] = React.useState(null);
+  React.useEffect(() => {
+    let vivo = true, senal = null;
+    const poner = (j) => { const n = contadorTareas(j); if (vivo && n) setC(n); };
+    const cablear = () => {
+      const t = window.luneTareas;
+      if (!t) return;
+      if (typeof t.estado === 'function') { try { t.estado(poner); } catch (e) { /* sin puente */ } }
+      if (t.cambio && typeof t.cambio.connect === 'function') {
+        try { t.cambio.connect(poner); senal = t.cambio; } catch (e) { /* puente viejo */ }
+      }
+    };
+    if (window.luneTareas) cablear(); else window.addEventListener('lune-ready', cablear, { once: true });
+    return () => {
+      vivo = false;
+      window.removeEventListener('lune-ready', cablear);
+      if (senal) { try { senal.disconnect(poner); } catch (e) { /* ya no está */ } }
+    };
+  }, []);
+  const abrir = () => {
+    if (typeof onAbrir === 'function') { onAbrir(); return; }
+    try { window.dispatchEvent(new window.CustomEvent('lune-vista', { detail: 'tareas' })); } catch (e) { /* sin eventos */ }
+  };
+  const hoy = c && c.ok ? c.hoy : 0;
+  return (
+    <button type="button" className={`ln-tareas-acc${activo ? ' is-active' : ''}${hoy ? ' has-pend' : ''}`} onClick={abrir}
+      aria-pressed={activo} title="Tus tareas: Mi día y lo que me pediste que te recordara">
+      <span className="ln-tareas-acc-ic"><IconoTareas /></span>
+      <span className="ln-tareas-acc-tx">
+        <span className="ln-tareas-acc-nom">Tareas</span>
+        <span className="ln-tareas-acc-desc">{textoTareas(c)}</span>
+      </span>
+      {c && c.ok ? <span className="ln-tareas-acc-num" aria-label={`${hoy} pendientes hoy`}>{hoy}</span> : null}
+    </button>
+  );
+}
+
+function Sidebar({ provider, onProvider, mascotState, mascotaFuera = false, onTraer, compat = null, modoJuego = false, baile = null,
+  vista = '', onTareas }) {
   const { ProviderTab } = window.LUNE;
   // Tercera pestaña: API compatible con OpenAI (LM Studio, Groq…), solo si está configurada.
   const conCompat = !!(compat && compat.on);
@@ -354,6 +421,9 @@ function Sidebar({ provider, onProvider, mascotState, mascotaFuera = false, onTr
         )}
       </div>
 
+      <div className="ln-sec-label">// Mi día</div>
+      <TareasAcceso activo={vista === 'tareas'} onAbrir={onTareas} />
+
       <div className="ln-mascot">
         <div className={`ln-mascot-stage${mascotaFuera ? ' is-out' : ''}`} onContextMenu={abrirRadial}
           onMouseDown={centralAbajo} onMouseUp={centralArriba}>
@@ -366,4 +436,4 @@ function Sidebar({ provider, onProvider, mascotState, mascotaFuera = false, onTr
   );
 }
 window.Sidebar = Sidebar;
-window.LuneBarra = { normalizarVrmBarra, claveVrm, cabezaVideo, cabezaVrm };
+window.LuneBarra = { normalizarVrmBarra, claveVrm, cabezaVideo, cabezaVrm, contadorTareas, textoTareas };

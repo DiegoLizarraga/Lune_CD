@@ -35,6 +35,14 @@ _MESES = [
 ]
 
 
+# ── Frases fijas de la mascota (10.9: la mascota responde solo con la nube) ─────
+# Sin clave de OpenRouter la mascota no cae al modelo local: lo dice y dónde ponerla.
+AVISO_MASCOTA_SIN_NUBE = ("Desde la mascota solo hablo con la nube y no tengo clave de "
+                          "OpenRouter. Ponla en AJUSTES → Red Neuronal y seguimos.")
+# El comentario de pantalla llegó vacío (solo marcas, o nada): antes se quedaba en «…».
+COMENTARIO_VACIO = "Mmm… nada me pareció interesante."
+
+
 def _saludo_segun_hora() -> str:
     h = datetime.now().hour
     if 5 <= h < 12:
@@ -49,10 +57,14 @@ class BancoRespuestas:
 
     def __init__(self, nombre_asistente: str = "Lune",
                  categorias_desactivadas: Optional[set] = None,
-                 nombre_usuario: Optional[str] = None):
+                 nombre_usuario: Optional[str] = None,
+                 tareas: Optional[Callable[[], str]] = None):
+        """`tareas`: devuelve el resumen de las tareas pendientes (nucleo.tareas); sin
+        él, «qué tareas tengo» sigue hacia la IA."""
         self.nombre = nombre_asistente or "Lune"
         self.desactivadas = categorias_desactivadas or set()
         self.nombre_usuario = nombre_usuario
+        self.tareas = tareas
         self._reglas = self._construir_reglas()
 
     # ── API pública ────────────────────────────────────────────────────────────
@@ -77,7 +89,10 @@ class BancoRespuestas:
                 continue
             for patron in patrones:
                 if patron.fullmatch(normal) or patron.fullmatch(limpio):
-                    return generador()
+                    respuesta = generador()
+                    if respuesta:                # un generador sin datos deja pasar a la IA
+                        return respuesta
+                    break
         return None
 
     # ── Helpers de personalidad ────────────────────────────────────────────────
@@ -177,6 +192,14 @@ class BancoRespuestas:
             "Qué lindo. Aquí estaré siempre para ayudarte.",
         ])
 
+    def _r_tareas(self) -> Optional[str]:
+        if self.tareas is None:
+            return None
+        try:
+            return str(self.tareas() or "").strip() or None
+        except Exception:
+            return None
+
     def _r_ayuda(self) -> str:
         return (
             "¡Claro que sí! Algunas cosas que puedes pedirme:\n"
@@ -196,6 +219,16 @@ class BancoRespuestas:
     def _construir_reglas(self):
         # Orden importa: lo más específico primero.
         reglas: List = [
+            # Las tareas que dejaste anotadas (nucleo.tareas), sin gastar el modelo.
+            ("tareas", self._p(
+                r"(qu[eé] )?tareas tengo( pendientes| hoy)?",
+                r"(cu[aá]les son )?mis (tareas|pendientes)( de hoy)?",
+                r"qu[eé] tengo pendiente( hoy| para hoy)?",
+                r"qu[eé] (tengo que|me toca) hacer( hoy)?",
+                r"(mi |la )?lista de tareas",
+                r"qu[eé] hay (pendiente|en mi d[ií]a)",
+            ), self._r_tareas),
+
             ("que_tal", self._p(
                 r"(c[oó]mo|que) (est[aá]s|andas|te va|te encuentras|vas)",
                 r"qu[eé] (tal|onda|hubo|pasa|hay)",

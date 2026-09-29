@@ -44,7 +44,7 @@ from test_anfitriones_corte4 import ajustes, entorno, sistema  # noqa: E402,F401
 from test_anfitriones_c78_int import patata_c78  # noqa: E402,F401  (fixture)
 from nucleo.config import Config  # noqa: E402
 
-CANAL_C910 = ["alarmas", "escenario", "escritorio", "lune", "musica", "vida"]
+CANAL_C910 = ["alarmas", "escenario", "escritorio", "lune", "musica", "tareas", "vida"]
 ACCIONES = ("bailes", "minecraft", "minecraft_bot")
 HERRAMIENTAS = ("listar_bailes", "minecraft_estado", "minecraft_orden", "minecraft_bot")
 

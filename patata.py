@@ -56,6 +56,8 @@ veces, una frase al despertar (lune_core/frases_mascota).
 Comandos:
   /ayuda                        esta ayuda
   /memoria · /olvida <texto>    lo que Lune recuerda de ti
+  /tareas [texto] · /tareas hecha N · /tareas quita N   tus tareas (las de Mi día primero):
+                                sin nada las lista numeradas, con texto anota una en Mi día
   /personaje [nombre]           ver o cambiar de personaje
   /proveedor [ollama|openrouter|compat]   con qué cerebro respondo (/local, /nube)
   /modelo [nombre]              ver o cambiar el modelo del proveedor actual
@@ -432,6 +434,28 @@ class Patata:
         except Exception:
             return defecto
 
+    _banco = None
+
+    def _respuesta_rapida(self, texto: str) -> str:
+        """Respuesta instantánea del banco (sin modelo) o "" si no aplica o está apagado
+        (Ajustes: respuestas_predeterminadas). «qué tareas tengo» usa la memoria de patata."""
+        if not self._feature("respuestas_predeterminadas", True):
+            return ""
+        try:
+            if self._banco is None:
+                from nucleo.respuestas import BancoRespuestas
+                from nucleo.tareas import resumen_de
+                nombre = (personajes.get_activo() or {}).get("nombre", "Lune")
+                self._banco = BancoRespuestas(nombre_asistente=nombre,
+                                              tareas=lambda: resumen_de(self.memoria))
+            try:
+                self._banco.set_nombre_usuario(self.memoria.get_nombre_usuario())
+            except Exception:
+                self._banco.set_nombre_usuario(None)
+            return self._banco.responder(texto) or ""
+        except Exception:
+            return ""
+
     def _texto_prompt(self) -> str:
         c = self.c
         texto = str(self._cfg("patata", "prompt", "tú > ") or "tú > ").rstrip()
@@ -793,6 +817,14 @@ class Patata:
         if r:
             self._p(self._lune(":D", r) + "\n"); return
 
+        # Respuestas instantáneas sin modelo (saludos, hora, fecha, tus tareas…), como en
+        # las ventanas: antes patata mandaba hasta un «hola» al modelo.
+        rapida = self._respuesta_rapida(texto)
+        if rapida:
+            self._p(self._lune(":D", rapida) + "\n")
+            self._hablar(rapida)
+            return
+
         ctx = self._ctx()
         momento = datetime.now()
         if isinstance(ctx, dict):          # para el cotejo del Ejecutor (duraciones y horas tuyas)
@@ -1027,6 +1059,7 @@ class Patata:
             "/caritas": self._cmd_caritas,
             "/juego": self._cmd_juego,
             "/ram": self._cmd_ram,
+            "/tareas": self._cmd_tareas,
         }
         if cmd == "/limpiar":
             self.nueva_conversacion()
@@ -1276,6 +1309,60 @@ class Patata:
         if error:
             return error
         return self._lune(":D", f"Caritas {estilo}.")
+
+    # Tareas (10.9): las de memoria.json (nucleo/tareas.Tareas sobre ESTA memoria; la app de ventanas
+    # tiene su propio MemoriaManager y la memoria se recarga sola si la otra escribió el archivo).
+    def _tareas(self):
+        if getattr(self, "_tareas_obj", None) is None:
+            from nucleo import tareas as nt
+            self._tareas_obj = nt.Tareas(self.memoria) if nt.disponible(self.memoria) else False
+        return self._tareas_obj or None
+
+    def _cmd_tareas(self, arg: str = "") -> str:
+        t = self._tareas()
+        if t is None:
+            return "Las tareas no están disponibles aquí (esta memoria no las guarda)."
+        a = (arg or "").strip()
+        m = re.fullmatch(r"(hecha|hecho|lista|quita|quitar|borra|borrar)\s+#?(\d{1,4})", a, re.IGNORECASE)
+        if m:
+            pend = t.pendientes()
+            n = int(m.group(2))
+            if not 1 <= n <= len(pend):
+                return (f"No hay tarea {n}. Mira la lista con /tareas." if pend
+                        else "No tienes tareas pendientes. Anota una con /tareas <texto>.")
+            tarea = pend[n - 1]
+            if m.group(1).lower() in ("hecha", "hecho", "lista"):
+                t.completar(tarea["id"], True)
+                quedan = len(pend) - 1
+                cola = f" Te quedan {quedan}." if quedan else " ¡No te queda ninguna!"
+                return self._lune(":D", f"Hecha: {una_linea(tarea['texto'], 120)}.{cola}")
+            t.quitar(tarea["id"])
+            return f"Quitada: {una_linea(tarea['texto'], 120)}."
+        if a:
+            try:
+                nueva = t.agregar(a, mi_dia=True)
+            except ValueError:
+                return "¿Qué anoto? /tareas <texto>"
+            return self._lune(":)", f"Anotada en Mi día: {una_linea(nueva['texto'], 120)}.")
+        return self._lista_tareas(t)
+
+    @staticmethod
+    def _lista_tareas(t) -> str:
+        pend = t.pendientes()
+        if not pend:
+            return "No tienes tareas pendientes. ¡Día libre! Anota una con /tareas <texto>."
+        md = t.mi_dia()
+        lineas = [f"Tus tareas · {md['fecha_larga']}"]
+        hoy = [x for x in pend if x["en_mi_dia"]]
+        if hoy:
+            lineas.append(" Mi día")
+        for i, x in enumerate(pend, 1):
+            if i == len(hoy) + 1:
+                lineas.append(" Otras pendientes")
+            lista = "" if x["lista"] == "Tareas" else f"  · {x['lista']}"
+            lineas.append(f"  {i:>2}. {una_linea(x['texto'], 120)}{lista}")
+        lineas.append("/tareas <texto> anota · /tareas hecha N · /tareas quita N")
+        return "\n".join(lineas)
 
     def _cmd_ram(self, arg: str = "") -> str:
         fn = self._recortar_fn

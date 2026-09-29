@@ -26,7 +26,8 @@ Estructura de memoria.json:
   "usuario": { "nombre": "...", "preferencias": [...], "contexto": "..." },
   "recuerdos": [
     { "id": "uuid", "fecha": "ISO-8601", "tipo": "hecho|preferencia|recordatorio|tarea",
-      "contenido": "...", "tags": [...] }
+      "contenido": "...", "tags": [...],
+      "hecha": false, "hecha_en": "ISO", "mi_dia": "AAAA-MM-DD" }   # opcionales: tareas (10.9)
   ],
   "datos_clave": { "edad": "30", ... },       # compartido con el bot de Telegram
   "resumen_sesion_anterior": "...",
@@ -42,14 +43,41 @@ Uso desde main.py:
 
 Comandos del usuario (requieren la barra, para no comerse frases normales):
     /memoria · /recuerdos · /olvida [id] · /olvida todo
+
+TAREAS (10.9, nucleo/tareas.py)
+-------------------------------
+Los recuerdos de tipo "tarea" y "recordatorio" son la lista de tareas del panel
+«Tareas» (estilo Microsoft To Do) y de /tareas en patata. Para eso la memoria sabe:
+  · buscar_recuerdo(id), actualizar_recuerdo(id, **campos), quitar_recuerdo(id): por id,
+    sin pasar por /olvida (que busca también por texto);
+  · al_cambiar(fn) → quitar: fn(motivo) tras cada cambio de recuerdos (agregar,
+    actualizar, olvidar, olvidar todo, el «recuerda que…» del chat o una recarga del
+    disco). Se llama en el hilo que hizo el cambio; un oyente que falla no rompe nada;
+  · _sincronizar(): patata y la app son dos procesos con su propio MemoriaManager. Si
+    memoria.json cambió en disco desde la última carga/guardado (mtime, tamaño e índice), se
+    recarga ANTES de modificar (y al leer tareas o el contexto), para no pisar lo que
+    anotó el otro. Un archivo a medio escribir no se recarga (se queda lo que había) y el
+    guardado es atómico (temporal + os.replace), así el otro nunca lee medio JSON.
+Las tareas hechas no van al system prompt como si estuvieran pendientes.
 """
 
 import json
+import logging
+import os
+import tempfile
+import threading
+import time
 import uuid
 import re
 from pathlib import Path
 from datetime import datetime
-from typing import Optional
+from typing import Callable, Optional
+
+_log = logging.getLogger("lune.memoria")
+
+_REINTENTOS_REEMPLAZO = 5           # os.replace con el archivo abierto por el otro proceso (Windows)
+_PAUSA_REEMPLAZO_S = 0.02
+_TIPOS_TAREA = ("tarea", "recordatorio")
 
 
 MEMORIA_PATH = Path(__file__).parent.parent / "memoria.json"
@@ -135,8 +163,26 @@ def mensajes_aproximados(total) -> int:
 class MemoriaManager:
     """Gestor de memoria personal persistente entre sesiones."""
 
+    # Valores por defecto de clase: una instancia hecha con __new__ (algún test arma una
+    # memoria así, solo con _data) sigue funcionando para leer.
+    path: Optional[Path] = None
+    _firma: Optional[tuple] = None
+    _mensajes_sin_guardar = 0
+    _oyentes: tuple = ()
+
+    @property
+    def _lock(self) -> "threading.RLock":
+        """El candado de esta instancia (se crea al primer uso; setdefault es atómico)."""
+        candado = self.__dict__.get("_candado")
+        if candado is None:
+            candado = self.__dict__.setdefault("_candado", threading.RLock())
+        return candado
+
     def __init__(self, path: Path = MEMORIA_PATH):
-        self.path = path
+        self.path = Path(path)
+        self._oyentes: list = []                  # al_cambiar(fn): fn(motivo)
+        self._firma: Optional[tuple] = None       # (mtime_ns, tamaño, índice) tras la última carga/guardado
+        self._mensajes_sin_guardar = 0            # total_mensajes contados y aún no escritos
         self._data = self._cargar()
         self._mensajes_sesion: int = 0
         self._recuerdos_nuevos_sesion: list[str] = []
@@ -144,24 +190,127 @@ class MemoriaManager:
 
     # ── Carga / guardado ─────────────────────────────────────────────────────
 
+    def _firma_disco(self) -> Optional[tuple]:
+        try:
+            st = os.stat(self.path)
+        except OSError:
+            return None
+        # st_ino: cada guardado atómico deja un archivo nuevo (otro índice en NTFS), así dos
+        # escrituras en el mismo tic del reloj y con el mismo tamaño también se distinguen.
+        return (st.st_mtime_ns, st.st_size, st.st_ino)
+
+    def _leer_disco(self) -> Optional[dict]:
+        """memoria.json con las secciones que falten rellenas; None si no está o no es JSON."""
+        try:
+            data = json.loads(self.path.read_text("utf-8"))
+        except Exception:
+            return None
+        if not isinstance(data, dict):
+            return None
+        # Rellena secciones que falten en memorias de versiones viejas
+        for clave, valor in self._estructura_vacia().items():
+            data.setdefault(clave, valor)
+        if not isinstance(data.get("recuerdos"), list):
+            data["recuerdos"] = []
+        return data
+
     def _cargar(self) -> dict:
         if self.path.exists():
-            try:
-                data = json.loads(self.path.read_text("utf-8"))
-                # Rellena secciones que falten en memorias de versiones viejas
-                base = self._estructura_vacia()
-                for clave, valor in base.items():
-                    data.setdefault(clave, valor)
+            firma = self._firma_disco()
+            data = self._leer_disco()
+            if data is not None:
+                self._firma = firma
                 return data
-            except Exception:
-                pass
         return self._estructura_vacia()
 
     def _guardar(self):
-        self.path.write_text(
-            json.dumps(self._data, ensure_ascii=False, indent=2),
-            encoding="utf-8"
-        )
+        with self._lock:
+            texto = json.dumps(self._data, ensure_ascii=False, indent=2)
+            self._escribir(texto)
+            self._firma = self._firma_disco()
+            self._mensajes_sin_guardar = 0
+
+    def _escribir(self, texto: str) -> None:
+        """Atómico (temporal en la misma carpeta + os.replace): el otro proceso (patata o la
+        app) nunca lee medio JSON. Si el reemplazo no se deja (archivo abierto por otro en
+        Windows, reintentos agotados), se escribe directamente como siempre."""
+        tmp = None
+        try:
+            carpeta = self.path.parent
+            fd, tmp = tempfile.mkstemp(prefix=f".{self.path.name}.", suffix=".tmp", dir=str(carpeta))
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(texto)
+            for intento in range(_REINTENTOS_REEMPLAZO):
+                try:
+                    os.replace(tmp, self.path)
+                    tmp = None
+                    return
+                except PermissionError:
+                    if intento < _REINTENTOS_REEMPLAZO - 1:
+                        time.sleep(_PAUSA_REEMPLAZO_S)
+        except OSError as e:
+            _log.warning("memoria: no pude guardar de forma atómica (%s); escribo directamente", e)
+        finally:
+            if tmp is not None:
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
+        self.path.write_text(texto, encoding="utf-8")
+
+    def _sincronizar(self) -> bool:
+        """Si memoria.json cambió en disco desde la última carga/guardado (patata y la app
+        son dos procesos que lo escriben), lo recarga. Devuelve True si recargó. Un archivo
+        a medio escribir o roto no se recarga: se queda lo que había. Los mensajes contados
+        y aún sin guardar se suman al total recargado. Avisa a los oyentes («recargar») si
+        cambiaron los recuerdos."""
+        if self.path is None:
+            return False
+        with self._lock:
+            firma = self._firma_disco()
+            if firma is None or firma == self._firma:
+                return False
+            data = self._leer_disco()
+            if data is None:
+                return False
+            antes = self._data.get("recuerdos")
+            if self._mensajes_sin_guardar:
+                stats = data.setdefault("estadisticas", {})
+                try:
+                    stats["total_mensajes"] = int(stats.get("total_mensajes", 0) or 0) + self._mensajes_sin_guardar
+                except (TypeError, ValueError):
+                    pass
+            self._data = data
+            self._firma = firma
+            cambio = data.get("recuerdos") != antes
+        if cambio:
+            self._avisar("recargar")
+        return True
+
+    # ── Oyentes (el panel de tareas se refresca solo) ───────────────────────
+
+    def al_cambiar(self, fn: Callable[[str], None]) -> Callable[[], None]:
+        """fn(motivo) tras cada cambio de recuerdos: «agregar», «actualizar», «olvidar»,
+        «olvidar_todo» o «recargar» (memoria.json cambió en disco). Se llama en el hilo
+        que hizo el cambio. Devuelve la función para darse de baja."""
+        with self._lock:
+            if fn not in self._oyentes:
+                self._oyentes = [*self._oyentes, fn]
+        return lambda: self.quitar_oyente(fn)
+
+    def quitar_oyente(self, fn) -> None:
+        with self._lock:
+            self._oyentes = [f for f in self._oyentes if f is not fn and f != fn]
+
+    def _avisar(self, motivo: str) -> None:
+        """Fuera del candado: un oyente puede volver a leer la memoria."""
+        with self._lock:
+            oyentes = list(self._oyentes)
+        for fn in oyentes:
+            try:
+                fn(motivo)
+            except Exception:
+                _log.exception("memoria: un oyente de al_cambiar falló (%s)", motivo)
 
     def _estructura_vacia(self) -> dict:
         ahora = datetime.now().isoformat()
@@ -190,15 +339,19 @@ class MemoriaManager:
     def obtener_contexto_para_prompt(self) -> str:
         """
         Devuelve un bloque de texto listo para insertar en el system prompt.
-        Resume lo que Lune sabe del usuario sin saturar el contexto.
+        Resume lo que Lune sabe del usuario sin saturar el contexto. Las tareas ya
+        hechas no entran (no son pendientes). Sin horas ni contadores nuevos: el texto
+        es estable entre mensajes (caché de prefijo del modelo).
         """
+        self._sincronizar()
         partes = []
         usuario = self._data.get("usuario", {})
 
         if nombre := usuario.get("nombre"):
             partes.append(f"El usuario se llama {nombre}.")
 
-        recuerdos = self._data.get("recuerdos", [])
+        recuerdos = [r for r in self._data.get("recuerdos", [])
+                     if not (r.get("tipo") in _TIPOS_TAREA and r.get("hecha") is True)]
         if recuerdos:
             # Últimos 15 recuerdos ordenados por fecha desc
             recientes = sorted(recuerdos, key=lambda r: r["fecha"], reverse=True)[:15]
@@ -247,10 +400,13 @@ class MemoriaManager:
         Devuelve None para conversación normal — incluso si de paso se extrajo
         algún dato de perfil, que se guarda en silencio.
         """
+        self._sincronizar()                     # patata o la otra ventana pudieron anotar algo
         self._mensajes_sesion += 1
-        self._data["estadisticas"]["total_mensajes"] = (
-            self._data["estadisticas"].get("total_mensajes", 0) + 1
-        )
+        with self._lock:
+            self._data["estadisticas"]["total_mensajes"] = (
+                self._data["estadisticas"].get("total_mensajes", 0) + 1
+            )
+            self._mensajes_sin_guardar += 1
 
         texto = (mensaje or "").strip()
         msg_lower = texto.lower()
@@ -320,6 +476,7 @@ class MemoriaManager:
         Persiste el estado tras recibir una respuesta completa.
         Llamar después de cada respuesta de Lune.
         """
+        self._sincronizar()                     # no pisar lo que anotó el otro proceso
         self._guardar()
 
     def agregar_recuerdo(
@@ -327,8 +484,11 @@ class MemoriaManager:
         contenido: str,
         tipo: str = "general",
         tags: Optional[list] = None,
+        **campos,
     ) -> str:
-        """Agrega un recuerdo manualmente. Devuelve su ID."""
+        """Agrega un recuerdo manualmente. Devuelve su ID. `campos` (opcionales, p. ej.
+        los de las tareas: fecha, hecha, hecha_en, mi_dia) van también al recuerdo."""
+        self._sincronizar()
         rid = str(uuid.uuid4())[:8]
         recuerdo = {
             "id": rid,
@@ -337,16 +497,56 @@ class MemoriaManager:
             "contenido": contenido,
             "tags": tags or [],
         }
-        self._data["recuerdos"].append(recuerdo)
-        self._recuerdos_nuevos_sesion.append(rid)
-        self._guardar()
+        recuerdo.update({k: v for k, v in campos.items() if k != "id"})
+        with self._lock:
+            self._data["recuerdos"].append(recuerdo)
+            self._recuerdos_nuevos_sesion.append(rid)
+            self._guardar()
+        self._avisar("agregar")
         return rid
+
+    def buscar_recuerdo(self, rid: str) -> Optional[dict]:
+        """El recuerdo con ese id exacto (el dict vivo de la memoria) o None."""
+        self._sincronizar()
+        with self._lock:
+            return next((r for r in self._data.get("recuerdos", [])
+                         if isinstance(r, dict) and r.get("id") == rid), None)
+
+    def actualizar_recuerdo(self, rid: str, **campos) -> Optional[dict]:
+        """Cambia campos de un recuerdo (no su id) y guarda. Devuelve el recuerdo o None
+        si no existe. Recarga antes del disco si el otro proceso lo tocó."""
+        self._sincronizar()
+        with self._lock:
+            r = next((x for x in self._data.get("recuerdos", [])
+                      if isinstance(x, dict) and x.get("id") == rid), None)
+            if r is None:
+                return None
+            r.update({k: v for k, v in campos.items() if k != "id"})
+            self._guardar()
+            copia = dict(r)
+        self._avisar("actualizar")
+        return copia
+
+    def quitar_recuerdo(self, rid: str) -> Optional[dict]:
+        """Borra el recuerdo con ese id exacto (sin buscar por texto como /olvida).
+        Devuelve el borrado o None."""
+        self._sincronizar()
+        with self._lock:
+            recuerdos = self._data.get("recuerdos", [])
+            idx = next((i for i, x in enumerate(recuerdos) if isinstance(x, dict) and x.get("id") == rid), None)
+            if idx is None:
+                return None
+            borrado = recuerdos.pop(idx)
+            self._guardar()
+        self._avisar("olvidar")
+        return borrado
 
     def cerrar_sesion(self, resumen: str = ""):
         """
         Llama esto al cerrar la app.
         Guarda el resumen de la sesión actual como contexto para la próxima.
         """
+        self._sincronizar()
         if resumen:
             self._data["resumen_sesion_anterior"] = resumen[:500]
         self._data["estadisticas"]["ultima_sesion"] = datetime.now().isoformat()
@@ -356,6 +556,7 @@ class MemoriaManager:
         return self._data.get("usuario", {}).get("nombre")
 
     def get_todos_recuerdos(self) -> list:
+        self._sincronizar()
         return self._data.get("recuerdos", [])
 
     def get_stats(self) -> dict:
@@ -364,6 +565,7 @@ class MemoriaManager:
     # ── Comandos internos ─────────────────────────────────────────────────────
 
     def _cmd_listar(self) -> str:
+        self._sincronizar()
         recuerdos = self._data.get("recuerdos", [])
         usuario = self._data.get("usuario", {})
         datos_clave = self._data.get("datos_clave", {})
@@ -392,7 +594,8 @@ class MemoriaManager:
             lineas.append(f"\n{emoji} **{tipo.capitalize()}:**")
             for r in items[:10]:
                 fecha = r["fecha"][:10]
-                lineas.append(f"  `{r['id']}` [{fecha}] {r['contenido']}")
+                hecha = " (hecha)" if tipo in _TIPOS_TAREA and r.get("hecha") is True else ""
+                lineas.append(f"  `{r['id']}` [{fecha}] {r['contenido']}{hecha}")
 
         stats = self._data.get("estadisticas", {})
         lineas.append(f"\nTotal de mensajes: {stats.get('total_mensajes', 0)}")
@@ -400,29 +603,35 @@ class MemoriaManager:
         return "\n".join(lineas)
 
     def _cmd_olvida(self, fragmento: str) -> str:
-        recuerdos = self._data.get("recuerdos", [])
-        # Buscar por ID exacto primero
-        idx = next((i for i, r in enumerate(recuerdos) if r["id"] == fragmento), None)
-        # Si no, buscar por fragmento de contenido
-        if idx is None:
-            idx = next(
-                (i for i, r in enumerate(recuerdos) if fragmento in r["contenido"].lower()),
-                None
-            )
-        if idx is None:
-            return f"No encontré ningún recuerdo con *'{fragmento}'*. Usa /memoria para ver los IDs."
+        self._sincronizar()
+        with self._lock:
+            recuerdos = self._data.get("recuerdos", [])
+            # Buscar por ID exacto primero
+            idx = next((i for i, r in enumerate(recuerdos) if r["id"] == fragmento), None)
+            # Si no, buscar por fragmento de contenido
+            if idx is None:
+                idx = next(
+                    (i for i, r in enumerate(recuerdos) if fragmento in r["contenido"].lower()),
+                    None
+                )
+            if idx is None:
+                return f"No encontré ningún recuerdo con *'{fragmento}'*. Usa /memoria para ver los IDs."
 
-        borrado = recuerdos.pop(idx)
-        self._guardar()
+            borrado = recuerdos.pop(idx)
+            self._guardar()
+        self._avisar("olvidar")
         return f"Olvidado: *{borrado['contenido']}*"
 
     def _cmd_olvida_todo(self) -> str:
-        n = len(self._data.get("recuerdos", [])) + len(self._data.get("datos_clave", {}))
-        self._data["recuerdos"] = []
-        self._data["datos_clave"] = {}
-        self._data["usuario"]["nombre"] = None
-        self._data["resumen_sesion_anterior"] = ""
-        self._guardar()
+        self._sincronizar()
+        with self._lock:
+            n = len(self._data.get("recuerdos", [])) + len(self._data.get("datos_clave", {}))
+            self._data["recuerdos"] = []
+            self._data["datos_clave"] = {}
+            self._data["usuario"]["nombre"] = None
+            self._data["resumen_sesion_anterior"] = ""
+            self._guardar()
+        self._avisar("olvidar_todo")
         return f"Memoria borrada. Eliminé {n} datos. Empezamos de cero."
 
     def _detectar_tipo(self, texto: str) -> str:

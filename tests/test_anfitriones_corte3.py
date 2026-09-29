@@ -760,7 +760,7 @@ def test_patata_avisa_si_se_durmio_antes_de_responder(patata_falsa):
     p = patata_falsa(dormir_min=10, texto="Aquí estoy")
     p._frases = _FrasesFalsas("Mmh… ¿ya es de día?")
     p.reloj["t"] += 25 * 60                                          # 25 min sin escribirle
-    p.responder("hola")
+    p.responder("cuéntame algo")                                     # «hola»: instantánea
     salida = p.out.getvalue()
     assert "Lune se quedó dormida hace 15 min" in salida and "zzZ" in salida
     assert "Mmh… ¿ya es de día?" in salida and "-.-" in salida

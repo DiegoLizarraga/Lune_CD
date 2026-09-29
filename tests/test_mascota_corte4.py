@@ -437,9 +437,13 @@ def test_vrm_fps_cero_en_partida_para_tambien_el_cursor(qapp, web_falso, config,
 
 
 def test_companion_capturas_y_comentarios_bloqueados_en_juego(animada, monkeypatch):
+    from nucleo import datos
     from nucleo.estado_mascota import BusEstado
     from PIL import ImageGrab
     c = animada
+    # 10.9: la mascota comenta solo con la nube; sin clave ni lo intenta. Hermético: no
+    # depende de que el datos.json de este equipo tenga clave.
+    monkeypatch.setattr(datos, "openrouter_key", lambda: "sk-prueba")
 
     def no_capturar(*a, **k):
         raise AssertionError("en modo juego no se captura la pantalla")

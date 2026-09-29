@@ -615,7 +615,8 @@ def test_enviar_desde_mascota_comparte_historial_y_sale_en_su_burbuja(puente, mo
     WorkerFalso.creados = []
     monkeypatch.setattr(wb, "AIWorker", WorkerFalso)
     b = puente
-    b.enviar("hola", "cloud")                                     # desde la ventana
+    monkeypatch.setattr(wb.datos, "openrouter_key", lambda: "sk-prueba")  # la mascota va por la nube
+    b.enviar("cuéntame de python", "cloud")                       # desde la ventana (no es del banco)
     w1 = WorkerFalso.creados[-1]
     assert w1.ai is b.ai and w1.provider_id == "openrouter" and w1.kw["origen"] == "usuario"
     assert w1.kw["ejecutor"] is b.acciones.ejecutor and w1.kw["ctx"]["modo"] == "normal"
@@ -655,9 +656,9 @@ def test_la_mascota_recibe_on_chat_del_puente(puente, monkeypatch):
     b = puente
     ov = b._crear_mascota()
     assert ov.on_chat == b.enviar_desde_mascota
-    assert ov.proveedor_chat() == "ollama"                        # la página empieza en «local»
+    assert ov.proveedor_chat() == "openrouter"                    # la mascota: solo nube (10.9)
     b.proveedor_elegido("compat")
-    assert ov.proveedor_chat() == "compat"
+    assert ov.proveedor_chat() == "openrouter"                    # aunque la página cambie
 
 
 def test_provider_id_admite_compat():
@@ -916,3 +917,79 @@ def test_index_carga_los_extra_antes_de_app():
         assert f'<script type="text/babel" src="{extra}"></script>' in html
         assert html.index(extra) < i_app
     assert ".lune-provtab.is-active.accent-yellow" in html and ".ln-topbar-ic.compat" in html
+
+
+# ── 10.9: respuestas instantáneas en la web y la mascota solo con la nube ─────────
+
+def test_web_contesta_al_instante_lo_del_banco_sin_llamar_al_modelo(puente, monkeypatch):
+    """Antes la web (la interfaz por defecto) mandaba hasta un «hola» al modelo."""
+    import ui.web_bridge as wb
+    WorkerFalso.creados = []
+    monkeypatch.setattr(wb, "AIWorker", WorkerFalso)
+    b = puente
+    b.memoria.get_nombre_usuario.return_value = None
+    habladas = []
+    b.voice._enabled = True
+    b.voice.speak = habladas.append
+    b.enviar("hola", "local")
+    assert WorkerFalso.creados == []                               # sin modelo
+    texto, cara = b.senales["done"][-1]
+    assert texto and cara == "happy" and habladas == [texto]
+    b.enviar("¿qué hora es?", "local")
+    assert WorkerFalso.creados == [] and b.senales["done"][-1][0].startswith("Son las")
+
+
+def test_web_mis_tareas_sin_modelo_y_apagado_va_al_modelo(puente, monkeypatch):
+    import ui.web_bridge as wb
+    WorkerFalso.creados = []
+    monkeypatch.setattr(wb, "AIWorker", WorkerFalso)
+    b = puente
+    b.memoria.get_nombre_usuario.return_value = None
+    monkeypatch.setattr(b, "_resumen_tareas", lambda: "Tienes 2 tareas pendientes: · pan · correo.")
+    b.banco.tareas = b._resumen_tareas
+    b.enviar("qué tareas tengo", "local")
+    assert WorkerFalso.creados == [] and "2 tareas" in b.senales["done"][-1][0]
+    b.config.set("features", "respuestas_predeterminadas", False)  # Ajustes: apagado
+    b.enviar("hola", "local")
+    assert len(WorkerFalso.creados) == 1                           # ahora sí va al modelo
+
+
+def test_mascota_sin_clave_de_nube_lo_dice_y_no_usa_el_modelo_local(puente, monkeypatch):
+    import ui.web_bridge as wb
+    from nucleo.respuestas import AVISO_MASCOTA_SIN_NUBE
+    WorkerFalso.creados = []
+    monkeypatch.setattr(wb, "AIWorker", WorkerFalso)
+    monkeypatch.setattr(wb.datos, "openrouter_key", lambda: "")
+    b = puente
+    ov = MascotaFalsa()
+    b._overlay = ov
+    b.proveedor_elegido("local")
+    assert b.enviar_desde_mascota("cuéntame algo de gatos") is True
+    assert WorkerFalso.creados == []                               # ni local ni nada
+    assert b.senales["done"][-1][0] == AVISO_MASCOTA_SIN_NUBE and ov.textos[-1] == AVISO_MASCOTA_SIN_NUBE
+    b.memoria.get_nombre_usuario.return_value = None
+    assert b.enviar_desde_mascota("hola") is True                  # lo instantáneo no necesita nube
+    assert WorkerFalso.creados == [] and b.senales["done"][-1][0] != AVISO_MASCOTA_SIN_NUBE
+
+
+def test_mascota_con_clave_va_por_la_nube_aunque_la_pagina_este_en_local(puente, monkeypatch):
+    import ui.web_bridge as wb
+    WorkerFalso.creados = []
+    monkeypatch.setattr(wb, "AIWorker", WorkerFalso)
+    monkeypatch.setattr(wb.datos, "openrouter_key", lambda: "sk-prueba")
+    b = puente
+    b._overlay = MascotaFalsa()
+    b.proveedor_elegido("local")
+    b.enviar_desde_mascota("cuéntame algo de gatos")
+    assert WorkerFalso.creados[-1].provider_id == "openrouter"
+    WorkerFalso.creados[-1].corriendo = False
+    b.enviar("y de perros", "local")                               # la ventana sigue con lo suyo
+    assert WorkerFalso.creados[-1].provider_id == "ollama"
+
+
+def test_web_ajustes_interruptor_de_respuestas_instantaneas(puente):
+    b = puente
+    assert json.loads(b.get_config())["respuestas_rapidas"] is True
+    b.guardar_config(json.dumps({"respuestas_rapidas": False}))
+    assert b.config.feature("respuestas_predeterminadas", True) is False
+    assert json.loads(b.get_config())["respuestas_rapidas"] is False

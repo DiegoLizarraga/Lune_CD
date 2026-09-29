@@ -55,6 +55,11 @@ El bot de Minecraft conectado sigue conectado tras un cambio de interfaz en cali
 estado_para_cambio lleva "minecraft_bot" e iniciar_servicios lo vuelve a conectar (la
 ventana vieja lo paró al desmontar; nunca se instala solo).
 
+TAREAS (10.9): el objeto `tareas` del canal (ui/puente_tareas.py → window.luneTareas, la vista
+«tareas» estilo Microsoft To Do de extra/tareas.jsx y la entrada «Tareas» de la barra lateral), con la
+MISMA memoria del puente (`self.bridge.memoria`): registrado antes de setUrl y cerrado una vez en
+_liberar_todo (deja de escuchar la memoria). Si falla, se registra el error y la ventana sigue sin él.
+
 CORTE 4 (bandeja única, menú radial, atajos globales, modo juego y tema): el segundo
 objeto del canal, `escritorio` (ui/puente_escritorio.py → window.luneEscritorio), se
 registra en __init__ ANTES de cargar la página (el JS solo ve lo registrado al crear su
@@ -288,6 +293,7 @@ class VentanaWeb(QMainWindow):
         self._puentes_ocio = None     # ui/puentes_ocio.PuentesOcio («alarmas» y «musica»)
         self._puente_vida = None      # ui/puente_vida.PuenteVida («vida», cortes 7/8)
         self._puente_escenario = None  # ui/puente_escenario.PuenteEscenario («escenario», cortes 9/10)
+        self._puente_tareas = None    # ui/puente_tareas.PuenteTareas («tareas», 10.9)
         self.setWindowTitle("Lune CD")
         self.resize(1280, 820)
         self._icono = QIcon()
@@ -337,6 +343,8 @@ class VentanaWeb(QMainWindow):
         self._registrar_puente_vida()
         # Cortes 9/10: `escenario` (window.luneEscenario: bailes MMD/VRMA y Minecraft), igual.
         self._registrar_puente_escenario()
+        # 10.9: `tareas` (window.luneTareas: la lista estilo To Do sobre la memoria del puente), igual.
+        self._registrar_puente_tareas()
         # Ajustes → «Modo de interfaz»: el puente lo pide y el gestor hace el cambio.
         senal = getattr(self.bridge, "interfaz_pedida", None)
         if senal is not None and hasattr(senal, "connect"):
@@ -491,6 +499,18 @@ class VentanaWeb(QMainWindow):
             self._puente_escenario = None
             _log_error(f"[escenario] no pude registrar el puente de bailes y Minecraft: {e}")
         return self._puente_escenario
+
+    def _registrar_puente_tareas(self):
+        """El objeto `tareas` del canal (10.9: window.luneTareas, ui/puente_tareas.py), registrado en
+        __init__ ANTES de cargar la página, con la MISMA memoria del puente web (nunca otra instancia:
+        cada una reescribiría memoria.json entera). No necesita servicios. Si falla, la app sigue."""
+        try:
+            from ui.puente_tareas import registrar_puente_tareas
+            self._puente_tareas = registrar_puente_tareas(self._canal, getattr(self.bridge, "memoria", None))
+        except Exception as e:
+            self._puente_tareas = None
+            _log_error(f"[tareas] no pude registrar el puente de tareas: {e}")
+        return self._puente_tareas
 
     def _montar_servicios_c4(self):
         """Bandeja única, atajos globales, menú radial, modo juego y tema
@@ -704,6 +724,13 @@ class VentanaWeb(QMainWindow):
             except Exception:
                 pass
             self._puente_escenario = None
+        pt = getattr(self, "_puente_tareas", None)     # 10.9: deja de escuchar la memoria
+        if pt is not None:
+            try:
+                pt.cerrar()                          # idempotente
+            except Exception:
+                pass
+            self._puente_tareas = None
         # Corte 4 lo primero (bandeja única, atajos, detector de juego, radial, tema y
         # el puente `escritorio`), una sola vez: el modo juego devuelve lo que cambió
         # (prioridad, voz, la mascota que escondió: cuenta como «fuera») antes de que

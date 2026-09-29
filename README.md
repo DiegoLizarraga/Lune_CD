@@ -1,4 +1,4 @@
-# Lune CD v10.7 — Tu asistente de escritorio con personalidad (Nube/Local)
+# Lune CD v10.9 — Tu asistente de escritorio con personalidad (Nube/Local)
 
 > *¡Hola! Buenos días, buenas tardes o buenas noches — lo que toque cuando leas esto.*
 > *Soy Lune, y esto es mi casa. Bueno — técnicamente es el proyecto de mi creador, pero yo vivo aquí,*
@@ -19,7 +19,8 @@ Groq…).
 Conmigo puedes: chatear con voz o texto, tener una **llamada solo por voz**,
 adjuntarme documentos e imágenes, pedirme que abra webs y programas (con tu
 permiso cuando toca), que recuerde cosas entre sesiones y tus notas markdown
-(RAG), ponerte **alarmas y temporizadores**, y sacarme al escritorio como
+(RAG), llevarte **tus tareas del día a la vista** (como Microsoft To Do), ponerte
+**alarmas y temporizadores**, y sacarme al escritorio como
 **mascota** —en 3D, animada o ligera— que reacciona a lo que digo, **comenta lo
 que ves en pantalla**, se sienta en tus ventanas, **baila con tu música** y se
 esconde cuando juegas. También salgo en tu **Discord**, entro en tu **Minecraft**
@@ -213,6 +214,7 @@ Con `--sin-color` si tu terminal no pinta colores.
 |---|---|
 | `/ayuda` | La lista de comandos |
 | `/memoria` · `/olvida <texto>` | Lo que recuerdo de ti |
+| `/tareas` · `/tareas <texto>` · `/tareas hecha N` · `/tareas quita N` | Tus tareas de hoy (Mi día) |
 | `/personaje [nombre]` | Ver o cambiar de personaje |
 | `/proveedor [ollama\|openrouter\|compat]` · `/local` · `/nube` | Con qué cerebro respondo |
 | `/modelo [nombre]` | Ver o cambiar el modelo del proveedor actual |
@@ -350,8 +352,8 @@ doble; desde ahí (*Traerla de vuelta*) o desde el menú me recuperas.
 - **Un clic sobre mí y comento lo que hay en tu pantalla** — directo, cuando tú
   quieras (con la animada o la 3D; con los sprites, un clic me saca una sonrisa).
 - **Doble clic y me escribes** ahí mismo: te respondo en mi **burbuja**, con la
-  misma conversación y memoria que la ventana. (También desde la bandeja:
-  *Escribirle a Lune…*)
+  misma conversación y memoria que la ventana, y siempre con la nube. (También
+  desde la bandeja: *Escribirle a Lune…*)
 - **Clic derecho: mi menú radial** (Ajustes, Chat, Comentar, Expresiones, Bailar,
   Alarmas, Voz, Dormir, Tamaño, Bajar…). **Clic central: la comida**.
 - **Arrástrame y me balanceo** como un péndulo (en 3D, con los brazos y las
@@ -369,11 +371,14 @@ doble; desde ahí (*Traerla de vuelta*) o desde el menú me recuperas.
   *Comentarios automáticos* (apagados por defecto), *Modo fantasma* (dejo pasar
   los clics), *Siempre encima*, tamaño, encuadre y *Llevar a la esquina*.
 
-> Los comentarios de pantalla usan el proveedor actual: con **Ollama es 100%
-> local**; con **OpenRouter la captura sube a la nube**, y por eso **te pido
-> permiso** antes. Lo automático viene apagado. Si Ollama no responde, **caigo sola
-> a la nube** para no dejarte colgado (te lo aviso en la burbuja). Con un juego
-> delante no hago capturas.
+> **Como mascota contesto siempre con la nube (OpenRouter)**, tanto al comentar la
+> pantalla como en mi burbuja: es lo más rápido y lo que mejor ve las imágenes. Si no
+> tengo clave de OpenRouter te lo digo (y dónde ponerla) en vez de quedarme callada;
+> no tiro del modelo local. La primera vez que comento a mano te recuerdo que **la
+> captura sube a la nube**; los **comentarios automáticos** (apagados por defecto)
+> nunca la suben: solo miran el título de la ventana activa. Si no veo nada que
+> contar, te lo digo: *«Mmm… nada me pareció interesante.»* Con un juego delante no
+> hago capturas. El chat de la ventana sigue con el proveedor que elijas.
 
 #### Avatar 3D (VRM)
 
@@ -993,6 +998,37 @@ borrar la anterior.
 
 ---
 
+## Tus tareas: Mi día
+
+Lo que me pides que no se te olvide también es una **lista de tareas a la vista**,
+al estilo de Microsoft To Do, para que no tengas que preguntarme a cada rato qué te
+toca:
+
+- **Siempre a mano:** en la barra lateral, bajo *// Mi día*, la entrada **Tareas**
+  te dice cuántas tienes hoy («3 para hoy · 5 en total»). También está en
+  **Menú → Tareas**.
+- **Mi día:** arriba, la fecha de hoy. Cada tarea lleva un círculo para marcarla y,
+  debajo, su lista (*Tareas* o *Recordatorios*). Al marcarla baja a
+  **Completadas**, tachada y plegable. Al pasar el ratón puedes sacarla de Mi día o
+  borrarla (te pregunto «¿Quitar?» antes).
+- **Sugerencias:** la bombilla abre a la derecha lo que quedó de **Ayer**, lo
+  **Agregado recientemente** y lo **más antiguo**; con el **+** vuelve a Mi día.
+  Cada día Mi día empieza de cero y lo que no acabaste te espera ahí.
+- **Añadir:** escríbela abajo, en *Agregar una tarea*, y Enter. O dímelo en el
+  chat: «**recuerda que tengo que** llamar al dentista» y aparece sola en la lista,
+  sin recargar nada.
+- **Preguntarme:** «qué tareas tengo», «mis pendientes» o «qué tengo que hacer
+  hoy» y te las digo al momento, sin gastar IA (también en la interfaz de bajos
+  recursos, que no tiene el panel).
+- **En patata:** `/tareas` las lista (primero las de hoy), `/tareas <texto>` anota
+  una, `/tareas hecha N` la marca y `/tareas quita N` la borra.
+
+Todo vive en tu `memoria.json` (el mismo de siempre, que no se sube a ningún
+sitio). La ventana y patata lo comparten sin pisarse, y las tareas que ya hiciste no
+me las cuento como pendientes.
+
+---
+
 ## Memoria y lo que puedo hacer por ti
 
 **Memoria** (también desde **Menú → Memoria**, donde puedes olvidar recuerdos uno a uno):
@@ -1003,6 +1039,14 @@ borrar la anterior.
 
 También anoto **en silencio** tu nombre, edad, ciudad y trabajo cuando los
 mencionas.
+
+**Te contesto al momento, sin gastar IA**, en la interfaz completa, en la de bajos
+recursos, en patata y en mi burbuja de mascota: saludos, gracias, despedidas, la
+hora, la fecha, un chiste, quién soy y **tus tareas** («qué tareas tengo», «mis
+pendientes», «qué tengo que hacer hoy»). Es instantáneo y no gasta tokens ni hace
+trabajar a tu modelo local. Si prefieres que todo pase por el modelo, lo apagas en
+**AJUSTES → Personalidad → Respuestas instantáneas**. Un «sí» o un «vale» nunca los
+contesto así: pueden ser la respuesta a algo que te ofrecí.
 
 **Frases que hago al momento, sin gastar IA** (las ves en **Menú → Tools**):
 
@@ -1299,6 +1343,8 @@ contigo al Minecraft.
 
 | Versión | Cambios principales |
 |---|---|
+| **v10.9** | **Tus tareas a la vista** (como Microsoft To Do): Mi día con la fecha, círculo para marcar, Completadas, Sugerencias (Ayer, recientes, antiguas) y el contador en la barra lateral; lo que me dices con «recuerda que tengo que…» aparece solo, y en patata con `/tareas`. **Te contesto al momento, sin gastar IA**, también en la interfaz completa, en patata y en mi burbuja (saludos, hora, fecha, tus tareas), con su interruptor en Personalidad. **Como mascota respondo solo con la nube**: si no hay clave te lo digo, y si no veo nada que contar, «Mmm… nada me pareció interesante.» |
+| **v10.8** | **Instalador para usuarios nuevos**: busco un Python de verdad (no el atajo de la Microsoft Store), te ofrezco instalar Python 3.13 con winget, dejo marcado lo recomendado, instalo cada cosa por separado, ajusto la interfaz completa a tu PyQt6, te dejo el acceso directo «Lune CD» y un botón para abrirme. **Nuevo video de inicio**, «asistente personal» en la barra y las pruebas de GitHub en verde. |
 | **v10.7** | **Lo que aprendí con un Ollama de verdad**: si en vez de hacer algo te lo ofrezco («¿quieres que te ponga uno?»), ya no lo hago por mi cuenta: te pido permiso (menos bailar, sentarme y cosas de mi cuerpo, que ves al momento). Una acción pegada a mi expresión ya no se pierde ni se queda a la vista. Y este README, sin emojis. |
 | **v10.6** | **Más lista y mucho más rápida con el modelo local**: entiendo las acciones aunque el modelo las escriba medio mal (y si no, te digo «No entendí la acción»), nada de símbolos raros en la burbuja ni en la voz, si me das una duración o una hora manda la tuya, y **te contesto en uno o dos segundos en vez de medio minuto** (mis instrucciones ya no cambian en cada mensaje); el bot de Minecraft decide unas cinco veces más rápido. Por Telegram te aviso «(pendiente de tu permiso en el PC)». Además: entiendo los logs de Minecraft en español, me siento bien sobre el borde, Discord ya no me tumba al cerrar y patata no se abre dos veces. |
 | **v10.5** | **Mate-Engine, segunda parte**: **me siento** en la barra de tareas y en ventanas (apagado por defecto, con aviso anticheat), **comida** (batido y pastel con el clic central), **Discord Rich Presence** sin publicar nada tuyo, **arrancar con Windows** a tu manera (bandeja, mascota o ventana, con espera y reparación), **reproductor de bailes MMD/VRMA** con su canción (IK y cara en 3D, al ritmo en las demás mascotas y en patata) e **integración con Minecraft** (reacciones al `latest.log` y el bot «mina» con mi personalidad). |

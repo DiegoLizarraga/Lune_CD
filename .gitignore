@@ -19,12 +19,13 @@ alarmas.json
 alarmas.json.corrupto-*
 .alarmas.json.*.tmp
 
-# Memoria personal del usuario
+# Memoria personal del usuario (y el temporal de su escritura atómica)
 memoria.json
+.memoria.json.*.tmp
+telegram-bot-or/data/
 
 # Registro del instalador (rutas de tu equipo)
 instalacion.log
-telegram-bot-or/data/
 
 # ─── Python ─────────────────────────────────────────────────────
 __pycache__/

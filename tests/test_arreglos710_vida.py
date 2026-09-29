@@ -17,11 +17,13 @@ from test_mascota_c78 import config, lune_activa, web_falso  # noqa: E402,F401  
 
 
 def _comentando(config, monkeypatch):
-    """Una mascota real a la vista que empieza «Comentar pantalla» (Ollama configurado):
-    el sondeo de Ollama se queda en su hilo, sin acabar."""
+    """Una mascota real a la vista que empieza «Comentar pantalla» y se queda a medias
+    (el paso previo al comentario, _sondear, no acaba). 10.9: solo nube, así que con
+    clave de OpenRouter (los tests ya no leen el datos.json de verdad)."""
     from nucleo import datos
     from nucleo.estado_mascota import BusEstado
     from ui.companion import CompanionFlotante
+    monkeypatch.setattr(datos, "openrouter_key", lambda: "sk-prueba")
     monkeypatch.setattr(datos, "ollama_model", lambda: "llava")
     monkeypatch.setattr(datos, "ollama_url", lambda: "http://127.0.0.1:9")
     c = CompanionFlotante(config, ai_manager=object(), bandeja=False)

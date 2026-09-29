@@ -35,6 +35,35 @@ _RAIZ_TESTS = Path(tempfile.mkdtemp(prefix="lune_tests_cfg_")).resolve()
 _config_mod.RAIZ = _RAIZ_TESTS
 atexit.register(shutil.rmtree, _RAIZ_TESTS, True)
 
+# Lo mismo con datos.json (las API keys): nucleo.datos es el único que lo toca y
+# guardar_config() de la web lo relee y lo REESCRIBE entero aunque no cambie nada; un
+# test que lo llamaba sin datos temporales reescribía el de verdad. Aquí todos los tests
+# parten de una copia de datos.example.json (sin claves). Los que ya lo desvían con
+# monkeypatch (datos_tmp y compañía) siguen igual.
+from nucleo import datos as _datos_mod  # noqa: E402
+
+_DATOS_TESTS = _RAIZ_TESTS / "datos.json"
+_ejemplo = Path(_datos_mod._EJEMPLO)
+if _ejemplo.exists():
+    shutil.copyfile(_ejemplo, _DATOS_TESTS)
+else:
+    _DATOS_TESTS.write_text("{}", encoding="utf-8")
+_datos_mod._PATH = _DATOS_TESTS
+_datos_mod.invalidar()
+
+
+@pytest.fixture(autouse=True, scope="module")
+def _recoger_basura_en_el_hilo_principal():
+    """Al acabar cada archivo de tests, la basura con ciclos se recoge AQUÍ, en el hilo
+    principal. Si no, el recolector automático puede saltar dentro de un hilo de fondo
+    (el hub, el cliente de websockets…) y destruir allí objetos de Qt o de Windows de
+    tests anteriores: en GitHub Actions (Qt 6.11) eso tumbaba la suite con 0xC0000409 al
+    procesar eventos en un test posterior (lo vimos con test_puente_tareas → test_hub →
+    test_servicio_chat → test_tema_qt)."""
+    yield
+    import gc
+    gc.collect()
+
 
 @pytest.fixture(scope="session")
 def qapp():

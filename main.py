@@ -76,7 +76,7 @@ from nucleo import datos
 
 from nucleo.memoria import MemoriaManager
 from servicios.tools import ToolManager, ctx_acciones
-from nucleo.respuestas import BancoRespuestas
+from nucleo.respuestas import AVISO_MASCOTA_SIN_NUBE, BancoRespuestas
 
 from ui.theme import (
     COLORS, APP_VERSION, PROVIDER_META,
@@ -326,7 +326,8 @@ class LuneCDWindow(QMainWindow):
         # Banco de respuestas instantáneas con la personalidad de Lune
         nombre_bot = datos.get_personaje(datos.get_bot().get("personaje_default", "Lune")).get("nombre", "Lune")
         self.banco = BancoRespuestas(nombre_asistente=nombre_bot,
-                                     nombre_usuario=self.memoria.get_nombre_usuario())
+                                     nombre_usuario=self.memoria.get_nombre_usuario(),
+                                     tareas=getattr(self, "_resumen_tareas", None))
 
         # Aplicar preferencias de rendimiento antes de construir la UI
         lune_face.set_active_pack(self.config.get("avatar", "pack", "default"))
@@ -1370,11 +1371,23 @@ class LuneCDWindow(QMainWindow):
                     self.lune_face.set_state("happy", auto_revert_ms=4000)
                     self.voice.speak(rta_rapida); self._scroll_bottom(); return
 
+        # La mascota contesta solo con la nube (10.9): sin clave de OpenRouter lo dice y
+        # no cae al modelo local. Lo de arriba (órdenes, memoria, respuestas
+        # instantáneas) no necesita modelo y funciona igual. La ventana, con el suyo.
+        proveedor = self.current_provider
+        if desde_mascota and not remoto:
+            if not str(datos.openrouter_key() or "").strip():
+                self._burbuja_bot(AVISO_MASCOTA_SIN_NUBE)
+                self._guardar_turno("assistant", AVISO_MASCOTA_SIN_NUBE)
+                self._eco_mascota(AVISO_MASCOTA_SIN_NUBE, fin=True)
+                self._scroll_bottom(); return
+            proveedor = "openrouter"
+
         self.input_field.setEnabled(False)
         self.send_btn.hide(); self.stop_btn.show()
 
-        if self.current_provider in self.ai_manager.providers:
-            self.ai_manager.providers[self.current_provider].cancel_flag = False
+        if proveedor in self.ai_manager.providers:
+            self.ai_manager.providers[proveedor].cancel_flag = False
 
         self._set_status("PROCESANDO", COLORS["warning"]); self.lune_face.set_state("thinking")
         self._cancelar_plan(); self._expresado_en_stream = False
@@ -1382,7 +1395,7 @@ class LuneCDWindow(QMainWindow):
         if self._overlay is not None and self._overlay.isVisible():
             self._overlay.set_estado("thinking")
 
-        self._typing_indicator = TypingIndicator(self.current_provider)
+        self._typing_indicator = TypingIndicator(proveedor)
 
         # Voz por frases mientras escribe (opcional). Si falla, se usa la de siempre.
         self._voz_stream = None
@@ -1422,11 +1435,11 @@ class LuneCDWindow(QMainWindow):
             origen = ORIGEN_NO_CONFIABLE if (adjuntos_envio or contexto_notas) else ORIGEN_USUARIO
         # Con la mascota fuera el modo es "mascota"/"vrm": también las suyas (dormir…).
         modo = self._modo_acciones()
-        ctx = ctx_acciones(self.ai_manager, self.current_provider, modo)
+        ctx = ctx_acciones(self.ai_manager, proveedor, modo)
         if remoto:
             ctx["origen"] = ORIGEN_REMOTO           # todas marcadas «(pide permiso)» en el prompt
         self._turno = {"origen": origen, "ctx": ctx, "mascota": bool(desde_mascota),
-                       "proveedor": self.current_provider}
+                       "proveedor": proveedor}
         if remoto:
             self._turno["remoto"] = remoto
         # Generación de este envío: las señales llevan la suya y, si ya no es la
@@ -1434,7 +1447,7 @@ class LuneCDWindow(QMainWindow):
         self._gen += 1
         gen = self._gen
         self.ai_worker = AIWorker(
-            self._motor_chat, PREFIJO_IA + text if remoto else text, self.current_provider,
+            self._motor_chat, PREFIJO_IA + text if remoto else text, proveedor,
             extra_context=contexto_memoria + contexto_archivos + contexto_notas,
             permitir_acciones=self.config.feature("acciones_ia", True),
             imagenes=adj.imagenes_base64(adjuntos_envio),
@@ -1815,6 +1828,15 @@ class LuneCDWindow(QMainWindow):
         if self.tray is not None and not self.isVisible():
             self.tray.showMessage("Lune CD · voz", mensaje, QSystemTrayIcon.MessageIcon.Warning, 5000)
 
+    def _resumen_tareas(self):
+        """Las tareas pendientes para «qué tareas tengo» (nucleo.tareas, sobre la MISMA
+        memoria). None si no se puede: la pregunta va a la IA."""
+        try:
+            from nucleo.tareas import resumen_de
+            return resumen_de(self.memoria)
+        except Exception:
+            return None
+
     def _chat_desde_mascota(self, texto: str) -> bool:
         """
         on_chat de la mascota (EntradaChat bajo ella): lo que escribes ahí va por
@@ -2140,7 +2162,8 @@ class LuneCDWindow(QMainWindow):
 
         # Refrescar marca, banco y bienvenida
         self.sidebar_t1.setText(self._marca_sidebar(nombre))
-        self.banco = BancoRespuestas(nombre_asistente=nombre, nombre_usuario=self.memoria.get_nombre_usuario())
+        self.banco = BancoRespuestas(nombre_asistente=nombre, nombre_usuario=self.memoria.get_nombre_usuario(),
+                                     tareas=getattr(self, "_resumen_tareas", None))
 
         # Limpiar chat y mostrar saludo del personaje
         while self.messages_layout.count() > 1:
@@ -2178,7 +2201,8 @@ class LuneCDWindow(QMainWindow):
         nombre_bot = personaje.get("nombre", "Lune")
         self.sidebar_t1.setText(self._marca_sidebar(nombre_bot))
         self.banco = BancoRespuestas(nombre_asistente=nombre_bot,
-                                     nombre_usuario=self.memoria.get_nombre_usuario())
+                                     nombre_usuario=self.memoria.get_nombre_usuario(),
+                                     tareas=getattr(self, "_resumen_tareas", None))
         if hasattr(self, 'welcome_t1'):
             self.welcome_t1.setText(nombre_bot.upper())
             nombre = self.memoria.get_nombre_usuario()

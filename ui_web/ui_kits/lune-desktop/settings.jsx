@@ -364,6 +364,8 @@ function SettingsPanel({ voiceOn, onVoice, fx = { bg:true, sweep:true, micro:tru
             <Switch label="Voz (Lune lee sus respuestas)" checked={voiceOn} onChange={onVoice} />
             <Switch label="Memoria persistente" checked={!!c.memoria} onChange={setBl('memoria')} accent="blue" />
             <Switch label="Herramientas de escritorio" checked={!!c.acciones_ia} onChange={setBl('acciones_ia')} />
+            <Switch label="Respuestas instantáneas (saludos, hora, tus tareas: sin gastar IA)"
+                    checked={c.respuestas_rapidas !== false} onChange={setBl('respuestas_rapidas')} />
           </div>
         </Card>
 

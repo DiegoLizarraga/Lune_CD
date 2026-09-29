@@ -534,3 +534,32 @@ def test_panel_nativo_guarda_el_interruptor(qapp, tmp_path, monkeypatch, datos_t
     from nucleo import datos
     assert datos.telegram_admin_id() == "777"               # solo se guardó lo que cambió
     panel.deleteLater()
+
+
+# ── 10.9: la mascota de la nativa contesta solo con la nube ─────────────────────
+
+def test_nativa_mascota_sin_clave_de_nube_lo_dice_y_no_llama_al_modelo(nativa, monkeypatch):
+    import main
+    from nucleo import datos
+    from nucleo.respuestas import AVISO_MASCOTA_SIN_NUBE
+    monkeypatch.setattr(datos, "openrouter_key", lambda: "")
+    yo = nativa["yo"]
+    yo.memoria.procesar_mensaje_usuario.return_value = None
+    yo._send_message(texto="cuéntame algo de gatos", desde_mascota=True)
+    assert WorkerFalso.creados == []                                  # ni el modelo local
+    yo._burbuja_bot.assert_called_with(AVISO_MASCOTA_SIN_NUBE)
+
+
+def test_nativa_mascota_con_clave_va_por_la_nube_y_la_ventana_con_el_suyo(nativa, monkeypatch):
+    from nucleo import datos
+    monkeypatch.setattr(datos, "openrouter_key", lambda: "sk-prueba")
+    yo = nativa["yo"]
+    yo.memoria.procesar_mensaje_usuario.return_value = None
+    yo._send_message(texto="cuéntame algo de gatos", desde_mascota=True)
+    w = WorkerFalso.creados[-1]
+    assert w.provider_id == "openrouter" and yo._turno["proveedor"] == "openrouter"
+    assert w.kw["ctx"]["proveedor"] == "openrouter"
+    w.corriendo = False
+    yo.ai_worker = None
+    yo._send_message(texto="y de perros")                              # desde la ventana
+    assert WorkerFalso.creados[-1].provider_id == "ollama"

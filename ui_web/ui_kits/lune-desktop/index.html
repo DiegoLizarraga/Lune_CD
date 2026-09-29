@@ -80,6 +80,24 @@
   .lune-provtab.is-active.accent-yellow .lune-provtab-ic{ background:var(--yellow-500); color:var(--ink-950); border-color:var(--yellow-400); }
   .lune-provtab.is-active.accent-yellow .lune-provtab-name{ color:var(--yellow-300); }
   .lune-provtab.is-active.accent-yellow .lune-provtab-led{ background:var(--yellow-500); }
+  /* Tareas (10.9): acceso siempre a la vista con las pendientes de hoy (sidebar.jsx → vista «tareas»). */
+  .ln-tareas-acc{ position:relative; display:flex; align-items:center; gap:11px; width:100%; padding:10px 12px; cursor:pointer; text-align:left;
+    background:var(--ink-800); border:var(--bw) solid var(--ink-500); color:var(--text-muted); clip-path:var(--clip-tr);
+    transition:transform var(--dur-fast) var(--ease-snap), background var(--dur-fast), border-color var(--dur-fast), color var(--dur-fast); }
+  .ln-tareas-acc:hover{ background:var(--ink-700); color:var(--text); transform:translateX(5px) skewX(-3deg); }
+  .ln-tareas-acc.is-active{ background:rgb(var(--yellow-500-rgb, 255 224 0) / .08); border-color:var(--yellow-600); color:var(--yellow-300); }
+  .ln-tareas-acc-ic{ width:34px; height:34px; flex:none; display:flex; align-items:center; justify-content:center; background:var(--ink-700);
+    border:var(--bw) solid var(--border-strong); clip-path:var(--clip-tr); color:var(--cyan-400); }
+  .ln-tareas-acc.is-active .ln-tareas-acc-ic{ background:var(--yellow-500); color:var(--ink-950); border-color:var(--yellow-400); }
+  .ln-tareas-acc-tx{ display:flex; flex-direction:column; gap:1px; min-width:0; }
+  .ln-tareas-acc-nom{ font-family:var(--font-display); font-weight:700; font-size:13px; text-transform:uppercase; letter-spacing:.03em; }
+  .ln-tareas-acc-desc{ font-family:var(--font-mono); font-size:10px; color:var(--text-faint); text-transform:uppercase; letter-spacing:.05em;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .ln-tareas-acc-num{ margin-left:auto; flex:none; min-width:24px; height:24px; padding:0 6px; display:flex; align-items:center; justify-content:center;
+    font-family:var(--font-mono); font-weight:700; font-size:12px; color:var(--text-dim); background:var(--ink-950); border:var(--bw) solid var(--ink-500);
+    clip-path:var(--clip-tr); }
+  .ln-tareas-acc.has-pend .ln-tareas-acc-num{ background:var(--yellow-500); color:var(--ink-950); border-color:var(--yellow-400);
+    box-shadow:0 0 12px rgb(var(--yellow-500-rgb, 255 224 0) / .35); }
 
   .ln-mascot{ flex:1; min-height:0; display:flex; flex-direction:column; justify-content:flex-end; }
   .ln-mascot-stage{
@@ -547,6 +565,9 @@
         // Cortes 9/10: reproductor de bailes MMD/VRMA y Minecraft (ui/puente_escenario.py). null con un backend que
         // no lo registra.
         window.luneEscenario = channel.objects.escenario || null;
+        // 10.9: la lista de tareas estilo To Do sobre la memoria (ui/puente_tareas.py). null con un backend que no
+        // lo registra.
+        window.luneTareas = channel.objects.tareas || null;
         window.dispatchEvent(new Event('lune-ready'));
       });
     }
@@ -585,6 +606,9 @@
        minecraft.jsx (MinecraftPanel, MinecraftCard, LuneMinecraftWeb) con window.luneEscenario. -->
   <script type="text/babel" src="extra/bailes_mmd.jsx"></script>
   <script type="text/babel" src="extra/minecraft.jsx"></script>
+  <!-- 10.9 (se registra solo, antes de app.jsx): tareas.jsx (TareasPanel, LuneTareas), la vista «tareas» estilo
+       Microsoft To Do, con window.luneTareas. -->
+  <script type="text/babel" src="extra/tareas.jsx"></script>
   <script type="text/babel" src="app.jsx"></script>
   <script type="text/babel">
     ReactDOM.createRoot(document.getElementById('root')).render(<window.LuneApp/>);

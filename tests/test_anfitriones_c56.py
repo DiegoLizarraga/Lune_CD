@@ -46,7 +46,7 @@ import test_anfitriones_corte4 as c4  # noqa: E402
 from test_anfitriones_corte4 import ajustes, entorno, sistema  # noqa: E402,F401  (fixtures)
 from nucleo.config import Config  # noqa: E402
 
-CANAL_C56 = ["alarmas", "escenario", "escritorio", "lune", "musica", "vida"]   # «vida»: 7/8; «escenario»: 9/10
+CANAL_C56 = ["alarmas", "escenario", "escritorio", "lune", "musica", "tareas", "vida"]   # «vida»: 7/8; «escenario»: 9/10; «tareas»: 10.9
 HERRAMIENTAS = ("temporizador", "alarma", "cancelar_alarma", "listar_alarmas",
                 "mascota_bailar", "parar_baile", "mascota_pantalla_grande")
 
