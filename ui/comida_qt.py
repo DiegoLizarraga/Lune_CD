@@ -18,24 +18,24 @@ AL APARECER (`alternar(id)`, acciones comer_batido / comer_pastel / comida)
      grande, salvapantallas, MMD) avisa «Ahora no puedo comer: …»;
   3. sonidos por el Mezclador: comida_aparece (+ una capa en el batido);
   4. la vista:
-       · con la mascota a la vista → `ComidaCursor` (≈ 0.33 del ancho de la
-         mascota, mínimo 64 px), un QTimer de 16 ms SOLO mientras hay comida,
-         `QCursor.pos()` y `mascota.cabeza(cb)` a 10 Hz;
-       · en la web sin mascota fuera → `comida_web` (la dibuja la página y avisa
+       · con la asistente a la vista → `ComidaCursor` (≈ 0.33 del ancho de la
+         asistente, mínimo 64 px), un QTimer de 16 ms SOLO mientras hay comida,
+         `QCursor.pos()` y `asistente.cabeza(cb)` a 10 Hz;
+       · en la web sin asistente fuera → `comida_web` (la dibuja la página y avisa
          del acierto con `acierto_web`);
-       · en la nativa sin mascota → primero la saca (`anfitrion.alternar_mascota`);
-  5. `mascota.set_comida_activa(True)`.
+       · en la nativa sin asistente → primero la saca (`anfitrion.alternar_asistente`);
+  5. `asistente.set_comida_activa(True)`.
 ACIERTO (el tramo del cursor pasa por la cabeza, por flanco y con 0.35 s de
-  enfriamiento): `mascota.comer(tipo, 2500)` (o `anfitrion.reaccion("happy",
-  2500)` sin mascota), trago_N / mordisco_N con tono al azar y emoción `happy`.
+  enfriamiento): `asistente.comer(tipo, 2500)` (o `anfitrion.reaccion("happy",
+  2500)` sin asistente), trago_N / mordisco_N con tono al azar y emoción `happy`.
 CAMBIO: pedir otra con una en la mano la cambia (suena comida_aparece).
 SE GUARDA: al pedir la misma, a los 2 min sin moverla (D4), con `ceder` (sin
-  sonido), con la mascota oculta o `None` (vista de escritorio), al apagar
+  sonido), con la asistente oculta o `None` (vista de escritorio), al apagar
   `comida.activa` o al detener.
 `comer_directo(id)` (herramienta dar_de_comer): la reacción sin comida en el
   cursor; si no había comida, sostiene la actividad durante la reacción.
 
-Si con la comida en la web aparece la mascota flotante, la comida pasa al
+Si con la comida en la web aparece la asistente flotante, la comida pasa al
 escritorio. Señales (JSON en texto, para el puente web):
     cambio(str)       {activa, id, variante, color, tipo, vista: escritorio|web|"", disponible}
     comida_web(str)   {accion: aparece|guarda|cambia, id, variante, color, tipo, nombre}
@@ -57,8 +57,8 @@ from nucleo import comida as nc
 _log = logging.getLogger("lune.comida")
 
 TIC_MS = 16
-CABEZA_S = 0.1                   # mascota.cabeza(cb) a 10 Hz
-TAM_FRACCION, TAM_MIN, TAM_MAX, TAM_SIN_MASCOTA = 0.33, 64, 220, 96
+CABEZA_S = 0.1                   # asistente.cabeza(cb) a 10 Hz
+TAM_FRACCION, TAM_MIN, TAM_MAX, TAM_SIN_ASISTENTE = 0.33, 64, 220, 96
 
 _TINTA = QColor(43, 28, 51, 235)
 _NATA = QColor("#FFF7EE")
@@ -253,7 +253,7 @@ class ComidaCursor(QWidget):
         self._reloj = reloj
         self.id = ""
         self.variante = ""
-        self.tam = TAM_SIN_MASCOTA
+        self.tam = TAM_SIN_ASISTENTE
         self.escala = 0.0
         self.fase = ""                           # aparece | quieta | guarda | ""
         self._t0 = 0.0
@@ -398,8 +398,8 @@ class ControlComida(QObject):
         self.sonidos = nc.SonidosComida(config, mezclador=mezclador, lanzar=lanzar_sonido,
                                         en_juego=self._en_juego, azar=azar)
         self._cursor: Any = None
-        self._mascota: Any = None
-        self._con_comida: Any = None          # la mascota a la que se dijo set_comida_activa(True)
+        self._asistente: Any = None
+        self._con_comida: Any = None          # la asistente a la que se dijo set_comida_activa(True)
         self._vista = ""
         self._iniciado = False
         self._bus_conectado = False
@@ -443,8 +443,8 @@ class ControlComida(QObject):
     def _modo(self) -> str:
         return str(getattr(self.anfitrion, "modo", "") or "")
 
-    def _mascota_vista(self) -> Any:
-        m = self._mascota if self._mascota is not None else getattr(self.escritorio, "mascota", None)
+    def _asistente_vista(self) -> Any:
+        m = self._asistente if self._asistente is not None else getattr(self.escritorio, "asistente", None)
         return m if _visible(m) else None
 
     @property
@@ -493,8 +493,8 @@ class ControlComida(QObject):
         self._iniciado = False
         self._emitir_estado()
 
-    def set_mascota(self, v: Any) -> None:
-        anterior, self._mascota = self._mascota, v
+    def set_asistente(self, v: Any) -> None:
+        anterior, self._asistente = self._asistente, v
         if v is not anterior:
             self._cabeza = None
             self._t_cabeza = -math.inf
@@ -506,7 +506,7 @@ class ControlComida(QObject):
                 self._guardar(sonido=False)
                 self._emitir_estado()
             else:
-                self._comida_en_mascota(True)
+                self._comida_en_asistente(True)
         elif self._vista == "web" and _visible(v):
             self._pasar_a_escritorio()
 
@@ -556,7 +556,7 @@ class ControlComida(QObject):
         return hecho
 
     def acierto_web(self, id_: Any) -> bool:
-        """La página detectó el acierto sobre la mascota de la barra: la reacción común."""
+        """La página detectó el acierto sobre la asistente de la barra: la reacción común."""
         act = self.gestor.activa
         if act is None or self._vista != "web" or nc.normalizar_id(id_) != act[0]:
             return False
@@ -643,7 +643,7 @@ class ControlComida(QObject):
 
     def _pedir_cabeza(self, t: float) -> None:
         self._t_cabeza = t
-        m = self._mascota_vista()
+        m = self._asistente_vista()
         f = getattr(m, "cabeza", None) if m is not None else None
         if not callable(f):
             self._cabeza = None
@@ -656,13 +656,13 @@ class ControlComida(QObject):
         try:
             f(cb)
         except Exception:
-            _log.debug("comida: la mascota no dio la cabeza", exc_info=True)
+            _log.debug("comida: la asistente no dio la cabeza", exc_info=True)
 
     # ── Internos ─────────────────────────────────────────────────────────────────
     def _aparecer(self, n: str) -> str:
         if not self._habilitada():
             self.ultimo_motivo = "desactivada"
-            _llamar(self.anfitrion, "aviso", "La comida está desactivada (Ajustes → Mascota → Comida).")
+            _llamar(self.anfitrion, "aviso", "La comida está desactivada (Ajustes → Comida).")
             return ""
         pr = self._prioridad()
         if pr is not None:
@@ -681,31 +681,31 @@ class ControlComida(QObject):
         self._vista = self._elegir_vista()
         self.sonidos.aparecer(n)
         self._mostrar_vista(nc.APARECE)
-        self._comida_en_mascota(True)
+        self._comida_en_asistente(True)
         self._emitir_estado()
         return nc.APARECE
 
     def _elegir_vista(self) -> str:
-        if self._mascota_vista() is not None:
+        if self._asistente_vista() is not None:
             return "escritorio"
         if self._modo() == "normal":
             return "web"
-        f = getattr(self.anfitrion, "alternar_mascota", None)
+        f = getattr(self.anfitrion, "alternar_asistente", None)
         if callable(f):
             try:
-                f()                               # la nativa saca la mascota primero
+                f()                               # la nativa saca a la asistente primero
             except Exception:
-                _log.exception("comida: no pude sacar la mascota")
+                _log.exception("comida: no pude sacar a la asistente")
         return "escritorio"
 
     def _tam_px(self) -> int:
-        m = self._mascota_vista()
+        m = self._asistente_vista()
         try:
             ancho = float(m.width()) if m is not None else 0.0
         except Exception:
             ancho = 0.0
         if ancho <= 0.0:
-            return TAM_SIN_MASCOTA
+            return TAM_SIN_ASISTENTE
         return int(max(TAM_MIN, min(TAM_MAX, round(TAM_FRACCION * ancho))))
 
     def _mostrar_vista(self, accion: str) -> None:
@@ -732,14 +732,14 @@ class ControlComida(QObject):
         self._timer.start()
 
     def _pasar_a_escritorio(self) -> None:
-        """Con la comida en la web aparece la mascota flotante: la comida sale al escritorio."""
+        """Con la comida en la web aparece la asistente flotante: la comida sale al escritorio."""
         act = self.gestor.activa
         if act is None:
             return
         self._emitir_web(nc.GUARDA, act)
         self._vista = "escritorio"
         self._mostrar_vista(nc.APARECE)
-        self._comida_en_mascota(True)
+        self._comida_en_asistente(True)
         self._emitir_estado()
 
     def _guardar(self, *, sonido: bool, terminar: bool = True, animado: bool = True) -> bool:
@@ -758,7 +758,7 @@ class ControlComida(QObject):
             self._emitir_web(nc.GUARDA, act)
         if sonido:
             self.sonidos.guardar()
-        self._comida_en_mascota(False)
+        self._comida_en_asistente(False)
         if self._prioridad_mia and terminar:
             pr = self._prioridad()
             if pr is not None:
@@ -766,11 +766,11 @@ class ControlComida(QObject):
         self._prioridad_mia = False
         return True
 
-    def _comida_en_mascota(self, on: bool) -> None:
-        """`mascota.set_comida_activa(on)` una sola vez por mascota. Si la mascota
+    def _comida_en_asistente(self, on: bool) -> None:
+        """`asistente.set_comida_activa(on)` una sola vez por asistente. Si la asistente
         cambió, la vieja la suelta (en silencio si ya se destruyó)."""
         if on:
-            m = self._mascota_vista()
+            m = self._asistente_vista()
             if m is None or m is self._con_comida:
                 return
             if self._con_comida is not None:
@@ -779,7 +779,7 @@ class ControlComida(QObject):
             self._con_comida = m
             return
         m, self._con_comida = self._con_comida, None
-        m = m if m is not None else self._mascota_vista()
+        m = m if m is not None else self._asistente_vista()
         if m is not None:
             self._soltar_en(m)
 
@@ -790,7 +790,7 @@ class ControlComida(QObject):
         except (AttributeError, RuntimeError):
             pass                                  # sin el método o ya destruida
         except Exception:
-            _log.exception("comida: la mascota no soltó la comida")
+            _log.exception("comida: la asistente no soltó la comida")
 
     def _fin_directo(self) -> None:
         """Acabó la reacción de `comer_directo`: suelta la actividad si no hay comida en la mano."""
@@ -805,7 +805,7 @@ class ControlComida(QObject):
         self._emitir_estado()
 
     def _reaccionar(self, r: nc.Reaccion) -> None:
-        m = self._mascota_vista()
+        m = self._asistente_vista()
         if m is not None and callable(getattr(m, "comer", None)):
             _llamar(m, "comer", r.tipo, r.ms)
         elif self._vista != "web":                 # en la web la página ya pone la cara
@@ -827,8 +827,8 @@ class ControlComida(QObject):
                 self._guardar(sonido=False)
                 self._emitir_estado()
             else:
-                self._comida_en_mascota(True)       # la nativa la sacó y ya se ve
-        elif self._vista == "web" and visible and self._mascota_vista() is not None:
+                self._comida_en_asistente(True)       # la nativa la sacó y ya se ve
+        elif self._vista == "web" and visible and self._asistente_vista() is not None:
             self._pasar_a_escritorio()
 
     def _emitir_web(self, accion: str, act: Tuple[str, str]) -> None:

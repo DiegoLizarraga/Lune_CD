@@ -1,9 +1,9 @@
 """
-ui/sprites_fx.py — Movimiento de la mascota de sprites (bajos recursos).
+ui/sprites_fx.py — Movimiento de la asistente de sprites (bajos recursos).
 
 PARA QUÉ SIRVE
 --------------
-La mascota de sprites (`ui/avatar_overlay.py`) es una imagen fija: al
+La asistente de sprites (`ui/avatar_overlay.py`) es una imagen fija: al
 arrastrarla no se inmuta y en reposo parece un recorte pegado. Aquí están las
 piezas para que se mueva como las otras, sin Chromium y casi sin CPU:
 
@@ -11,7 +11,7 @@ Lógica pura (sin Qt, se prueba en seco):
 - `FisicaSprite`: balanceo de péndulo al arrastrar. La velocidad sale de
   Δposición/Δtiempo de la VENTANA (moveEvent: con `startSystemMove` no llegan
   eventos de ratón) y el ángulo la sigue con un `nucleo.fisica.Muelle`
-  (0.9 Hz, ζ 0.5, como el balanceo 2D de la mascota animada). Ganancia de
+  (0.9 Hz, ζ 0.5, como el balanceo 2D de la asistente animada). Ganancia de
   Mate-Engine (0.0167 °/(px/s)) con saturación suave a ±6° (crítica c.6: más
   giro no cabe en la ventana). Al parar, el objetivo vuelve a 0 y el muelle
   rebota (≈16 % de sobrepaso) y se asienta.
@@ -55,7 +55,7 @@ from nucleo.fisica import Muelle, clamp, suav
 
 # ── Constantes (Mate-Engine y plan P02) ──────────────────────────────────────────
 GANANCIA = 0.0167        # °/(px/s): la de la escena de ME, en los dos ejes
-F_HZ = 0.9               # muelle del balanceo 2D (mascota animada: 0.9 Hz, ζ 0.5)
+F_HZ = 0.9               # muelle del balanceo 2D (asistente animada: 0.9 Hz, ζ 0.5)
 ZETA = 0.5
 TOPE_GRADOS = 6.0        # crítica c.6: con más giro el sprite se sale de la ventana
 PIVOTE = (0.5, 0.06)     # centro arriba: cuelga de donde la agarras
@@ -319,7 +319,7 @@ class RespiracionSprite:
     """Sube y baja el sprite: `dy(t)` en px (negativo = arriba, como en Qt).
 
     Amplitud 1–2 px y periodo de 4 s; dormida, 2 px y 6 s. El desfase inicial es
-    al azar (con `rng`) para que no respiren igual dos mascotas ni al abrirla. La
+    al azar (con `rng`) para que no respiren igual dos asistentes ni al abrirla. La
     fase se acumula: cambiar de ritmo (`set_dormida`) no da saltos.
     """
 
@@ -463,7 +463,7 @@ def region_silueta(img: QImage, alfa_min: int = 1) -> QRegion:
 
 class SpriteRotado:
     """El sprite dentro de un lienzo con margen, girado, desplazado y espejado a
-    voluntad, con su región de clic. Para la mascota de sprites (crítica c.8).
+    voluntad, con su región de clic. Para la asistente de sprites (crítica c.8).
 
         sr = SpriteRotado(cara._pixmap_actual.toImage())
         img, region = sr.componer(grados=angulo, dy=respiracion, espejo=lado == 'izq')
@@ -594,7 +594,7 @@ class FisicaSpriteQt(QObject):
 
     # ── Ventana vigilada ──
     def vigilar(self, widget: QObject) -> None:
-        """Escucha los QEvent.Move de `widget` (la ventana de la mascota)."""
+        """Escucha los QEvent.Move de `widget` (la ventana de la asistente)."""
         self.dejar()
         self._widget = widget
         widget.installEventFilter(self)

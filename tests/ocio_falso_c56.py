@@ -10,7 +10,7 @@ que tocaría el sistema cambiado por dobles, apuntado en un `Registro`:
     compartido entre todas las ventanas de la prueba (como el de Windows);
   · el detector de música (sin COM) y la entrada global (sin Win32);
   · el mezclador (mudo) y la VentanaReloj / la tarjeta de la alarma (sin ventanas).
-`MascotaGrande` es una mascota con pantalla grande (VRM/animada) cuyas llamadas se
+`AsistenteGrande` es una asistente con pantalla grande (VRM/animada) cuyas llamadas se
 comprueban contra las firmas de la CompanionFlotante de verdad.
 """
 from __future__ import annotations
@@ -228,7 +228,7 @@ def fabricas_ocio(reg: Registro) -> dict:
     return {"grande": grande, "alarmas": alarmas, "baile": baile}
 
 
-# ── Mascota con pantalla grande, con las firmas de la de verdad ─────────────────
+# ── Asistente con pantalla grande, con las firmas de la de verdad ─────────────────
 
 def admite(fn, *args, **kw) -> bool:
     """¿`fn` acepta esta llamada? (sin llamarla)"""
@@ -239,8 +239,8 @@ def admite(fn, *args, **kw) -> bool:
         return False
 
 
-class MascotaGrande(QObject):
-    """Mascota VRM/animada a la vista con la página lista. Cada llamada del contrato
+class AsistenteGrande(QObject):
+    """Asistente VRM/animada a la vista con la página lista. Cada llamada del contrato
     de ocio se apunta en `diario` y se comprueba contra la firma del método de
     ui.companion.CompanionFlotante (si no encaja: AssertionError en `malas`)."""
     visibilidad = pyqtSignal(bool)

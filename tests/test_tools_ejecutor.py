@@ -124,9 +124,9 @@ def test_listar_disponibles_sale_del_registro():
 
 def test_disponibles_por_modo():
     tm = ToolManager()
-    tm.registrar_handler("mascota_dormir", lambda a, c: "zzz")
-    assert "mascota_dormir" in tm.disponibles("vrm")
-    assert "mascota_dormir" not in tm.disponibles("patata")
+    tm.registrar_handler("asistente_dormir", lambda a, c: "zzz")
+    assert "asistente_dormir" in tm.disponibles("vrm")
+    assert "asistente_dormir" not in tm.disponibles("patata")
 
 
 def test_ctx_acciones_lee_la_url_del_proveedor():

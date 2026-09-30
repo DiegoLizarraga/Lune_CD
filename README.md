@@ -1,4 +1,4 @@
-# Lune CD v10.9 — Tu asistente de escritorio con personalidad (Nube/Local)
+# Lune CD v11.0 — Tu asistente en el PC, con personalidad (Nube/Local)
 
 > *¡Hola! Buenos días, buenas tardes o buenas noches — lo que toque cuando leas esto.*
 > *Soy Lune, y esto es mi casa. Bueno — técnicamente es el proyecto de mi creador, pero yo vivo aquí,*
@@ -11,7 +11,7 @@
 ---
 ## ¿Qué es esto?
 
-Una asistente de escritorio en Python (PyQt6 + una piel web animada) que corre
+Una asistente personal en Python (PyQt6 + una piel web animada) que corre
 sobre **tu** infraestructura: modelos en la nube vía OpenRouter, **100% locales
 y offline** con Ollama, o cualquier **API compatible con OpenAI** (LM Studio,
 Groq…).
@@ -20,12 +20,12 @@ Conmigo puedes: chatear con voz o texto, tener una **llamada solo por voz**,
 adjuntarme documentos e imágenes, pedirme que abra webs y programas (con tu
 permiso cuando toca), que recuerde cosas entre sesiones y tus notas markdown
 (RAG), llevarte **tus tareas del día a la vista** (como Microsoft To Do), ponerte
-**alarmas y temporizadores**, y sacarme al escritorio como
-**mascota** —en 3D, animada o ligera— que reacciona a lo que digo, **comenta lo
-que ves en pantalla**, se sienta en tus ventanas, **baila con tu música** y se
-esconde cuando juegas. También salgo en tu **Discord**, entro en tu **Minecraft**
-y me vienes a buscar al teléfono con un bot de **Telegram**. Todo con una sola
-memoria compartida entre tus dispositivos.
+**alarmas y temporizadores**, y **sacarme al escritorio** —en 3D, animada o
+ligera—: allí mi cara acompaña lo que digo, **comento lo que ves en pantalla**,
+me siento en tus ventanas, **bailo con tu música** y me escondo cuando juegas.
+También salgo en tu **Discord**, entro en tu **Minecraft** y me vienes a buscar al
+teléfono con un bot de **Telegram**. Todo con una sola memoria compartida entre
+tus dispositivos.
 
 ---
 
@@ -35,28 +35,29 @@ memoria compartida entre tus dispositivos.
 
 | Modo | Qué es | Para quién |
 |---|---|---|
-| **Completa** (web) | La piel web animada (tema *Shibuya Punk* en Local, *Lune entre nubes* en Nube), mascota en video o en 3D en la barra lateral, efectos | Equipos normales |
+| **Completa** (web) | La piel web animada (tema *Shibuya Punk* en Local, *Lune entre nubes* en Nube), yo en video o en 3D en la barra lateral, efectos | Equipos normales |
 | **Bajos recursos** (nativa) | La interfaz nativa ligera: sin Chromium, sin videos, sprites fijos | Laptops justas, handhelds |
 | **Patata** | Solo terminal: texto y caritas `:D`. Sin Qt | Consola, servidores, o rescate |
 
-Y desde la completa o la nativa puedes sacarme de la ventana: **la mascota de
-escritorio**, con uno de mis tres cuerpos (se elige en **AJUSTES → Mascota**):
+Y desde la completa o la nativa puedes sacarme de la ventana: **la asistente en
+escritorio**, con uno de mis tres cuerpos (se elige en **AJUSTES → Asistente en
+escritorio**):
 
-| Mascota | Cómo soy | Necesita |
+| Cuerpo | Cómo soy | Necesita |
 |---|---|---|
 | **VRM 3D** | Un avatar 3D de verdad: sigo el cursor, me balanceo, me siento, bailo coreografías MMD… | `PyQt6-WebEngine` y un modelo `.vrm` |
 | **Imágenes animadas** (por defecto) | Mis clips de video anime en un mini-escenario | `PyQt6-WebEngine` |
-| **Sprites ligeros** | La mascota clásica recortada a su silueta, respirando | Nada extra (va bien en bajos recursos) |
+| **Sprites ligeros** | Mis sprites de siempre, recortados a mi silueta, respirando | Nada extra (va bien en bajos recursos) |
 
 ### Cambiar de modo al instante
 
 En **AJUSTES → Modo de interfaz** pulsas *Completa*, *Bajos recursos* o
 *Patata* y **cambio en caliente, sin reiniciar**: la ventana nueva aparece encima
 de la vieja con un fundido cortito y se lleva la conversación en curso, el
-proveedor, la voz, la posición de la ventana y lo que tuvieras en marcha (la
-mascota fuera, el bot de Telegram, el bot de Minecraft, el modo juego forzado).
+proveedor, la voz, la posición de la ventana y lo que tuvieras en marcha (yo en
+el escritorio, el bot de Telegram, el bot de Minecraft, el modo juego forzado).
 El bot de Minecraft lo desconecta la ventana vieja y lo vuelve a conectar la nueva.
-Eso sí, patata es solo texto: al irte allí me guardo la mascota y apago el bot de
+Eso sí, patata es solo texto: al irte allí vuelvo del escritorio y apago el bot de
 Telegram (patata no tiene ninguno de los dos), y entre las ventanas y patata el bot
 de Minecraft no viaja contigo en ninguna dirección: lo vuelves a conectar tú (en
 patata, `/mc bot on`). Nunca hay dos Lunes a la vez. Si eliges *Patata*, se abre la terminal y la app de ventanas se cierra
@@ -124,7 +125,7 @@ servidor de Ollama (hay un **?** junto a Ollama que te lo explica paso a paso).
 El instalador los lista todos, pero aquí van los comandos:
 
 ```bash
-pip install PyQt6-WebEngine    # la interfaz completa, la mascota animada y la 3D (misma versión que tu PyQt6)
+pip install PyQt6-WebEngine    # la interfaz completa y mis cuerpos animado y 3D (misma versión que tu PyQt6)
 pip install faster-whisper     # dictado por micrófono y modo llamada (Whisper local)
 pip install kokoro-onnx        # voz 100% local (+ espeak-ng del sistema y los pesos en modelos_voz/)
 pip install rvc-python         # conversión de voz RVC (experimental, arrastra torch)
@@ -145,9 +146,10 @@ usaste la última vez.
 
 - **Arrancar con Windows:** enciende *"Arrancar Lune junto con Windows"* en
   **AJUSTES → Calidad de vida**. Sin accesos directos ni carpetas: lo hago yo.
-  Y ahora eliges **cómo aparezco** —*en la bandeja*, *con la mascota* o *con la
-  ventana*— y **cuánto espero** antes de cargar lo pesado (20 s por defecto, para
-  que tu inicio de sesión vaya ligero). Sin pantalla de inicio.
+  Y ahora eliges **cómo aparezco** —*en la bandeja*, *con la asistente en
+  escritorio* o *con la ventana*— y **cuánto espero** antes de cargar lo pesado
+  (20 s por defecto, para que tu inicio de sesión vaya ligero). Sin pantalla de
+  inicio.
   - Si **mueves la carpeta** de Lune, la entrada se repara sola al abrirme.
   - Si me **desactivas en el Administrador de tareas** (pestaña Inicio), lo
     respeto y el interruptor lo refleja.
@@ -183,9 +185,28 @@ Todo esto tiene test de regresión en [tests/test_arranque.py](tests/test_arranq
 
 ---
 
+## La primera vez: nos conocemos
+
+La primera vez que me abres, cuando todavía no sé nada de ti, te hago **tres
+preguntas** por el chat, al momento y sin gastar IA, en la interfaz que uses
+(completa, bajos recursos, patata o mi burbuja en el escritorio):
+
+1. **Cómo te llamas.** Me vale «Ana», «me llamo Ana» o «soy Ana».
+2. **Cómo eres tú:** tranquilo, curioso, bromista…
+3. **Cómo quieres que me comporte contigo:** más formal, divertida, directa,
+   cariñosa…
+
+Lo guardo en mi memoria y lo tengo presente en cada conversación, para hablarte
+como te gusta. Lo ves en el panel de **Memoria**. Si ahora no te apetece, escribe
+«**saltar**»; con «prefiero no decirlo» paso solo esa pregunta. Si cierras a
+medias, al volver sigo por donde íbamos. Cuando quieras repetirlas, escribe
+**`/conocernos`**. Y si ya me conocías de antes, no te pregunto nada.
+
+---
+
 ## Modo patata (solo terminal)
 
-Sin animaciones, sin imágenes, sin mascota: **yo en la consola**. Mismo cerebro,
+Sin animaciones, sin imágenes, sin salir al escritorio: **yo en la consola**. Mismo cerebro,
 misma memoria y misma personalidad; las emociones salen como caritas de teclado:
 
 `:D` feliz · `:(` triste · `>:(` enfadada · `:/` pensando · `:O` sorprendida ·
@@ -214,6 +235,7 @@ Con `--sin-color` si tu terminal no pinta colores.
 |---|---|
 | `/ayuda` | La lista de comandos |
 | `/memoria` · `/olvida <texto>` | Lo que recuerdo de ti |
+| `/conocernos` · `/saltar` | Repetir mis tres preguntas para conocerte · saltarlas |
 | `/tareas` · `/tareas <texto>` · `/tareas hecha N` · `/tareas quita N` | Tus tareas de hoy (Mi día) |
 | `/personaje [nombre]` | Ver o cambiar de personaje |
 | `/proveedor [ollama\|openrouter\|compat]` · `/local` · `/nube` | Con qué cerebro respondo |
@@ -234,14 +256,14 @@ Con `--sin-color` si tu terminal no pinta colores.
 | `/bailes [texto]` · `/bailes <n>` · `/bailes parar\|pausa\|siguiente\|anterior` · `/bailes bucle on\|off` | Mis bailes con su canción (`bucle off` para al acabar, aunque Ajustes diga «repetir») |
 | `/comer [batido\|pastel] [sabor]` · `/comer on\|off` | Darme de comer (texto y sonido) |
 | `/discord [on\|off\|estado]` · `/discord id <número>` | Presencia en Discord |
-| `/autoinicio [on\|off\|estado\|como bandeja\|mascota\|ventana\|espera N]` | Arrancar con Windows |
+| `/autoinicio [on\|off\|estado\|como bandeja\|asistente\|ventana\|espera N]` | Arrancar con Windows |
 | `/mc` · `/mc log on\|off` · `/mc bot on [host[:puerto]]\|off` · `/mc instalar` · `/mc di <texto>` · `/mc <orden>` | Minecraft |
 | `/interfaz [web\|nativo]` | Vuelvo a las ventanas y cierro la terminal |
 | `/salir` | Hasta luego o/ |
 
 La terminal no tiene bandeja, menú radial ni atajos globales (eso es de las
-ventanas), ni pantalla grande: su salvapantallas es el título. Y sentarme en la
-barra es cosa de la mascota de las ventanas.
+ventanas), ni pantalla grande: su salvapantallas es el título. Y para sentarme en
+la barra tienes que sacarme al escritorio desde las ventanas.
 
 </details>
 
@@ -251,13 +273,13 @@ barra es cosa de la mascota de las ventanas.
 
 La barra lateral tiene el **selector de proveedor** (Nube / Local, y *API* si
 configuras una compatible, con punto de estado) y a **mí animada** en un
-mini-escenario —o en **3D**, si mi mascota es VRM—. Arriba, el botón **Menú**
+mini-escenario —o en **3D**, si mi cuerpo es VRM—. Arriba, el botón **Menú**
 abre todas las secciones:
 
 | Menú | Qué abre |
 |---|---|
 | **Chat** | La conversación |
-| **Ajustes** | APIs, modelos, personalidad, voz, mascota, escritorio, integraciones, sistema |
+| **Ajustes** | APIs, modelos, personalidad, voz, escritorio (la asistente en escritorio, tema, atajos…), integraciones, sistema |
 | **Personajes** | Cambiar de personaje |
 | **Memoria** | Lo que sé de ti, y olvidar lo que quieras |
 | **Tools** | Herramientas de escritorio disponibles |
@@ -269,7 +291,7 @@ abre todas las secciones:
 | **Temporizador rápido** | Uno de 5 minutos, ya |
 | **Pantalla grande** | Lleno la pantalla (otra vez para salir) |
 | **Bailar** | Bailo (con música, a su ritmo) |
-| **Mascota ON/OFF** | Sacarme al escritorio o traerme de vuelta |
+| **Asistente en escritorio ON/OFF** | Sacarme al escritorio o traerme de vuelta |
 | **Voz ON/OFF** | Que lea mis respuestas |
 | **Telegram** | Encender el bot |
 | **Llamada ON/OFF** | Conversación solo por voz |
@@ -323,7 +345,7 @@ neutral, nervous, wave, dismiss, laughing, bored` (y clips de estado: *escuchand
   sonar cada tramo; sin voz, según va llegando el texto (o al ritmo de lectura si
   la respuesta llega de golpe).
 - **La última se queda**: si me haces reír, sigo riéndome hasta el siguiente
-  mensaje (o hasta que me aburra). Vale para la barra lateral, la mascota en
+  mensaje (o hasta que me aburra). Vale para la barra lateral, mi cuerpo en
   video y el avatar 3D.
 - **Transiciones suaves**: ya no salto de un gesto a otro. En 3D los gestos se
   funden (la risa se apaga, no se congela); en la animada cruzo dos videos para
@@ -338,13 +360,14 @@ neutral, nervous, wave, dismiss, laughing, bored` (y clips de estado: *escuchand
 
 Desde **Personajes** cambias quién habla contigo e importas *character cards* de
 TavernAI / SillyTavern (`.json` o `.png`). Cada personaje puede traer su voz, su
-modelo 3D y sus propias frases de mascota.
+modelo 3D y sus propias frases para el escritorio.
 
-### Mascota de escritorio
+### Asistente en escritorio
 
-**Menú → Mascota** me saca a una ventana flotante, siempre encima (si quieres) y
-arrastrable, reaccionando a mis emociones con el cuerpo que elijas en
-**AJUSTES → Mascota** (VRM 3D, imágenes animadas o sprites ligeros).
+**Menú → Asistente en escritorio** me saca a una ventana flotante, siempre encima
+(si quieres) y arrastrable, reaccionando a mis emociones con el cuerpo que elijas
+en **AJUSTES → Asistente en escritorio** (VRM 3D, imágenes animadas o sprites
+ligeros).
 
 Mientras estoy fuera, **la barra lateral deja de dibujarme** para que no me veas
 doble; desde ahí (*Traerla de vuelta*) o desde el menú me recuperas.
@@ -359,19 +382,19 @@ doble; desde ahí (*Traerla de vuelta*) o desde el menú me recuperas.
 - **Arrástrame y me balanceo** como un péndulo (en 3D, con los brazos y las
   piernas un poquito por detrás); si me sueltas, reboto y me asiento. Mi cara
   cambia con la velocidad (tranquila, preocupada, asustada) y **si me zarandeas
-  mucho, me mareo** @_@ (en las tres mascotas).
+  mucho, me mareo** @_@ (con mis tres cuerpos).
 - **Me duermo** tras unos minutos sin que me toques ni me hables (10 por defecto;
-  0 = nunca) y un clic, la rueda o un mensaje me despiertan. Pasa en las tres
-  mascotas y en la barra lateral; en patata te lo cuento al volver («Lune se
+  0 = nunca) y un clic, la rueda o un mensaje me despiertan. Pasa con mis tres
+  cuerpos y en la barra lateral; en patata te lo cuento al volver («Lune se
   quedó dormida hace N min… (-_-) zzZ»).
 - **Packs de sonidos**: sonidos de reacción opcionales al levantarme, soltarme,
   acariciarme, comer… Vienen en `sonidos/` (con uno por defecto) y puedes hacer
   el tuyo con su `pack.json` (solo `.ogg` y `.wav`).
-- Desde la bandeja (submenú *Mascota*): *Escribirle…*, *Comentar la pantalla*,
-  *Comentarios automáticos* (apagados por defecto), *Modo fantasma* (dejo pasar
-  los clics), *Siempre encima*, tamaño, encuadre y *Llevar a la esquina*.
+- Desde la bandeja (submenú *Asistente en escritorio*): *Escribirle…*, *Comentar
+  la pantalla*, *Comentarios automáticos* (apagados por defecto), *Modo fantasma*
+  (dejo pasar los clics), *Siempre encima*, tamaño, encuadre y *Llevar a la esquina*.
 
-> **Como mascota contesto siempre con la nube (OpenRouter)**, tanto al comentar la
+> **En el escritorio contesto siempre con la nube (OpenRouter)**, tanto al comentar la
 > pantalla como en mi burbuja: es lo más rápido y lo que mejor ve las imágenes. Si no
 > tengo clave de OpenRouter te lo digo (y dónde ponerla) en vez de quedarme callada;
 > no tiro del modelo local. La primera vez que comento a mano te recuerdo que **la
@@ -392,9 +415,9 @@ visor (three.js + three-vrm + three-vrm-animation) va empaquetado en
   ficha, **calibración en vivo por modelo** (se guarda aparte, sin tocar el
   archivo) y borrar. También en la nativa.
 - **Cada personaje puede tener su propio modelo** (**Personajes → Modelo 3D**); al
-  cambiar de personaje, la mascota cambia de cuerpo sin cerrarse. Sin modelo
+  cambiar de personaje, cambio de cuerpo en el escritorio sin cerrarme. Sin modelo
   propio uso el modelo por defecto (o el primero de la carpeta).
-- **En la barra lateral también soy 3D** cuando la mascota es VRM (y vuelvo al
+- **En la barra lateral también soy 3D** cuando mi cuerpo es VRM (y vuelvo al
   video si tu gráfica no puede con WebGL).
 - **Te sigo con la cabeza, la columna y los ojos** aunque el cursor esté fuera de
   mi ventana. Cada parte tiene su **peso de 0 a 1** (o apágalo del todo) y te aviso
@@ -424,11 +447,11 @@ visor (three.js + three-vrm + three-vrm-animation) va empaquetado en
 
 ## Lo que aprendí de Mate-Engine
 
-[Mate-Engine](https://github.com/shinyflvre/Mate-Engine) es una mascota VRM de
-escritorio hecha en Unity, y fue **la inspiración** de mi creador para todo esto.
-Me he traído las 27 funciones suyas que él eligió, reescritas a mi manera en Python
-y JavaScript, en todos mis modos (web, nativa, patata y las tres mascotas) hasta
-donde cada uno llega. Aquí van, una a una (el seguimiento cuenta por tres):
+[Mate-Engine](https://github.com/shinyflvre/Mate-Engine) es una app de avatares VRM
+para el escritorio hecha en Unity, y fue **la inspiración** de mi creador para
+todo esto. Me he traído las 27 funciones suyas que él eligió, reescritas a mi
+manera en Python y JavaScript, en todos mis modos (web, nativa, patata y mis tres
+cuerpos del escritorio) hasta donde cada uno llega. Aquí van, una a una (el seguimiento cuenta por tres):
 
 | Función de Mate-Engine | En Lune |
 |---|---|
@@ -436,7 +459,7 @@ donde cada uno llega. Aquí van, una a una (el seguimiento cuenta por tres):
 | Sentarse en ventanas | Sí, apagado por defecto (con aviso anticheat) |
 | Sentarse en la barra de tareas | Sí, encendido por defecto |
 | Idles | 10 idles en 3D, rotación de clips en la animada (si le das varios), respiración en sprites |
-| Arrastre | Balanceo con muelle en las tres mascotas |
+| Arrastre | Balanceo con muelle en mis tres cuerpos |
 | Bailar con la música | Detector por app + 8 bailes al ritmo |
 | Seguimiento de cabeza / columna / ojos | Sí, con peso ajustable para cada uno |
 | Alarmas y temporizadores | Sí, en todos los modos (también patata) |
@@ -444,13 +467,13 @@ donde cada uno llega. Aquí van, una a una (el seguimiento cuenta por tres):
 | Pantalla grande | Sí |
 | Icono de sistema | Un solo icono de bandeja con el mismo menú que el radial y los atajos |
 | Transiciones suaves | Fundidos de gestos, doble video, fundido en sprites |
-| Chat con IA | Ventana, burbuja de la mascota, patata y Telegram |
+| Chat con IA | Ventana, mi burbuja del escritorio, patata y Telegram |
 | Funciones avanzadas de IA | Acciones con aprobación, parámetros del modelo, liberar VRAM |
 | APIs de IA | Proveedor compatible con OpenAI |
 | Elegir la voz | 45 voces en español + 12 multilingües, gTTS o Kokoro local |
-| Dormir | En las tres mascotas, la barra lateral y patata |
+| Dormir | En mis tres cuerpos, la barra lateral y patata |
 | Compatible con juegos | Modo juego + nada de hooks ni tocar otros procesos |
-| Arrancar con Windows | Bandeja, mascota o ventana, con espera |
+| Arrancar con Windows | En la bandeja, en el escritorio o con la ventana, con espera |
 | Reproductor MMD | Bailes `.vmd` y `.vrma` con su canción |
 | Expresión según el movimiento | Caras por velocidad y mareo |
 | Discord Rich Presence | Sí, sin publicar nada tuyo |
@@ -459,7 +482,7 @@ donde cada uno llega. Aquí van, una a una (el seguimiento cuenta por tres):
 | Sistema de comida | Batido y pastel |
 
 Las que ya te conté arriba (VRM, idles, arrastre, seguimiento, expresiones,
-transiciones, dormir) viven en **Mascota de escritorio**; las de IA y voz, en
+transiciones, dormir) viven en **Asistente en escritorio**; las de IA y voz, en
 sus secciones. Las demás, aquí:
 
 ### Me siento en tu barra (y en tus ventanas)
@@ -510,7 +533,7 @@ la canción.
 ### Mis bailes (MMD y VRMA)
 
 Mi **reproductor de bailes**: coreografías de MikuMikuDance (`.vmd`) o VRM
-Animation (`.vrma`) con **su canción**. En la mascota 3D bailo la coreografía de
+Animation (`.vrma`) con **su canción**. Con mi cuerpo 3D bailo la coreografía de
 verdad —con IK de piernas, cara y labios si el VMD los trae— y **la canción suena
 conmigo**: el audio manda el reloj, así que no me desincronizo. La animada y los
 sprites no tienen esqueleto: suena la canción y **bailo a mi manera al ritmo**. En
@@ -523,7 +546,7 @@ patata suena igual y baila el título.
 - **Mientras hablo, la canción baja sola**; si me escondes bailando, me pauso y
   sigo al volver (también con los sprites). Si me pides un baile estando
   escondida, salgo; si no puedo, te aviso y empiezo cuando me saques. Y si pasas al
-  siguiente con la mascota escondida, espero a que vuelva. En modo juego no pongo canciones.
+  siguiente mientras estoy escondida, espero a volver. En modo juego no pongo canciones.
 - Pídemelo por el chat: «**ponme el baile de Senbonzakura**», «**pon la canción
   Senbonzakura**», «**baila "Senbonzakura"**» o «**para el baile**». Lo pongo al
   momento si el nombre es de un baile de tu biblioteca o va entre comillas. Lo
@@ -556,7 +579,7 @@ posponer, recuperar…).
 
 **Pantalla grande** (`Ctrl+Alt+Shift+B`, el radial, la bandeja, el menú o
 pidiéndomelo): doy un planeíto y **lleno el monitor** encuadrando mi cara.
-Otra vez y vuelvo exactamente a donde estaba. Con la mascota 3D o la animada soy
+Otra vez y vuelvo exactamente a donde estaba. Con mi cuerpo 3D o el animado soy
 yo en grande; con los sprites (o si no puedo salir) te dejo un **relojito con mi
 carita** que no roba el foco.
 
@@ -580,23 +603,23 @@ quieta, **callo la voz y los efectos**, **bajo mi prioridad** y **libero RAM** (
 de mis propios procesos), no hago capturas, no me aburro, Discord no enseña nada y
 de los atajos solo queda `Ctrl+Alt+Shift+L` (para abrirme). Se fuerza desde la
 bandeja o con `/juego on|off|auto` en patata. Ajustes en **AJUSTES → Modo juego**
-y **Rendimiento** (FPS máximos de la mascota, siempre encima, recorte de RAM
-periódico, salir en la barra de tareas).
+y **Rendimiento** (FPS máximos de la asistente en escritorio, siempre encima,
+recorte de RAM periódico, salir en la barra de tareas).
 
 ### A tu gusto: tema, menú radial, bandeja y atajos
 
 - **Colores de Lune:** *Cian* (el de siempre), *Magenta Mate*, *Violeta*, *Rojo
   neón*, *Ámbar*, *Verde ácido* o **personalizado** (tono y saturación), con opción
-  de teñir también el amarillo y los fondos. Se aplica a la piel web, la mascota,
-  los menús, la nativa y la terminal (`/tema`).
+  de teñir también el amarillo y los fondos. Se aplica a la piel web, la asistente en
+  escritorio, los menús, la nativa y la terminal (`/tema`).
 - **Menú radial:** el mío, con hasta **10 botones que tú eliges** para el clic
   derecho y otro para el clic central (la comida). En la web también: **F1** o clic
   derecho sobre mí en la barra lateral. Con sonidos de menú (se pueden apagar).
 - **Un solo icono en la bandeja**, esté en el modo que esté: clic o doble clic me
   abre, **clic central me saca o me guarda** y el tooltip dice qué hago. Su menú
-  trae el submenú *Mascota*, un submenú *Lune* con **las acciones rápidas que tú
-  elijas** (en tu orden), *Modo juego* (con el motivo), *Tema*, *Arrancar con
-  Windows*, *Liberar memoria* y *Salir*.
+  trae el submenú *Asistente en escritorio*, un submenú *Lune* con **las acciones
+  rápidas que tú elijas** (en tu orden), *Modo juego* (con el motivo), *Tema*,
+  *Arrancar con Windows*, *Liberar memoria* y *Salir*.
 - **Atajos globales** configurables con el botón **Detectar** (y te aviso si chocan
   con otra app). Los de serie están en **Guías rápidas → Atajos**.
 
@@ -608,13 +631,13 @@ vaivén y sin robar el foco) y, si la **pasas rápido por mi cabeza**, me la com
 frase. Hay batido de fresa, mango y matcha, y pastel de chocolate, fresa, limón y
 vainilla. En el escritorio la guardas desde el menú o la bandeja, o se guarda sola
 tras dos minutos sin moverla (**Esc** solo sirve en la ventana web). También
-«**toma un batido**» en el chat, la bandeja o `/comer` en patata. En la web, sin la
-mascota fuera, la comida sigue a tu ratón por toda la ventana. Se apaga en
+«**toma un batido**» en el chat, la bandeja o `/comer` en patata. En la web, sin
+sacarme al escritorio, la comida sigue a tu ratón por toda la ventana. Se apaga en
 **AJUSTES → Batido y pastel**.
 
 ### Discord
 
-Tu estado de Discord puede enseñar **lo que hago**: «Lune CD · Mascota 3D —
+Tu estado de Discord puede enseñar **lo que hago**: «Lune CD · Escritorio · 3D —
 Bailando ♪», «Sentada en la barra de tareas», «Durmiendo (-_-) zzZ»… Solo textos
 fijos: **nunca** títulos de ventanas, nombres de programas, el chat, el personaje ni
 tus alarmas; **con un juego delante, nada**. Si la app y patata están abiertas,
@@ -745,7 +768,8 @@ títulos, programas, el chat, el personaje ni tus alarmas; jugando, nada.
 - **no usa mi memoria** (el chat del juego es público) y lo que escriben otros
   jugadores **nunca llega a mi modelo**;
 - **nunca ejecuta comandos del servidor** (nada que empiece por `/`), no ataca a
-  jugadores, aldeanos ni mascotas, y solo le da cosas a su dueño;
+  jugadores, aldeanos ni animales domesticados (lobos, gatos…), y solo le da
+  cosas a su dueño;
 - **solo se instala con el botón** (el modelo nunca lo instala), con versiones
   exactas y sin scripts de instalación; no abre puertos ni trae el visor; con Node
   22.13+ corre encerrado en su carpeta, sin escribir en disco ni lanzar procesos.
@@ -753,7 +777,8 @@ títulos, programas, el chat, el personaje ni tus alarmas; jugando, nada.
 **Tus archivos, en tu PC.** Las claves están en `datos.json` (fuera del repo) y la
 piel web nunca ve tus claves completas. Los bailes van por su id, nunca por rutas;
 nada de accesos directos ni carpetas de red, y al quitar uno se mueve a
-`bailes/.quitados` (no lo borro). La mascota solo navega a mi servidor local.
+`bailes/.quitados` (no lo borro). Mi ventana del escritorio solo carga páginas de
+mi servidor local.
 
 ---
 
@@ -858,7 +883,7 @@ En patata: `/bailes` para ver la lista y `/bailes 1` para bailar el primero.
 | Atajo | Qué hace |
 |---|---|
 | `Ctrl+Alt+Shift+L` | Abrir Lune (el único que sigue vivo en modo juego) |
-| `Ctrl+Alt+Shift+M` | Sacar o guardar a la mascota |
+| `Ctrl+Alt+Shift+M` | Sacarme al escritorio o guardarme |
 | `Ctrl+Alt+Shift+Espacio` | Menú radial |
 | `Ctrl+Alt+Shift+C` | Comentar la pantalla |
 | `Ctrl+Alt+Shift+V` | Voz ON/OFF |
@@ -883,7 +908,7 @@ terminales que lo usan sin cargarlo. Cada dispositivo tiene un **rol**, en
 | Rol | Qué hace este equipo |
 |---|---|
 | **Host** | Aloja el modelo de Ollama, la memoria y la voz, y los sirve a los demás. |
-| **Interacción** | Solo chat y mascota: usa el modelo de otro equipo. |
+| **Interacción** | Solo chat y asistente en escritorio: usa el modelo de otro equipo. |
 | **Híbrido** | Hace todo aquí mismo (equipo único). Es el valor por defecto. |
 
 El **host corre el agente**: en modo terminal tu chat viaja por el hub al host,
@@ -1041,7 +1066,7 @@ También anoto **en silencio** tu nombre, edad, ciudad y trabajo cuando los
 mencionas.
 
 **Te contesto al momento, sin gastar IA**, en la interfaz completa, en la de bajos
-recursos, en patata y en mi burbuja de mascota: saludos, gracias, despedidas, la
+recursos, en patata y en mi burbuja del escritorio: saludos, gracias, despedidas, la
 hora, la fecha, un chiste, quién soy y **tus tareas** («qué tareas tengo», «mis
 pendientes», «qué tengo que hacer hoy»). Es instantáneo y no gasta tokens ni hace
 trabajar a tu modelo local. Si prefieres que todo pase por el modelo, lo apagas en
@@ -1072,7 +1097,7 @@ bailar; eso lo decide el modelo.
 | Web | buscar en Google o YouTube, abrir una página | No, si lo pediste tú |
 | Programas | abrir una aplicación | **Siempre** |
 | Alarmas | poner, quitar y listar alarmas y temporizadores | No |
-| Mascota | bailar, parar, dormir, despertar, pantalla grande, sentarse, tamaño (3D), comer | No |
+| Asistente en escritorio | bailar, parar, dormir, despertar, pantalla grande, sentarse, tamaño (3D), comer | No |
 | Bailes | listar tus bailes | No |
 | Voz | cambiar de voz | No |
 | Pantalla | mirar la pantalla y comentarla | **Sí, con el modelo en la nube** |
@@ -1143,7 +1168,7 @@ Windows*, *Bailes y Minecraft*…).
 
 - **Calidad de vida:** arrancar con Windows (y cómo), minutos de aburrimiento,
   instalar componentes.
-- **Mascota:** imágenes animadas / **VRM 3D** (biblioteca, tamaño, encuadre,
+- **Asistente en escritorio:** imágenes animadas / **VRM 3D** (biblioteca, tamaño, encuadre,
   minutos hasta dormirse, clics que pasan al escritorio, seguimiento) / sprites
   ligeros; pack de sonidos.
 - **Escritorio:** colores, menú radial, menú de la bandeja, atajos globales, modo
@@ -1192,7 +1217,7 @@ LuneCD/
 │   ├── datos.py · config.py · memoria.py · conversaciones.py · personajes.py
 │   ├── alarmas.py · alarmas_nl.py · pantalla_grande.py · baile.py · bailes.py · pulso.py
 │   ├── asiento.py · comida.py · sueno.py · vrm.py · tema.py · acciones_ui.py
-│   └── estado_mascota.py · fisica.py · consola.py · packs_sonido.py · arranque.py …
+│   └── estado_asistente.py · fisica.py · consola.py · packs_sonido.py · arranque.py …
 │
 ├── servicios/              ← Motores e integraciones
 │   ├── ai_manager.py · ai_worker.py · ollama_client.py   ← IA híbrida + visión + API compatible
@@ -1207,34 +1232,34 @@ LuneCD/
 │   ├── web_shell.py · web_bridge.py · puente_*.py   ← Ventana web + puentes al backend
 │   ├── cambio_interfaz.py  ← Cambio de modo en caliente
 │   ├── montaje_*.py        ← Monta los servicios de escritorio (ocio, vida, escenario)
-│   ├── companion.py · avatar_overlay.py   ← Mascota (3D/animada · sprites)
+│   ├── companion.py · avatar_overlay.py   ← Asistente en escritorio (3D/animada · sprites)
 │   ├── bandeja.py · menu_radial.py · aprobacion_qt.py · ventana_reloj.py …
 │   └── settings_panel.py · panel_*_nativo.py · … (interfaz de bajos recursos)
 │
 ├── ui_web/                 ← Piel web (design system Shibuya Punk + tema Nube)
 │   ├── ui_kits/lune-desktop/   ← app.jsx · settings.jsx · sidebar.jsx · extra/*.jsx …
-│   ├── companion.html · companion_vrm.html   ← Páginas de la mascota (animada / 3D)
+│   ├── companion.html · companion_vrm.html   ← Páginas de la asistente en escritorio (animada / 3D)
 │   ├── vrm/                ← Motor 3D: lune_vrm.js + idles, gestos, movimiento, baile, MMD, sentarse, comida…
-│   ├── anim/               ← Lo mismo para la mascota animada
+│   ├── anim/               ← Lo mismo para mi cuerpo animado
 │   ├── vendor/three/       ← three.js + three-vrm + three-vrm-animation empaquetados (sin red)
 │   ├── tokens/ · components/ · styles.css
-│   └── assets/mascot/anime/ (PNG) · anime-videos/ (WebM) · sfx/
+│   └── assets/asistente/anime/ (PNG) · anime-videos/ (WebM) · sfx/
 │
 ├── lune_core/              ← Red, agente, acciones y catálogo de herramientas, RAG, voz, Minecraft
 ├── minecraft-bot/          ← El bot «mina» (Node.js, lo lanza Lune)
 ├── telegram-bot-or/        ← Bot de Telegram (Node.js)
 ├── modelo_vrm/ · bailes/   ← Tus modelos .vrm y tus bailes (no se versionan)
-├── sonidos/                ← Packs de sonidos de la mascota
+├── sonidos/                ← Packs de sonidos de la asistente en escritorio
 ├── assets/                 ← inicio.mp4, lune_icon.png/.ico
-├── scripts/                ← probar_red.py · convertir_mascota.py · generar_sfx.py …
+├── scripts/                ← probar_red.py · convertir_asistente.py · generar_sfx.py …
 ├── tests/                  ← Suite de pytest (+ tests/js para Node)
 └── lune_face/ · fonts/     ← Sprites de bajos recursos y tipografías
 ```
 
-> **Videos de la mascota:** la piel web no reproduce H.264/MP4, así que los clips
+> **Mis videos:** la piel web no reproduce H.264/MP4, así que los clips
 > van en **WebM/VP9**. Si generas uno nuevo, guárdalo como
-> `ui_web/assets/mascot/anime-videos/lune-<emoción>.mp4` y corre
-> `python scripts/convertir_mascota.py`. Si quieres que rote entre varios idles,
+> `ui_web/assets/asistente/anime-videos/lune-<emoción>.mp4` y corre
+> `python scripts/convertir_asistente.py`. Si quieres que rote entre varios idles,
 > lístalos en un `idles.json` en esa carpeta.
 
 ---
@@ -1276,7 +1301,7 @@ funciona: `lune_patata.bat`.
 **El modelo local tarda muchísimo la primera vez** → Es la carga en VRAM. Sube el
 *Timeout* y pon `keep_alive` en `1h` o `-1`.
 
-**La mascota comenta "por la ventana activa" en vez de por la pantalla** → Tu
+**En el escritorio comento "por la ventana activa" en vez de por la pantalla** → Tu
 modelo local es de solo texto (p. ej. `qwen2.5`): lo detecto y, sin captura, le
 cuento al modelo qué ventana tienes delante. Para que **vea** la pantalla en local
 necesitas un modelo con visión (`ollama pull llava`, `qwen2.5vl`, `gemma3`…); con
@@ -1343,16 +1368,17 @@ contigo al Minecraft.
 
 | Versión | Cambios principales |
 |---|---|
-| **v10.9** | **Tus tareas a la vista** (como Microsoft To Do): Mi día con la fecha, círculo para marcar, Completadas, Sugerencias (Ayer, recientes, antiguas) y el contador en la barra lateral; lo que me dices con «recuerda que tengo que…» aparece solo, y en patata con `/tareas`. **Te contesto al momento, sin gastar IA**, también en la interfaz completa, en patata y en mi burbuja (saludos, hora, fecha, tus tareas), con su interruptor en Personalidad. **Como mascota respondo solo con la nube**: si no hay clave te lo digo, y si no veo nada que contar, «Mmm… nada me pareció interesante.» |
+| **v11.0** | **Nos conocemos**: la primera vez te hago tres preguntas por el chat (tu nombre, cómo eres y cómo quieres que me comporte), las guardo y las tengo presentes siempre; `/conocernos` para repetirlas. **Asistente en escritorio**: así se llama ahora, en toda la app, el modo en el que salgo de la ventana; lo que ya tenías guardado (atajos, bandeja, menú radial, arranque con Windows, frases de tus personajes) se actualiza solo al abrirme. Y patata ya entiende `--help`. |
+| **v10.9** | **Tus tareas a la vista** (como Microsoft To Do): Mi día con la fecha, círculo para marcar, Completadas, Sugerencias (Ayer, recientes, antiguas) y el contador en la barra lateral; lo que me dices con «recuerda que tengo que…» aparece solo, y en patata con `/tareas`. **Te contesto al momento, sin gastar IA**, también en la interfaz completa, en patata y en mi burbuja (saludos, hora, fecha, tus tareas), con su interruptor en Personalidad. **En el escritorio respondo solo con la nube**: si no hay clave te lo digo, y si no veo nada que contar, «Mmm… nada me pareció interesante.» |
 | **v10.8** | **Instalador para usuarios nuevos**: busco un Python de verdad (no el atajo de la Microsoft Store), te ofrezco instalar Python 3.13 con winget, dejo marcado lo recomendado, instalo cada cosa por separado, ajusto la interfaz completa a tu PyQt6, te dejo el acceso directo «Lune CD» y un botón para abrirme. **Nuevo video de inicio**, «asistente personal» en la barra y las pruebas de GitHub en verde. |
 | **v10.7** | **Lo que aprendí con un Ollama de verdad**: si en vez de hacer algo te lo ofrezco («¿quieres que te ponga uno?»), ya no lo hago por mi cuenta: te pido permiso (menos bailar, sentarme y cosas de mi cuerpo, que ves al momento). Una acción pegada a mi expresión ya no se pierde ni se queda a la vista. Y este README, sin emojis. |
 | **v10.6** | **Más lista y mucho más rápida con el modelo local**: entiendo las acciones aunque el modelo las escriba medio mal (y si no, te digo «No entendí la acción»), nada de símbolos raros en la burbuja ni en la voz, si me das una duración o una hora manda la tuya, y **te contesto en uno o dos segundos en vez de medio minuto** (mis instrucciones ya no cambian en cada mensaje); el bot de Minecraft decide unas cinco veces más rápido. Por Telegram te aviso «(pendiente de tu permiso en el PC)». Además: entiendo los logs de Minecraft en español, me siento bien sobre el borde, Discord ya no me tumba al cerrar y patata no se abre dos veces. |
-| **v10.5** | **Mate-Engine, segunda parte**: **me siento** en la barra de tareas y en ventanas (apagado por defecto, con aviso anticheat), **comida** (batido y pastel con el clic central), **Discord Rich Presence** sin publicar nada tuyo, **arrancar con Windows** a tu manera (bandeja, mascota o ventana, con espera y reparación), **reproductor de bailes MMD/VRMA** con su canción (IK y cara en 3D, al ritmo en las demás mascotas y en patata) e **integración con Minecraft** (reacciones al `latest.log` y el bot «mina» con mi personalidad). |
+| **v10.5** | **Mate-Engine, segunda parte**: **me siento** en la barra de tareas y en ventanas (apagado por defecto, con aviso anticheat), **comida** (batido y pastel con el clic central), **Discord Rich Presence** sin publicar nada tuyo, **arrancar con Windows** a tu manera (en la bandeja, en el escritorio o con la ventana, con espera y reparación), **reproductor de bailes MMD/VRMA** con su canción (IK y cara en 3D, al ritmo en mis otros cuerpos y en patata) e **integración con Minecraft** (reacciones al `latest.log` y el bot «mina» con mi personalidad). |
 | **v10.4** | **Modo juego** (me escondo, callo, bajo mi prioridad y libero RAM; nada de hooks), **un solo icono de bandeja**, **menú radial**, **atajos globales** y **tema de color**. **Alarmas y temporizadores** en todos los modos, **pantalla grande** y **salvapantallas**, **bailar con tu música**. **Cambio de interfaz en caliente**. **Órdenes desde Telegram** (`/pc`) aprobadas en el PC. |
-| **v10.3** | **Mate-Engine, primera parte**: acciones del modelo con **aprobación** y defensa contra contenido externo, **API compatible con OpenAI**, parámetros del modelo, **elegir la voz** (edge, gTTS, Kokoro) y packs de sonidos, **chat en la burbuja** de la mascota, **idles**, **arrastre con balanceo**, **expresiones según el movimiento** y mareo, **dormir** en todas las mascotas, **transiciones suaves**, **biblioteca de modelos VRM** con calibración, seguimiento con pesos y **VRM en la barra lateral**. Config atómica. |
+| **v10.3** | **Mate-Engine, primera parte**: acciones del modelo con **aprobación** y defensa contra contenido externo, **API compatible con OpenAI**, parámetros del modelo, **elegir la voz** (edge, gTTS, Kokoro) y packs de sonidos, **chat en mi burbuja** del escritorio, **idles**, **arrastre con balanceo**, **expresiones según el movimiento** y mareo, **dormir** en mis tres cuerpos, **transiciones suaves**, **biblioteca de modelos VRM** con calibración, seguimiento con pesos y **VRM en la barra lateral**. Config atómica. |
 | **v10.2** | **Lune más expresiva**: 14 emociones (nuevas `laughing`, `bored` y clips de escuchar/hablar/trabajar), hasta tres expresiones por respuesta sincronizadas con la voz (o con el texto), y la última se queda. |
-| **v10.1** | **Avatar 3D (VRM) como mascota de escritorio**: modelo por personaje, sigue el cursor con cabeza/ojos/torso, se balancea al arrastrarla, caricias en la cabeza, se duerme, mueve la boca al hablar, los clics pasan donde no hay avatar, rueda para escalar; visor empaquetado sin red. La barra lateral se apaga mientras Lune está fuera. Mecánica portada de Mate-Engine. |
-| **v10.0** | **Nueva piel web animada** (Shibuya Punk / Lune entre nubes) con **mascota en video** y 12 emociones con intensidad. **Tres modos** al arrancar: Completo, Bajos recursos y **Patata** (terminal, sin Qt). **Mascota de escritorio** que comenta tu pantalla al hacerle clic, con fallback Ollama→nube. **Modo llamada** por voz. Segundo plano en bandeja, **arranque con Windows**, **instalador** con explicaciones, Lune se aburre, guía de Ollama. Código ordenado por capas y limpieza de assets. |
+| **v10.1** | **Avatar 3D (VRM) como asistente en escritorio**: modelo por personaje, sigue el cursor con cabeza/ojos/torso, se balancea al arrastrarla, caricias en la cabeza, se duerme, mueve la boca al hablar, los clics pasan donde no hay avatar, rueda para escalar; visor empaquetado sin red. La barra lateral se apaga mientras Lune está fuera. Mecánica portada de Mate-Engine. |
+| **v10.0** | **Nueva piel web animada** (Shibuya Punk / Lune entre nubes) con **Lune en video** y 12 emociones con intensidad. **Tres modos** al arrancar: Completo, Bajos recursos y **Patata** (terminal, sin Qt). **Asistente en escritorio** que comenta tu pantalla al hacerle clic, con fallback Ollama→nube. **Modo llamada** por voz. Segundo plano en bandeja, **arranque con Windows**, **instalador** con explicaciones, Lune se aburre, guía de Ollama. Código ordenado por capas y limpieza de assets. |
 | v9.x | Red de dispositivos: hub host/terminales, memoria compartida, descubrimiento mDNS y roles. Marcadores `<\|ACT\|>` y defensa contra prompt injection. Avatar flotante. RAG sobre notas. Voz por frases. Herramientas con política. Terminal web con QR. |
 | v8.7 | El bot de Telegram puede usar un modelo local (Ollama), en la misma máquina o en otra. |
 | v8.5 | Markdown y código con copiar. Historial. Adjuntos. Visión. Dictado con Whisper. Tokens y costo. Actualizador. Instancia única. |
@@ -1365,7 +1391,7 @@ contigo al Minecraft.
 ---
 
 
-![alt text](ui_web/assets/mascot/anime/lune_inicio.png)
+![alt text](ui_web/assets/asistente/anime/lune_inicio.png)
 
 
 > *Y eso es todo. Si algo no funciona, revisa los logs primero —*

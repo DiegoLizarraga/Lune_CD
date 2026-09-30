@@ -79,13 +79,19 @@ class GestorConversaciones:
         return self._sesion
 
     def agregar(self, rol: str, contenido: str, adjuntos: Optional[list] = None,
-                uso: Optional[dict] = None, no_confiable: bool = False):
+                uso: Optional[dict] = None, no_confiable: bool = False,
+                bienvenida: bool = False):
         """
         Añade un mensaje y persiste. `rol` es 'user' o 'assistant'.
 
         `no_confiable`: la respuesta salió de un turno con contenido externo
         (adjuntos, notas). Se guarda para que, al reabrir la conversación, el
         historial del modelo siga marcado y las acciones pidan permiso.
+
+        `bienvenida`: pregunta o respuesta de las tres preguntas de Lune
+        (nucleo/bienvenida.py). Se ve en el chat y en el historial, pero no vuelve
+        al modelo (como_historial se la salta: lo que contestaste ahí no va a la IA)
+        ni da el título a la conversación.
         """
         if self._sesion is None:
             self.nueva_sesion()
@@ -98,8 +104,10 @@ class GestorConversaciones:
         }
         if no_confiable:
             mensaje["no_confiable"] = True
+        if bienvenida:
+            mensaje["bienvenida"] = True
         self._sesion["mensajes"].append(mensaje)
-        if not self._sesion["titulo"] and rol == "user":
+        if not self._sesion["titulo"] and rol == "user" and not bienvenida:
             self._sesion["titulo"] = _titulo_desde(contenido)
         self._sesion["actualizado"] = _ahora()
         self.guardar()
@@ -192,9 +200,11 @@ class GestorConversaciones:
     def como_historial(self, limite_turnos: int = 20) -> List[dict]:
         """
         Convierte la sesión al formato que esperan los proveedores, para poder
-        retomar una conversación vieja con el modelo sabiendo de qué iba.
+        retomar una conversación vieja con el modelo sabiendo de qué iba. Los
+        turnos de la bienvenida (marca «bienvenida») no van: nunca fueron al modelo.
         """
-        mensajes = self.mensajes_actuales()[-limite_turnos * 2:]
+        mensajes = [m for m in self.mensajes_actuales() if not m.get("bienvenida")]
+        mensajes = mensajes[-limite_turnos * 2:]
         historial = []
         for m in mensajes:
             entrada = {"role": m["rol"], "content": m["contenido"]}

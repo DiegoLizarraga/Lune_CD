@@ -1,5 +1,5 @@
 """
-Tests de la integración del corte 1 en la mascota (v10.3):
+Tests de la integración del corte 1 en la asistente (v10.3):
 
 - ui_web/vrm/lune_vrm.js crea el bus de módulos y llama a sus hooks en el sitio
   justo del frame (pose antes de rotation.set, trasPose antes de vrm.update,
@@ -168,7 +168,7 @@ def test_parsear_eventos_tolera_de_todo():
     assert _parsear_eventos([{"t": "x", "d": [1, 2]}]) == [("x", {"valor": [1, 2]})]
 
 
-pytest.importorskip("PyQt6.QtWebEngineWidgets", reason="la mascota necesita PyQt6-WebEngine")
+pytest.importorskip("PyQt6.QtWebEngineWidgets", reason="la asistente necesita PyQt6-WebEngine")
 
 
 @pytest.fixture
@@ -261,9 +261,9 @@ def test_canal_de_eventos_independiente_en_animado(qapp, web_falso, config_anima
     assert not c._timer_eventos.isActive()
 
 
-def test_el_bus_de_estado_sigue_a_la_mascota(qapp, web_falso, config_animado):
+def test_el_bus_de_estado_sigue_a_la_asistente(qapp, web_falso, config_animado):
     from PyQt6.QtCore import QPoint, QPointF, Qt
-    from nucleo.estado_mascota import BusEstado
+    from nucleo.estado_asistente import BusEstado
     from ui.companion import CompanionFlotante
     bus = BusEstado()
     c = CompanionFlotante(config_animado, ai_manager=None, bus_estado=bus)
@@ -304,7 +304,7 @@ def test_el_bus_de_estado_sigue_a_la_mascota(qapp, web_falso, config_animado):
 def test_el_bus_de_estado_en_vrm_duerme_y_despierta(qapp, web_falso, tmp_path, monkeypatch):
     from nucleo import personajes, vrm
     from nucleo.config import Config
-    from nucleo.estado_mascota import BusEstado
+    from nucleo.estado_asistente import BusEstado
     from ui.companion import CompanionFlotante
     carpeta = tmp_path / "modelo_vrm"; carpeta.mkdir()
     (carpeta / "a.vrm").write_bytes(_vrm_minimo())
@@ -315,7 +315,7 @@ def test_el_bus_de_estado_en_vrm_duerme_y_despierta(qapp, web_falso, tmp_path, m
     bus = BusEstado()
     try:
         assert c.render == "vrm"
-        c.set_bus_estado(bus)                           # como hace ServiciosEscritorio.set_mascota
+        c.set_bus_estado(bus)                           # como hace ServiciosEscritorio.set_asistente
         assert bus.actual().render == "vrm"
         c._dormir()
         assert bus.actual().durmiendo is True

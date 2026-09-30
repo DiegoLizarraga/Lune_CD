@@ -1,13 +1,13 @@
 """
 Tests de ui/modo_juego_qt.ControlModoJuego (offscreen, con ServiciosEscritorio de
-verdad y detector, mascota, voz, prioridad y recorte falsos):
+verdad y detector, asistente, voz, prioridad y recorte falsos):
 
-- entrar: BusEstado.juego, cede lo que la tabla dice, plan a la mascota, voz
+- entrar: BusEstado.juego, cede lo que la tabla dice, plan a la asistente, voz
   callada (solo si la config lo pide y no lo estaba), prioridad baja, recorte de
   RAM 1.5 s después en un hilo, señal `cambio(True, motivo)`;
-- salir: todo al revés (y reanuda lo cedido), mascota con None, `cambio(False)`;
-- el plan se aplica UNA vez por partida (si el usuario saca la mascota, no se
-  vuelve a ocultar), la mascota nueva durante la partida recibe el plan;
+- salir: todo al revés (y reanuda lo cedido), asistente con None, `cambio(False)`;
+- el plan se aplica UNA vez por partida (si el usuario saca a la asistente, no se
+  vuelve a ocultar), la asistente nueva durante la partida recibe el plan;
 - forzar al momento, detener() restaura, recargar_config con el detector
   apagado sale, recorte automático (sistema.recorte_ram_auto) fuera de partida.
 """
@@ -53,14 +53,14 @@ class DetectorFalso:
         return {"activo": self.activo, "motivo": self.motivo, "forzado": self.forzado, "exe": "juego.exe"}
 
 
-class MascotaFalsa:
+class AsistenteFalsa:
     def __init__(self, diario, nombre="m"):
         self.diario, self.nombre = diario, nombre
         self.planes = []
 
     def aplicar_plan_juego(self, plan):
         self.planes.append(plan)
-        self.diario.append(("mascota", self.nombre, None if plan is None else plan.accion))
+        self.diario.append(("asistente", self.nombre, None if plan is None else plan.accion))
 
 
 class VozFalsa:
@@ -111,8 +111,8 @@ def montaje(qapp, config):
     cambios = []
     ctl.cambio.connect(lambda a, m: cambios.append((a, m)))
     esc.iniciar()
-    m = MascotaFalsa(diario)
-    esc.set_mascota(m)
+    m = AsistenteFalsa(diario)
+    esc.set_asistente(m)
     yield {"esc": esc, "ctl": ctl, "det": det, "voz": voz, "m": m, "diario": diario,
            "recortes": recortes, "cambios": cambios}
     esc.cerrar()
@@ -135,7 +135,7 @@ def test_entrar_y_salir_en_orden(montaje, monkeypatch):
     det.juego = True
     ctl._tic()
     assert ctl.activo() and montaje["esc"].estado.actual().juego is True
-    assert d == [("bus_juego", True), ("mascota", "m", "ocultar"), ("voz", True), ("prioridad", True)]
+    assert d == [("bus_juego", True), ("asistente", "m", "ocultar"), ("voz", True), ("prioridad", True)]
     assert montaje["cambios"] == [(True, "quns3")]
     assert isinstance(m.planes[0], mj.PlanJuego) and m.planes[0] == mj.plan(ctl.config)
     # el recorte llega después, y en un hilo aparte
@@ -144,7 +144,7 @@ def test_entrar_y_salir_en_orden(montaje, monkeypatch):
     det.juego = False
     ctl._tic()
     assert not ctl.activo() and montaje["esc"].estado.actual().juego is False
-    assert d == [("prioridad", False), ("voz", False), ("mascota", "m", None), ("bus_juego", False)]
+    assert d == [("prioridad", False), ("voz", False), ("asistente", "m", None), ("bus_juego", False)]
     assert montaje["cambios"][-1] == (False, "")
     assert ctl.estado()["activo"] is False
 
@@ -166,7 +166,7 @@ def test_el_plan_se_aplica_una_vez_por_partida(montaje):
     det.juego = True
     for _ in range(5):
         ctl._tic()
-    # si el usuario saca la mascota durante la partida, nadie la vuelve a ocultar
+    # si el usuario saca a la asistente durante la partida, nadie la vuelve a ocultar
     assert len(m.planes) == 1 and det.lecturas == 5
 
 
@@ -205,11 +205,11 @@ def test_cede_lo_que_manda_la_tabla_y_lo_reanuda(montaje):
     assert d[-1] == ("reanudar", "sentada", "barra") and esc.estado.actual().sentada == "barra"
 
 
-def test_la_mascota_nueva_en_plena_partida_recibe_el_plan(montaje):
+def test_la_asistente_nueva_en_plena_partida_recibe_el_plan(montaje):
     esc, ctl, det, d, m = montaje["esc"], montaje["ctl"], montaje["det"], montaje["diario"], montaje["m"]
     det.juego = True; ctl._tic()
-    nueva = MascotaFalsa(d, "nueva")
-    esc.set_mascota(nueva)
+    nueva = AsistenteFalsa(d, "nueva")
+    esc.set_asistente(nueva)
     assert [p.accion for p in nueva.planes] == ["ocultar"]
     assert m.planes[-1] is not None                    # la vieja se suelta tal cual
     det.juego = False; ctl._tic()

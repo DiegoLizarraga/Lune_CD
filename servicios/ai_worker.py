@@ -144,10 +144,10 @@ class AIWorker(QThread):
                      no sean de lectura piden permiso (AIManager.contexto_contaminado).
         efimero      True: el intercambio (prompt y respuesta) NO se guarda en el
                      historial de la conversación (p. ej. el comentario de
-                     pantalla de la mascota). El modelo sí ve la conversación.
+                     pantalla de la asistente). El modelo sí ve la conversación.
         ejecutor     lune_core.acciones.Ejecutor de este modo: de él salen el
                      registro y las herramientas con handler.
-        modo         'normal' | 'patata' | 'br' | 'mascota' | 'vrm'.
+        modo         'normal' | 'patata' | 'br' | 'asistente' | 'vrm'.
         ctx          {proveedor, url, …}: marca «(pide permiso)» según la
                      aprobación dinámica (p. ej. la captura con la nube).
         disponibles  nombres con handler, si no hay Ejecutor a mano.

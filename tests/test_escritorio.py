@@ -4,7 +4,7 @@ siguientes enchufan alarmas, pantalla grande, modo juego, etc.
 
 Sin pantalla (offscreen). Se prueba el registro y ciclo de vida de los
 controladores, la tabla de prioridades con sus avisos de ceder/reanudar, la
-mascota (bus inyectado, visibilidad y eventos de la página) y que los cambios
+asistente (bus inyectado, visibilidad y eventos de la página) y que los cambios
 de estado lleguen por señal al hilo de Qt aunque vengan de otro hilo.
 """
 import sys
@@ -24,15 +24,15 @@ class Controlador:
 
     def iniciar(self): self.diario.append(("iniciar", self.nombre))
     def detener(self): self.diario.append(("detener", self.nombre))
-    def set_mascota(self, m): self.diario.append(("mascota", self.nombre, m))
+    def set_asistente(self, m): self.diario.append(("asistente", self.nombre, m))
     def ceder(self, c): self.diario.append(("ceder", self.nombre, c.actividad, c.valor, c.por))
     def reanudar(self, c): self.diario.append(("reanudar", self.nombre, c.actividad, c.valor))
-    def evento_mascota(self, tipo, datos): self.diario.append(("evento", self.nombre, tipo, datos))
+    def evento_asistente(self, tipo, datos): self.diario.append(("evento", self.nombre, tipo, datos))
 
 
 def test_registro_y_ciclo_de_vida(qapp):
     from ui.escritorio import ServiciosEscritorio
-    from nucleo.estado_mascota import BusEstado
+    from nucleo.estado_asistente import BusEstado
     s = ServiciosEscritorio()
     assert isinstance(s.estado, BusEstado) and s.controladores() == {}
     diario = []
@@ -93,11 +93,11 @@ def test_tabla_de_prioridades_avisa_de_ceder_y_reanudar(qapp):
     s.cerrar()
 
 
-def test_mascota_recibe_el_bus_y_se_siguen_su_visibilidad_y_sus_eventos(qapp):
+def test_asistente_recibe_el_bus_y_se_siguen_su_visibilidad_y_sus_eventos(qapp):
     from PyQt6.QtCore import QObject, pyqtSignal
     from ui.escritorio import ServiciosEscritorio
 
-    class MascotaFalsa(QObject):
+    class AsistenteFalsa(QObject):
         visibilidad = pyqtSignal(bool)
         evento_js = pyqtSignal(str, dict)
         render = "vrm"
@@ -110,20 +110,20 @@ def test_mascota_recibe_el_bus_y_se_siguen_su_visibilidad_y_sus_eventos(qapp):
     s = ServiciosEscritorio()
     diario, eventos, cambios = [], [], []
     s.registrar("frases", Controlador("frases", diario))
-    s.evento_mascota.connect(lambda t, d: eventos.append((t, d)))
-    s.mascota_cambio.connect(lambda m: cambios.append(m))
-    m = MascotaFalsa()
-    s.set_mascota(m)
-    assert m.bus is s.estado and s.mascota is m and cambios == [m]
+    s.evento_asistente.connect(lambda t, d: eventos.append((t, d)))
+    s.asistente_cambio.connect(lambda m: cambios.append(m))
+    m = AsistenteFalsa()
+    s.set_asistente(m)
+    assert m.bus is s.estado and s.asistente is m and cambios == [m]
     assert s.estado.actual().render == "vrm" and s.estado.actual().visible is True
-    assert ("mascota", "frases", m) in diario
+    assert ("asistente", "frases", m) in diario
     m.visibilidad.emit(False)
     assert s.estado.actual().visible is False
     m.evento_js.emit("caricia", {"lado": 1})
     assert eventos == [("caricia", {"lado": 1})]
     assert ("evento", "frases", "caricia", {"lado": 1}) in diario
     # soltarla: se desconecta y el bus se le retira
-    s.set_mascota(None)
+    s.set_asistente(None)
     assert m.bus is None and s.estado.actual().render == "" and cambios[-1] is None
     m.evento_js.emit("caricia", {})
     m.visibilidad.emit(True)
@@ -228,7 +228,7 @@ def test_si_un_reanudar_no_puede_empezar_sigue_pendiente(qapp):
     """Entre terminar_actividad e iniciar_actividad otro hilo empieza un juego:
     la sentada no se pierde, espera a que acabe el juego."""
     from ui.escritorio import ServiciosEscritorio
-    from nucleo.estado_mascota import BusEstado
+    from nucleo.estado_asistente import BusEstado
 
     class BusCarrera(BusEstado):
         def terminar_actividad(self, actividad):
@@ -252,10 +252,10 @@ def test_si_un_reanudar_no_puede_empezar_sigue_pendiente(qapp):
 
 # ── Cableado: LuneBridge (web) y LuneCDWindow (nativa) crean los servicios ──────
 
-def _mascota_falsa_cls():
+def _asistente_falsa_cls():
     from PyQt6.QtCore import QObject, pyqtSignal
 
-    class MascotaFalsa(QObject):
+    class AsistenteFalsa(QObject):
         visibilidad = pyqtSignal(bool)
         evento_js = pyqtSignal(str, dict)
         recrear = pyqtSignal()
@@ -271,17 +271,17 @@ def _mascota_falsa_cls():
         def close(self): self.cerrado = True; self.hide()
         def set_bus_estado(self, bus): self.bus = bus
 
-    return MascotaFalsa
+    return AsistenteFalsa
 
 
-def test_el_puente_web_crea_los_servicios_y_les_pasa_la_mascota(qapp, tmp_path, monkeypatch):
+def test_el_puente_web_crea_los_servicios_y_les_pasa_la_asistente(qapp, tmp_path, monkeypatch):
     import types
     from nucleo.config import Config
     from ui.escritorio import ServiciosEscritorio
     from ui.web_bridge import LuneBridge
 
     # ui.companion de mentira: no hace falta QtWebEngine para probar el cableado.
-    Falsa = _mascota_falsa_cls()
+    Falsa = _asistente_falsa_cls()
     monkeypatch.setitem(sys.modules, "ui.companion",
                         types.SimpleNamespace(CompanionFlotante=Falsa))
     cfg = Config(str(tmp_path / "config.json"))
@@ -291,47 +291,47 @@ def test_el_puente_web_crea_los_servicios_y_les_pasa_la_mascota(qapp, tmp_path, 
     try:
         assert isinstance(b.escritorio, ServiciosEscritorio) and b.escritorio.iniciado
         eventos = []
-        b.escritorio.evento_mascota.connect(lambda t, d: eventos.append((t, d)))
-        assert b.mascota_toggle() is True
+        b.escritorio.evento_asistente.connect(lambda t, d: eventos.append((t, d)))
+        assert b.asistente_toggle() is True
         ov = b._overlay
-        assert b.escritorio.mascota is ov and ov.bus is b.escritorio.estado
+        assert b.escritorio.asistente is ov and ov.bus is b.escritorio.estado
         est = b.escritorio.estado.actual()
         assert est.render == "vrm" and est.visible is True
         ov.evento_js.emit("caricia", {"lado": 1})          # la cola de eventos ya tiene receptor
         assert eventos == [("caricia", {"lado": 1})]
-        b._mascota_recrear()                                # cambia de render: otra ventana
-        assert b._overlay is not ov and b.escritorio.mascota is b._overlay
+        b._asistente_recrear()                                # cambia de render: otra ventana
+        assert b._overlay is not ov and b.escritorio.asistente is b._overlay
         assert ov.bus is None and b._overlay.bus is b.escritorio.estado
         b.cerrar_escritorio()                               # al salir (aboutToQuit)
-        assert b.escritorio.mascota is None and not b.escritorio.iniciado
-        assert b._overlay.bus is None                       # soltó el bus de la mascota
+        assert b.escritorio.asistente is None and not b.escritorio.iniciado
+        assert b._overlay.bus is None                       # soltó el bus de la asistente
     finally:
         b.cerrar_escritorio()
         b.deleteLater()
 
 
-def test_la_ventana_nativa_engancha_la_mascota(qapp, tmp_path, monkeypatch):
+def test_la_ventana_nativa_engancha_la_asistente(qapp, tmp_path, monkeypatch):
     import inspect
     import types
     import main
     from nucleo.config import Config
     from ui.escritorio import ServiciosEscritorio
 
-    Falsa = _mascota_falsa_cls()
+    Falsa = _asistente_falsa_cls()
     monkeypatch.setattr(main, "AvatarOverlay", Falsa)
     cfg = Config(str(tmp_path / "config.json"))
     cfg.set("avatar", "render", "sprites")
     esc = ServiciosEscritorio()
     yo = types.SimpleNamespace(config=cfg, ai_manager=None, escritorio=esc, _overlay=None,
-                               _on_mascota_visible=lambda v: None, _mascota_recrear=lambda: None)
-    yo._escritorio_mascota = types.MethodType(main.LuneCDWindow._escritorio_mascota, yo)
-    yo._crear_mascota = types.MethodType(main.LuneCDWindow._crear_mascota, yo)
-    ov = yo._crear_mascota()
-    assert esc.mascota is ov and ov.bus is esc.estado
+                               _on_asistente_visible=lambda v: None, _asistente_recrear=lambda: None)
+    yo._escritorio_asistente = types.MethodType(main.LuneCDWindow._escritorio_asistente, yo)
+    yo._crear_asistente = types.MethodType(main.LuneCDWindow._crear_asistente, yo)
+    ov = yo._crear_asistente()
+    assert esc.asistente is ov and ov.bus is esc.estado
     assert esc.estado.actual().render == "sprites"
     yo._overlay = ov
-    main.LuneCDWindow._mascota_recrear(yo)                  # estaba oculta: no se recrea
-    assert esc.mascota is None and ov.bus is None and yo._overlay is None
+    main.LuneCDWindow._asistente_recrear(yo)                  # estaba oculta: no se recrea
+    assert esc.asistente is None and ov.bus is None and yo._overlay is None
     # Se crea en __init__ y se cierra al salir de verdad.
     assert "ServiciosEscritorio(" in inspect.getsource(main.LuneCDWindow.__init__)
     assert "self.escritorio.cerrar()" in inspect.getsource(main.LuneCDWindow.closeEvent)

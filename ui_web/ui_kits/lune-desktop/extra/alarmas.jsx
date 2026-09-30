@@ -839,7 +839,7 @@
       pedir('grande_alternar', [], (ok) => {
         if (!vivo.current) return;
         if (demo) { pedir('grande_estado_json', [], (j) => setGrande(normalizarGrande(leer(j, {})))); setMsg({ texto: 'Demo: la pantalla grande es de la app.', error: true }); return; }
-        setMsg(ok ? null : { texto: 'No pude (necesita la mascota en VRM o animada, o se sustituye por el reloj).', error: true });
+        setMsg(ok ? null : { texto: 'No pude (necesita el modo VRM o animado; si no, pongo el reloj).', error: true });
       });
     };
     const probar = () => {
@@ -855,7 +855,7 @@
     return (
       <Card id="aj-grande" eyebrow="▣ Ocio · Pantalla grande" title="Pantalla grande y salvapantallas" tone="cyan">
         <p className="ln-al-nota">
-          Lune llena el monitor con la cara encuadrada (mascota VRM o animada; con sprites o sin mascota, un reloj con su carita).
+          Lune llena el monitor con la cara encuadrada (en modo VRM o animado; con sprites o sin la asistente en escritorio, un reloj con su carita).
           El salvapantallas la pone así, dormida, cuando llevas un rato sin tocar nada.
         </p>
         <div className="ln-al-estado">

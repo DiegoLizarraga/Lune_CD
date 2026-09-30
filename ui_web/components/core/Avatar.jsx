@@ -27,7 +27,7 @@ if (typeof document !== 'undefined' && !document.getElementById('lune-avatar-css
   document.head.appendChild(s);
 }
 
-/** Clipped avatar — mascot image, initials, or bot mark. */
+/** Clipped avatar — Lune's portrait, initials, or bot mark. */
 export function Avatar({
   src, alt = '', initials, bot = false, size = 'md', ring,
   online = false, className = '', ...rest

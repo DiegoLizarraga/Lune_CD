@@ -2,7 +2,7 @@
 Tests de ui/montaje_escritorio.py (montar_escritorio + ServiciosCorte4) y de los
 anfitriones (ui/anfitrion_web.py, ui/anfitrion_nativo.py), con dobles: Tema y
 Juego falsos (los de verdad son de los agentes C y A), bandeja con un
-QSystemTrayIcon falso, GestorAtajos falso, mascota y anfitrión falsos. Offscreen.
+QSystemTrayIcon falso, GestorAtajos falso, asistente y anfitrión falsos. Offscreen.
 """
 import copy
 import os
@@ -91,8 +91,8 @@ class JuegoFalso(QObject):
     def forzar(self, on):
         self.diario.append(("forzar", on))
 
-    def set_mascota(self, v):
-        self.diario.append(("mascota", v is not None))
+    def set_asistente(self, v):
+        self.diario.append(("asistente", v is not None))
 
 
 class TrayFalso(QObject):
@@ -155,7 +155,7 @@ class GestorFalso:
         self.diario.append("quitar_todos")
 
 
-class MascotaFalsa(QObject):
+class AsistenteFalsa(QObject):
     menu_pedido = pyqtSignal(str, object)
     visibilidad = pyqtSignal(bool)
     cerrado = False
@@ -172,7 +172,7 @@ class MascotaFalsa(QObject):
         return self.visible
 
     def __getattr__(self, nombre):
-        # Cualquier método del contrato de la mascota: se apunta y ya.
+        # Cualquier método del contrato de la asistente: se apunta y ya.
         if nombre.startswith("_"):
             raise AttributeError(nombre)
         return lambda *a: self.diario.append((nombre,) + a)
@@ -194,26 +194,26 @@ class MascotaFalsa(QObject):
 
 
 class AnfitrionFalso:
-    def __init__(self, modo="normal", mascota=None):
+    def __init__(self, modo="normal", asistente=None):
         self.modo = modo
         self.soporta_llamada = modo == "normal"
         self.diario = []
         self.voz = False
         self.barra = True
         self.visible = True
-        self._mascota = mascota
+        self._asistente = asistente
 
     def _apunta(self, *a):
         self.diario.append(a)
 
     def mostrar_ventana(self): self._apunta("mostrar")
     def ventana_visible(self): return self.visible
-    def mascota(self): return self._mascota
-    def alternar_mascota(self):
-        self._apunta("alternar_mascota")
-        if self._mascota is not None:
-            self._mascota.visible = not self._mascota.visible
-        return bool(self._mascota and self._mascota.visible)
+    def asistente(self): return self._asistente
+    def alternar_asistente(self):
+        self._apunta("alternar_asistente")
+        if self._asistente is not None:
+            self._asistente.visible = not self._asistente.visible
+        return bool(self._asistente and self._asistente.visible)
     def voz_on(self): return self.voz
     def alternar_voz(self):
         self.voz = not self.voz
@@ -249,8 +249,8 @@ def montaje(qapp):
     cfg = ConfigFalsa()
     esc = ServiciosEscritorio(cfg)
     esc.iniciar()
-    masc = MascotaFalsa()
-    anf = AnfitrionFalso(mascota=masc)
+    masc = AsistenteFalsa()
+    anf = AnfitrionFalso(asistente=masc)
     gestor = GestorFalso()
     sonidos = []
     auto = AutoinicioFalso()
@@ -269,7 +269,7 @@ def montaje(qapp):
         "escenario": False,          # cortes 9/10 aparte (tests/test_anfitriones_c910_int.py)
     }
     s = montar_escritorio(esc, anf, cfg, fabricas=fab)
-    esc.set_mascota(masc, render="vrm")
+    esc.set_asistente(masc, render="vrm")
     s.cfg, s.esc, s.masc, s.anf, s.gestor, s.sonidos, s.auto = cfg, esc, masc, anf, gestor, sonidos, auto
     yield s
     s.desmontar()
@@ -287,8 +287,8 @@ def test_monta_en_orden_y_arranca(montaje):
     assert s.gestor.vivo and "mostrar_lune" in s.gestor.activos
     assert "pantalla_grande" not in s.gestor.activos and "baile_pausa" not in s.gestor.activos
     assert "llamada" in s.gestor.activos                               # web: sí
-    # la mascota llegó a los controladores y a la bandeja (red de seguridad)
-    assert ("mascota", True) in s.juego.diario
+    # la asistente llegó a los controladores y a la bandeja (red de seguridad)
+    assert ("asistente", True) in s.juego.diario
     assert ("quitar_bandeja",) in s.masc.diario
     assert s.bandeja._qss == "QMenu { color: cian; }"
 
@@ -344,12 +344,12 @@ def test_contexto(montaje):
     s.juego.e.update(activo=True, motivo="lista", forzado=None)
     s.auto.on = True
     c = s.contexto()
-    assert (c.modo, c.render, c.mascota_visible, c.voz_on, c.en_barra_on) == ("normal", "vrm", True, True, False)
+    assert (c.modo, c.render, c.asistente_visible, c.voz_on, c.en_barra_on) == ("normal", "vrm", True, True, False)
     assert (c.tema_preset, c.tamano, c.varios_vrm, c.autoinicio_on) == ("violeta", "grande", True, True)
     assert (c.juego_activo, c.juego_motivo, c.juego_forzado) == (True, "lista", None)
 
 
-def test_acciones_de_la_mascota(montaje):
+def test_acciones_de_la_asistente(montaje):
     s = montaje
     d, m = s.despachador, s.masc
     d.ejecutar("fantasma")
@@ -373,30 +373,30 @@ def test_acciones_de_la_mascota(montaje):
     assert ("comentar",) in s.anf.diario
     d.ejecutar("siempre_encima")
     assert s.cfg.d["avatar"]["siempre_encima"] is False and ("set_encima", False) in m.diario
-    d.ejecutar("comentarios_auto")                       # la mascota falsa no tiene la propiedad
+    d.ejecutar("comentarios_auto")                       # la asistente falsa no tiene la propiedad
     assert ("set_comentarios_auto", True) in m.diario
-    d.ejecutar("cerrar_mascota")
+    d.ejecutar("cerrar_asistente")
     assert ("close",) in m.diario
 
 
-def test_cerrar_mascota_apaga_lo_que_estaba_pensando(montaje):
-    """Revisión 7-10 (RR5): cerrar la mascota con un «Comentar pantalla» a medias dejaba
+def test_cerrar_asistente_apaga_lo_que_estaba_pensando(montaje):
+    """Revisión 7-10 (RR5): cerrar la asistente con un «Comentar pantalla» a medias dejaba
     `pensando` pegado en el bus (Discord «Pensando…», bot de Minecraft en pausa, sin sueño)."""
     s = montaje
-    s.esc.estado.actualizar(pensando=True)               # la mascota comentando la pantalla
+    s.esc.estado.actualizar(pensando=True)               # la asistente comentando la pantalla
     s.esc.estado.pensar("chat", True)                    # y el chat de la ventana
-    s.despachador.ejecutar("cerrar_mascota")
+    s.despachador.ejecutar("cerrar_asistente")
     assert ("close",) in s.masc.diario
     assert s.esc.estado.actual().pensando is True        # el chat sigue: no es suya
     s.esc.estado.pensar("chat", False)
     assert s.esc.estado.actual().pensando is False
 
 
-def test_chat_saca_la_mascota_si_estaba_guardada(montaje):
+def test_chat_saca_la_asistente_si_estaba_guardada(montaje):
     s = montaje
     s.masc.visible = False
     s.despachador.ejecutar("chat")
-    assert ("alternar_mascota",) in s.anf.diario and ("abrir_chat",) in s.masc.diario
+    assert ("alternar_asistente",) in s.anf.diario and ("abrir_chat",) in s.masc.diario
 
 
 def test_modo_juego_forzar(montaje):
@@ -611,11 +611,11 @@ class BridgeFalso:
         if con_pausa:
             self.pausar_aburrimiento = lambda on: self.diario.append(("pausar", on))
 
-    def _mascota_viva(self):
-        return "MASCOTA"
+    def _asistente_viva(self):
+        return "ASISTENTE"
 
-    def mascota_toggle(self):
-        self.diario.append("mascota_toggle")
+    def asistente_toggle(self):
+        self.diario.append("asistente_toggle")
         return True
 
     def voz_toggle(self):
@@ -660,11 +660,11 @@ def test_anfitrion_web(qapp):
     a.abrir_ajustes("Mal/Ruta")
     assert v.diario == ["mostrar", "mostrar", "salir", "mostrar"]
     assert navegado == ["settings#juego", "settings"]
-    assert a.mascota() == "MASCOTA" and a.alternar_mascota() is True
+    assert a.asistente() == "ASISTENTE" and a.alternar_asistente() is True
     assert a.voz_on() is True and a.alternar_voz() is False
     assert a.llamada_on() is False and a.alternar_llamada() is True
     assert a.comentar() is True
-    assert b.diario == ["mascota_toggle", "voz_toggle", "llamada_toggle", "comentar_pantalla"]
+    assert b.diario == ["asistente_toggle", "voz_toggle", "llamada_toggle", "comentar_pantalla"]
     a.aviso("hola")
     assert b.aviso.emitidos == [("hola",)]
     # aburrimiento sin pausar_aburrimiento público: para/rearma el temporizador
@@ -710,11 +710,11 @@ class WinFalsa(VentanaFalsa):
     def _quit_app(self): self.diario.append("quit")
     def _toggle_overlay(self):
         if self.masc is None:
-            self.masc = MascotaFalsa()
+            self.masc = AsistenteFalsa()
             self.masc.visible = True
         else:
             self.masc.visible = not self.masc.visible
-    def _mascota_viva(self): return self.masc
+    def _asistente_viva(self): return self.masc
     def _set_status(self, texto, color): self.estados.append(texto)
 
 
@@ -727,7 +727,7 @@ def test_anfitrion_nativo(qapp):
     a.abrir_ajustes()                                    # ya estaba: no vuelve al chat
     assert w.stack.i == 1 and w.diario == ["restaurar", "restaurar"]
     assert a.alternar_voz() is True and a.voz_on() is True
-    assert a.alternar_mascota() is True and a.mascota() is w.masc
+    assert a.alternar_asistente() is True and a.asistente() is w.masc
     assert a.comentar() is True and ("comentar_pantalla",) in w.masc.diario
     assert a.llamada_on() is False and a.alternar_llamada() is False
     a.set_aburrimiento(False)

@@ -1,7 +1,7 @@
 """
 patata.py — Modo PATATA: Lune en la terminal, sin nada más.
 
-Sin Qt, sin animaciones, sin imágenes, sin mascota: solo texto. Sirve para:
+Sin Qt, sin animaciones, sin imágenes, sin asistente en escritorio: solo texto. Sirve para:
   · usar a Lune desde una consola porque te gusta así, o
   · rescatarla cuando la interfaz no abre (PyQt6 roto, equipo muy justo…).
 
@@ -48,14 +48,21 @@ sin tocar el juego) y maneja el bot de Minecraft (se instala solo con /mc instal
 «Ponme el baile de X» y «conecta el bot de Minecraft» escritos en el chat van directos.
 Mientras Lune piensa, el bot pausa su modelo (comparten Ollama).
 
-Sueño: aquí no hay mascota que dormir, pero la regla es la misma
+Bienvenida (11, nucleo/bienvenida.py): si la memoria aún no sabe nada de ti, al arrancar
+Lune te pregunta tu nombre, cómo eres y cómo quieres que sea contigo, una cosa cada vez y
+sin modelo (tus respuestas van a memoria.json). «saltar» o /saltar la dejan para otro
+momento, «prefiero no decirlo» salta una pregunta y /conocernos la repite.
+
+Sueño: aquí no hay asistente en escritorio que dormir, pero la regla es la misma
 (nucleo/sueno.ReglaSueno, avatar.dormir_min). Si vuelves tras una pausa larga,
 antes de la respuesta sale «Lune se quedó dormida hace N min… (-_-) zzZ» y, a
-veces, una frase al despertar (lune_core/frases_mascota).
+veces, una frase al despertar (lune_core/frases_asistente).
 
 Comandos:
   /ayuda                        esta ayuda
   /memoria · /olvida <texto>    lo que Lune recuerda de ti
+  /conocernos · /saltar         te hago mis tres preguntas para conocerte (tu nombre, cómo eres y
+                                cómo quieres que sea contigo) · /saltar las deja para otro momento
   /tareas [texto] · /tareas hecha N · /tareas quita N   tus tareas (las de Mi día primero):
                                 sin nada las lista numeradas, con texto anota una en Mi día
   /personaje [nombre]           ver o cambiar de personaje
@@ -95,13 +102,13 @@ Comandos:
   /comer [batido|pastel] [sabor] · /comer on|off   darle de comer (texto y sonido) o apagar la comida
   /discord [on|off|estado] · /discord id <número>  presencia en Discord (solo «Lune CD · Terminal» y
                                 un estado fijo; el Application ID de discord.com/developers)
-  /autoinicio [on|off|estado|como bandeja|mascota|ventana|espera N]   arrancar con Windows (aquí:
+  /autoinicio [on|off|estado|como bandeja|asistente|ventana|espera N]   arrancar con Windows (aquí:
                                 esta terminal, minimizada) y cómo abre la app de ventanas
   /interfaz [web|nativo]        vuelve a las ventanas (completa o bajos recursos) y cierra la terminal
   /salir
   (La terminal no tiene bandeja, menú radial ni atajos globales: eso es de las ventanas.
   Tampoco pantalla grande: el salvapantallas es el título, con salvapantallas.activo.
-  Sentarse en la barra o en una ventana es cosa de la mascota de las ventanas.)
+  Sentarse en la barra o en una ventana es cosa de la asistente en escritorio.)
 """
 from __future__ import annotations
 
@@ -122,11 +129,12 @@ if str(RAIZ) not in sys.path:
     sys.path.insert(0, str(RAIZ))
 
 from nucleo import datos, personajes                      # noqa: E402
+from nucleo.bienvenida import Bienvenida                  # noqa: E402
 from nucleo.consola import ConsolaAsincrona               # noqa: E402
 from nucleo.memoria import MemoriaManager                 # noqa: E402
 from nucleo.sueno import ReglaSueno                       # noqa: E402
 from lune_core import expresiones, marcadores             # noqa: E402
-from lune_core.frases_mascota import frases_para          # noqa: E402
+from lune_core.frases_asistente import frases_para          # noqa: E402
 from lune_core.acciones import (CADUCADA, RECHAZADA,      # noqa: E402
                                 limpiar_texto)
 from lune_core.catalogo_herramientas import ORIGEN_USUARIO  # noqa: E402
@@ -137,7 +145,7 @@ from servicios.ai_manager import AIManager                # noqa: E402
 MODO = "patata"              # modo del catálogo de herramientas
 _AUTO = object()
 
-# Emoción canónica → carita de teclado (esto ES la mascota en modo patata).
+# Emoción canónica → carita de teclado (en patata, la carita hace de asistente en escritorio).
 CARITAS = {
     "happy": ":D", "sad": ":(", "angry": ">:(", "think": ":/", "surprised": ":O",
     "awkward": "^^'", "question": ":?", "curious": "o_O", "neutral": ":|",
@@ -337,7 +345,7 @@ class Patata:
                  recortar: Optional[Callable[[], Any]] = None, autoinicio: Any = None,
                  alarmas: Any = _AUTO, baile: Any = _AUTO, salvapantallas: Any = _AUTO,
                  comida: Any = _AUTO, sistema: Any = _AUTO, con_windows: bool = False,
-                 bailes: Any = _AUTO, minecraft: Any = _AUTO,
+                 bailes: Any = _AUTO, minecraft: Any = _AUTO, bienvenida: Any = _AUTO,
                  **opciones_ejecutor):
         self.c = _colores(color)
         self._c_base = dict(self.c)                          # /tema parte de aquí cada vez
@@ -366,10 +374,16 @@ class Patata:
         # o «s/n»— o el fin de la última respuesta); la regla se lee de config en cada turno.
         self._reloj_sueno = reloj_sueno or time.monotonic
         self._ultima_actividad = self._reloj_sueno()
-        self._frases = None                                  # FrasesMascota (perezosa)
+        self._frases = None                                  # FrasesAsistente (perezosa)
         self.consola = consola if consola is not None else ConsolaAsincrona(self._texto_prompt())
         self.ai = ai if ai is not None else AIManager()
         self.memoria = memoria if memoria is not None else MemoriaManager()
+        # Bienvenida (11): _AUTO = se crea al usarla, con la config y la memoria de entonces
+        # (None = sin bienvenida). Solo empieza en correr(), nunca al responder.
+        # _bienvenida_vista: la pregunta (clave_paso) que se escribió aquí la última vez; si
+        # la otra interfaz avanzó entretanto, tu línea no cuenta como respuesta a otra.
+        self.bienvenida = bienvenida
+        self._bienvenida_vista = None
         self.provider = self._proveedor_inicial()
         self.voice = self._crear_voz() if voice is _AUTO else voice
         self.tools = self._crear_tools() if tools is _AUTO else tools
@@ -401,7 +415,7 @@ class Patata:
         # None = sin ellos.
         self.bailes = self._crear_bailes() if bailes is _AUTO else bailes
         self.minecraft = self._crear_minecraft() if minecraft is _AUTO else minecraft
-        for pieza in (self.bailes, self.minecraft):     # listar_bailes, mascota_bailar, minecraft_*…
+        for pieza in (self.bailes, self.minecraft):     # listar_bailes, asistente_bailar, minecraft_*…
             if pieza is not None and self.tools is not None:
                 try:
                     pieza.registrar_herramientas(self.tools)
@@ -720,9 +734,9 @@ class Patata:
             return self._cara("neutral")
         return self._cara(str(acts[-1].get("emotion", "neutral")))
 
-    # ── Sueño (la mascota que no hay) ────────────────────────────────────────────
-    def _frases_mascota(self):
-        """FrasesMascota del personaje activo (con el reloj de la sesión), o None."""
+    # ── Sueño (sin asistente en escritorio que dormir) ─────────────────────────────
+    def _frases_asistente(self):
+        """FrasesAsistente del personaje activo (con el reloj de la sesión), o None."""
         if self._frases is None:
             try:
                 self._frases = frases_para(personajes.get_activo(), reloj=self._reloj_sueno)
@@ -751,7 +765,7 @@ class Patata:
             nombre = str((personajes.get_activo() or {}).get("nombre") or "Lune")
             if regla.mensaje_diferido(pausa, nombre) is None:
                 return None
-            frases = self._frases_mascota()
+            frases = self._frases_asistente()
             frase = frases.elegir("despertar") if frases is not None else None
             aviso = regla.mensaje_diferido(pausa, nombre, frase_despertar=frase)
         except Exception:
@@ -776,6 +790,10 @@ class Patata:
 
     def _responder(self, texto: str):
         c = self.c
+        # Bienvenida (11): mientras Lune te hace sus tres preguntas, tu línea es la respuesta
+        # (antes que las herramientas: «abre…» no es un nombre). Sin modelo.
+        if self._turno_bienvenida(texto):
+            return
         # herramienta directa ("abre youtube", "estado del pc", "avísame en 10 minutos"):
         # la pidió la persona. Va al Ejecutor como cualquier acción (política,
         # presupuesto, aprobación y auditoría); el resultado llega por _al_resultado (en
@@ -786,7 +804,7 @@ class Patata:
                 llamadas = self.tools.detectar_llamadas(texto)
             except Exception:
                 llamadas = []
-            baile = [ll for ll in llamadas if ll.herramienta in ("mascota_bailar", "parar_baile")]
+            baile = [ll for ll in llamadas if ll.herramienta in ("asistente_bailar", "parar_baile")]
             if baile:
                 # «baila» / «para de bailar»: aquí el baile es el título (BaileTerminal). Cortes
                 # 9/10: «ponme el baile de X» (con canción) busca en tu biblioteca y pone la
@@ -796,15 +814,15 @@ class Patata:
                 if r:
                     self._p(self._lune(":D", str(r)) + "\n")
                 return
-            if any(ll.herramienta == "mascota_sentarse" for ll in llamadas):
-                # «siéntate», «bájate»: eso lo hace la mascota de las ventanas.
+            if any(ll.herramienta == "asistente_sentarse" for ll in llamadas):
+                # «siéntate», «bájate»: eso lo hace la asistente en escritorio (app de ventanas).
                 texto_s = None
                 if getattr(self, "sistema", None) is not None:
                     try:
                         texto_s = self.sistema.comando("/sentarse")
                     except Exception:
                         texto_s = None
-                self._p(self._lune("^^'", texto_s or "Aquí no me puedo sentar: eso es de la mascota.") + "\n")
+                self._p(self._lune("^^'", texto_s or "Aquí no me puedo sentar: eso lo hago como asistente en escritorio.") + "\n")
                 return
             if llamadas and self.ejecutor is not None:
                 self.ejecutor.ejecutar_llamadas(llamadas, ORIGEN_USUARIO, self._ctx(), self._al_resultado)
@@ -882,7 +900,7 @@ class Patata:
         """Texto para «baila…» / «para de bailar» escritos en el chat (sin IA ni Ejecutor)."""
         bl = getattr(self, "bailes", None)
         bt = getattr(self, "baile", None)
-        bailar = ll.herramienta == "mascota_bailar"
+        bailar = ll.herramienta == "asistente_bailar"
         try:
             if bl is not None and ((bailar and (ll.args or {}).get("cancion"))
                                    or (not bailar and bool(getattr(bl, "activo", False)))):
@@ -904,6 +922,90 @@ class Patata:
             v.speak_segmentos(expresiones.segmentos_voz(plan))
         except Exception:
             pass
+
+    # ── Bienvenida (11): las tres preguntas cuando aún no te conozco ─────────────
+    def _nombre_personaje(self) -> str:
+        try:
+            return str((personajes.get_activo() or {}).get("nombre") or "Lune")
+        except Exception:
+            return "Lune"
+
+    def _bienvenida(self) -> Optional[Bienvenida]:
+        """La Bienvenida de esta terminal (se crea al primer uso) o None. Con una memoria que
+        no es un MemoriaManager (los dobles de los tests) o sin config, está inactiva."""
+        b = getattr(self, "bienvenida", None)
+        if b is _AUTO:
+            try:
+                b = Bienvenida(self.config, self.memoria, nombre_asistente=self._nombre_personaje)
+            except Exception:
+                b = None
+            self.bienvenida = b
+        return b if isinstance(b, Bienvenida) else None
+
+    def _arrancar_bienvenida(self) -> Optional[str]:
+        """correr(): la pregunta que toca (y empieza si la memoria está vacía de ti) o None.
+        Quien llama la escribe: queda apuntada como vista aquí."""
+        b = self._bienvenida()
+        if b is None:
+            return None
+        try:
+            pregunta = b.arrancar()
+            self._bienvenida_vista = b.clave_paso() if pregunta else None
+            return pregunta
+        except Exception:
+            return None
+
+    def _pregunta_bienvenida(self) -> Optional[str]:
+        """La pregunta en curso (tras /nuevo o /limpiar sigue siendo la que toca) o None.
+        Quien llama la escribe: queda apuntada como vista aquí."""
+        b = self._bienvenida()
+        if b is None:
+            return None
+        try:
+            pregunta = b.pregunta_actual()
+            if pregunta:
+                self._bienvenida_vista = b.clave_paso()
+            return pregunta
+        except Exception:
+            return None
+
+    def _tras_turno_bienvenida(self, b: Bienvenida) -> None:
+        """Lo que Lune acaba de contestar ya lleva la pregunta siguiente: vista y dicha aquí."""
+        try:
+            self._bienvenida_vista = b.clave_paso()
+            b.marcar_dicha()
+        except Exception:
+            pass
+
+    def _turno_bienvenida(self, texto: str) -> bool:
+        """_responder: si la bienvenida se queda con tu línea, Lune contesta al instante (sin
+        modelo, herramientas ni banco) y devuelve True."""
+        b = self._bienvenida()
+        if b is None:
+            return False
+        try:
+            tb = b.turno(texto, vista=self._bienvenida_vista)
+        except Exception:
+            return False
+        if tb is None:
+            return False
+        self._p(self._lune(":D" if tb.cara == "happy" else ":|", tb.respuesta) + "\n")
+        self._tras_turno_bienvenida(b)
+        self._hablar(tb.respuesta)
+        return True
+
+    def _cmd_bienvenida(self, comando: str) -> str:
+        """/conocernos (la vuelve a empezar) y /saltar (la deja para otro momento)."""
+        b = self._bienvenida()
+        if b is None:
+            return self._lune(":|", "Aquí no puedo guardar lo que me cuentes, así que eso lo dejamos "
+                                    "para otro momento.")
+        tb = b.turno(comando)
+        if tb is None:
+            return ""
+        self._tras_turno_bienvenida(b)
+        self._hablar(tb.respuesta)
+        return self._lune(":D" if tb.cara == "happy" else ":|", tb.respuesta)
 
     # ── Acciones del modelo: resultados y aprobaciones ───────────────────────────
     def _al_resultado(self, res) -> None:
@@ -1060,10 +1162,15 @@ class Patata:
             "/juego": self._cmd_juego,
             "/ram": self._cmd_ram,
             "/tareas": self._cmd_tareas,
+            "/conocernos": lambda a: self._cmd_bienvenida("/conocernos"),
+            "/saltar": lambda a: self._cmd_bienvenida("/saltar"),
         }
         if cmd == "/limpiar":
             self.nueva_conversacion()
             os.system("cls" if os.name == "nt" else "clear")
+            pregunta = self._pregunta_bienvenida()        # bienvenida a medias: sigue su pregunta
+            if pregunta:
+                self._p(self._lune(":D", pregunta) + "\n")
             return False
         if cmd in ("/interfaz", "/menu"):
             fn2 = self._cmd_interfaz if cmd == "/interfaz" else self._cmd_menu
@@ -1267,7 +1374,8 @@ class Patata:
 
     def _cmd_nuevo(self, arg: str = "") -> str:
         self.nueva_conversacion()
-        return "Conversación nueva."
+        pregunta = self._pregunta_bienvenida()            # bienvenida a medias: sigue su pregunta
+        return "Conversación nueva." + (f"\n{self._lune(':D', pregunta)}" if pregunta else "")
 
     # ── Corte 4 en la terminal: tema, caritas, memoria, modo juego y /menu ──────
     def _guardar_patata(self, clave: str, valor: Any) -> Optional[str]:
@@ -1735,16 +1843,24 @@ class Patata:
     def correr(self) -> int:
         c = self.c
         nombre = personajes.get_activo().get("nombre", "Lune")
+        # Bienvenida (11): con la memoria vacía de ti (o a medias), la pregunta que toca.
+        pregunta = self._arrancar_bienvenida()
         if self.con_windows:
-            # Arrancó con Windows (consola minimizada): una línea y listo.
+            # Arrancó con Windows (consola minimizada): una línea y listo (la pregunta, si
+            # toca, queda escrita para cuando abras la consola; sin voz).
             self._p(f"{c['bold']}{c['cyan']}月 {nombre} — modo patata{c['reset']} "
                     f"{c['dim']}(arrancó con Windows · /ayuda){c['reset']}\n")
+            if pregunta:
+                self._p(self._lune("o/", pregunta) + "\n")
         else:
             self._p(f"{c['bold']}{c['cyan']}月 {nombre} — modo patata{c['reset']} "
                     f"{c['dim']}({self._describir_proveedor()}){c['reset']}")
-            self._p(f"{c['dim']}Solo texto. Caritas en vez de mascota. /ayuda para los comandos, "
+            self._p(f"{c['dim']}Solo texto y caritas, sin asistente en escritorio. /ayuda para los comandos, "
                     f"/salir para irte.{c['reset']}\n")
-            self._p(self._lune("o/", "Lune en línea. Dime qué necesitas.") + "\n")
+            self._p(self._lune("o/", pregunta or "Lune en línea. Dime qué necesitas.") + "\n")
+            b = self._bienvenida()
+            if pregunta and b is not None and b.por_decir():
+                self._hablar(pregunta)                 # una vez por proceso y pregunta
         # El título normal desde el principio: al quitarse la última capa (salvapantallas,
         # baile, alarma…) vuelve este, aunque aún no hayas chateado.
         self._poner_titulo()
@@ -1840,8 +1956,37 @@ def _nueva_instancia():
     return InstanciaPatata()
 
 
+_BANDERAS_AYUDA = frozenset({"-h", "--help", "--ayuda", "/?", "-?", "/h", "/ayuda"})
+_BANDERAS_CONOCIDAS = _BANDERAS_AUTOINICIO | {"--sin-color"}
+
+TXT_USO = """Uso: python patata.py [--sin-color] [--autoinicio]
+
+Me abre en la terminal (modo patata) con tu configuración, tu memoria y tus chats.
+  --sin-color    sin colores (para consolas que no los entienden)
+  --autoinicio   lo usa el arranque con Windows: repara su entrada y, si la
+                 interfaz ya no es patata, abre la app de ventanas
+  -h, --help     esta ayuda (no abro nada ni toco tus archivos)"""
+
+
+def _argumentos_raros(argv) -> Optional[int]:
+    """-h/--help → la ayuda y 0; un argumento que no conozco → aviso, la ayuda y 2. En los
+    dos casos se sale ANTES de cargar nada (config.json, memoria.json…). None = adelante."""
+    normales = [str(a).strip().lower() for a in argv]
+    if any(a in _BANDERAS_AYUDA for a in normales):
+        print(TXT_USO, flush=True)
+        return 0
+    raros = [str(a) for a, n in zip(argv, normales) if n not in _BANDERAS_CONOCIDAS]
+    if raros:
+        print("No conozco " + ", ".join(f"«{a}»" for a in raros) + ".\n\n" + TXT_USO, flush=True)
+        return 2
+    return None
+
+
 def main(argv=None, *, instancia: Any = None, esperar: Callable[[float], Any] = time.sleep) -> int:
     argv = sys.argv[1:] if argv is None else argv
+    r = _argumentos_raros(argv)
+    if r is not None:
+        return r
     con_windows = any(str(a).strip().lower() in _BANDERAS_AUTOINICIO for a in argv)
     if con_windows:
         r = arranque_con_windows()

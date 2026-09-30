@@ -87,7 +87,7 @@ def test_lo_que_la_app_importa_arriba_del_todo_va_en_el_nucleo():
         for p in ("sounddevice", "imageio-ffmpeg"):         # mezclador y mp3/ogg de alarmas y bailes
             assert p in nucleo
         if sys.platform == "win32":
-            assert {"comtypes", "pywin32"} <= nucleo         # detector de música, mascota fantasma
+            assert {"comtypes", "pywin32"} <= nucleo         # detector de música, asistente fantasma
 
 
 def test_los_extras_del_nucleo_suben_al_nucleo_aunque_esten_como_opcionales():

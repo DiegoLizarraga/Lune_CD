@@ -139,7 +139,7 @@ def test_estado_con_client_id_ok_y_lo_que_ve_discord(escritorio):
     escritorio.estado.actualizar(render="vrm", visible=True)
     e = c.estado()
     assert e["activo"] is True and e["client_id_ok"] is True and e["sin_id"] is False
-    assert e["vista_previa"] == {"details": "Lune CD · Mascota 3D", "state": "En el escritorio"}
+    assert e["vista_previa"] == {"details": "Lune CD · Escritorio · 3D", "state": "En el escritorio"}
     escritorio.estado.actualizar(juego=True)
     assert c.estado()["vista_previa"] is None
     cfg.set("discord", "client_id", "")
@@ -157,7 +157,7 @@ def test_el_modelo_solo_si_se_pide(escritorio):
     cfg.set("discord", "mostrar_modelo", True)
     c.recargar_config()
     assert p.estado_fn()["modelo"] == "Aria"
-    assert c.estado()["vista_previa"]["details"] == "Lune CD · Mascota 3D"
+    assert c.estado()["vista_previa"]["details"] == "Lune CD · Escritorio · 3D"
     c.detener()
 
 
@@ -181,10 +181,10 @@ def test_el_estado_de_la_presencia_llega_al_hilo_de_qt(qapp, escritorio):
     c.detener()
 
 
-def test_set_mascota_actualiza(escritorio):
+def test_set_asistente_actualiza(escritorio):
     c, p = _control(escritorio)
     c.iniciar()
-    c.set_mascota(object())
+    c.set_asistente(object())
     assert p.actualizaciones == 1
     c.detener()
 

@@ -21,7 +21,7 @@ function CommandMenu({ open, items, onClose }) {
     <div className="p3-overlay" onClick={onClose}>
       <div className="p3-bigword" aria-hidden="true">コマンド</div>
       <div className="p3-slash-bg" aria-hidden="true"></div>
-      <img className="p3-mascot" src="../../assets/mascot/anime/lune-base-cut.png" alt="" />
+      <img className="p3-asistente" src="../../assets/asistente/anime/lune-base-cut.png" alt="" />
       <div className="p3-word-vert" aria-hidden="true">LUNE</div>
       <nav className="p3-list" onClick={(e)=>e.stopPropagation()}>
         {items.map((it, i) => (

@@ -1,7 +1,7 @@
 """
 servicios/comida_terminal.py — La comida en el modo patata (terminal).
 
-En patata no hay mascota ni cursor que seguir: dar de comer es una línea de
+En patata no hay asistente en escritorio ni cursor que seguir: dar de comer es una línea de
 texto y el sonido del trago o del mordisco por el Mezclador (canal `sfx`, con
 tono al azar), como en la app de ventanas.
 

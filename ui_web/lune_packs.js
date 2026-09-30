@@ -1,7 +1,7 @@
 /*
- * ui_web/lune_packs.js — packs de sonidos de reacción de la mascota (window.luneSonidos).
+ * ui_web/lune_packs.js — packs de sonidos de reacción de la asistente (window.luneSonidos).
  *
- * Para qué sirve: la mascota (VRM y animada) suena por EVENTOS («arrastre_inicio»,
+ * Para qué sirve: la asistente (VRM y animada) suena por EVENTOS («arrastre_inicio»,
  * «caricia», «beber», «tecleo»…) y no por archivos. Un pack de sonidos (carpeta de
  * sonidos/ con pack.json, ver nucleo/packs_sonido.py) dice qué clips tiene cada
  * evento; este script elige uno al azar y lo toca con window.luneSfx (lune_sfx.js,
@@ -10,7 +10,7 @@
  * Reglas (las de los voice packs de Mate-Engine):
  *   - arrastre_inicio / arrastre_fin: tono al azar entre 0.9 y 1.1;
  *   - eventos de REACCIÓN (caricia, pudor, mareo, despertar, dormir, saludo): su clip
- *     es la «voz» de la mascota y solo suena si no está sonando otra voz de reacción
+ *     es la «voz» de la asistente y solo suena si no está sonando otra voz de reacción
  *     ni la voz TTS (hablando(true)); las CAPAS del evento suenan siempre;
  *   - tecleo: mientras la burbuja escribe, un blip cada 2 letras, tono 0.95–1.05,
  *     como mucho uno cada 35 ms y nunca con la voz TTS sonando. La envolvente del

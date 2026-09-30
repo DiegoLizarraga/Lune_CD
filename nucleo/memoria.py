@@ -23,7 +23,8 @@ inferencia sea silenciosa.
 
 Estructura de memoria.json:
 {
-  "usuario": { "nombre": "...", "preferencias": [...], "contexto": "..." },
+  "usuario": { "nombre": "...", "preferencias": [...], "contexto": "...",
+               "personalidad": "...", "trato": "..." },   # los dos últimos: bienvenida (11)
   "recuerdos": [
     { "id": "uuid", "fecha": "ISO-8601", "tipo": "hecho|preferencia|recordatorio|tarea",
       "contenido": "...", "tags": [...],
@@ -59,6 +60,19 @@ Los recuerdos de tipo "tarea" y "recordatorio" son la lista de tareas del panel
     anotó el otro. Un archivo a medio escribir no se recarga (se queda lo que había) y el
     guardado es atómico (temporal + os.replace), así el otro nunca lee medio JSON.
 Las tareas hechas no van al system prompt como si estuvieran pendientes.
+
+PERFIL (11, nucleo/bienvenida.py)
+---------------------------------
+Cuando Lune aún no te conoce te pregunta tu nombre, cómo eres y cómo quieres que se
+comporte contigo. El nombre va a usuario.nombre (el mismo sitio que «me llamo…» y que lee
+el bot de Telegram) y lo otro a usuario.personalidad y usuario.trato. Como acaba en el
+system prompt («Cómo es Ana: …», «Cómo quiere Ana que te comportes: …», dentro del bloque
+de memoria, que es estable), pasa por limpiar_dato_perfil al guardar Y al leer: una línea,
+sin controles ni marcadores de control y con tope de longitud. API:
+  · vacia_de_ti() → True si no sé nada de ti (sin nombre, recuerdos, datos clave ni perfil);
+  · perfil() → {nombre, personalidad, trato} (limpios; "" si no hay);
+  · guardar_perfil(nombre=, personalidad=, trato=) → bool (None = no tocar, "" = borrar).
+Guardar el perfil no avisa a los oyentes de al_cambiar (no son recuerdos).
 """
 
 import json
@@ -67,17 +81,47 @@ import os
 import tempfile
 import threading
 import time
+import unicodedata
 import uuid
 import re
 from pathlib import Path
 from datetime import datetime
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 
 _log = logging.getLogger("lune.memoria")
 
 _REINTENTOS_REEMPLAZO = 5           # os.replace con el archivo abierto por el otro proceso (Windows)
 _PAUSA_REEMPLAZO_S = 0.02
+_REINTENTOS_LECTURA = 5             # memoria.json a medio escribir (el bot de Telegram no es atómico)
+_PAUSA_LECTURA_S = 0.05
 _TIPOS_TAREA = ("tarea", "recordatorio")
+
+# Perfil que cuenta la propia persona (bienvenida, 11): va al system prompt, acotado.
+MAX_NOMBRE_PERFIL = 40
+MAX_TEXTO_PERFIL = 200
+CAMPOS_PERFIL = ("personalidad", "trato")
+
+
+def limpiar_dato_perfil(texto: Any, maximo: int = MAX_TEXTO_PERFIL) -> str:
+    """Lo que la persona cuenta de sí misma (nombre, cómo es, cómo quiere que sea Lune)
+    listo para el system prompt: UNA línea, sin caracteres de control ni marcas bidi o de
+    ancho cero, sin marcadores de control vivos (<|…|>, <ACT …>, |CALL …|) y sin las marcas
+    que delimitan bloques del prompt (lune_core/prompt.separar_contexto descarta la memoria
+    si lleva «<<<INICIO» y la corta en «--- FIN MEMORIA ---»): «<<<» → «<», «>>>» → «>» y
+    «---» → «—». Recortado a `maximo`. Determinista: se aplica al guardar y al leer."""
+    if texto is None or isinstance(texto, bool):
+        return ""
+    s = "".join(" " if unicodedata.category(ch)[0] == "C" else ch for ch in str(texto))
+    s = re.sub(r"<{2,}", "<", s)
+    s = re.sub(r">{2,}", ">", s)
+    s = re.sub(r"-{3,}", "—", s)
+    try:
+        from lune_core.prompt import neutralizar_marcadores
+        s = neutralizar_marcadores(s)
+    except Exception:                                   # pragma: no cover - sin lune_core
+        s = s.replace("<|", "< |").replace("|<", "| <")
+    s = re.sub(r"\s+", " ", s).strip()
+    return s[:maximo].rstrip()
 
 
 MEMORIA_PATH = Path(__file__).parent.parent / "memoria.json"
@@ -169,6 +213,7 @@ class MemoriaManager:
     _firma: Optional[tuple] = None
     _mensajes_sin_guardar = 0
     _oyentes: tuple = ()
+    _carga_fallida = False
 
     @property
     def _lock(self) -> "threading.RLock":
@@ -199,32 +244,93 @@ class MemoriaManager:
         # escrituras en el mismo tic del reloj y con el mismo tamaño también se distinguen.
         return (st.st_mtime_ns, st.st_size, st.st_ino)
 
-    def _leer_disco(self) -> Optional[dict]:
-        """memoria.json con las secciones que falten rellenas; None si no está o no es JSON."""
+    def _leer_disco_detalle(self) -> tuple:
+        """("ok", datos) con las secciones que falten rellenas; ("falta", None) si no está;
+        ("corrupto", None) si no es un JSON con un objeto; ("error", None) si no se deja leer
+        (bloqueado por otro programa, sin permiso). Con BOM también (utf-8-sig: lo deja así
+        el Bloc de notas y algún editor)."""
         try:
-            data = json.loads(self.path.read_text("utf-8"))
-        except Exception:
-            return None
+            texto = self.path.read_text("utf-8-sig")
+        except FileNotFoundError:
+            return "falta", None
+        except UnicodeDecodeError:
+            return "corrupto", None
+        except OSError:
+            return "error", None
+        try:
+            data = json.loads(texto)
+        except ValueError:
+            return "corrupto", None
         if not isinstance(data, dict):
-            return None
+            return "corrupto", None
         # Rellena secciones que falten en memorias de versiones viejas
         for clave, valor in self._estructura_vacia().items():
             data.setdefault(clave, valor)
         if not isinstance(data.get("recuerdos"), list):
             data["recuerdos"] = []
-        return data
+        return "ok", data
+
+    def _leer_disco(self) -> Optional[dict]:
+        """memoria.json con las secciones que falten rellenas; None si no está o no se lee."""
+        return self._leer_disco_detalle()[1]
 
     def _cargar(self) -> dict:
-        if self.path.exists():
+        """Al construir. Si memoria.json existe pero no se lee, reintenta un momento (a medio
+        escribir por el bot de Telegram); si sigue roto, lo aparta como
+        memoria.json.corrupto-<fecha> ANTES de escribir nada, y si no se deja leer ni apartar,
+        no se pisa (ver _escritura_bloqueada). En ambos casos _carga_fallida: vacia_de_ti()
+        no dice «no sé nada de ti» (la bienvenida no trata como nuevo a quien ya conozco)."""
+        self._carga_fallida = False
+        if not self.path.exists():
+            return self._estructura_vacia()
+        estado = "error"
+        for intento in range(_REINTENTOS_LECTURA):
             firma = self._firma_disco()
-            data = self._leer_disco()
+            estado, data = self._leer_disco_detalle()
             if data is not None:
                 self._firma = firma
                 return data
+            if estado == "falta":
+                return self._estructura_vacia()
+            if intento < _REINTENTOS_LECTURA - 1:
+                time.sleep(_PAUSA_LECTURA_S)
+        self._carga_fallida = True
+        if estado == "corrupto":
+            self._apartar_corrupto()
+        else:
+            _log.error("memoria: no puedo leer %s (%s); no lo sobrescribo.", self.path, estado)
         return self._estructura_vacia()
+
+    def _apartar_corrupto(self) -> bool:
+        """Renombra el memoria.json roto a memoria.json.corrupto-<fecha> (como config.json).
+        True si quedó a salvo. Si no se deja mover, se queda donde está y no se pisa."""
+        fecha = datetime.now().strftime("%Y%m%d-%H%M%S")
+        destino = self.path.with_name(f"{self.path.name}.corrupto-{fecha}")
+        n = 1
+        while destino.exists():
+            destino = self.path.with_name(f"{self.path.name}.corrupto-{fecha}-{n}")
+            n += 1
+        try:
+            os.replace(self.path, destino)
+        except OSError as e:
+            _log.error("memoria: %s está corrupto y no pude apartarlo (%s); no lo sobrescribo.",
+                       self.path.name, e)
+            return False
+        _log.warning("memoria: %s estaba corrupto; lo aparto como %s y empiezo una memoria nueva.",
+                     self.path.name, destino.name)
+        return True
+
+    def _escritura_bloqueada(self) -> bool:
+        """¿memoria.json existe y aún no lo he podido leer nunca (ni apartar)? Entonces no lo
+        piso con una memoria vacía: se vuelve a intentar leer en el próximo _sincronizar."""
+        return bool(self._carga_fallida and self._firma is None and self.path is not None
+                    and self.path.exists())
 
     def _guardar(self):
         with self._lock:
+            if self._escritura_bloqueada():
+                _log.warning("memoria: no guardo encima de %s (no lo pude leer).", self.path)
+                return
             texto = json.dumps(self._data, ensure_ascii=False, indent=2)
             self._escribir(texto)
             self._firma = self._firma_disco()
@@ -273,6 +379,7 @@ class MemoriaManager:
             data = self._leer_disco()
             if data is None:
                 return False
+            self._carga_fallida = False                 # ya tengo la memoria de verdad
             antes = self._data.get("recuerdos")
             if self._mensajes_sin_guardar:
                 stats = data.setdefault("estadisticas", {})
@@ -319,6 +426,8 @@ class MemoriaManager:
                 "nombre": None,
                 "preferencias": [],
                 "contexto": "",
+                "personalidad": "",               # bienvenida (11): cómo eres, con tus palabras
+                "trato": "",                      # y cómo quieres que Lune sea contigo
             },
             "recuerdos": [],
             "datos_clave": {},
@@ -346,9 +455,19 @@ class MemoriaManager:
         self._sincronizar()
         partes = []
         usuario = self._data.get("usuario", {})
+        if not isinstance(usuario, dict):
+            usuario = {}
 
-        if nombre := usuario.get("nombre"):
+        # Nombre y perfil limpios también al LEER (memoria.json lo puede editar alguien a
+        # mano o escribirlo el bot de Telegram): una línea cada uno, en orden fijo.
+        nombre = limpiar_dato_perfil(usuario.get("nombre"), MAX_NOMBRE_PERFIL)
+        if nombre:
             partes.append(f"El usuario se llama {nombre}.")
+        quien = nombre or "el usuario"
+        if personalidad := limpiar_dato_perfil(usuario.get("personalidad")):
+            partes.append(f"Cómo es {quien}: {personalidad}")
+        if trato := limpiar_dato_perfil(usuario.get("trato")):
+            partes.append(f"Cómo quiere {quien} que te comportes: {trato}")
 
         recuerdos = [r for r in self._data.get("recuerdos", [])
                      if not (r.get("tipo") in _TIPOS_TAREA and r.get("hecha") is True)]
@@ -562,21 +681,93 @@ class MemoriaManager:
     def get_stats(self) -> dict:
         return self._data.get("estadisticas", {})
 
+    # ── Perfil (bienvenida, 11) ───────────────────────────────────────────────
+
+    def _usuario(self) -> dict:
+        """usuario de la memoria como dict (si alguien lo dejó roto, uno vacío nuevo)."""
+        usuario = self._data.get("usuario")
+        if not isinstance(usuario, dict):
+            usuario = self._data["usuario"] = self._estructura_vacia()["usuario"]
+        return usuario
+
+    def vacia_de_ti(self) -> bool:
+        """¿Aún no sé nada de ti? Sin nombre, sin recuerdos, sin datos clave (los que
+        comparte el bot de Telegram) y sin lo que me contaste en la bienvenida. Lee antes el
+        disco (patata y la app son dos procesos). Los contadores no cuentan como recuerdos.
+        Si memoria.json existía pero no lo pude leer (roto, con otro programa escribiéndolo),
+        False: no sé si te conozco, así que no te trato como a alguien nuevo."""
+        self._sincronizar()
+        with self._lock:
+            if self._carga_fallida:
+                return False
+            usuario = self._data.get("usuario")
+            usuario = usuario if isinstance(usuario, dict) else {}
+            if limpiar_dato_perfil(usuario.get("nombre"), MAX_NOMBRE_PERFIL):
+                return False
+            if any(limpiar_dato_perfil(usuario.get(c)) for c in CAMPOS_PERFIL):
+                return False
+            return not self._data.get("recuerdos") and not self._data.get("datos_clave")
+
+    def perfil(self) -> dict:
+        """{nombre, personalidad, trato}, limpios; "" lo que no hay."""
+        self._sincronizar()
+        with self._lock:
+            usuario = self._data.get("usuario")
+            usuario = usuario if isinstance(usuario, dict) else {}
+            datos = {"nombre": limpiar_dato_perfil(usuario.get("nombre"), MAX_NOMBRE_PERFIL)}
+            for campo in CAMPOS_PERFIL:
+                datos[campo] = limpiar_dato_perfil(usuario.get(campo))
+            return datos
+
+    def guardar_perfil(self, *, nombre: Optional[str] = None, personalidad: Optional[str] = None,
+                       trato: Optional[str] = None) -> bool:
+        """Guarda lo que la persona cuenta de sí misma (limpio y acotado: va al system
+        prompt). None = no tocar ese campo; "" = borrarlo. El nombre va a usuario.nombre,
+        como el «me llamo…» de siempre (el bot de Telegram lo lee de ahí). Recarga antes
+        del disco para no pisar al otro proceso. True si cambió algo."""
+        cambios = {}
+        if nombre is not None:
+            cambios["nombre"] = limpiar_dato_perfil(nombre, MAX_NOMBRE_PERFIL) or None
+        for campo, valor in (("personalidad", personalidad), ("trato", trato)):
+            if valor is not None:
+                cambios[campo] = limpiar_dato_perfil(valor)
+        if not cambios:
+            return False
+        self._sincronizar()
+        with self._lock:
+            usuario = self._usuario()
+            cambio = False
+            for campo, valor in cambios.items():
+                if usuario.get(campo) != valor:
+                    usuario[campo] = valor
+                    cambio = True
+            if cambio:
+                self._guardar()
+        return cambio
+
     # ── Comandos internos ─────────────────────────────────────────────────────
 
     def _cmd_listar(self) -> str:
         self._sincronizar()
         recuerdos = self._data.get("recuerdos", [])
         usuario = self._data.get("usuario", {})
+        if not isinstance(usuario, dict):
+            usuario = {}
         datos_clave = self._data.get("datos_clave", {})
+        personalidad = limpiar_dato_perfil(usuario.get("personalidad"))
+        trato = limpiar_dato_perfil(usuario.get("trato"))
 
-        if not recuerdos and not datos_clave and not usuario.get("nombre"):
+        if not recuerdos and not datos_clave and not usuario.get("nombre") and not personalidad and not trato:
             return "No tengo nada guardado todavía. Dime *'recuerda que...'* para empezar."
 
         lineas = ["**Lo que sé sobre ti:**\n"]
 
         if nombre := usuario.get("nombre"):
             lineas.append(f"Nombre: {nombre}")
+        if personalidad:
+            lineas.append(f"Cómo eres: {personalidad}")
+        if trato:
+            lineas.append(f"Cómo quieres que sea contigo: {trato}")
 
         # Hechos clave:valor (compartidos con el bot de Telegram)
         if datos_clave:
@@ -625,10 +816,14 @@ class MemoriaManager:
     def _cmd_olvida_todo(self) -> str:
         self._sincronizar()
         with self._lock:
-            n = len(self._data.get("recuerdos", [])) + len(self._data.get("datos_clave", {}))
+            usuario = self._usuario()
+            n = (len(self._data.get("recuerdos", [])) + len(self._data.get("datos_clave", {}))
+                 + sum(1 for c in CAMPOS_PERFIL if usuario.get(c)))
             self._data["recuerdos"] = []
             self._data["datos_clave"] = {}
-            self._data["usuario"]["nombre"] = None
+            usuario["nombre"] = None
+            for campo in CAMPOS_PERFIL:               # lo de la bienvenida también (va al prompt)
+                usuario[campo] = ""
             self._data["resumen_sesion_anterior"] = ""
             self._guardar()
         self._avisar("olvidar_todo")

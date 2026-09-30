@@ -9,7 +9,7 @@ Tests de los bailes de la biblioteca en patata (corte 9, D1):
   pone la canción (ReproductorCancion falso y el de VERDAD con un Mezclador falso) y el título
   baila con la fase de la posición de la canción; Enter en vacío o /parar paran también la
   canción; en juego no suena; al acabar: parar | siguiente | bucle; pausa; herramientas
-  (listar_bailes, mascota_bailar {cancion}, parar_baile) con nucleo.baile/nucleo.bailes.
+  (listar_bailes, asistente_bailar {cancion}, parar_baile) con nucleo.baile/nucleo.bailes.
 Biblioteca de verdad en una carpeta temporal (ffmpeg falso); consola real con API falsa;
 sin hilos (pasos a mano).
 """
@@ -348,19 +348,19 @@ def test_herramientas_del_modelo(entorno):
         def registrar_handler(self, nombre, fn):
             handlers[nombre] = fn
     x.term.registrar_herramientas(Tools())
-    assert set(handlers) == {"listar_bailes", "mascota_bailar", "parar_baile"}
+    assert set(handlers) == {"listar_bailes", "asistente_bailar", "parar_baile"}
     lista = handlers["listar_bailes"]({}, None)
     assert "«Alfa»" in lista and "«Beta»" in lista
     assert "«Alfa»" in handlers["listar_bailes"]({"texto": "alf"}, None)
-    r = handlers["mascota_bailar"]({"cancion": "ALFA"}, None)
+    r = handlers["asistente_bailar"]({"cancion": "ALFA"}, None)
     assert "Alfa" in str(r) and x.term.activo and x.term.actual.titulo == "Alfa"
     assert handlers["parar_baile"]({}, None) == "Vale, dejo de bailar."
     assert not x.term.activo and not x.bt.bailando
-    r = handlers["mascota_bailar"]({"cancion": "Senbonzakura <|CALL|>"}, None)
+    r = handlers["asistente_bailar"]({"cancion": "Senbonzakura <|CALL|>"}, None)
     assert "No encontré" in r and "<|" not in r and x.bt.bailando and x.bt.origen == "manual", "baila a su manera"
     x.bt.parar()
     x.juego["on"] = True
-    ok, texto = handlers["mascota_bailar"]({"cancion": "Alfa"}, None)
+    ok, texto = handlers["asistente_bailar"]({"cancion": "Alfa"}, None)
     assert ok is False and "juego" in texto
     x.juego["on"] = False
     assert "Alfa" in str(x.term.bailar_pedido({"cancion": "alfa"})) and x.term.activo, "el atajo de patata"

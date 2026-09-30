@@ -2,7 +2,7 @@
 Arreglos de la PRUEBA REAL de la IA contra Ollama (qwen2.5:7b, 2026-09).
 
 Qué se vio y qué se prueba aquí (sin red: respuestas reales grabadas como casos):
-  1. El modelo inventaba marcas (<|OPEN_URL …|>, <|mascota_bailar(segundos=60)|>,
+  1. El modelo inventaba marcas (<|OPEN_URL …|>, <|asistente_bailar(segundos=60)|>,
      |<ACT …>|…): el parser las tolera y las lleva al Ejecutor (misma Política,
      aprobación y origen); lo que no se entiende se AVISA («No entendí la acción…»)
      y nada con forma de marca queda en lo visible ni en la voz.
@@ -55,16 +55,16 @@ REALES = {
                     '{"segundos": 1200, "texto": "sacar la pizza"}]|> \n\n|ACT {"emotion":"happy", '
                     '"intensity":0.8}| Así lo he programado. |ACT {"emotion":"neutral", "intensity":0.5}| '
                     'Por cierto…'),
-    "bailar_python": "¡Claro! Voy a bailar un poquito con Nube. <|mascota_bailar(segundos=60, cancion=\"Danza el mono\")|>",
-    "bailar_json_roto": "¡Claro! Que vaya a ser un baile divertido. <|CALL [\"mascota_bailar\", {\"segundos\": 60, \"cancion\": \"Happy\"}}|>",
-    "sentarse_1": "¡Claro! |<mascota_sentarse(sitio=\"barra\")>|",
+    "bailar_python": "¡Claro! Voy a bailar un poquito con Nube. <|asistente_bailar(segundos=60, cancion=\"Danza el mono\")|>",
+    "bailar_json_roto": "¡Claro! Que vaya a ser un baile divertido. <|CALL [\"asistente_bailar\", {\"segundos\": 60, \"cancion\": \"Happy\"}}|>",
+    "sentarse_1": "¡Claro! |<asistente_sentarse(sitio=\"barra\")>|",
     "sentarse_2": ('|<ACT {"emotion":"neutral","intensity":0.8}>| Ahí me siento más cerca de ti, Alex. '
-                   '|<mascota_sentarse sitio="barra"|>'),
-    "sentarse_mal": "¡Claro! <|mascota_sentarse(barra=True)|>",
+                   '|<asistente_sentarse sitio="barra"|>'),
+    "sentarse_mal": "¡Claro! <|asistente_sentarse(barra=True)|>",
     "listar_bailes": "¡Hola Alex! Me encantaría mostrarte mis bailes. ¿Cuál te gustaría ver? <|LISTAR_BAILES|> Estoy curiosa.",
     "voz_inventada": "¡Perfecto! Mi voz ahora es otra. <|CHANGE_VOCES {\"language\":\"es-AR\", \"voice\":\"es-AR-ElenaNeural\"}|>",
     "voz_inventada_2": "¡Claro! |<CHANGEOFVOZ \"es-AR-HoracioNeural\">|",
-    "tamano": "¡Claro, voy a ponerte en pantalla grande! <|mascota_pantalla_grande(activar=true, minutos=15)|>",
+    "tamano": "¡Claro, voy a ponerte en pantalla grande! <|asistente_pantalla_grande(activar=true, minutos=15)|>",
     "pregunta": ('Claro, Alex. ¿Es Android o iOS? <|QUESTION|> \n\n|<ACT {"emotion":"think","intensity":0.6}|> '
                  'Por cierto, ¿buscas algo en concreto?'),
     "act_angulos": "Puedo establecer uno para ti. ¿Te interesaría? <ACT {\"emotion\":\"curious\", \"intensity\":0.6}>",
@@ -105,12 +105,12 @@ class Entorno:
     ("nasa_open_lista", "abrir_url", {"url": "https://www.nasa.gov"}),
     ("nasa_con_pipes", "abrir_url", {"url": "https://www.nasa.gov/"}),
     ("alarma_alarm", "alarma", {"hora": "06:30", "dias": "", "texto": "¡Despierta, Alex! Es hora de levantarse."}),
-    ("bailar_python", "mascota_bailar", {"segundos": 60, "cancion": "Danza el mono"}),
-    ("bailar_json_roto", "mascota_bailar", {"segundos": 60, "cancion": "Happy"}),
-    ("sentarse_1", "mascota_sentarse", {"sitio": "barra"}),
-    ("sentarse_2", "mascota_sentarse", {"sitio": "barra"}),
+    ("bailar_python", "asistente_bailar", {"segundos": 60, "cancion": "Danza el mono"}),
+    ("bailar_json_roto", "asistente_bailar", {"segundos": 60, "cancion": "Happy"}),
+    ("sentarse_1", "asistente_sentarse", {"sitio": "barra"}),
+    ("sentarse_2", "asistente_sentarse", {"sitio": "barra"}),
     ("listar_bailes", "listar_bailes", {"texto": ""}),
-    ("tamano", "mascota_pantalla_grande", {"activar": True, "minutos": 15}),
+    ("tamano", "asistente_pantalla_grande", {"activar": True, "minutos": 15}),
 ])
 def test_marcas_toleradas_se_ejecutan_por_el_ejecutor(clave, herramienta, args):
     e = Entorno()
@@ -124,7 +124,7 @@ def test_marcas_toleradas_se_ejecutan_por_el_ejecutor(clave, herramienta, args):
     ("voz_inventada", "CHANGE_VOCES"),
     ("voz_inventada_2", "CHANGEOFVOZ"),
     ("alarma_basura", "alarma"),
-    ("sentarse_mal", "mascota_sentarse"),
+    ("sentarse_mal", "asistente_sentarse"),
 ])
 def test_marca_no_entendida_no_se_hace_y_se_avisa(clave, nombre):
     e = Entorno()
@@ -209,7 +209,7 @@ def test_acts_tolerados_se_reescriben_en_su_forma_buena():
 def test_streaming_tolerante_trozo_a_trozo():
     p = M.ParserMarcadores()
     piezas = []
-    for trozo in ["Hola ", "|<", 'ACT {"emotion":"sad"', "}>", "| adiós <", "|mascota_bai",
+    for trozo in ["Hola ", "|<", 'ACT {"emotion":"sad"', "}>", "| adiós <", "|asistente_bai",
                   'lar(segundos=30)|>', " fin"]:
         piezas += p.consumir(trozo)
     piezas += p.vaciar()
@@ -545,7 +545,7 @@ def test_la_voz_no_lee_marcas():
     from servicios.voice import VoiceEngine
     for clave in ("nasa_open_url", "voz_inventada_2", "sentarse_2", "comentario"):
         voz = VoiceEngine._limpiar(REALES[clave])
-        assert not re.search(r"OPEN_URL|CHANGEOFVOZ|mascota_sentarse|ACT|DELAY|emotion", voz), voz
+        assert not re.search(r"OPEN_URL|CHANGEOFVOZ|asistente_sentarse|ACT|DELAY|emotion", voz), voz
 
 
 def test_act_sin_cerrar_no_se_come_el_texto():

@@ -42,20 +42,20 @@ def lineas_por_nombre(texto):
 def test_solo_las_del_modo(reg):
     patata = listadas(reglas_herramientas(reg, "patata", TODAS))
     assert "temporizador" in patata and "sistema_info" in patata
-    # Cortes 9/10: bailar sí (el título baila al ritmo de la canción); las demás de la mascota, no.
-    assert {n for n in patata if n.startswith("mascota_")} == {"mascota_bailar"}
+    # Cortes 9/10: bailar sí (el título baila al ritmo de la canción); las demás de la asistente, no.
+    assert {n for n in patata if n.startswith("asistente_")} == {"asistente_bailar"}
     assert {"listar_bailes", "parar_baile"} <= patata
     assert "comentar_pantalla" not in patata
 
     vrm = listadas(reglas_herramientas(reg, "vrm", TODAS))
-    assert {"mascota_sentarse", "mascota_dormir", "comentar_pantalla"} <= vrm
+    assert {"asistente_sentarse", "asistente_dormir", "comentar_pantalla"} <= vrm
 
-    mascota = listadas(reglas_herramientas(reg, "mascota", TODAS))
-    assert "mascota_dormir" in mascota and "mascota_sentarse" in mascota   # cortes 7/8
-    assert "mascota_tamano" not in mascota
+    asistente = listadas(reglas_herramientas(reg, "asistente", TODAS))
+    assert "asistente_dormir" in asistente and "asistente_sentarse" in asistente   # cortes 7/8
+    assert "asistente_tamano" not in asistente
 
     normal = listadas(reglas_herramientas(reg, "normal", TODAS))
-    assert "mascota_bailar" in normal and "mascota_dormir" not in normal
+    assert "asistente_bailar" in normal and "asistente_dormir" not in normal
 
 
 @pytest.mark.parametrize("modo", C.MODOS)
@@ -81,7 +81,7 @@ def test_nombres_fuera_del_catalogo_se_ignoran(reg):
 
 def test_sin_herramientas_vacio(reg):
     assert reglas_herramientas(reg, "patata", set()) == ""
-    assert reglas_herramientas(reg, "patata", {"mascota_dormir"}) == ""
+    assert reglas_herramientas(reg, "patata", {"asistente_dormir"}) == ""
 
 
 def test_argumentos_en_la_lista(reg):
@@ -189,7 +189,7 @@ def test_marca_pide_permiso(reg):
 
 
 def test_comentar_pantalla_sin_handler_no_se_ofrece(reg):
-    """Nadie registra un handler «comentar_pantalla» (el comentario va por la mascota,
+    """Nadie registra un handler «comentar_pantalla» (el comentario va por la asistente,
     sin herramienta): con los handlers reales no aparece en ningún modo."""
     sin = TODAS - {"comentar_pantalla"}
     for modo in C.MODOS:
@@ -198,8 +198,8 @@ def test_comentar_pantalla_sin_handler_no_se_ofrece(reg):
 
 def test_bailes_de_la_biblioteca(reg):
     """Prueba real: el modelo se inventaba canciones y nunca listaba los bailes."""
-    lineas = lineas_por_nombre(reglas_herramientas(reg, "mascota", TODAS))
-    assert "listar_bailes" in lineas["mascota_bailar"] and "omítela" in lineas["mascota_bailar"]
+    lineas = lineas_por_nombre(reglas_herramientas(reg, "asistente", TODAS))
+    assert "listar_bailes" in lineas["asistente_bailar"] and "omítela" in lineas["asistente_bailar"]
     assert "preguntan" in lineas["listar_bailes"]
 
 

@@ -4,13 +4,13 @@ para montar_escritorio (corte 4).
 
 Traduce el contrato `Anfitrion` (ui/montaje_escritorio.py) a los métodos que YA
 tiene main.LuneCDWindow (_restore_from_tray, _toggle_overlay, _toggle_voice,
-_toggle_keys_panel, _quit_app, _mascota_viva…), sin modificarla. La nativa no
+_toggle_keys_panel, _quit_app, _asistente_viva…), sin modificarla. La nativa no
 tiene modo llamada ni aburrimiento: `llamada_on()` es False y la acción
 «llamada» no se registra (soporta_llamada = False).
 
 Cortes 7/8: `reaccion(estado, ms)` pone la carita de la ventana (lune_face) cuando se
-come sin la mascota a la vista, y `hwnd_principal()` da el HWND de la ventana para
-que la mascota pueda sentarse en ella.
+come sin la asistente a la vista, y `hwnd_principal()` da el HWND de la ventana para
+que la asistente pueda sentarse en ella.
 """
 from __future__ import annotations
 
@@ -59,7 +59,7 @@ class AnfitrionNativo:
 
     def reaccion(self, estado: str, ms: int = 2500) -> bool:
         """La carita de la ventana (lune_face) durante `ms` (0.2–10 s): comer sin la
-        mascota a la vista. False si la ventana no tiene carita."""
+        asistente a la vista. False si la ventana no tiene carita."""
         e = str(estado or "").strip().lower()
         cara = getattr(self.win, "lune_face", None)
         f = getattr(cara, "set_state", None) if cara is not None else None
@@ -115,24 +115,24 @@ class AnfitrionNativo:
     def set_en_barra(self, on: bool) -> None:
         poner_en_barra(self.win, on, self.config)
 
-    # ── Mascota ────────────────────────────────────────────────────────────
-    def mascota(self) -> Any:
-        f = getattr(self.win, "_mascota_viva", None)
+    # ── Asistente ────────────────────────────────────────────────────────────
+    def asistente(self) -> Any:
+        f = getattr(self.win, "_asistente_viva", None)
         if callable(f):
             return f()
         ov = getattr(self.win, "_overlay", None)
         return None if ov is None or getattr(ov, "cerrado", False) else ov
 
-    def _mascota_visible(self) -> bool:
-        m = self.mascota()
+    def _asistente_visible(self) -> bool:
+        m = self.asistente()
         try:
             return bool(m is not None and m.isVisible())
         except Exception:
             return False
 
-    def alternar_mascota(self) -> bool:
+    def alternar_asistente(self) -> bool:
         self.win._toggle_overlay()
-        return self._mascota_visible()
+        return self._asistente_visible()
 
     def _en_modo_juego(self) -> bool:
         """¿Hay partida? (BusEstado.juego de los servicios de escritorio)."""
@@ -142,18 +142,18 @@ class AnfitrionNativo:
             return False
 
     def comentar(self) -> bool:
-        """Saca la mascota (si hace falta) y le pide comentar la pantalla. En modo
-        juego no: ni captura ni comentario (anticheat y rendimiento) y la mascota que
+        """Saca a la asistente (si hace falta) y le pide comentar la pantalla. En modo
+        juego no: ni captura ni comentario (anticheat y rendimiento) y la asistente que
         escondió el juego no se saca para eso (como la web, web_bridge.comentar_pantalla)."""
         if self._en_modo_juego():
             self.aviso(AVISO_JUEGO_PANTALLA)
             return False
-        if not self._mascota_visible():
+        if not self._asistente_visible():
             self.win._toggle_overlay()                  # la crea o la enseña
-        m = self.mascota()
+        m = self.asistente()
         f = getattr(m, "comentar_pantalla", None)
         if not callable(f):
-            self.aviso("Comentar la pantalla necesita la mascota 3D (Ajustes → Mascota).")
+            self.aviso("Para comentar la pantalla necesito estar en 3D (Ajustes → Asistente en escritorio).")
             return False
         try:
             f()

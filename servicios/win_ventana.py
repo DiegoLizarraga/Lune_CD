@@ -3,7 +3,7 @@ servicios/win_ventana.py — Orden Z y barra de tareas de las ventanas PROPIAS d
 
 - `set_encima(hwnd, on)`: siempre encima (HWND_TOPMOST) o no (HWND_NOTOPMOST).
 - `al_fondo(hwnd)`: fuera de «siempre encima» y detrás de todo (modo juego
-  «fondo»: la mascota no pelea con el juego sin bordes).
+  «fondo»: la asistente no pelea con el juego sin bordes).
 - `traer_al_frente(hwnd)`: arriba del orden Z y en primer plano (el menú radial
   lo pide justo tras un clic o un WM_HOTKEY, cuando Windows lo permite).
 - `set_en_barra(hwnd, on)`: sale o no en la barra de tareas (WS_EX_APPWINDOW /
@@ -16,7 +16,7 @@ Para sentarse en ventanas y en la barra (corte 7, ui/asiento_qt.py):
 - `mover(hwnd, x, y)`: la mueve a (x, y) en px físicos, sin cambiar su tamaño ni
   su orden Z y sin activarla.
 - `colocar_sobre(propia, objetivo)`: deja la ventana propia JUSTO encima de otra
-  en el orden Z (la mascota sentada en el Bloc de notas queda tapada por lo que
+  en el orden Z (la asistente sentada en el Bloc de notas queda tapada por lo que
   tape al Bloc). Solo se mueve la propia: de la otra solo se LEE quién tiene
   encima (GetWindow GW_HWNDPREV) y si es «siempre encima».
 - `encima_de(propia, objetivo)`: ¿la propia ya está justo encima? (saltando las
@@ -264,7 +264,7 @@ def colocar_sobre(hwnd_propio, hwnd_objetivo, user32=None) -> bool:
     - objetivo normal: la propia deja de ser «siempre encima» (si lo era) y va
       detrás de la que el objetivo tiene encima (si esa no es «siempre encima»)
       o arriba del todo de las normales (HWND_TOP);
-    - objetivo «siempre encima» (otra mascota, un reproductor en miniatura): la
+    - objetivo «siempre encima» (otro avatar de escritorio, un reproductor en miniatura): la
       propia pasa a «siempre encima» y va detrás de la que tenga encima.
     Siempre con SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER."""
     u = _user32(user32)

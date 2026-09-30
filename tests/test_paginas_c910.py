@@ -1,7 +1,7 @@
 """
-Páginas de la mascota en los cortes 9 y 10 (companion.html y companion_vrm.html):
+Páginas de la asistente en los cortes 9 y 10 (companion.html y companion_vrm.html):
 
-- CSP: connect-src 'self' blob: data: (fetch/XHR solo al servidor local de la mascota);
+- CSP: connect-src 'self' blob: data: (fetch/XHR solo al servidor local de la asistente);
 - lune_mmd_audio.js (script clásico) tras lune_pantalla.js y antes del código de la página;
 - la VRM: importmap con @pixiv/three-vrm-animation (el archivo vendorizado existe) y el
   reproductor (lune_mmd.js, lune_vmd.js, three-vrm-animation, GLTFLoader) con import()

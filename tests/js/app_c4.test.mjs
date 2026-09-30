@@ -1,11 +1,11 @@
 /*
  * app.jsx y sidebar.jsx con el corte 4 y el estado inicial del puente (sandbox con estado de verdad):
- *   · wire(): estado_inicial() pinta la conversación en curso y toma proveedor/voz/bot/mascota;
+ *   · wire(): estado_inicial() pinta la conversación en curso y toma proveedor/voz/bot/asistente;
  *     sin estado_inicial (backend viejo) se sigue resincronizando el proveedor con proveedor_elegido;
  *     con «compat» no se cae a «local» (estado_inicial va después de proveedores()).
  *   · window.luneEscritorio: efectos desde la config (y guardar al cambiarlos), tema al arrancar y en
  *     tema_cambio, modo juego → clase en <body> y barra en pausa, navegar → vista, F1 y clic derecho
- *     sobre la mascota → menú radial SVG.
+ *     sobre la asistente → menú radial SVG.
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -27,7 +27,7 @@ function docFalso() {
 function luneFalso(metodos = {}) {
   const llamadas = [];
   const base = {
-    mascota_visible(cb) { cb(false); },
+    asistente_visible(cb) { cb(false); },
     proveedores(cb) { cb('{}'); },
     proveedor_elegido(p) { llamadas.push(['proveedor', p]); },
     ...metodos,
@@ -56,10 +56,10 @@ const titulo = (a) => texto(conClase(a, 'ln-topbar-title')[0]);
 // Lo que sale del sandbox (otro «realm» de vm) se compara por valor.
 const plano = (x) => JSON.parse(JSON.stringify(x));
 
-test('estado_inicial: pinta la conversación en curso y toma proveedor, voz, bot y mascota', () => {
+test('estado_inicial: pinta la conversación en curso y toma proveedor, voz, bot y asistente', () => {
   const L = luneFalso({
     estado_inicial: (cb) => cb(JSON.stringify({
-      proveedor: 'cloud', voz: true, telegram: true, mascota_fuera: true,
+      proveedor: 'cloud', voz: true, telegram: true, asistente_fuera: true,
       mensajes: [{ role: 'user', text: 'hola' }, { role: 'assistant', text: '¡Hola! Aquí sigo.' }, { role: 'user', text: '' }],
     })),
   });
@@ -70,7 +70,7 @@ test('estado_inicial: pinta la conversación en curso y toma proveedor, voz, bot
   assert.equal(new Set(msgs.map((m) => m.id)).size, 2, 'ids únicos');
   assert.equal(titulo(a), 'Lune AI · Nube');
   assert.equal(L.proveedores().slice(-1)[0], 'cloud', 'el puente se queda con el suyo');
-  assert.equal(conClase(a, 'is-out').length, 1, 'mascota fuera');
+  assert.equal(conClase(a, 'is-out').length, 1, 'asistente fuera');
   const menu = A.props.CommandMenu.items;
   assert.ok(menu.find((i) => /^Voz ON/.test(i.label)) && menu.find((i) => i.label === 'Telegram').on === true);
 });
@@ -165,8 +165,8 @@ test('corte 4: efectos de la config, tema, modo juego, navegar, F1 y clic derech
   A.S.dispatch(A.S.evento('keydown', { key: 'Escape' }));
   a = A.pintar();
   assert.equal(conClase(a, 'ln-radial-capa').length, 0);
-  // Clic derecho sobre la mascota de la barra → radial donde se hizo clic (sin menú de Chromium)
-  const escenario = conClase(a, 'ln-mascot-stage')[0];
+  // Clic derecho sobre la asistente de la barra → radial donde se hizo clic (sin menú de Chromium)
+  const escenario = conClase(a, 'ln-asistente-stage')[0];
   const ctx = A.S.evento('contextmenu', { clientX: 150, clientY: 600 });
   escenario.props.onContextMenu(ctx);
   a = A.pintar();

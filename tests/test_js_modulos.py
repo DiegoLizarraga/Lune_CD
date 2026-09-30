@@ -2,7 +2,7 @@
 Lanza los tests de JavaScript de la interfaz web (tests/js/*.test.mjs) con el
 runner de Node (`node --test`) y comprueba el contrato de tokens de color.
 
-Los módulos JS de la mascota (bus del VRM, registro de la mascota animada, cola
+Los módulos JS de la asistente (bus del VRM, registro de la asistente animada, cola
 de eventos, burbuja, efectos de sonido) no necesitan navegador: se prueban en
 Node con DOM y audio falsos. Si Node no está instalado, el test se salta.
 

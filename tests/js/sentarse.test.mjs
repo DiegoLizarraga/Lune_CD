@@ -365,10 +365,10 @@ test('companion_vrm.html: luneSentar/luneSeatPx antes y después del módulo; se
   assert.equal(globalThis.luneSentar('barra', 0), 'null');
   frames.length = 0;
   await import(aDataURL(reescribirImports(scripts[1].codigo, new URL('companion_vrm.html', UI), { './vrm/lune_vrm.js': DATA_MOTOR }) + '\n// sentarse'));
-  const mascota = globalThis.luneMascota;
+  const asistente = globalThis.luneAsistente;
   try {
     assert.equal(globalThis.__luneVidaPendiente, null);
-    assert.ok(mascota.bus.lista().includes('sentarse'), 'registrado al repetir lo pendiente');
+    assert.ok(asistente.bus.lista().includes('sentarse'), 'registrado al repetir lo pendiente');
     assert.equal(globalThis.luneMod('sentarse', 'estado').sentada, 'barra');
     const vrm = crearVRMFalso();
     cargas.pop().alCargar({ scene: vrm.scene, userData: { vrm } });
@@ -384,6 +384,6 @@ test('companion_vrm.html: luneSentar/luneSeatPx antes y después del módulo; se
     const ev = vaciarCola().filter((e) => e.t === 'sentada');
     assert.ok(ev.length >= 2, JSON.stringify(ev));
   } finally {
-    try { mascota.destruir(); } catch (_) { /* sigue */ }
+    try { asistente.destruir(); } catch (_) { /* sigue */ }
   }
 });

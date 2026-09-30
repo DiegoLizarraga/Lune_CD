@@ -1,7 +1,7 @@
 /*
- * ui_web/anim/lune_anim_modulos.js — registro de módulos de la mascota animada (companion.html).
+ * ui_web/anim/lune_anim_modulos.js — registro de módulos de la asistente animada (companion.html).
  *
- * Para qué sirve: la mascota de vídeo (WebM) va a recibir varias funciones en cortes
+ * Para qué sirve: la asistente de vídeo (WebM) va a recibir varias funciones en cortes
  * distintos (arrastre, baile, pantalla grande, comida, pausa en juegos…). En vez de
  * que todas editen el mismo script de la página y se pisen, cada una es un módulo
  * `ui_web/anim/lune_*.js` que se registra aquí, con el mismo patrón que el bus del
@@ -67,7 +67,7 @@ export function escalarEn(s, ox = '50%', oy = '100%') {
   return enPivote(ox, oy, `scale(${redondeo(num(sx, 1))}, ${redondeo(num(sy, 1))})`);
 }
 
-/** Estado compartido por defecto de la mascota animada (la página lo va actualizando). */
+/** Estado compartido por defecto de la asistente animada (la página lo va actualizando). */
 export function estadoInicial() {
   return {
     emocion: 'normal', drag: false, dormida: false, hablando: false, baile: false,

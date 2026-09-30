@@ -1,7 +1,7 @@
 """
 ui/bandeja.py — El ÚNICO icono de Lune en la bandeja del sistema (corte 4).
 
-Antes había hasta cuatro (ventana web, nativa, mascota animada/3D y mascota de
+Antes había hasta cuatro (ventana web, nativa, asistente animada/3D y asistente de
 sprites), cada una con su menú corto y estados sin sincronizar. Ahora, como el
 SystemTray.cs de Mate-Engine, hay uno solo:
 
@@ -11,11 +11,11 @@ SystemTray.cs de Mate-Engine, hay uno solo:
 - solo se usa `triggered` (nunca `toggled` + setChecked programático, que
   dispararía la acción al reconstruir);
 - clic izquierdo o doble clic → «Abrir Lune»; clic central → sacar/guardar la
-  mascota;
+  asistente;
 - el tooltip (≤ 127 caracteres, límite de Windows) resume el estado y se
   refresca con `ServiciosEscritorio.estado_cambio` como mucho una vez por segundo;
-- red de seguridad: `set_mascota(v)` llama a `v.quitar_bandeja()` por si una
-  mascota creada sin `bandeja=False` puso la suya.
+- red de seguridad: `set_asistente(v)` llama a `v.quitar_bandeja()` por si una
+  asistente creada sin `bandeja=False` puso la suya.
 
 Las acciones se ejecutan con un QTimer de 0 ms: el menú termina de cerrarse
 antes de que, p. ej., «Salir» destruya la bandeja.
@@ -72,7 +72,8 @@ def texto_tooltip(estado: Any) -> str:
     if getattr(estado, "alarma", False):
         partes.append("¡alarma!")
     if getattr(estado, "visible", False):
-        partes.append("mascota durmiendo" if getattr(estado, "durmiendo", False) else "mascota fuera")
+        partes.append("dormida en el escritorio" if getattr(estado, "durmiendo", False)
+                      else "en el escritorio")
     if getattr(estado, "llamada", False):
         partes.append("en llamada")
     if getattr(estado, "hablando", False):
@@ -169,15 +170,15 @@ class BandejaLune(QObject):
             except (RuntimeError, AttributeError):
                 pass
 
-    def set_mascota(self, v) -> None:
-        """Red de seguridad: que la mascota no tenga su propio icono."""
+    def set_asistente(self, v) -> None:
+        """Red de seguridad: que la asistente no tenga su propio icono."""
         if v is not None:
             f = getattr(v, "quitar_bandeja", None)
             if callable(f):
                 try:
                     f()
                 except Exception:
-                    _log.exception("bandeja: quitar_bandeja de la mascota falló")
+                    _log.exception("bandeja: quitar_bandeja de la asistente falló")
         self.refrescar_tooltip()
 
     # ── Menú ───────────────────────────────────────────────────────────────
@@ -248,7 +249,7 @@ class BandejaLune(QObject):
         if razon in (R.Trigger, R.DoubleClick):
             self.ejecutar("mostrar_lune")
         elif razon == R.MiddleClick:
-            self.ejecutar("mascota")
+            self.ejecutar("asistente")
 
     # ── Tooltip y avisos ───────────────────────────────────────────────────
     def refrescar_tooltip(self) -> None:

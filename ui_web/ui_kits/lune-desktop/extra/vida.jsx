@@ -9,13 +9,13 @@
  *                     modelo 3D, el enlace del botón (https), el estado de la conexión, la nota de privacidad y
  *                     la línea «Discord ve: …» (solo los textos fijos: nunca títulos de ventana ni el chat).
  * AutoinicioOpciones  ({activo}) bajo el interruptor «Arrancar con Windows» de settings.jsx: en la bandeja / con
- *                     la mascota / con la ventana, esperar N s (0–120) y el estado de la entrada (desactivada
+ *                     la asistente en escritorio / con la ventana, esperar N s (0–120) y el estado de la entrada (desactivada
  *                     desde el Administrador de tareas, carpeta movida…).
  * ComidaWeb           global (app.jsx): con la flotante guardada, la comida sigue al ratón dentro de la ventana
  *                     (SVG procedural del color de la variante, pointer-events: none, balanceo al moverla). Un
  *                     tramo del ratón que ENTRA en la cabeza de Lune de la barra (window.__luneCabezaBarra(), de
  *                     sidebar.jsx) con 0.35 s de enfriamiento → luneVida.comida_evento(id) + evento de window
- *                     'lune-mascota-cara' {estado: 'happy', ms: 2500} (app.jsx pone la cara). Esc o 2 minutos sin
+ *                     'lune-asistente-cara' {estado: 'happy', ms: 2500} (app.jsx pone la cara). Esc o 2 minutos sin
  *                     mover el ratón → luneVida.comida_guardar(). Los sonidos los pone Python (Mezclador).
  * window.LuneVida     utilidades puras (tests): normalizar*, segmentoTocaCirculo, crearDetector, idDiscordValido,
  *                     urlBotonValida, publicacionSegura, textoDiscordVe, textoAutoinicio, textoAsiento…
@@ -87,12 +87,12 @@
   const SITIOS = ['barra', 'ventana'];
   const OFFSET_MAX = 64;
   const RETRASO_MAX = 120;
-  const COMOS = [['bandeja', 'En la bandeja'], ['mascota', 'Con la mascota'], ['ventana', 'Con la ventana']];
+  const COMOS = [['bandeja', 'En la bandeja'], ['asistente', 'Con la asistente en escritorio'], ['ventana', 'Con la ventana']];
   const ENFRIAMIENTO_MS = 350;                        // nucleo/comida.COOLDOWN_S
   const GUARDAR_SOLA_MS = 120000;                     // D4: 2 minutos sin moverla
   const MS_CARA = 2500;                               // nucleo/comida.MS_REACCION
   const CABEZA_MS = 100;                              // la cabeza de la barra a 10 Hz, como la flotante
-  const TAM_COMIDA = 96;                              // ui/comida_qt.TAM_SIN_MASCOTA
+  const TAM_COMIDA = 96;                              // ui/comida_qt.TAM_SIN_ASISTENTE
   const ID_OK = /^[a-z][a-z_]{0,23}$/;
   const COLOR_OK = /^#[0-9A-Fa-f]{6}$/;
   const ID_DISCORD = /^\d{17,20}$/;
@@ -103,7 +103,7 @@
   const PRIVACIDAD = 'Discord solo recibe «Lune CD · <modo>» y un estado fijo (bailando, durmiendo, sentada…). Nunca '
     + 'títulos de ventanas, programas, el chat, el personaje ni tus alarmas; con un juego delante, nada.';
   // Lo único que puede salir en «Discord ve:» (los textos fijos de servicios/discord_presencia.py).
-  const DETALLES_DISCORD = ['Mascota 3D', 'Mascota animada', 'Mascota ligera', 'Ventana', 'Terminal'];
+  const DETALLES_DISCORD = ['Escritorio · 3D', 'Escritorio · animación', 'Escritorio · sprites', 'Ventana', 'Terminal'];
   const ESTADOS_DISCORD = ['Con una alarma sonando', 'En pantalla grande', 'Durmiendo en el salvapantallas',
     'En una llamada', 'Paseando por la pantalla', 'Bailando ♪', 'Merendando', 'Echando una siesta sentada',
     'Durmiendo (-_-) zzZ', 'Sentada en la barra de tareas', 'Sentada en una ventana', 'Pensando…', 'Hablando',
@@ -117,7 +117,7 @@
       { id: 'limon', nombre: 'limón', color: '#FFE45C' }, { id: 'vainilla', nombre: 'vainilla', color: '#FFF1C9' }] },
   ];
   const ASIENTO_DEFECTO = { sentada: '', variante: 0, ventanas: false, barra: true, offset: 0, servicio: false,
-    mascota: false, juego: false, arrastrando: false, cedida: false };
+    asistente: false, juego: false, arrastrando: false, cedida: false };
   const COMIDA_DEFECTO = { activa: false, id: '', variante: '', color: '', tipo: '', nombre: '', vista: '',
     disponible: true, servicio: false };
   const DISCORD_DEFECTO = { activo: false, conectado: false, usuario: '', error: '', client_id_ok: false, sin_id: false,
@@ -134,7 +134,7 @@
       sentada, variante: sentada && v !== null ? acotar(v, 0, 7) : 0,
       ventanas: r.ventanas === true, barra: r.barra !== false,
       offset: off === null ? 0 : acotar(off, -OFFSET_MAX, OFFSET_MAX),
-      servicio: r.servicio === true, mascota: r.mascota === true, juego: r.juego === true,
+      servicio: r.servicio === true, asistente: r.asistente === true, juego: r.juego === true,
       arrastrando: r.arrastrando === true, cedida: r.cedida === true,
     };
   }
@@ -244,10 +244,10 @@
     const a = normalizarAsiento(e);
     if (a.sentada === 'barra') return 'Sentada en la barra de tareas.';
     if (a.sentada === 'ventana') return 'Sentada en una ventana.';
-    if (!a.servicio) return 'Se sienta la mascota flotante (necesita la app).';
+    if (!a.servicio) return 'Se sienta la asistente en escritorio (necesita la app).';
     if (a.juego) return 'Con un juego delante ni se sienta ni mira las ventanas.';
     if (a.cedida) return 'De pie mientras dura la alarma o la pantalla grande; luego vuelve a sentarse.';
-    if (!a.mascota) return 'De pie. Saca la mascota al escritorio para sentarla.';
+    if (!a.asistente) return 'De pie. Saca a la asistente al escritorio para sentarla.';
     return 'De pie: arrástrala hasta la barra de tareas (o al borde de una ventana) y suéltala.';
   }
 
@@ -299,7 +299,7 @@
       discord: { activo: false, client_id: '', mostrar_modelo: false, boton_url: '' }, como: 'bandeja', retraso_s: 20 };
     let sentada = '';
     let mano = null;                                   // {id, variante}
-    const asiento = () => ({ ...ASIENTO_DEFECTO, ...cfg.avatar, sentada, servicio: true, mascota: true });
+    const asiento = () => ({ ...ASIENTO_DEFECTO, ...cfg.avatar, sentada, servicio: true, asistente: true });
     const comida = () => {
       const c = mano && CATALOGO_DEMO.find((x) => x.id === mano.id);
       const v = c && c.variantes.find((x) => x.id === mano.variante);
@@ -328,7 +328,7 @@
       },
       asiento_sentar(sitio) {
         if (sitio === 'ventana' && !cfg.avatar.ventanas) {
-          return JSON.stringify({ ok: false, texto: 'Sentarme en ventanas está desactivado (Ajustes → Mascota).', estado: asiento() });
+          return JSON.stringify({ ok: false, texto: 'Sentarme en ventanas está desactivado (Ajustes → Sentarse).', estado: asiento() });
         }
         sentada = sitio;
         return JSON.stringify({ ok: true, texto: `Demo: me senté en ${sitio === 'barra' ? 'la barra de tareas' : 'una ventana'}.`, estado: asiento() });
@@ -493,7 +493,7 @@
     });
     const Icono = window.IconUser || (() => null);
     return (
-      <Card id="aj-sentarse" eyebrow={<><Icono width={13} height={13}/> Mascota · Sentarse</>} title="Sentarse en la barra y en ventanas"
+      <Card id="aj-sentarse" eyebrow={<><Icono width={13} height={13}/> Asistente en escritorio · Sentarse</>} title="Sentarse en la barra y en ventanas"
         tone="cyan" tick={!!e.sentada}>
         <p className="ln-vd-nota">
           Arrastra a Lune hasta la barra de tareas y suéltala: se sienta con las piernas colgando. Con «ventanas», medio segundo
@@ -555,7 +555,7 @@
     const c = catalogo.find((x) => x.id === e.id);
     const v = c && c.variantes.find((x) => x.id === e.variante);
     return (
-      <Card id="aj-comida" eyebrow={<>Mascota · Comida</>} title="Batido y pastel" tone="yellow" tick={e.activa}>
+      <Card id="aj-comida" eyebrow={<>Lune · Comida</>} title="Batido y pastel" tone="yellow" tick={e.activa}>
         <p className="ln-vd-nota">
           Clic central sobre Lune → Batido o Pastel. La comida sigue al ratón: pásala rápido por su cabeza para dársela. Esc o
           dos minutos sin moverla la guardan.
@@ -683,7 +683,7 @@
     );
   }
 
-  // ── ComidaWeb: la comida dentro de la ventana (sin la mascota flotante) ────
+  // ── ComidaWeb: la comida dentro de la ventana (sin la asistente flotante) ────
   function SvgComida({ tipo, color, variante }) {
     const tinta = 'var(--ink-950)';
     if (tipo === 'comer') {
@@ -801,7 +801,7 @@
         d4();
         if (detector.current.mover(t, p0, p1, cabeza.current.c)) {
           pedir('comida_evento', [o.id], () => {});
-          try { window.dispatchEvent(new window.CustomEvent('lune-mascota-cara', { detail: { estado: 'happy', ms: MS_CARA } })); } catch (e) { /* sin eventos */ }
+          try { window.dispatchEvent(new window.CustomEvent('lune-asistente-cara', { detail: { estado: 'happy', ms: MS_CARA } })); } catch (e) { /* sin eventos */ }
           setBocado(true);
           limpiarTimer('bocado');
           timers.current.bocado = setTimeout(() => { if (vivo.current) setBocado(false); }, 300);

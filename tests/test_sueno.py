@@ -1,8 +1,8 @@
 """
-Tests de nucleo/sueno.py: cuándo se duerme la mascota, el aviso diferido de
-patata y los handlers de las herramientas mascota_dormir / mascota_despertar.
+Tests de nucleo/sueno.py: cuándo se duerme la asistente, el aviso diferido de
+patata y los handlers de las herramientas asistente_dormir / asistente_despertar.
 
-Sin Qt ni red: la mascota y el ctx son objetos falsos.
+Sin Qt ni red: la asistente y el ctx son objetos falsos.
 """
 import sys
 from pathlib import Path
@@ -12,7 +12,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from nucleo import sueno  # noqa: E402
-from nucleo.estado_mascota import EstadoMascota  # noqa: E402
+from nucleo.estado_asistente import EstadoAsistente  # noqa: E402
 
 MIN = 60.0
 
@@ -64,25 +64,25 @@ def test_permitidos_personalizados():
     assert "no deja dormir" in r.motivo_no("bored")
 
 
-def test_con_estado_mascota():
+def test_con_estado_asistente():
     r = sueno.ReglaSueno(10)
     t = 30 * MIN
-    assert r.debe_dormir(t, EstadoMascota(render="vrm", visible=True))                    # neutral → normal
-    assert r.debe_dormir(t, EstadoMascota(emocion="bored"))
-    assert not r.debe_dormir(t, EstadoMascota(emocion="happy"))
-    assert not r.debe_dormir(t, EstadoMascota(emocion="think"))                          # → thinking
+    assert r.debe_dormir(t, EstadoAsistente(render="vrm", visible=True))                    # neutral → normal
+    assert r.debe_dormir(t, EstadoAsistente(emocion="bored"))
+    assert not r.debe_dormir(t, EstadoAsistente(emocion="happy"))
+    assert not r.debe_dormir(t, EstadoAsistente(emocion="think"))                          # → thinking
     for campo in ("arrastrando", "hablando", "llamada", "pensando", "alarma", "grande", "comiendo",
                   "menu_abierto", "durmiendo"):
-        assert not r.debe_dormir(t, EstadoMascota(**{campo: True})), campo
-    assert not r.debe_dormir(t, EstadoMascota(bailando="musica"))
-    assert r.motivo_no(EstadoMascota(bailando="mmd")) == "está bailando"
+        assert not r.debe_dormir(t, EstadoAsistente(**{campo: True})), campo
+    assert not r.debe_dormir(t, EstadoAsistente(bailando="musica"))
+    assert r.motivo_no(EstadoAsistente(bailando="mmd")) == "está bailando"
     # También un dict con los mismos campos
     assert r.debe_dormir(t, {"emocion": "neutral"})
     assert not r.debe_dormir(t, {"arrastrando": True})
-    assert sueno.ReglaSueno.estado_visual(EstadoMascota(hablando=True)) == "talking"
-    assert sueno.ReglaSueno.estado_visual(EstadoMascota(llamada=True)) == "listening"
-    assert sueno.ReglaSueno.estado_visual(EstadoMascota(arrastrando=True)) == "dragging"
-    assert sueno.ReglaSueno.estado_visual(EstadoMascota(durmiendo=True)) == "sleeping"
+    assert sueno.ReglaSueno.estado_visual(EstadoAsistente(hablando=True)) == "talking"
+    assert sueno.ReglaSueno.estado_visual(EstadoAsistente(llamada=True)) == "listening"
+    assert sueno.ReglaSueno.estado_visual(EstadoAsistente(arrastrando=True)) == "dragging"
+    assert sueno.ReglaSueno.estado_visual(EstadoAsistente(durmiendo=True)) == "sleeping"
     assert sueno.ReglaSueno.estado_visual(None) == "normal"
 
 
@@ -141,8 +141,8 @@ def test_mensaje_diferido():
 
 # ── Herramientas ─────────────────────────────────────────────────────────────────
 
-class Mascota:
-    """Mascota falsa con dormir()/despertar() y el atributo _durmiendo de companion.py."""
+class Asistente:
+    """Asistente falsa con dormir()/despertar() y el atributo _durmiendo de companion.py."""
 
     def __init__(self, durmiendo=False, resultado=None):
         self._durmiendo = durmiendo
@@ -161,16 +161,16 @@ class Mascota:
 
 
 def test_herramienta_dormir_y_despertar():
-    m = Mascota()
-    r = sueno.herramienta_dormir({}, {"mascota": m})
+    m = Asistente()
+    r = sueno.herramienta_dormir({}, {"asistente": m})
     assert isinstance(r, str) and "siesta" in r
     assert m.llamadas == ["dormir"] and m._durmiendo
-    assert sueno.herramienta_dormir({}, {"mascota": m}) == "Ya estoy dormida. Shh."
+    assert sueno.herramienta_dormir({}, {"asistente": m}) == "Ya estoy dormida. Shh."
     assert m.llamadas == ["dormir"]                                  # no la vuelve a dormir
-    r = sueno.herramienta_despertar({}, {"mascota": m})
+    r = sueno.herramienta_despertar({}, {"asistente": m})
     assert isinstance(r, str) and "despierta" in r
     assert m.llamadas == ["dormir", "despertar"]
-    assert sueno.herramienta_despertar(None, {"mascota": m}) == "Ya estaba despierta."
+    assert sueno.herramienta_despertar(None, {"asistente": m}) == "Ya estaba despierta."
 
 
 def _en_ui_otro_hilo(registro):
@@ -193,8 +193,8 @@ def _en_ui_otro_hilo(registro):
 def test_herramienta_en_el_hilo_de_la_ui():
     import threading
     hilos = []
-    m = Mascota(resultado=True)
-    r = sueno.herramienta_dormir({}, {"mascota": m, "en_ui": _en_ui_otro_hilo(hilos)})
+    m = Asistente(resultado=True)
+    r = sueno.herramienta_dormir({}, {"asistente": m, "en_ui": _en_ui_otro_hilo(hilos)})
     assert isinstance(r, str) and "siesta" in r and m.llamadas == ["dormir"]
     # Todo (mirar si ya duerme y dormirla) en el hilo de la UI, en un solo salto.
     assert len(hilos) == 1 and hilos[0] != threading.get_ident()
@@ -202,28 +202,28 @@ def test_herramienta_en_el_hilo_de_la_ui():
 
 def test_herramienta_en_ui_cuenta_el_resultado():
     """G5: con en_ui, un dormir() que devuelve False ya no cuenta como éxito."""
-    m = Mascota(resultado=False)
+    m = Asistente(resultado=False)
     m.dormir = lambda: (m.llamadas.append("dormir"), False)[1]      # se niega y no se duerme
-    r = sueno.herramienta_dormir({}, {"mascota": m, "en_ui": _en_ui_otro_hilo([])})
+    r = sueno.herramienta_dormir({}, {"asistente": m, "en_ui": _en_ui_otro_hilo([])})
     assert r[0] is False and "liada" in r[1]
 
 
 def test_herramienta_en_ui_sin_resultado_comprueba_durmiendo():
     """Un en_ui que no devuelve el resultado: se vuelve a mirar `durmiendo` (vía en_ui)."""
     hilos = []
-    m = Mascota(resultado=None)                                      # dormir() sin valor, pero se duerme
-    r = sueno.herramienta_dormir({}, {"mascota": m, "en_ui": _en_ui_otro_hilo(hilos)})
+    m = Asistente(resultado=None)                                      # dormir() sin valor, pero se duerme
+    r = sueno.herramienta_dormir({}, {"asistente": m, "en_ui": _en_ui_otro_hilo(hilos)})
     assert isinstance(r, str) and "siesta" in r and len(hilos) == 2
 
-    terca = Mascota(resultado=None)
+    terca = Asistente(resultado=None)
     terca.dormir = lambda: terca.llamadas.append("dormir")          # no devuelve nada ni se duerme
-    r = sueno.herramienta_dormir({}, {"mascota": terca, "en_ui": _en_ui_otro_hilo([])})
+    r = sueno.herramienta_dormir({}, {"asistente": terca, "en_ui": _en_ui_otro_hilo([])})
     assert r[0] is False
 
     # en_ui que solo encola (no devuelve nada ni corre ya): no se da por hecho.
     cola = []
-    m2 = Mascota()
-    r = sueno.herramienta_dormir({}, {"mascota": m2, "en_ui": cola.append})
+    m2 = Asistente()
+    r = sueno.herramienta_dormir({}, {"asistente": m2, "en_ui": cola.append})
     assert r[0] is False and "comprobar" in r[1] and m2.llamadas == []
     cola[0]()
     assert m2.llamadas == ["dormir"]
@@ -233,45 +233,45 @@ def test_herramienta_ctx_objeto_y_envuelto_por_el_ejecutor():
     """El Ejecutor envuelve un ctx objeto como {..., 'contexto': objeto}."""
     class Ctx:
         def __init__(self):
-            self.mascota = Mascota()
+            self.asistente = Asistente()
 
     c = Ctx()
-    assert isinstance(sueno.herramienta_dormir({}, c), str) and c.mascota.llamadas == ["dormir"]
+    assert isinstance(sueno.herramienta_dormir({}, c), str) and c.asistente.llamadas == ["dormir"]
     c2 = Ctx()
     r = sueno.herramienta_dormir({}, {"modo": "vrm", "origen": "usuario", "contexto": c2})
-    assert isinstance(r, str) and c2.mascota.llamadas == ["dormir"]
+    assert isinstance(r, str) and c2.asistente.llamadas == ["dormir"]
 
 
-def test_herramienta_sin_mascota_o_que_no_sabe():
+def test_herramienta_sin_asistente_o_que_no_sabe():
     ok, motivo = sueno.herramienta_dormir({}, {})
-    assert ok is False and "No hay mascota" in motivo
+    assert ok is False and "No estoy en el escritorio" in motivo
     ok, _ = sueno.herramienta_despertar({}, None)
     assert ok is False
 
     class Muda:
         pass
-    ok, motivo = sueno.herramienta_dormir({}, {"mascota": Muda()})
-    assert ok is False and "no sabe dormirse" in motivo
-    ok, motivo = sueno.herramienta_despertar({}, {"mascota": Muda()})
-    assert ok is False and "no sabe despertarse" in motivo
+    ok, motivo = sueno.herramienta_dormir({}, {"asistente": Muda()})
+    assert ok is False and "no sé dormirme" in motivo
+    ok, motivo = sueno.herramienta_despertar({}, {"asistente": Muda()})
+    assert ok is False and "no sé despertarme" in motivo
 
 
-def test_herramienta_cuando_la_mascota_se_niega_o_falla():
-    ok, motivo = sueno.herramienta_dormir({}, {"mascota": Mascota(resultado=False)})
+def test_herramienta_cuando_la_asistente_se_niega_o_falla():
+    ok, motivo = sueno.herramienta_dormir({}, {"asistente": Asistente(resultado=False)})
     assert ok is False and "liada" in motivo
 
-    class Rota(Mascota):
+    class Rota(Asistente):
         def dormir(self):
             raise RuntimeError("WebEngine caído")
-    ok, motivo = sueno.herramienta_dormir({}, {"mascota": Rota()})
+    ok, motivo = sueno.herramienta_dormir({}, {"asistente": Rota()})
     assert ok is False and "WebEngine caído" in motivo
 
 
 def test_durmiendo_como_metodo_o_propiedad():
-    class ConMetodo(Mascota):
+    class ConMetodo(Asistente):
         def durmiendo(self):
             return True
-    assert sueno.herramienta_dormir({}, {"mascota": ConMetodo()}) == "Ya estoy dormida. Shh."
+    assert sueno.herramienta_dormir({}, {"asistente": ConMetodo()}) == "Ya estoy dormida. Shh."
 
     class SinEstado:
         def __init__(self):
@@ -280,19 +280,19 @@ def test_durmiendo_como_metodo_o_propiedad():
         def despertar(self):
             self.n += 1
     s = SinEstado()
-    assert isinstance(sueno.herramienta_despertar({}, {"mascota": s}), str) and s.n == 1
+    assert isinstance(sueno.herramienta_despertar({}, {"asistente": s}), str) and s.n == 1
 
 
 def test_las_herramientas_las_entiende_el_ejecutor():
     """(False, motivo) y texto son salidas que el Ejecutor sabe normalizar."""
     from lune_core.acciones import _normalizar_salida
     assert _normalizar_salida(sueno.herramienta_dormir({}, {}))[0] is False
-    assert _normalizar_salida(sueno.herramienta_dormir({}, {"mascota": Mascota()}))[0] is True
+    assert _normalizar_salida(sueno.herramienta_dormir({}, {"asistente": Asistente()}))[0] is True
 
 
 def test_catalogo_apunta_a_los_handlers():
     from lune_core import catalogo_herramientas as cat
     c = cat.CATALOGO
-    assert c["mascota_dormir"].handler == "nucleo.sueno.herramienta_dormir"
-    assert c["mascota_despertar"].handler == "nucleo.sueno.herramienta_despertar"
+    assert c["asistente_dormir"].handler == "nucleo.sueno.herramienta_dormir"
+    assert c["asistente_despertar"].handler == "nucleo.sueno.herramienta_despertar"
     assert callable(sueno.herramienta_dormir) and callable(sueno.herramienta_despertar)

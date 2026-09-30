@@ -8,9 +8,9 @@ config.json con `config.config[...]` + `config.save()`):
 
 - TEMA (`tema`): preset, tono 0–359°, saturación 0–200 %, teñir amarillo y
   fondos, Restablecer y la muestra de la paleta. Aviso: la ventana nativa se
-  recolorea al reiniciar (ui.theme.aplicar_tema al arrancar); la mascota, la
+  recolorea al reiniciar (ui.theme.aplicar_tema al arrancar); la asistente, la
   bandeja y el menú radial cambian al momento (ControlTema.recargar).
-- MODO JUEGO (`juego`): detectar, qué hacer con la mascota, sus FPS, qué cuenta
+- MODO JUEGO (`juego`): detectar, qué hacer con la asistente, sus FPS, qué cuenta
   como juego, prioridad, RAM, silenciar y la lista de .exe (con «De las
   abiertas…» si hay `apps_visibles`).
 - RENDIMIENTO (`rendimiento`): avatar.fps_max, avatar.siempre_encima,
@@ -27,7 +27,7 @@ config.json con `config.config[...]` + `config.save()`):
 Señal `cambiado(str seccion)` tras escribir cada apartado (uno de SECCIONES).
 Quien lo integra aplica en caliente: tema → ControlTema.recargar(); juego →
 ControlModoJuego.recargar_config(); atajos → GestorAtajosQt.recargar();
-rendimiento → mascota.set_fps_max / set_encima…; radial → nada (se lee al abrir).
+rendimiento → asistente.set_fps_max / set_encima…; radial → nada (se lee al abrir).
 
     panel = PanelEscritorioNativo(config, atajos=servicios.atajos)
     panel.cambiado.connect(lambda s: aplicar(s, panel.ultimo_guardado.get(s)))
@@ -66,12 +66,12 @@ CAPTURA_MS = 15000
 MAX_RADIAL = 10
 MAX_APPS = 200
 
-ACCIONES_JUEGO = (("ocultar", "Esconder la mascota"), ("fondo", "Mandarla al fondo"),
-                  ("nada", "No hacer nada"))
+ACCIONES_JUEGO = (("ocultar", "Esconder a la asistente en escritorio"),
+                  ("fondo", "Mandar a la asistente al fondo"), ("nada", "No hacer nada"))
 
 # Etiquetas si nucleo/acciones_ui.py (el catálogo común) aún no está.
 _ETIQUETAS = {
-    "mostrar_lune": "Mostrar Lune", "mascota": "Sacar / esconder la mascota",
+    "mostrar_lune": "Mostrar Lune", "asistente": "Sacar a la asistente al escritorio / guardarla",
     "menu_radial": "Menú radial", "comentar": "Comentar la pantalla", "voz": "Voz",
     "llamada": "Llamada", "fantasma": "Modo fantasma", "dormir": "Dormir / despertar",
     "pantalla_grande": "Pantalla grande", "baile_pausa": "Pausar el baile",
@@ -81,7 +81,7 @@ _ETIQUETAS = {
     "salir": "Salir",
 }
 _RADIAL_RESPALDO = ("ajustes", "chat", "comentar", "expresiones", "bailar", "alarma", "voz", "dormir",
-                    "tamano", "bajar", "mascota", "fantasma", "llamada", "esquina", "captura",
+                    "tamano", "bajar", "asistente", "fantasma", "llamada", "esquina", "captura",
                     "liberar_memoria", "modo_juego_forzar", "pantalla_grande", "mostrar_lune", "salir")
 _APP = re.compile(r"[\w .\-()]{1,80}")
 
@@ -637,11 +637,12 @@ class PanelEscritorioNativo(QWidget):
             self.combo_accion.addItem(texto, clave)
         self.combo_accion.currentIndexChanged.connect(
             lambda *_: self._poner("juego", "juego", "accion", self.combo_accion.currentData()))
+        self.combo_accion.setToolTip("Qué hace la asistente en escritorio mientras juegas.")
         fl.addLayout(self._fila("Con un juego delante", self.combo_accion))
         self.spin_juego_fps = self._spin(0, 60, " fps")
-        self.spin_juego_fps.setToolTip("0 = la mascota se pausa durante la partida.")
+        self.spin_juego_fps.setToolTip("0 = la asistente se pausa durante la partida.")
         self.spin_juego_fps.valueChanged.connect(lambda v: self._poner("juego", "juego", "fps", int(v)))
-        fl.addLayout(self._fila("FPS de la mascota en juego", self.spin_juego_fps))
+        fl.addLayout(self._fila("FPS de la asistente en escritorio al jugar", self.spin_juego_fps))
         self.chk_juego_opciones: Dict[str, QCheckBox] = {}
         for clave, texto in (("incluir_videos", "Un vídeo a pantalla completa también cuenta"),
                              ("rutas_juego", "Contar lo que se abre desde Steam, Epic, Riot, Xbox o GOG"),
@@ -687,11 +688,11 @@ class PanelEscritorioNativo(QWidget):
         raiz.addWidget(self._titulo("RENDIMIENTO"))
         caja, fl = self._caja("rendimientoCaja")
         self.spin_fps_max = self._spin(15, 144, " fps")
-        self.spin_fps_max.setToolTip("En reposo la mascota baja sola a 30 como mucho.")
+        self.spin_fps_max.setToolTip("En reposo la asistente baja sola a 30 como mucho.")
         self.spin_fps_max.valueChanged.connect(
             lambda v: self._poner("rendimiento", "avatar", "fps_max", int(v)))
-        fl.addLayout(self._fila("FPS máximos de la mascota", self.spin_fps_max))
-        self.chk_encima = self._check("La mascota siempre encima de las ventanas")
+        fl.addLayout(self._fila("FPS máximos de la asistente en escritorio", self.spin_fps_max))
+        self.chk_encima = self._check("Siempre encima de las ventanas")
         self.chk_encima.toggled.connect(
             lambda v: self._poner("rendimiento", "avatar", "siempre_encima", bool(v)))
         self.chk_recorte = self._check("Recortar la RAM de Lune cada 10 minutos",
@@ -767,9 +768,9 @@ class PanelEscritorioNativo(QWidget):
         return {"contenedor": cont, "etiqueta": lbl, "edit": edit, "boton": btn, "estado": estado}
 
     def _construir_radial(self, raiz: QVBoxLayout) -> None:
-        raiz.addWidget(self._titulo("MENÚ RADIAL DE LA MASCOTA"))
+        raiz.addWidget(self._titulo("MENÚ RADIAL"))
         caja, fl = self._caja("radialCaja")
-        fl.addWidget(self._texto("Clic derecho sobre la mascota (o el atajo del menú radial). Hasta 10 "
+        fl.addWidget(self._texto("Clic derecho sobre la asistente en escritorio (o el atajo del menú radial). Hasta 10 "
                                  "botones, en este orden empezando arriba y en el sentido del reloj.",
                                  tenue=True))
         self.lista_radial = QListWidget()
@@ -932,7 +933,7 @@ class PanelEscritorioNativo(QWidget):
         """Aviso de reinicio: en amarillo si la ventana nativa aún no lleva este tema."""
         nativo = tema.colores_nativos(tema.paleta(self.tema_ui()))
         distinto = any(COLORS.get(k) != v for k, v in nativo.items())
-        texto = ("La mascota, la bandeja y el menú radial cambian al momento; esta ventana "
+        texto = ("La asistente en escritorio, la bandeja y el menú radial cambian al momento; esta ventana "
                  "se recolorea al reiniciar Lune.")
         if distinto:
             texto = "Reinicia Lune para ver el nuevo color aquí. " + texto

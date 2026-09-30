@@ -1,4 +1,4 @@
-// tests/js/anim_grande.test.mjs — pantalla grande de la mascota animada
+// tests/js/anim_grande.test.mjs — pantalla grande de la asistente animada
 // (ui_web/anim/lune_anim_grande.js, cortes 5 y 6) y la página companion.html con las
 // funciones nuevas (lo pedido antes de cargar se repite; los módulos van al usarse).
 import { test } from 'node:test';

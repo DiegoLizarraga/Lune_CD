@@ -1,7 +1,7 @@
 import * as React from 'react';
 
 export interface AvatarProps extends React.HTMLAttributes<HTMLSpanElement> {
-  /** Image URL (mascot / user photo). */
+  /** Image URL (Lune portrait / user photo). */
   src?: string;
   alt?: string;
   /** Fallback initials when no image. */
@@ -16,5 +16,5 @@ export interface AvatarProps extends React.HTMLAttributes<HTMLSpanElement> {
   online?: boolean;
 }
 
-/** Clipped-corner avatar for mascot, user initials, or bot mark. */
+/** Clipped-corner avatar for Lune, user initials, or bot mark. */
 export function Avatar(props: AvatarProps): JSX.Element;

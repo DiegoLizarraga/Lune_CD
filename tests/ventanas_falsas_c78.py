@@ -149,7 +149,7 @@ class PantallaFalsa:
 
 
 class VentanaPropiaFalsa:
-    """Doble de servicios.win_ventana para la ventana de la mascota."""
+    """Doble de servicios.win_ventana para la ventana de la asistente."""
 
     def __init__(self, rects=None):
         self.rects = {h: Rect(*r) for h, r in (rects or {}).items()}

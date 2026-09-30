@@ -1,7 +1,7 @@
 """
 scripts/generar_sfx.py — Genera los efectos de sonido de Lune (WAV) con numpy.
 
-Todos los sonidos cortos de la interfaz y de la mascota (alarma, arrastre, comida,
+Todos los sonidos cortos de la interfaz y de la asistente (alarma, arrastre, comida,
 menú, blip de texto) se SINTETIZAN aquí: no se copia ningún audio de otros
 proyectos (los de Mate-Engine tienen copyright). Salen WAV PCM de 44.1 kHz,
 16 bits y mono en `ui_web/assets/sfx/`. El servidor local ya sirve esa carpeta en
@@ -53,7 +53,7 @@ determinista, así que solo cambian los archivos cuya receta cambió.
 
 Sonidos:
   alarma_1..3        pitidos 880/660 Hz para sonar en bucle (~1.4 s)
-  drag_start/stop    levantar y soltar a la mascota
+  drag_start/stop    levantar y soltar a la asistente
   comida_aparece     aparece un plato
   comida_capa_1..2   se añade una capa a la comida
   trago_1..3         beber

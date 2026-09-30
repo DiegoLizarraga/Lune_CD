@@ -1,5 +1,5 @@
 """
-Páginas de la mascota en los cortes 7 y 8 (companion.html y companion_vrm.html):
+Páginas de la asistente en los cortes 7 y 8 (companion.html y companion_vrm.html):
 
 - los módulos nuevos (sentarse y comida) son OPCIONALES: import() con .catch, nunca un
   import estático, y se registran la primera vez que se usan;

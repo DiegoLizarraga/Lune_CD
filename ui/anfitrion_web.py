@@ -10,10 +10,10 @@ Lo que aún no es público se busca con getattr y un respaldo:
 - «Salir»: `ventana.salir_de_verdad()` (cambio de interfaz) o `_salir_de_verdad()`;
 - ir a Ajustes: `navegar("settings")` si la integración lo conecta a la señal
   `navegar` del puente web (ui/puente_escritorio.py); si no, solo enseña la ventana;
-- Lune en la barra lateral (la flotante guardada): `mascota_barra()` la cuenta como
-  mascota para expresiones y baile, y `expresion_barra()` le pone la cara (`acto`);
-- cortes 7/8: `reaccion(estado, ms)` (comer sin mascota fuera → la cara de la barra) y
-  `hwnd_principal()` (la mascota puede sentarse en la ventana principal).
+- Lune en la barra lateral (la flotante guardada): `asistente_barra()` la cuenta como
+  asistente para expresiones y baile, y `expresion_barra()` le pone la cara (`acto`);
+- cortes 7/8: `reaccion(estado, ms)` (comer sin asistente fuera → la cara de la barra) y
+  `hwnd_principal()` (la asistente puede sentarse en la ventana principal).
 
 Mostrar/ocultar la ventana de la barra de tareas es común a web y nativa:
 `poner_en_barra()` (WS_EX_TOOLWINDOW por servicios/win_ventana del agente A).
@@ -60,7 +60,7 @@ def hwnd_de(v: Any) -> int:
     """HWND de la ventana `v` (0 si no hay, está borrada o aún no tiene ventana nativa).
 
     No fuerza a crear la ventana nativa (winId() la crearía; PyQt6 no trae
-    internalWinId): una ventana que nunca se mostró no puede ser asiento de la mascota."""
+    internalWinId): una ventana que nunca se mostró no puede ser asiento de la asistente."""
     if v is None:
         return 0
     probar = getattr(v, "testAttribute", None)
@@ -144,7 +144,7 @@ class AnfitrionWeb:
         return ventana_visible(self.ventana)
 
     def hwnd_principal(self) -> int:
-        """HWND de la ventana principal (cortes 7/8: la mascota puede sentarse en ella
+        """HWND de la ventana principal (cortes 7/8: la asistente puede sentarse en ella
         aunque sea del mismo proceso). 0 si no hay."""
         return hwnd_de(self.ventana)
 
@@ -183,28 +183,28 @@ class AnfitrionWeb:
     def set_en_barra(self, on: bool) -> None:
         poner_en_barra(self.ventana, on, self.config)
 
-    # ── Mascota ────────────────────────────────────────────────────────────
-    def mascota(self) -> Any:
-        f = getattr(self.bridge, "_mascota_viva", None)
+    # ── Asistente ────────────────────────────────────────────────────────────
+    def asistente(self) -> Any:
+        f = getattr(self.bridge, "_asistente_viva", None)
         if callable(f):
             return f()
         ov = getattr(self.bridge, "_overlay", None)
         return None if ov is None or getattr(ov, "cerrado", False) else ov
 
-    def alternar_mascota(self) -> bool:
-        return bool(self.bridge.mascota_toggle())
+    def alternar_asistente(self) -> bool:
+        return bool(self.bridge.asistente_toggle())
 
     def comentar(self) -> bool:
         return bool(self.bridge.comentar_pantalla())
 
     # ── Lune en la barra lateral (la flotante guardada) ────────────────────
-    def mascota_barra(self) -> bool:
+    def asistente_barra(self) -> bool:
         """¿Se ve a Lune en la barra lateral? Con la ventana a la vista y la flotante
         guardada: con la flotante fuera, la barra no la dibuja (sidebar.jsx). Ahí se
         abre el radial SVG y ella pone las expresiones y baila (nucleo/acciones_ui)."""
         if not self.ventana_visible():
             return False
-        m = self.mascota()
+        m = self.asistente()
         try:
             return not (m is not None and m.isVisible())
         except Exception:
@@ -262,9 +262,9 @@ class AnfitrionWeb:
         return True
 
     def reaccion(self, estado: str, ms: int = 2500) -> bool:
-        """Reacción sin la mascota flotante (corte 8: comer sin mascota fuera): la cara en
+        """Reacción sin la asistente flotante (corte 8: comer sin asistente fuera): la cara en
         Lune de la barra lateral durante `ms` (lo que dure la reacción, 0.2–10 s). Con la
-        vista web de la comida la cara ya la pone la página (evento 'lune-mascota-cara')."""
+        vista web de la comida la cara ya la pone la página (evento 'lune-asistente-cara')."""
         e = str(estado or "").strip().lower()
         if not re.fullmatch(r"[a-z_]{1,24}", e):
             return False

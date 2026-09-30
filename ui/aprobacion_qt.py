@@ -1,6 +1,6 @@
 """
 ui/aprobacion_qt.py — «¿Lo hago?»: aprobación de una acción del modelo junto a
-la mascota, cuando la ventana principal no está a la vista.
+la asistente, cuando la ventana principal no está a la vista.
 
 PARA QUÉ SIRVE
 --------------
@@ -8,9 +8,9 @@ Las herramientas con riesgo (lanzar una app, una orden de Minecraft, mandar una
 captura a la nube…) necesitan que un HUMANO diga que sí, y la pregunta tiene
 que verse. Con la ventana principal delante la hace el modal web
 (`AprobacionModal`); en la nativa, un QMessageBox; en patata, la consola
-(`consola.reclamar`). Pero si solo está la mascota o Lune vive en la bandeja,
+(`consola.reclamar`). Pero si solo está la asistente o Lune vive en la bandeja,
 el modal web no se ve y todo caducaría. `DialogoAprobacion` es esa pregunta
-en pequeño: sin bordes, siempre encima, junto a la mascota (o en la esquina de
+en pequeño: sin bordes, siempre encima, junto a la asistente (o en la esquina de
 la pantalla), con la herramienta, un resumen y los argumentos.
 
 Reglas (crítica d, «aprobaciones sin interfaz visible»):
@@ -35,7 +35,7 @@ Uso (integración):
     dlg = DialogoAprobacion("lanzar_app", "Abrir el Bloc de notas",
                             {"app": "notepad"}, riesgo="ESCRITURA")
     dlg.resuelto.connect(lambda ok: ejecutor.responder(id_, ok))
-    dlg.mostrar_junto_a(mascota.frameGeometry() if mascota else None)
+    dlg.mostrar_junto_a(asistente.frameGeometry() if asistente else None)
 """
 from __future__ import annotations
 
@@ -299,7 +299,7 @@ class DialogoAprobacion(QWidget):
 
     # ── Mostrar ──────────────────────────────────────────────────────────────
     def mostrar_junto_a(self, rect: Optional[Rect] = None):
-        """Al lado de la mascota (`rect` global de Qt) o, sin ella, en la esquina
+        """Al lado de la asistente (`rect` global de Qt) o, sin ella, en la esquina
         inferior derecha de la pantalla del cursor. Pide el foco para «No»."""
         if self._resultado is not None or self._cerrada:
             return

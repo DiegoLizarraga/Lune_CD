@@ -9,14 +9,17 @@ lune_core/servicio_chat.py), que enseñaban el formato antiguo `ABRIR_URL:` /
 
 Prueba real con qwen2.5:7b (2026-09): con un solo ejemplo y las firmas como
 `nombre(arg: tipo)`, el modelo solo acertaba con la herramienta del ejemplo e
-inventaba marcas (<|OPEN_URL …|>, <|mascota_bailar(segundos=60)|>…); además
+inventaba marcas (<|OPEN_URL …|>, <|asistente_bailar(segundos=60)|>…); además
 copiaba el texto del ejemplo («sacar la pizza»). Por eso ahora:
   · cada herramienta se enseña con la MISMA forma que su llamada
     (`<|CALL ["temporizador", {"segundos": N, "texto": "…"}]|>`);
   · dos ejemplos cortos y NEUTROS (pedido → respuesta, con el <|ACT|> al
     principio y la marca al final) de herramientas de este modo, más uno sin
     acción (para que no llame a nada si solo le preguntan);
-  · anti-ejemplos breves de las marcas inventadas que se vieron.
+  · anti-ejemplos breves de las marcas inventadas que se vieron;
+  · con la asistente en escritorio a la vista, «Disponibles» dice que las
+    `asistente_*` son su cuerpo en el escritorio (11): Lune es «una asistente» en
+    todo, y el prefijo podía leerse como algo de su papel y no de su avatar.
 
 La lista es corta a propósito (modelos locales pequeños): solo las herramientas
 que tienen handler, están registradas y valen en el modo actual. El texto es
@@ -73,6 +76,9 @@ _SIN_ACCION = ("¿cómo funciona un temporizador?", "think",
                "Cuenta hacia atrás y suena al llegar a cero. ¿Quieres que te ponga uno? "
                "(sin marca: solo preguntó)")
 MAX_EJEMPLOS = 2
+# Con herramientas que solo existen en el escritorio (catalogo.es_de_escritorio): qué es
+# el prefijo asistente_. Corto a propósito (presupuesto del prompt, test_estable_y_corta).
+NOTA_ESCRITORIO = "asistente_* = tu cuerpo en el escritorio"
 
 
 def _act(emocion: str) -> str:
@@ -110,7 +116,7 @@ def reglas_herramientas(registro: Optional[Registro], modo: Optional[str],
     """
     Texto de reglas para el system prompt.
       registro      Registro de descriptores; lo no registrado no se lista.
-      modo          "normal" | "patata" | "br" | "mascota" | "vrm" (None = sin filtro).
+      modo          "normal" | "patata" | "br" | "asistente" | "vrm" (None = sin filtro).
       disponibles   nombres que tienen handler en este modo.
       con_titulo    añade «## Herramientas» (quítalo si usas construir_system_prompt,
                     que ya pone su propio título).
@@ -135,7 +141,8 @@ def reglas_herramientas(registro: Optional[Registro], modo: Optional[str],
     lineas.extend(_ejemplos(nombres, con_emociones))
     lineas.append(ANTIEJEMPLOS)
     lineas.append(REGLAS_USO)
-    lineas.append("Disponibles:")
+    escritorio = any(cat.es_de_escritorio(cat.obtener(n, catalogo)) for n in nombres)
+    lineas.append(f"Disponibles ({NOTA_ESCRITORIO}):" if escritorio else "Disponibles:")
     for n in nombres:
         h = cat.obtener(n, catalogo)
         permiso = " (pide permiso)" if _pide_permiso(n, registro, h, ctx) else ""

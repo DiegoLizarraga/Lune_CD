@@ -4,7 +4,7 @@ Web principal de los cortes 5 y 6: extra/alarmas.jsx, extra/baile.jsx, app.jsx, 
 1. El sandbox de tests/js/ocio_web.test.mjs con `node --test` (React falso, reloj falso, puentes falsos):
    AlarmasPanel con y sin backend (payloads exactos, cuenta atrás con el reloj del backend), AlarmaBanner
    (el bloqueo desactiva «Apagar» con cuenta atrás), AlarmasCard, PantallaGrandeCard, BaileCard, useBaile y
-   el reloj del pulso, app.jsx (vista «alarmas», banner, CommandMenu) y la mascota de la barra bailando en
+   el reloj del pulso, app.jsx (vista «alarmas», banner, CommandMenu) y la asistente de la barra bailando en
    vídeo y en VRM.
 2. tests/js/vrm_barra.test.mjs: h.registrar antes de que cargue el motor, h.mod y h.usarModulo.
 3. Los .jsx siguen siendo scripts clásicos (sin import/export) que se registran solos en window dentro de

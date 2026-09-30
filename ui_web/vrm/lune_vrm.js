@@ -1,5 +1,5 @@
 /*
- * ui_web/vrm/lune_vrm.js — motor de la mascota VRM de Lune (three.js + @pixiv/three-vrm).
+ * ui_web/vrm/lune_vrm.js — motor de la asistente VRM de Lune (three.js + @pixiv/three-vrm).
  *
  * No hay clips de animación: TODO es procedural sobre los huesos normalizados del
  * humanoide (nacen en T-pose, identidad) y las expresiones del modelo. Cada frame
@@ -18,14 +18,14 @@
  *          (lune_movimiento.js: balanceo al arrastrar, brazos y piernas con retraso,
  *          pose colgada, caras por velocidad, mareo) y los que se registren luego
  *
- * Los números vienen de Mate-Engine (proyecto Unity de mascota VRM) adaptados a
+ * Los números vienen de Mate-Engine (proyecto Unity de asistente en escritorio con VRM) adaptados a
  * three.js: seguimiento 45°/30° cabeza, ±15° torso, ±12° ojos; balanceo con los
  * valores de su escena (muelle 0.75 Hz / ζ 0.5, topes 45°/20°); dormir 1.0 s de
  * entrada / 0.45 s de salida; caricia = 540° de círculos o 180 px de zigzag;
  * hit-test por alfa del píxel (umbral 0.1).
  *
  * API (la usa companion_vrm.html para exponerla en window.*):
- *   const m = crearMascota({ canvas, src, encuadre, onEvento });
+ *   const m = crearAsistente({ canvas, src, encuadre, onEvento });
  *   m.setEstado('happy')          estados: normal happy sad angry thinking surprised
  *                                  nervous curious wave dismiss listening talking
  *                                  typing laughing bored working reading error dizzy
@@ -326,7 +326,7 @@ function peso01(clave) {
   return Number.isFinite(v) ? clamp(v, 0, 1) : 1;
 }
 
-export function crearMascota({ canvas, src, encuadre = 'retrato', onEvento = () => {} }) {
+export function crearAsistente({ canvas, src, encuadre = 'retrato', onEvento = () => {} }) {
   // ── Escena ───────────────────────────────────────────────────────────────────
   const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, powerPreference: 'low-power' });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));

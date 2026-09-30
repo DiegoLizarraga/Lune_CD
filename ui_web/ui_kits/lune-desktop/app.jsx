@@ -15,7 +15,7 @@ const NOW = () => new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minu
 // Quita los marcadores de control del texto (en el streaming y también al terminar),
 // con las mismas reglas que lune_core/marcadores.py: los buenos (<|ACT …|>, <|CALL …|>),
 // los que los modelos pequeños escriben mal (|<ACT …>|, |ACT …|, <ACT …>,
-// <|OPEN_URL …|>, <|mascota_bailar(…)|>…), los neutralizados (< |CALL …|>) y una marca
+// <|OPEN_URL …|>, <|asistente_bailar(…)|>…), los neutralizados (< |CALL …|>) y una marca
 // a medio escribir al final. «x <| f |>» (F#) o «a | b» (tablas) no son marcas.
 const RE_MARCAS = [
   /\|?<\|(?=\s*(?:ACT|DELAY|CALL)\b|[A-Za-z_])(?:(?!<\|)[\s\S]){0,600}?\|>\|?/gi,  // <|…|> (con | sueltos)
@@ -100,7 +100,7 @@ window.NubeSvg = NubeSvg;
 // de window.luneEscenario (acción «Mis bailes»).
 const VISTAS_APP = ['chat', 'settings', 'personajes', 'memoria', 'historial', 'optimizar', 'tools', 'alarmas', 'bailes', 'minecraft',
   'tareas'];
-// Cortes 7/8: caras que la página puede pedir a Lune de la barra con 'lune-mascota-cara' ({estado, ms}; la comida
+// Cortes 7/8: caras que la página puede pedir a Lune de la barra con 'lune-asistente-cara' ({estado, ms}; la comida
 // de extra/vida.jsx: 'happy' al comer). Lo demás se ignora; la cara vuelve a «normal» a los ms (0.2–10 s).
 const CARAS_EVENTO = ['happy', 'surprised', 'wave', 'thinking', 'sad', 'angry', 'nervous', 'laughing', 'curious'];
 
@@ -134,8 +134,8 @@ function App() {
   const [busy, setBusy] = useState(false);
   const [voiceOn, setVoiceOn] = useState(false);
   const [telegramOn, setTelegramOn] = useState(false);
-  const [mascot, setMascot] = useState('normal');
-  const [mascotaFuera, setMascotaFuera] = useState(false); // Lune está en el escritorio (mascota flotante)
+  const [asistente, setAsistente] = useState('normal');
+  const [asistenteFuera, setAsistenteFuera] = useState(false); // Lune está en el escritorio (asistente flotante)
   const [menuOpen, setMenuOpen] = useState(false);
   const [adjuntos, setAdjuntos] = useState([]);   // nombres de archivos adjuntos
   const [grabando, setGrabando] = useState(false); // micrófono grabando
@@ -143,7 +143,7 @@ function App() {
   const [toast, setToast] = useState('');          // aviso breve del backend
   const [compat, setCompat] = useState(COMPAT_OFF); // API compatible configurada (tercer proveedor)
   const [modoJuego, setModoJuego] = useState(false); // hay un juego delante (señal juego_estado, corte 4)
-  const baile = useBaileApp();                       // cortes 5/6: la mascota de la barra baila
+  const baile = useBaileApp();                       // cortes 5/6: la asistente de la barra baila
   const toastT = useRef(null);
   const sendRef = useRef(null);                    // send() actual, para las señales
   // Efectos: manda la config (efectos.*, por window.luneEscritorio); localStorage es solo el respaldo
@@ -194,7 +194,7 @@ function App() {
           return [...m, { id, role:'bot', provider: providerRef.current, text: limpio, time: NOW(), streaming:true }];
         });
       });
-      b.acto.connect((estado) => setMascot(estado));
+      b.acto.connect((estado) => setAsistente(estado));
       // La expresión final llega por `done` (o, con voz, tramo a tramo por `acto`)
       // y SE QUEDA: si la haces reír, sigue riéndose hasta el siguiente mensaje.
       b.emocion.connect(() => {});
@@ -204,24 +204,24 @@ function App() {
       b.grabando.connect((on) => setGrabando(!!on));
       b.dictado.connect((texto) => { if (texto) setInput((v) => (v ? v + ' ' : '') + texto); });
       b.aviso.connect((msg) => mostrarToast(msg));
-      // Mascota de escritorio: mientras está fuera, la barra lateral no la dibuja.
-      b.mascota_estado.connect((v) => setMascotaFuera(!!v));
-      try { b.mascota_visible((v) => setMascotaFuera(!!v)); } catch (e) {}
+      // Asistente en escritorio: mientras está fuera, la barra lateral no la dibuja.
+      b.asistente_estado.connect((v) => setAsistenteFuera(!!v));
+      try { b.asistente_visible((v) => setAsistenteFuera(!!v)); } catch (e) {}
       // Modo llamada: lo que dice el usuario entra como mensaje y se envía solo.
       b.usuario_dijo.connect((texto) => { if (texto && sendRef.current) sendRef.current(texto); });
       b.llamada_estado.connect((on, estado) => {
         setLlamadaOn(!!on);
-        // La mascota "actúa" la llamada: escucha, piensa, habla.
+        // La asistente "actúa" la llamada: escucha, piensa, habla.
         const M = { escuchando:'listening', transcribiendo:'thinking', esperando:'thinking', hablando:'talking', off:'normal' };
-        if (on && M[estado]) setMascot(M[estado]);
-        if (!on) setMascot('normal');
+        if (on && M[estado]) setAsistente(M[estado]);
+        if (!on) setAsistente('normal');
         if (estado && (!on || estado === 'escuchando')) mostrarToast(on ? 'Llamada: te escucho' : estado);
       });
       b.herramienta.connect((ok, icon, title, detail) => {
         setTyping(false);
         setMessages((m) => [...m, { id: uid(), kind:'tool', tool:{ ok, icon, title, detail } }]);
       });
-      b.done.connect((texto, mascota) => {
+      b.done.connect((texto, asistente) => {
         setTyping(false); setBusy(false);
         const id = streamId.current;
         streamId.current = null;
@@ -232,16 +232,16 @@ function App() {
           if (final) return [...m, { id: uid(), role:'bot', provider: providerRef.current, text: final, time: NOW() }];
           return m;
         });
-        if (mascota) setMascot(mascota);   // vacío = la cara la va llevando la voz
+        if (asistente) setAsistente(asistente);   // vacío = la cara la va llevando la voz
       });
-      // Chat de la mascota (doble clic sobre ella): mismo historial que esta ventana.
+      // Chat de la asistente (doble clic sobre ella): mismo historial que esta ventana.
       // Lo que escribiste allí entra aquí como mensaje tuyo y la respuesta llega por chunk/done.
       try {
-        b.usuario_mascota.connect((texto) => {
+        b.usuario_asistente.connect((texto) => {
           if (!texto) return;
           streamId.current = null;
           setMessages((m) => [...m, { id: uid(), role:'user', text: texto, time: NOW() }]);
-          setBusy(true); setTyping(true); setMascot('thinking');
+          setBusy(true); setTyping(true); setAsistente('thinking');
         });
       } catch (e) {}
       // Tercer proveedor: la pestaña «API» solo sale si la API compatible está configurada.
@@ -252,7 +252,7 @@ function App() {
       try { b.proveedores(leerCompat); } catch (e) {}
       try { b.proveedores_cambio.connect(leerCompat); } catch (e) {}
       // Estado inicial del puente (p. ej. tras cambiar de interfaz en caliente): proveedor, voz,
-      // bot, mascota y la conversación en curso {proveedor, voz, telegram, mascota_fuera,
+      // bot, asistente y la conversación en curso {proveedor, voz, telegram, asistente_fuera,
       // mensajes:[{role, text}]}. Va DESPUÉS de proveedores(): con «compat» la pestaña ya existe
       // y no se cae a «local». Sin estado_inicial (backend viejo): se resincroniza como antes.
       if (typeof b.estado_inicial === 'function') {
@@ -262,7 +262,7 @@ function App() {
             try { r = (typeof j === 'string' ? JSON.parse(j) : j) || {}; } catch (e) {}
             const prov = PROVIDERS[r.proveedor] ? r.proveedor : '';
             if (prov) setProvider(prov); else resincronizar();
-            setVoiceOn(!!r.voz); setTelegramOn(!!r.telegram); setMascotaFuera(!!r.mascota_fuera);
+            setVoiceOn(!!r.voz); setTelegramOn(!!r.telegram); setAsistenteFuera(!!r.asistente_fuera);
             if (Array.isArray(r.mensajes) && r.mensajes.length) {
               setMessages(r.mensajes.filter((m) => m && m.text).map((m) => ({ id: uid(), role: m.role === 'user' ? 'user' : 'bot',
                 provider: prov || providerRef.current, text: String(m.text), time: '' })));
@@ -305,7 +305,7 @@ function App() {
     if (window.luneEscenario) cablear(); else window.addEventListener('lune-ready', cablear, { once: true });
     return () => { window.removeEventListener('lune-ready', cablear); quitar(); };
   }, []);
-  // F1 → menú radial (SVG) sobre la mascota de la barra.
+  // F1 → menú radial (SVG) sobre la asistente de la barra.
   React.useEffect(() => {
     const onKey = (e) => {
       if (e.key !== 'F1' || e.repeat) return;
@@ -317,11 +317,11 @@ function App() {
   }, []);
   // Expresión elegida en el radial con Lune en la barra: la pone la barra 4 s.
   const expresionRadial = useCallback((x) => {
-    setMascot(x);
-    const t = setTimeout(() => setMascot((m) => (m === x ? 'normal' : m)), 4000);
+    setAsistente(x);
+    const t = setTimeout(() => setAsistente((m) => (m === x ? 'normal' : m)), 4000);
     timers.current.push(t);
   }, []);
-  // Cortes 7/8: 'lune-mascota-cara' ({detail: {estado, ms}}) → la cara de Lune de la barra durante ms
+  // Cortes 7/8: 'lune-asistente-cara' ({detail: {estado, ms}}) → la cara de Lune de la barra durante ms
   // (ComidaWeb de extra/vida.jsx al acertar en su cabeza).
   React.useEffect(() => {
     const alCara = (e) => {
@@ -329,24 +329,24 @@ function App() {
       const estado = String(d.estado || '');
       if (!CARAS_EVENTO.includes(estado)) return;
       const ms = Math.min(10000, Math.max(200, Number(d.ms) || 2500));
-      setMascot(estado);
-      const t = setTimeout(() => setMascot((m) => (m === estado ? 'normal' : m)), ms);
+      setAsistente(estado);
+      const t = setTimeout(() => setAsistente((m) => (m === estado ? 'normal' : m)), ms);
       timers.current.push(t);
     };
-    window.addEventListener('lune-mascota-cara', alCara);
-    return () => window.removeEventListener('lune-mascota-cara', alCara);
+    window.addEventListener('lune-asistente-cara', alCara);
+    return () => window.removeEventListener('lune-asistente-cara', alCara);
   }, []);
 
   // Si la API compatible deja de estar configurada, se vuelve al modelo local.
   React.useEffect(() => { if (!compat.on && provider === 'compat') setProvider('local'); }, [compat.on, provider]);
-  // El chat de la mascota usa el mismo proveedor que esta ventana.
+  // El chat de la asistente usa el mismo proveedor que esta ventana.
   React.useEffect(() => {
     if (window.lune && typeof window.lune.proveedor_elegido === 'function') {
       try { window.lune.proveedor_elegido(provider); } catch (e) {}
     }
   }, [provider]);
 
-  const status = busy ? 'busy' : (mascot === 'error' ? 'error' : 'live');
+  const status = busy ? 'busy' : (asistente === 'error' ? 'error' : 'live');
 
   const clearTimers = () => { timers.current.forEach(clearTimeout); timers.current = []; };
 
@@ -358,13 +358,13 @@ function App() {
     setInput('');
     const userMsg = { id: uid(), role:'user', text, time: NOW() };
     setMessages((m) => [...m, userMsg]);
-    setBusy(true); setTyping(true); setMascot('thinking');
+    setBusy(true); setTyping(true); setAsistente('thinking');
 
     // Backend real: el modelo, la memoria y las herramientas de Lune.
     if (window.lune) {
       streamId.current = null;
       try { window.lune.enviar(text, provider); }
-      catch (e) { setBusy(false); setTyping(false); setMascot('error'); }
+      catch (e) { setBusy(false); setTyping(false); setAsistente('error'); }
       return;
     }
 
@@ -374,7 +374,7 @@ function App() {
       setTyping(false);
       if (reply.kind === 'tool') {
         setMessages((m) => [...m, { id: uid(), kind:'tool', tool: reply.tool }]);
-        setMascot(reply.mascot || 'happy');
+        setAsistente(reply.asistente || 'happy');
         setBusy(false);
         return;
       }
@@ -382,7 +382,7 @@ function App() {
       const full = reply.text;
       const botId = uid();
       setMessages((m) => [...m, { id: botId, role:'bot', provider, text:'', time: NOW(), streaming:true }]);
-      setMascot('typing');
+      setAsistente('typing');
       let i = 0;
       const step = () => {
         i += Math.max(2, Math.round(full.length / 22));
@@ -392,9 +392,9 @@ function App() {
           const t = setTimeout(step, 32); timers.current.push(t);
         } else {
           setMessages((m) => m.map((x) => x.id === botId ? { ...x, streaming:false } : x));
-          setMascot(reply.mascot || 'happy');
+          setAsistente(reply.asistente || 'happy');
           setBusy(false);
-          const tr = setTimeout(() => setMascot('normal'), 4000); timers.current.push(tr);
+          const tr = setTimeout(() => setAsistente('normal'), 4000); timers.current.push(tr);
         }
       };
       step();
@@ -405,7 +405,7 @@ function App() {
   const stop = useCallback(() => {
     if (window.lune) { try { window.lune.detener(); } catch (e) {} }
     clearTimers();
-    setTyping(false); setBusy(false); setMascot('normal');
+    setTyping(false); setBusy(false); setAsistente('normal');
     streamId.current = null;
     setMessages((m) => m.map((x) => x.streaming ? { ...x, streaming:false } : x));
   }, []);
@@ -415,7 +415,7 @@ function App() {
   const clear = useCallback(() => {
     if (window.lune && typeof window.lune.limpiar_chat === 'function') { try { window.lune.limpiar_chat(); } catch (e) {} }
     clearTimers(); streamId.current = null;
-    setMessages([]); setTyping(false); setBusy(false); setMascot('normal'); setView('chat');
+    setMessages([]); setTyping(false); setBusy(false); setAsistente('normal'); setView('chat');
   }, []);
 
   // ── Toggles cableados al backend real (con fallback local para la demo) ──
@@ -430,8 +430,8 @@ function App() {
     });
     else setTelegramOn((v) => !v);
   }, []);
-  const toggleMascota = useCallback(() => {
-    if (window.lune) window.lune.mascota_toggle(() => {});
+  const toggleAsistente = useCallback(() => {
+    if (window.lune) window.lune.asistente_toggle(() => {});
   }, []);
   const onAttach = useCallback(() => {
     if (window.lune) window.lune.adjuntar((j) => { try { setAdjuntos(JSON.parse(j) || []); } catch (e) {} });
@@ -465,8 +465,8 @@ function App() {
   return (
     <div className={`ln-app lune-backdrop${fx.bg?'':' fx-no-bg'}${fx.sweep?'':' fx-no-sweep'}${fx.micro?'':' fx-no-micro'}${provider==='cloud'?' tema-nube':''}`}>
       {fx.bg && <BgShards />}
-      <window.Sidebar provider={provider} onProvider={setProvider} mascotState={mascot}
-        mascotaFuera={mascotaFuera} onTraer={toggleMascota} compat={compat} modoJuego={modoJuego} baile={baile}
+      <window.Sidebar provider={provider} onProvider={setProvider} asistenteState={asistente}
+        asistenteFuera={asistenteFuera} onTraer={toggleAsistente} compat={compat} modoJuego={modoJuego} baile={baile}
         vista={view} onTareas={() => setView('tareas')} />
       <main className="ln-main">
         {provider==='cloud' && <BgNube />}
@@ -505,7 +505,7 @@ function App() {
         { label:'Pantalla grande', desc:'Lune llena la pantalla (otra vez para salir)', onClick:()=>accionEscritorio('pantalla_grande') },
         { label: bailando ? 'Parar el baile' : 'Bailar', desc:'Lune baila (con música, al ritmo)', on: baile ? bailando : undefined,
           onClick:()=>accionEscritorio('bailar') },
-        { label:`Mascota ${mascotaFuera?'ON':'OFF'}`, desc: mascotaFuera ? 'Traer a Lune de vuelta a la ventana' : 'Sacar a Lune al escritorio', on:mascotaFuera, onClick:toggleMascota },
+        { label:`Asistente en escritorio ${asistenteFuera?'ON':'OFF'}`, desc: asistenteFuera ? 'Traer a Lune de vuelta a la ventana' : 'Sacar a Lune al escritorio', on:asistenteFuera, onClick:toggleAsistente },
         { label:`Voz ${voiceOn?'ON':'OFF'}`, desc:'Lune lee sus respuestas (la voz se elige en Ajustes)', on:voiceOn, onClick:toggleVoz },
         { label:'Telegram', desc:'Bot sincronizado', on:telegramOn, onClick:toggleTelegram },
         { label:`Llamada ${llamadaOn?'ON':'OFF'}`, desc:'Conversación solo por voz', on:llamadaOn, onClick:toggleLlamada },
@@ -514,14 +514,14 @@ function App() {
       {toast && <div className="ln-toast" role="status">{toast}</div>}
       {/* Cortes 5/6: la alarma que está sonando, con «Apagar» (bloqueado los primeros segundos) y «Posponer». */}
       {window.AlarmaBanner && <window.AlarmaBanner />}
-      {/* Cortes 7/8: la comida dentro de la ventana con la mascota flotante guardada (extra/vida.jsx). */}
+      {/* Cortes 7/8: la comida dentro de la ventana con la asistente flotante guardada (extra/vida.jsx). */}
       {window.ComidaWeb && <window.ComidaWeb />}
       {/* Acciones del modelo que piden permiso (señal aprobacion_pedida): modal global
           con cuenta atrás de 60 s; «Sí, hazlo» / «No» → window.lune.resolver_aprobacion. */}
       {window.AprobacionHost && <window.AprobacionHost />}
-      {/* Menú radial SVG (extra/apariencia.jsx): F1 o clic derecho sobre la mascota de la barra. */}
+      {/* Menú radial SVG (extra/apariencia.jsx): F1 o clic derecho sobre la asistente de la barra. */}
       {window.RadialHost && <window.RadialHost onNavegar={setView} onExpresion={expresionRadial}
-        onAviso={mostrarToast} mascotaFuera={mascotaFuera} />}
+        onAviso={mostrarToast} asistenteFuera={asistenteFuera} />}
     </div>
   );
 }

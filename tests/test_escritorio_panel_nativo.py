@@ -315,11 +315,11 @@ def test_con_config_real_en_carpeta_temporal(hacer, tmp_path):
     p, _ = hacer(cfg)
     p.combo_preset.setCurrentIndex(p.combo_preset.findData("rojo_neon"))
     p.spin_fps_max.setValue(48)
-    p.cambiar_atajo("mascota", "ctrl+alt+shift+n")
+    p.cambiar_atajo("asistente", "ctrl+alt+shift+n")
     p.guardar_ya()
     disco = json.loads(ruta.read_text(encoding="utf-8"))
     assert disco["tema"]["preset"] == "rojo_neon" and disco["avatar"]["fps_max"] == 48
-    assert {a["id"]: a["combo"] for a in disco["atajos"]["lista"]}["mascota"] == "ctrl+alt+shift+n"
+    assert {a["id"]: a["combo"] for a in disco["atajos"]["lista"]}["asistente"] == "ctrl+alt+shift+n"
     assert disco["voz"] == DEF["voz"], "lo demás no se toca"
 
 

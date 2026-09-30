@@ -8,7 +8,7 @@
 //   · `goto` solo a ≤200 bloques de donde está;
 //   · `drop` solo al DUEÑO y si está cerca (≤8 bloques);
 //   · `attack` solo contra mobs atacables (vocab.MOBS_ATACABLES: nunca `player`,
-//     aldeanos, mascotas ni soportes de armadura);
+//     aldeanos, animales domesticados (lobos, gatos…) ni soportes de armadura);
 //   · `follow`/`come` con solo_dueno: solo al dueño.
 //
 // Por inyección: crearAcciones({skills, mcData, decir, dueno, soloDueno}).

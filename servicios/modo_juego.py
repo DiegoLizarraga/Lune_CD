@@ -6,7 +6,7 @@ PARA QUÉ SIRVE
 Mate-Engine no tiene detector de juegos: suelta la ventana si otra está a
 pantalla completa (±2 px) y tiene un limitador de FPS y un recorte de memoria.
 Lune añade un detector propio (sin hooks, sin leer memoria de nadie) para
-esconder la mascota, callar la voz, bajar su prioridad y no hacer capturas
+esconder la asistente, callar la voz, bajar su prioridad y no hacer capturas
 mientras juegas. Este módulo es la parte SIN Qt: la usan la app
 (ui/modo_juego_qt.ControlModoJuego) y la terminal (patata).
 
@@ -106,7 +106,7 @@ class Lectura:
 class PlanJuego:
     """Qué hacer mientras dura el modo juego (sale de la config con `plan()`)."""
     accion: str                  # ocultar · fondo · nada
-    fps: int                     # fps de la mascota (0 = pausada)
+    fps: int                     # fps de la asistente (0 = pausada)
     silenciar_voz: bool
     prioridad_baja: bool
     recortar_ram: bool

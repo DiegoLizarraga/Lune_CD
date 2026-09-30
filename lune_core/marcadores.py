@@ -19,13 +19,15 @@ lista de piezas `(clase, valor)` donde clase es:
 
 Es incremental y a prueba de cortes: si un chunk termina a mitad de una marca,
 retiene la cola hasta el siguiente chunk. Sin dependencias (el catálogo de
-herramientas se consulta perezosamente, solo para la tolerancia).
+herramientas se consulta perezosamente, solo para la tolerancia; los nombres de
+antes de la 11 salen de nucleo/nombres_antiguos, que solo usa la biblioteca estándar).
 
 TOLERANCIA (prueba real con qwen2.5:7b, 2026-09): los modelos locales pequeños
 escriben las marcas mal a menudo. Se aceptan, y se traducen a la forma buena:
     |<ACT {…}>|  |<ACT {…}>  |<ACT {…}|>  |ACT {…}|  <ACT {…}>  |<|ACT …|>|
-    <|mascota_bailar(segundos=60)|>   <|listar_bailes|>   <|abrir_url "https://…"|>
-    <|NOMBRE {…}|> con NOMBRE del catálogo (o un alias inglés evidente: OPEN_URL…)
+    <|asistente_bailar(segundos=60)|>   <|listar_bailes|>   <|abrir_url "https://…"|>
+    <|NOMBRE {…}|> con NOMBRE del catálogo (o un alias inglés evidente: OPEN_URL…,
+                   o el nombre que tenía antes de la 11: ver ALIAS_ANTIGUOS)
     <|CALL […]|> con JSON algo roto (llaves de más o de menos, comillas simples)
 Una marca con pinta de acción que no se entiende (`<|CHANGE_VOICE {…}|>`) sale
 como "invalida"; cualquier otra basura con forma de marca (`<|im_end|>`,
@@ -46,11 +48,11 @@ Trozo = Tuple[str, Any, str]          # (clase, valor, texto crudo de la marca)
 # Vocabulario canónico de emociones (AIRI stage-ui/constants/emotions.ts).
 EMOCIONES = ("happy", "sad", "angry", "think", "surprised",
              "awkward", "question", "curious", "neutral",
-             # v10 — expresividad: coinciden con los clips animados de la mascota.
+             # v10 — expresividad: coinciden con los clips animados de Lune.
              "nervous",   # nerviosa / con duda (gota de sudor)
              "wave",      # saludo / despedida
              "dismiss",   # rechaza o corrige sin ganas (gesto de "no")
-             # v10.1 — clips nuevos de la mascota
+             # v10.1 — clips animados nuevos
              "laughing",  # se ríe de verdad (chiste, algo absurdo, complicidad)
              "bored")     # aburrida / desganada
 
@@ -83,6 +85,15 @@ ALIAS_HERRAMIENTA = {
     "timer": "temporizador", "set_timer": "temporizador",
     "web_search": "buscar_web", "search": "buscar_web",
 }
+
+# Nombres de herramienta de antes de la 11 (el modo asistente en escritorio tenía otro
+# nombre): el historial viejo de chats/ los tiene y el modelo los repite por costumbre.
+# Se traducen al de ahora. La lista vive en nucleo/nombres_antiguos (el único sitio que
+# puede escribir la palabra vieja); sin nucleo (lune_core suelto), no hay alias.
+try:
+    from nucleo.nombres_antiguos import HERRAMIENTAS as ALIAS_ANTIGUOS
+except ImportError:                                    # pragma: no cover
+    ALIAS_ANTIGUOS = {}
 
 # Tokens especiales de las plantillas de chat que a veces se cuelan: basura.
 _ESPECIALES = {"im_start", "im_end", "endoftext", "end_of_text", "eot_id", "eos", "bos",
@@ -290,7 +301,8 @@ def _herramientas_conocidas() -> Iterable[str]:
 
 
 def nombre_herramienta(nombre: Any) -> Optional[str]:
-    """Nombre del catálogo para lo que escribió el modelo (mayúsculas, guiones, alias)."""
+    """Nombre del catálogo para lo que escribió el modelo (mayúsculas, guiones, alias
+    ingleses y nombres de antes de la 11)."""
     if not isinstance(nombre, str):
         return None
     clave = re.sub(r"[\s\-]+", "_", nombre.strip()).lower()
@@ -299,7 +311,7 @@ def nombre_herramienta(nombre: Any) -> Optional[str]:
     conocidas = set(_herramientas_conocidas())
     if clave in conocidas:
         return clave
-    alias = ALIAS_HERRAMIENTA.get(clave)
+    alias = ALIAS_HERRAMIENTA.get(clave) or ALIAS_ANTIGUOS.get(clave)
     return alias if alias in conocidas else None
 
 

@@ -53,8 +53,8 @@ class Controlador(QObject):
     def detener(self):
         self.diario.append((self.nombre, "detener"))
 
-    def set_mascota(self, v):
-        self.diario.append((self.nombre, "mascota", v is not None))
+    def set_asistente(self, v):
+        self.diario.append((self.nombre, "asistente", v is not None))
 
     def deleteLater(self):
         self.borrado = True
@@ -76,7 +76,7 @@ class GrandeFalsa(Controlador):
         return self.activo
 
     def herramientas(self):
-        return {"mascota_pantalla_grande": lambda args, ctx=None: "ok"}
+        return {"asistente_pantalla_grande": lambda args, ctx=None: "ok"}
 
 
 class AlarmasFalsas(Controlador):
@@ -124,7 +124,7 @@ class BaileFalso(Controlador):
 
     def herramientas(self):
         f = lambda args, ctx=None: "ok"  # noqa: E731
-        return {"mascota_bailar": f, "parar_baile": f}
+        return {"asistente_bailar": f, "parar_baile": f}
 
 
 class AtajosFalsos:
@@ -155,10 +155,10 @@ class AnfitrionFalso:
     def mostrar_ventana(self):
         self.diario.append("mostrar")
 
-    def mascota(self):
+    def asistente(self):
         return None
 
-    def alternar_mascota(self):
+    def alternar_asistente(self):
         return False
 
 
@@ -188,8 +188,8 @@ def montar(qapp, *, modo="normal", con_navegar=True, iniciado=True, fab=None, di
 
 
 IDS = ("pantalla_grande", "bailar", "baile_pausa", "alarma", "temporizador_rapido")
-HERRAMIENTAS = ("mascota_pantalla_grande", "temporizador", "alarma", "cancelar_alarma",
-                "listar_alarmas", "mascota_bailar", "parar_baile")
+HERRAMIENTAS = ("asistente_pantalla_grande", "temporizador", "alarma", "cancelar_alarma",
+                "listar_alarmas", "asistente_bailar", "parar_baile")
 
 
 def test_controladores_y_actividades_registrados(qapp):
@@ -372,7 +372,7 @@ def test_con_la_pantalla_grande_de_verdad(qapp):
     assert isinstance(h.ocio.grande, ControlPantallaGrande)
     assert h.ocio.grande._en_ui is h.ocio.en_ui
     assert h.ocio.grande.anfitrion is h.s4.anfitrion
-    assert "mascota_pantalla_grande" in h.esc._herramientas
+    assert "asistente_pantalla_grande" in h.esc._herramientas
     h.ocio.desmontar()
 
 

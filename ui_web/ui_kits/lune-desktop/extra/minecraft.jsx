@@ -87,7 +87,7 @@
     ['reaccionar', 'Reaccionar a lo que pasa en tu partida', 'Lee el latest.log (solo el archivo; nada del juego en sí).'],
     ['auto_con_juego', 'Solo mientras Minecraft está abierto', ''],
     ['voz_reacciones', 'Decir las reacciones en voz alta', ''],
-    ['decir_en_juego', 'En modo juego, que lo diga el bot en el chat del juego', 'La mascota se oculta mientras juegas.'],
+    ['decir_en_juego', 'En modo juego, que lo diga el bot en el chat del juego', 'La asistente en escritorio se oculta mientras juegas.'],
     ['resumen_al_salir', 'Al salir del modo juego, un resumen', ''],
     ['pensar_en_juego', 'Que el bot piense solo mientras juegas', 'Apagado: no le quita GPU a Minecraft (órdenes y reflejos siguen).'],
     ['reaccionar_otros', 'Reaccionar también a otros jugadores', ''],

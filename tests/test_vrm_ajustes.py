@@ -2,7 +2,7 @@
 Tests de la calibración por modelo y de las operaciones de la biblioteca VRM
 (nucleo/vrm.py): modelo_vrm/<modelo>.lune.json (claves y rangos validados),
 parámetros para window.luneParams, borrar un modelo SIN salir de modelo_vrm/ y la
-herramienta `mascota_tamano`.
+herramienta `asistente_tamano`.
 
 También comprueba con Node que ui_web/vrm/lune_params.js tiene los MISMOS rangos
 y valida igual que AJUSTES (si Node no está, esa parte se salta). Sin red ni pantalla.
@@ -144,7 +144,7 @@ def test_validar_valor_por_tipo():
     assert vrm.validar_ajustes("no dict") == {}
 
 
-# ── Parámetros para la mascota ────────────────────────────────────────────────
+# ── Parámetros para la asistente ────────────────────────────────────────────────
 
 def test_params_modelo(carpeta):
     from nucleo import vrm
@@ -226,9 +226,9 @@ def test_personajes_con(carpeta, almacen):
     assert vrm.personajes_con("nadie.vrm") == []
 
 
-# ── Herramienta mascota_tamano ────────────────────────────────────────────────
+# ── Herramienta asistente_tamano ────────────────────────────────────────────────
 
-class MascotaFalsa:
+class AsistenteFalsa:
     def __init__(self, render="vrm"):
         self.render = render
         self.tamanos = []
@@ -247,25 +247,25 @@ def test_normalizar_tamano(entrada, esperado):
     assert vrm.normalizar_tamano(entrada) == esperado
 
 
-def test_herramienta_tamano_con_mascota_3d():
+def test_herramienta_tamano_con_asistente_3d():
     from nucleo import vrm
-    cfg, m = ConfigFalsa(), MascotaFalsa()
-    ok, msg = vrm.herramienta_tamano({"tamano": "Grande"}, {"config": cfg, "mascota": m})
+    cfg, m = ConfigFalsa(), AsistenteFalsa()
+    ok, msg = vrm.herramienta_tamano({"tamano": "Grande"}, {"config": cfg, "asistente": m})
     assert ok is True and "grande" in msg
     assert cfg.avatar["vrm_tamano"] == "grande" and m.tamanos == ["grande"]
     # En el hilo de Qt si el ctx trae en_ui
     colas = []
-    ok, _ = vrm.herramienta_tamano({"tamano": "pequeno"}, {"config": cfg, "mascota": m, "en_ui": colas.append})
+    ok, _ = vrm.herramienta_tamano({"tamano": "pequeno"}, {"config": cfg, "asistente": m, "en_ui": colas.append})
     assert ok and m.tamanos == ["grande"] and len(colas) == 1
     colas[0]()
     assert m.tamanos == ["grande", "pequeno"]
 
 
-def test_herramienta_tamano_sin_mascota_3d_solo_guarda():
+def test_herramienta_tamano_sin_asistente_3d_solo_guarda():
     from nucleo import vrm
     cfg = ConfigFalsa()
-    animada = MascotaFalsa(render="animado")
-    ok, msg = vrm.herramienta_tamano({"tamano": "normal"}, {"config": cfg, "mascota": animada})
+    animada = AsistenteFalsa(render="animado")
+    ok, msg = vrm.herramienta_tamano({"tamano": "normal"}, {"config": cfg, "asistente": animada})
     assert ok is True and "Guardado" in msg and cfg.avatar["vrm_tamano"] == "normal" and animada.tamanos == []
     ok, msg = vrm.herramienta_tamano({"tamano": "normal"}, None)
     assert ok is False
@@ -279,23 +279,23 @@ def test_herramienta_tamano_ctx_objeto_y_envuelto():
 
     class Ctx:
         def __init__(self):
-            self.config, self.mascota = ConfigFalsa(), MascotaFalsa()
+            self.config, self.asistente = ConfigFalsa(), AsistenteFalsa()
 
     c = Ctx()
-    assert vrm.herramienta_tamano({"tamano": "grande"}, c)[0] is True and c.mascota.tamanos == ["grande"]
+    assert vrm.herramienta_tamano({"tamano": "grande"}, c)[0] is True and c.asistente.tamanos == ["grande"]
     c2 = Ctx()
     assert vrm.herramienta_tamano({"tamano": "grande"}, {"modo": "vrm", "contexto": c2})[0] is True
-    assert c2.mascota.tamanos == ["grande"] and c2.config.avatar["vrm_tamano"] == "grande"
+    assert c2.asistente.tamanos == ["grande"] and c2.config.avatar["vrm_tamano"] == "grande"
 
 
-def test_herramienta_tamano_si_la_mascota_falla():
+def test_herramienta_tamano_si_la_asistente_falla():
     from nucleo import vrm
 
-    class Rota(MascotaFalsa):
+    class Rota(AsistenteFalsa):
         def aplicar_tamano(self, t):
             raise RuntimeError("se cerró")
 
-    ok, msg = vrm.herramienta_tamano({"tamano": "grande"}, {"config": ConfigFalsa(), "mascota": Rota()})
+    ok, msg = vrm.herramienta_tamano({"tamano": "grande"}, {"config": ConfigFalsa(), "asistente": Rota()})
     assert ok is False and "se cerró" in msg
 
 
@@ -350,14 +350,14 @@ def test_herramienta_tamano_usa_lo_que_devuelve_en_ui():
     """G5 / contrato en_ui(fn) -> resultado de fn: un aplicar_tamano que dice False no es éxito."""
     from nucleo import vrm
 
-    class Terca(MascotaFalsa):
+    class Terca(AsistenteFalsa):
         def aplicar_tamano(self, t):
             return False
 
     cfg = ConfigFalsa()
     ok, msg = vrm.herramienta_tamano({"tamano": "grande"},
-                                     {"config": cfg, "mascota": Terca(), "en_ui": lambda fn: fn()})
+                                     {"config": cfg, "asistente": Terca(), "en_ui": lambda fn: fn()})
     assert ok is False and "no puedo" in msg.lower()
     ok, _ = vrm.herramienta_tamano({"tamano": "grande"},
-                                   {"config": cfg, "mascota": MascotaFalsa(), "en_ui": lambda fn: fn()})
+                                   {"config": cfg, "asistente": AsistenteFalsa(), "en_ui": lambda fn: fn()})
     assert ok is True

@@ -1,7 +1,7 @@
 /*
  * ui_web/lune_eventos.js — cola de eventos de la página hacia Python (sin QWebChannel).
  *
- * Para qué sirve: la mascota (VRM o animada) necesita avisar a Python de cosas que
+ * Para qué sirve: la asistente (VRM o animada) necesita avisar a Python de cosas que
  * pasan en la página aunque el cursor esté lejos (caricia, arrastre, dormir, fin de
  * un baile, fase de pantalla grande, error…). La página las encola aquí y Python
  * las recoge sondeando `luneEventos()` con runJavaScript a 10-15 Hz, en un

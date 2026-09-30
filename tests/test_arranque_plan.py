@@ -1,6 +1,6 @@
 """
 Tests del plan de arranque (nucleo/arranque.py): a mano, o con Windows en la
-bandeja, con la mascota o con la ventana, y los límites de la espera.
+bandeja, con la asistente o con la ventana, y los límites de la espera.
 """
 import pytest
 
@@ -26,15 +26,15 @@ def test_parsear_args(argv, auto):
 
 
 def test_a_mano_pantalla_de_inicio_y_ventana():
-    assert ar.plan_arranque(_cfg("mascota", 60), Opciones()) == Plan(True, True, False, 0, False)
+    assert ar.plan_arranque(_cfg("asistente", 60), Opciones()) == Plan(True, True, False, 0, False)
 
 
 def test_con_windows_en_la_bandeja():
     assert ar.plan_arranque(_cfg("bandeja"), Opciones(True)) == Plan(False, False, False, 20, True)
 
 
-def test_con_windows_con_la_mascota():
-    assert ar.plan_arranque(_cfg("mascota"), Opciones(True)) == Plan(False, False, True, 20, True)
+def test_con_windows_con_la_asistente():
+    assert ar.plan_arranque(_cfg("asistente"), Opciones(True)) == Plan(False, False, True, 20, True)
 
 
 def test_con_windows_con_la_ventana():
@@ -50,7 +50,7 @@ def test_limites_de_la_espera(valor, esperado):
 
 def test_como_desconocido_es_la_bandeja():
     p = ar.plan_arranque(_cfg("escritorio"), Opciones(True))
-    assert (p.mostrar_ventana, p.abrir_mascota) == (False, False)
+    assert (p.mostrar_ventana, p.abrir_asistente) == (False, False)
 
 
 def test_sin_config_la_bandeja_con_20_s():
@@ -62,5 +62,5 @@ def test_con_la_config_de_verdad_por_defecto_bandeja_y_20_s(tmp_path):
     from nucleo.config import Config
     cfg = Config(str(tmp_path / "config.json"))
     p = ar.plan_arranque(cfg, ar.parsear_args(["--autoinicio"]))
-    assert p == Plan(splash=False, mostrar_ventana=False, abrir_mascota=False, retraso_s=20, silencioso=True)
-    assert ar.COMOS == ("bandeja", "mascota", "ventana")
+    assert p == Plan(splash=False, mostrar_ventana=False, abrir_asistente=False, retraso_s=20, silencioso=True)
+    assert ar.COMOS == ("bandeja", "asistente", "ventana")

@@ -1,5 +1,5 @@
 /*
- * ui_web/vrm/lune_vmd.js — movimientos de MikuMikuDance (.vmd) para la mascota VRM (corte 9).
+ * ui_web/vrm/lune_vmd.js — movimientos de MikuMikuDance (.vmd) para la asistente VRM (corte 9).
  *
  * PURO: sin imports de three (THREE llega por parámetro donde hace falta) y sin DOM.
  * Se prueba en Node (tests/js/vmd.test.mjs) y lo usa ui_web/vrm/lune_mmd.js, que hornea

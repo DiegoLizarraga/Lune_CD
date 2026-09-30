@@ -3,7 +3,7 @@ ui/puente_vida.py — objeto `vida` del QWebChannel (window.luneVida), cortes 7 
 
 Lo usa la piel web normal (ui_web/ui_kits/lune-desktop/extra/vida.jsx): las tarjetas
 SentarseCard, ComidaCard, DiscordCard y AutoinicioOpciones, y `ComidaWeb`, la comida
-que sigue al ratón dentro de la ventana cuando la mascota flotante no está fuera.
+que sigue al ratón dentro de la ventana cuando la asistente flotante no está fuera.
 
 Se registra SIEMPRE en `VentanaWeb.__init__`, antes de `setUrl` (el JS solo ve lo que
 estaba registrado al crear su QWebChannel), y recibe los controladores tarde:
@@ -21,7 +21,7 @@ nada que no esté en esa lista (lo desconocido se descarta).
 
 Ranuras (JS: el resultado llega por callback, `luneVida.x(args…, cb)`):
     asiento_estado() → str            {sentada (""|barra|ventana), variante, ventanas, barra, offset,
-                                       servicio, mascota, juego, arrastrando, cedida}
+                                       servicio, asistente, juego, arrastrando, cedida}
     asiento_config_guardar(json) → str {ok, error, estado}   {ventanas?, barra?: bool, offset?: −64..64}
     asiento_sentar(sitio) → str       {ok, texto, estado}     sitio: barra | ventana
     asiento_bajar() → bool
@@ -40,7 +40,7 @@ Ranuras (JS: el resultado llega por callback, `luneVida.x(args…, cb)`):
                                        client_id?: "" | 17–20 cifras, boton_url?: "" | https ≤ 512 B}
     autoinicio_estado() → str         {activo, registrado, aprobado, ruta_ok, modo_ok, como, retraso_s,
                                        disponible (hay registro: Windows)}
-    autoinicio_opciones(json) → str   {ok, error, estado}   {como?: bandeja|mascota|ventana, retraso_s?: 0–120}
+    autoinicio_opciones(json) → str   {ok, error, estado}   {como?: bandeja|asistente|ventana, retraso_s?: 0–120}
 Señales:
     asiento_cambio(str)     JSON de asiento_estado()
     comida_cambio(str)      JSON de comida_estado() sin el catálogo
@@ -71,7 +71,7 @@ _log = logging.getLogger("lune.puente_vida")
 SITIOS = ("barra", "ventana")
 OFFSET_MAX = 64
 RETRASO_MAX = 120                      # como /autoinicio espera N de patata
-COMOS = ("bandeja", "mascota", "ventana")
+COMOS = ("bandeja", "asistente", "ventana")
 ID_DISCORD = re.compile(r"^\d{17,20}$")
 MAX_URL = 512
 VISTAS_COMIDA = ("escritorio", "web")
@@ -80,14 +80,14 @@ _COLOR = re.compile(r"^#[0-9A-Fa-f]{6}$")
 _MOTIVO = re.compile(r"^[a-z_]{1,24}$")
 
 # Privacidad: lo único que puede salir en «Discord ve: …» (servicios/discord_presencia).
-DETALLES_DISCORD = ("Mascota 3D", "Mascota animada", "Mascota ligera", "Ventana", "Terminal")
+DETALLES_DISCORD = ("Escritorio · 3D", "Escritorio · animación", "Escritorio · sprites", "Ventana", "Terminal")
 _ESTADOS_DISCORD = (
     "Con una alarma sonando", "En pantalla grande", "Durmiendo en el salvapantallas", "En una llamada",
     "Paseando por la pantalla", "Bailando ♪", "Merendando", "Echando una siesta sentada",
     "Durmiendo (-_-) zzZ", "Sentada en la barra de tareas", "Sentada en una ventana", "Pensando…",
     "Hablando", "En el escritorio", "Charlando", "En la terminal",
 )
-TEXTO_SIN_SERVICIO_ASIENTO = "Sentarse necesita la app con la mascota (servicios de escritorio)."
+TEXTO_SIN_SERVICIO_ASIENTO = "Para sentarme necesito la app abierta (servicios de escritorio)."
 
 
 def estados_discord() -> frozenset:
@@ -290,7 +290,7 @@ class PuenteVida(PuenteOcioBase):
             "variante": max(0, min(7, variante)) if sentada and variante is not None else 0,
             **self._config_asiento(),
             "servicio": self._asiento is not None,
-            "mascota": e.get("disponible") is True,
+            "asistente": e.get("disponible") is True,
             "juego": e.get("juego") is True,
             "arrastrando": e.get("arrastrando") is True,
             "cedida": e.get("cedida") is True,
@@ -578,7 +578,7 @@ class PuenteVida(PuenteOcioBase):
         cambios: Dict[str, Any] = {}
         if "como" in obj:
             if obj["como"] not in COMOS:
-                return falla("Al arrancar: en la bandeja, con la mascota o con la ventana.")
+                return falla("Al arrancar: en la bandeja, con la asistente en escritorio o con la ventana.")
             cambios["autoinicio_como"] = obj["como"]
         if "retraso_s" in obj:
             r = entero(obj["retraso_s"])

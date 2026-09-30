@@ -1,4 +1,4 @@
-**Card** — the notched surface panel; the default container for any grouped content (settings groups, info panels, mascot stage).
+**Card** — the notched surface panel; the default container for any grouped content (settings groups, info panels, Lune's stage).
 
 ```jsx
 <Card eyebrow="// Red Neuronal" title="OpenRouter" tone="cyan" tick>

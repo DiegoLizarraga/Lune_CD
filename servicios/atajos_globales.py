@@ -2,7 +2,7 @@
 servicios/atajos_globales.py — Atajos de teclado globales sin hooks.
 
 Lune escucha combinaciones como Ctrl+Alt+Shift+L aunque no tenga el foco
-(mostrar la mascota, pantalla grande, temporizador rápido…). Se hace con
+(mostrar la asistente, pantalla grande, temporizador rápido…). Se hace con
 `RegisterHotKey` de user32, que es lo que Windows ofrece para esto: el sistema
 avisa con un WM_HOTKEY cuando se pulsa ESA combinación y nada más. No se lee
 el resto del teclado, no se inyecta nada en otros procesos y no hay hooks de

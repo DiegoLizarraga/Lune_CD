@@ -1,6 +1,6 @@
 """
 Tests de ui/pantalla_grande_qt.ControlPantallaGrande (offscreen), con el
-ServiciosEscritorio de verdad (BusEstado y tabla de prioridades), una mascota
+ServiciosEscritorio de verdad (BusEstado y tabla de prioridades), una asistente
 falsa que cumple el contrato (soporta_grande, geometria, set_geometria,
 grande_fase, set_salvapantallas, mostrar_alarma…), VentanaReloj falsa, reloj
 falso y una API de entrada falsa (GetLastInputInfo, cursor, clic, mando, estado
@@ -51,7 +51,7 @@ class Reloj:
         return self.t
 
 
-class MascotaFalsa(QObject):
+class AsistenteFalsa(QObject):
     visibilidad = pyqtSignal(bool)
 
     def __init__(self, bus=None, render="vrm", lista=True, geom=GEOM):
@@ -190,17 +190,17 @@ class AnfitrionFalso:
         self.crea_lista = crea_lista
         self.creadas = []
 
-    def mascota(self):
+    def asistente(self):
         return self.creadas[-1] if self.creadas and not self.creadas[-1].cerrado else None
 
-    def alternar_mascota(self):
-        m = MascotaFalsa(self.esc.estado, lista=self.crea_lista)
+    def alternar_asistente(self):
+        m = AsistenteFalsa(self.esc.estado, lista=self.crea_lista)
         self.creadas.append(m)
-        self.esc.set_mascota(m)
+        self.esc.set_asistente(m)
         return True
 
 
-def montar(qapp, *, mascota=True, lista=True, render="vrm", cfg=None, anfitrion=None, activo=False):
+def montar(qapp, *, asistente=True, lista=True, render="vrm", cfg=None, anfitrion=None, activo=False):
     cfg = cfg or ConfigFalsa()
     cfg.set("avatar", "render", render)
     if activo:
@@ -221,9 +221,9 @@ def montar(qapp, *, mascota=True, lista=True, render="vrm", cfg=None, anfitrion=
     ctl.cambio.connect(lambda a, m: cambios.append((a, m)))
     esc.registrar("grande", ctl, ("grande", "salvapantallas"))
     m = None
-    if mascota:
-        m = MascotaFalsa(esc.estado, render=render, lista=lista)
-        esc.set_mascota(m)
+    if asistente:
+        m = AsistenteFalsa(esc.estado, render=render, lista=lista)
+        esc.set_asistente(m)
     return SimpleNamespace(esc=esc, ctl=ctl, m=m, reloj=reloj, api=api, ventanas=ventanas, cfg=cfg,
                            cambios=cambios, anf=anf, bus=esc.estado)
 
@@ -239,7 +239,7 @@ def activa(h):
     assert h.ctl._maquina.estado == "activa"
 
 
-# ── Pantalla grande con la mascota ────────────────────────────────────────────
+# ── Pantalla grande con la asistente ────────────────────────────────────────────
 
 def test_entrada_planeo_monitor_fundido_activa(qapp):
     h = montar(qapp)
@@ -258,7 +258,7 @@ def test_entrada_planeo_monitor_fundido_activa(qapp):
     assert h.ctl._maquina.estado == "activa" and h.ctl.activo
     assert not h.ctl._t_maquina.isActive()
     assert h.cambios == [(True, "manual")]
-    assert h.ctl.estado()["vista"] == "mascota"
+    assert h.ctl.estado()["vista"] == "asistente"
 
 
 def test_salida_restaura_la_geometria_exacta(qapp):
@@ -278,7 +278,7 @@ def test_salida_restaura_la_geometria_exacta(qapp):
     assert h.cambios == [(True, "manual"), (False, "manual")]
 
 
-def test_entrar_despierta_a_la_mascota_dormida(qapp):
+def test_entrar_despierta_a_la_asistente_dormida(qapp):
     h = montar(qapp)
     h.m.durmiendo = True
     h.ctl.entrar("manual")
@@ -345,11 +345,11 @@ def test_minutos_sale_sola(qapp):
     assert h.m.fases()[-1] == "salir"
 
 
-def test_la_mascota_se_va_en_mitad(qapp):
+def test_la_asistente_se_va_en_mitad(qapp):
     h = montar(qapp)
     h.ctl.entrar("manual")
     activa(h)
-    h.esc.set_mascota(None)
+    h.esc.set_asistente(None)
     assert not h.ctl.activo
     assert h.bus.actual().grande is False
     assert h.cambios[-1] == (False, "manual")
@@ -363,10 +363,10 @@ def test_detener_sale_ya(qapp):
     assert h.m.geometrias()[-1] == GEOM
 
 
-# ── Sin mascota: VentanaReloj y mascota temporal ─────────────────────────────
+# ── Sin asistente: VentanaReloj y asistente temporal ─────────────────────────────
 
-def test_sin_mascota_y_sin_poder_sacarla_usa_ventana_reloj(qapp):
-    h = montar(qapp, mascota=False, render="sprites")
+def test_sin_asistente_y_sin_poder_sacarla_usa_ventana_reloj(qapp):
+    h = montar(qapp, asistente=False, render="sprites")
     assert h.ctl.entrar("manual") is True
     assert len(h.ventanas) == 1
     v = h.ventanas[0]
@@ -385,8 +385,8 @@ def test_con_sprites_a_la_vista_usa_ventana_reloj(qapp):
     assert h.m.fases() == [] and h.m.geometrias() == []     # solo se mira en qué pantalla está
 
 
-def test_mascota_temporal_se_saca_y_se_cierra_al_salir(qapp):
-    h = montar(qapp, mascota=False, render="vrm", anfitrion=lambda esc: AnfitrionFalso(esc, crea_lista=False))
+def test_asistente_temporal_se_saca_y_se_cierra_al_salir(qapp):
+    h = montar(qapp, asistente=False, render="vrm", anfitrion=lambda esc: AnfitrionFalso(esc, crea_lista=False))
     assert h.ctl.entrar("manual") is True
     assert len(h.anf.creadas) == 1
     m = h.anf.creadas[0]
@@ -404,8 +404,8 @@ def test_mascota_temporal_se_saca_y_se_cierra_al_salir(qapp):
     assert h.bus.actual().grande is False
 
 
-def test_mascota_temporal_que_no_carga_cae_al_reloj(qapp):
-    h = montar(qapp, mascota=False, render="animado", anfitrion=lambda esc: AnfitrionFalso(esc, crea_lista=False))
+def test_asistente_temporal_que_no_carga_cae_al_reloj(qapp):
+    h = montar(qapp, asistente=False, render="animado", anfitrion=lambda esc: AnfitrionFalso(esc, crea_lista=False))
     h.ctl.entrar("manual")
     m = h.anf.creadas[0]
     h.reloj.t += 6.5
@@ -415,23 +415,23 @@ def test_mascota_temporal_que_no_carga_cae_al_reloj(qapp):
     assert h.bus.actual().grande is True and h.ctl.activo
 
 
-def test_nativa_con_animado_no_saca_mascota(qapp):
+def test_nativa_con_animado_no_saca_asistente(qapp):
     class Nativo(AnfitrionFalso):
         modo = "br"
-    h = montar(qapp, mascota=False, render="animado", anfitrion=lambda esc: Nativo(esc))
+    h = montar(qapp, asistente=False, render="animado", anfitrion=lambda esc: Nativo(esc))
     h.ctl.entrar("manual")
     assert h.anf.creadas == []
     assert h.ventanas[0].modo == "grande"
 
 
-def test_sin_webengine_no_saca_mascota(qapp):
-    h = montar(qapp, mascota=False, render="vrm", anfitrion=lambda esc: AnfitrionFalso(esc))
+def test_sin_webengine_no_saca_asistente(qapp):
+    h = montar(qapp, asistente=False, render="vrm", anfitrion=lambda esc: AnfitrionFalso(esc))
     h.ctl._hay_webengine = lambda: False
     h.ctl.entrar("manual")
     assert h.anf.creadas == [] and h.ventanas[0].modo == "grande"
 
 
-def test_mascota_de_pagina_aun_cargando_se_espera_sin_ser_temporal(qapp):
+def test_asistente_de_pagina_aun_cargando_se_espera_sin_ser_temporal(qapp):
     h = montar(qapp, lista=False)
     h.ctl.entrar("manual")
     assert h.ctl.estado()["fase"] == "esperando" and not h.ventanas
@@ -444,8 +444,8 @@ def test_mascota_de_pagina_aun_cargando_se_espera_sin_ser_temporal(qapp):
 
 # ── Alarma ────────────────────────────────────────────────────────────────────
 
-def test_alarma_sin_mascota_en_ventana_reloj(qapp):
-    h = montar(qapp, mascota=False)
+def test_alarma_sin_asistente_en_ventana_reloj(qapp):
+    h = montar(qapp, asistente=False)
     apagar, posponer = [], []
     h.ctl.pedir_apagar_alarma.connect(lambda: apagar.append(1))
     h.ctl.pedir_posponer_alarma.connect(lambda: posponer.append(1))
@@ -478,7 +478,7 @@ def test_alarma_sobre_la_grande_manual_no_la_quita(qapp):
 
 
 def test_alarma_sobre_la_grande_de_reloj_cambia_de_modo_y_vuelve(qapp):
-    h = montar(qapp, mascota=False, render="sprites")
+    h = montar(qapp, asistente=False, render="sprites")
     h.ctl.entrar("manual")
     v = h.ventanas[0]
     h.ctl.mostrar_alarma("x")
@@ -487,7 +487,7 @@ def test_alarma_sobre_la_grande_de_reloj_cambia_de_modo_y_vuelve(qapp):
     assert v.modo == "grande" and h.ctl.activo
 
 
-def test_alarma_con_mascota_se_ve_en_la_mascota(qapp):
+def test_alarma_con_asistente_se_ve_en_la_asistente(qapp):
     h = montar(qapp)
     h.esc.prioridad.iniciar("alarma")
     h.ctl.entrar("alarma")
@@ -508,7 +508,7 @@ def armar(h, s=31):
     h.ctl._tic_inactividad()
 
 
-def test_inactividad_falsa_arma_el_salvapantallas_con_la_mascota(qapp):
+def test_inactividad_falsa_arma_el_salvapantallas_con_la_asistente(qapp):
     h = montar(qapp, activo=True)
     h.ctl.iniciar()
     assert h.ctl._t_inactividad.isActive()
@@ -521,8 +521,8 @@ def test_inactividad_falsa_arma_el_salvapantallas_con_la_mascota(qapp):
     assert h.ctl._t_entrada.isActive()
 
 
-def test_sin_mascota_el_salvapantallas_es_la_ventana_reloj(qapp):
-    h = montar(qapp, mascota=False, activo=True)
+def test_sin_asistente_el_salvapantallas_es_la_ventana_reloj(qapp):
+    h = montar(qapp, asistente=False, activo=True)
     h.cfg.set("salvapantallas", "fondo_oscuro", False)
     h.cfg.set("salvapantallas", "reloj", False)
     h.ctl.iniciar()
@@ -591,7 +591,7 @@ def test_la_entrada_de_la_gracia_no_lo_cierra(qapp):
 
 
 def test_tecla_sale_y_rearma_despues(qapp):
-    h = montar(qapp, mascota=False, activo=True)
+    h = montar(qapp, asistente=False, activo=True)
     h.ctl.iniciar()
     armar(h)
     h.reloj.t += 2.0
@@ -624,7 +624,7 @@ def test_clic_sale_de_todo_apagado_queda_en_grande_manual(qapp):
 
 
 def test_clic_sale_de_todo_apagado_con_reloj_ignora_el_mismo_clic(qapp):
-    h = montar(qapp, mascota=False, activo=True)
+    h = montar(qapp, asistente=False, activo=True)
     h.cfg.set("salvapantallas", "clic_sale_de_todo", False)
     h.ctl.iniciar()
     armar(h)
@@ -661,7 +661,7 @@ def test_ceder_salvapantallas_con_alarma_sigue_en_grande_con_motivo_alarma(qapp)
 
 
 def test_ceder_salvapantallas_de_reloj_con_alarma_cambia_la_ventana(qapp):
-    h = montar(qapp, mascota=False, activo=True)
+    h = montar(qapp, asistente=False, activo=True)
     h.ctl.iniciar()
     armar(h)
     h.esc.prioridad.iniciar("alarma")
@@ -696,7 +696,7 @@ def test_herramienta_con_en_ui(qapp):
         llamadas.append(fn)
         return fn()
     h.ctl._en_ui = en_ui
-    fn = h.ctl.herramientas()["mascota_pantalla_grande"]
+    fn = h.ctl.herramientas()["asistente_pantalla_grande"]
     r = fn({"activar": True, "minutos": 3}, {"origen": "chat"})
     assert isinstance(r, str) and "3 min" in r
     assert llamadas and h.ctl.activo and h.ctl.motivo == "herramienta"
@@ -709,7 +709,7 @@ def test_herramienta_con_en_ui(qapp):
 def test_herramienta_con_juego_devuelve_el_motivo(qapp):
     h = montar(qapp)
     h.esc.prioridad.iniciar("juego")
-    ok, motivo = h.ctl.herramientas()["mascota_pantalla_grande"]({"activar": True}, {})
+    ok, motivo = h.ctl.herramientas()["asistente_pantalla_grande"]({"activar": True}, {})
     assert ok is False and "juego" in motivo
 
 
@@ -752,7 +752,7 @@ def test_ventana_reloj_de_verdad_por_defecto(qapp):
             ctl._ventana.deleteLater()
 
 
-# ── Revisión 4-5-6: alarma con el salvapantallas, mascota escondida, salida ───────
+# ── Revisión 4-5-6: alarma con el salvapantallas, asistente escondida, salida ───────
 
 class _MezAlarma:
     def cargar_wav(self, ruta):
@@ -827,16 +827,16 @@ def _sonar(a):
     a._disparar(Disparo("a1", "cita", "alarma", 0.0, "07:30", 0.0))
 
 
-@pytest.mark.parametrize("mascota", [True, False])
-def test_salvapantallas_y_alarma_en_burbuja_sale_del_salvapantallas(qapp, tmp_path, mascota):
+@pytest.mark.parametrize("asistente", [True, False])
+def test_salvapantallas_y_alarma_en_burbuja_sale_del_salvapantallas(qapp, tmp_path, asistente):
     # MO2: con alarmas.pantalla_grande apagado la alarma no usa la grande: el
     # salvapantallas no puede quedarse en «alarma» (nadie la sacaría al apagarla).
-    h = montar(qapp, mascota=mascota, activo=True)
+    h = montar(qapp, asistente=asistente, activo=True)
     h.cfg.set("alarmas", "pantalla_grande", False)
     a, tarjeta = _con_alarmas(h, tmp_path)
     h.ctl.iniciar()
     assert h.ctl.probar_salvapantallas() is True
-    if mascota:
+    if asistente:
         activa(h)
     assert h.bus.actual().salvapantallas is True
     _sonar(a)
@@ -844,8 +844,8 @@ def test_salvapantallas_y_alarma_en_burbuja_sale_del_salvapantallas(qapp, tmp_pa
     assert est.alarma is True and est.grande is False and est.salvapantallas is False
     assert not h.ctl.activo and h.ctl.motivo == ""
     assert ("mostrar",) in tarjeta                             # la tarjeta de la alarma
-    if mascota:
-        assert h.m.geometrias()[-1] == GEOM                    # la mascota vuelve a su sitio…
+    if asistente:
+        assert h.m.geometrias()[-1] == GEOM                    # la asistente vuelve a su sitio…
         assert ("salvapantallas", False, True, True) in h.m.diario    # …despierta…
         assert h.m.diario[-1] == ("alarma", "cita")            # …con la burbuja de la alarma
     else:
@@ -859,24 +859,24 @@ def test_salvapantallas_y_alarma_en_burbuja_sale_del_salvapantallas(qapp, tmp_pa
     a.detener()
 
 
-@pytest.mark.parametrize("mascota", [True, False])
-def test_salvapantallas_y_alarma_en_grande_sale_al_apagarla(qapp, tmp_path, mascota):
+@pytest.mark.parametrize("asistente", [True, False])
+def test_salvapantallas_y_alarma_en_grande_sale_al_apagarla(qapp, tmp_path, asistente):
     # Con alarmas.pantalla_grande (por defecto) la grande sigue con la alarma y se va al apagarla.
-    h = montar(qapp, mascota=mascota, activo=True)
+    h = montar(qapp, asistente=asistente, activo=True)
     a, _ = _con_alarmas(h, tmp_path)
     h.ctl.iniciar()
     h.ctl.probar_salvapantallas()
-    if mascota:
+    if asistente:
         activa(h)
     _sonar(a)
     assert h.ctl.activo and h.ctl.motivo == "alarma" and h.bus.actual().grande is True
-    if mascota:
+    if asistente:
         assert h.m.diario[-1] == ("alarma", "cita")
     else:
         assert h.ventanas[0].modo == "alarma"
     h.reloj.t += 6
     assert a.apagar() is True
-    if mascota:
+    if asistente:
         pasar(h, 0.5)
         pasar(h, 0.4)
     assert not h.ctl.activo and h.bus.actual().grande is False
@@ -907,7 +907,7 @@ def test_grande_de_la_alarma_sale_sola_si_la_alarma_acaba_sin_sacarla(qapp):
     h.ctl.detener()
 
 
-def test_esconder_la_mascota_en_grande_sale_ya(qapp):
+def test_esconder_la_asistente_en_grande_sale_ya(qapp):
     # MO7: guardarla en la bandeja con la grande puesta → fuera (no activa e invisible).
     h = montar(qapp)
     h.ctl.iniciar()
@@ -923,8 +923,8 @@ def test_esconder_la_mascota_en_grande_sale_ya(qapp):
     h.ctl.detener()
 
 
-def test_esconder_la_mascota_temporal_la_cierra(qapp):
-    h = montar(qapp, mascota=False, render="vrm", anfitrion=lambda esc: AnfitrionFalso(esc, crea_lista=True))
+def test_esconder_la_asistente_temporal_la_cierra(qapp):
+    h = montar(qapp, asistente=False, render="vrm", anfitrion=lambda esc: AnfitrionFalso(esc, crea_lista=True))
     h.ctl.iniciar()
     h.ctl.entrar("manual")
     m = h.anf.creadas[0]
@@ -935,7 +935,7 @@ def test_esconder_la_mascota_temporal_la_cierra(qapp):
     h.ctl.detener()
 
 
-def test_un_aviso_de_oculta_con_la_mascota_a_la_vista_no_sale(qapp):
+def test_un_aviso_de_oculta_con_la_asistente_a_la_vista_no_sale(qapp):
     # Minimizar (Win+D) manda un hideEvent espontáneo pero la ventana sigue «visible».
     h = montar(qapp)
     h.ctl.iniciar()
@@ -980,7 +980,7 @@ def test_alarma_durante_la_salida_conserva_la_burbuja(qapp):
     assert not h.ctl.activo and h.ctl._alarma_texto is None
 
 
-def test_alarma_durante_la_salida_en_otra_mascota_mueve_la_burbuja(qapp):
+def test_alarma_durante_la_salida_en_otra_asistente_mueve_la_burbuja(qapp):
     h = montar(qapp)
     h.ctl.entrar("manual")
     activa(h)
@@ -988,15 +988,15 @@ def test_alarma_durante_la_salida_en_otra_mascota_mueve_la_burbuja(qapp):
     h.ctl.entrar("alarma")
     h.ctl.mostrar_alarma("cita")
     vieja = h.m
-    nueva = MascotaFalsa(h.bus)
-    h.ctl._mascota = nueva                                      # la de la entrada nueva es otra
+    nueva = AsistenteFalsa(h.bus)
+    h.ctl._asistente = nueva                                      # la de la entrada nueva es otra
     pasar(h, 0.5)
     pasar(h, 0.4)
     assert vieja.diario[-1] == ("alarma", None) or ("alarma", None) in vieja.diario
     assert ("alarma", "cita") in nueva.diario
 
 
-def test_alarma_durante_la_salida_sin_mascota_lista_va_a_la_ventana_con_burbuja(qapp):
+def test_alarma_durante_la_salida_sin_asistente_lista_va_a_la_ventana_con_burbuja(qapp):
     h = montar(qapp)
     h.ctl.entrar("manual")
     activa(h)

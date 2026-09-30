@@ -4,7 +4,7 @@
  *     ComidaCard, DiscordCard (Application ID, enlace https, «Discord ve:» solo con los textos fijos) y
  *     AutoinicioOpciones (cómo, espera diferida, Administrador de tareas), con y sin backend (window.luneVida);
  *   · ComidaWeb: sigue al ratón, acierto por segmento-círculo contra window.__luneCabezaBarra() con flanco y
- *     enfriamiento de 0.35 s → comida_evento + 'lune-mascota-cara'; Esc y 2 minutos quieta la guardan;
+ *     enfriamiento de 0.35 s → comida_evento + 'lune-asistente-cara'; Esc y 2 minutos quieta la guardan;
  *   · app.jsx + sidebar.jsx: la cara al comer, clic central → radial «secundario», la cabeza de la barra en
  *     vídeo y en VRM (y nada con Lune fuera).
  * Lo lanza tests/test_index_html_c78.py.
@@ -93,8 +93,8 @@ test('LuneVida: segmento-círculo, detector con flanco y enfriamiento, validacio
     assert.equal(V.publicacionSegura(malo), null);
   }
   assert.equal(V.textoDiscordVe({ activo: false }), 'Discord ve: nada (apagado).');
-  assert.equal(V.textoDiscordVe({ activo: true, servicio: true, vista_previa: { details: 'Lune CD · Mascota 3D', state: 'Merendando' } }),
-    'Discord ve: Lune CD · Mascota 3D — Merendando');
+  assert.equal(V.textoDiscordVe({ activo: true, servicio: true, vista_previa: { details: 'Lune CD · Escritorio · 3D', state: 'Merendando' } }),
+    'Discord ve: Lune CD · Escritorio · 3D — Merendando');
   assert.match(V.textoDiscordVe({ activo: true, servicio: true, vista_previa: { details: 'Lune CD · Ventana', state: 'Banco - Chrome' } }),
     /nada ahora mismo/);
   // Comida web: color y acción validados
@@ -155,7 +155,7 @@ test('demo sin backend: las tarjetas se dibujan y responden en local; la comida 
 
 // ── Con backend ────────────────────────────────────────────────────────────────
 test('SentarseCard: aviso anticheat antes de encender «ventanas», barra, altura diferida, sentar y bajar', () => {
-  let estado = { sentada: '', ventanas: false, barra: true, offset: 0, servicio: true, mascota: true };
+  let estado = { sentada: '', ventanas: false, barra: true, offset: 0, servicio: true, asistente: true };
   const P = puenteFalso({
     asiento_estado: () => JSON.stringify(estado),
     asiento_config_guardar: (j) => { estado = { ...estado, ...JSON.parse(j) }; return JSON.stringify({ ok: true, error: '', estado }); },
@@ -256,7 +256,7 @@ test('ComidaCard: activa, Batido/Pastel, error de Python a la vista y Guardar', 
 test('DiscordCard: «Discord ve» solo con textos fijos, Application ID, enlace https y estado', () => {
   let estado = { activo: true, conectado: true, usuario: 'diego', error: '', servicio: true, client_id_ok: false, sin_id: true,
     publicando: { details: 'Lune CD · Ventana', state: 'Banco Santander - Google Chrome' },
-    vista_previa: { details: 'Lune CD · Mascota 3D', state: 'Bailando ♪' },
+    vista_previa: { details: 'Lune CD · Escritorio · 3D', state: 'Bailando ♪' },
     config: { client_id: '', mostrar_modelo: false, boton_url: '' } };
   const P = puenteFalso({
     discord_estado: () => JSON.stringify(estado),
@@ -271,7 +271,7 @@ test('DiscordCard: «Discord ve» solo con textos fijos, Application ID, enlace 
   const el = S.h(S.sb.DiscordCard);
   let a = S.render(el);
   const ve = () => texto(conClase(S.render(el), 'ln-vd-ve')[0]);
-  assert.equal(ve(), 'Discord ve: Lune CD · Mascota 3D — Bailando ♪', 'el título de ventana nunca sale');
+  assert.equal(ve(), 'Discord ve: Lune CD · Escritorio · 3D — Bailando ♪', 'el título de ventana nunca sale');
   assert.doesNotMatch(todoTexto(a), /Chrome|Santander/);
   assert.match(todoTexto(a), /Falta el Application ID/);
   assert.match(todoTexto(a), /Nunca títulos de ventanas/);
@@ -319,10 +319,10 @@ test('AutoinicioOpciones: estado del Administrador de tareas, cómo, espera dife
   assert.equal(boton(a, 'En la bandeja').props['data-variant'], 'primary');
   boton(a, 'En la bandeja').props.onClick();
   assert.equal(P.de('autoinicio_opciones').length, 0, 'la que ya está no se guarda');
-  boton(a, 'Con la mascota').props.onClick();
+  boton(a, 'Con la asistente').props.onClick();
   a = S.render(S.h(S.sb.AutoinicioOpciones, { activo: false }));
-  assert.deepEqual(plano(P.de('autoinicio_opciones').map((l) => JSON.parse(l[0]))), [{ como: 'mascota' }]);
-  assert.equal(boton(a, 'Con la mascota').props['data-variant'], 'primary');
+  assert.deepEqual(plano(P.de('autoinicio_opciones').map((l) => JSON.parse(l[0]))), [{ como: 'asistente' }]);
+  assert.equal(boton(a, 'Con la asistente').props['data-variant'], 'primary');
   for (const v of ['30', '45']) porId(S.render(S.h(S.sb.AutoinicioOpciones, { activo: false })), 'f-autoinicio-espera').props.onChange(ev(v));
   assert.equal(P.de('autoinicio_opciones').length, 1);
   S.avanzar(350);
@@ -342,7 +342,7 @@ test('ComidaWeb: sigue al ratón, acierta por flanco con enfriamiento, Esc y 2 m
   const P = puenteFalso({ comida_estado: JSON.stringify({ activa: false }), comida_evento: true, comida_guardar: true });
   const caras = [];
   const S = cargar(P.obj, { __luneCabezaBarra: () => ({ x: 100, y: 100, r: 20 }) });
-  S.sb.addEventListener('lune-mascota-cara', (e) => caras.push(plano(e.detail)));
+  S.sb.addEventListener('lune-asistente-cara', (e) => caras.push(plano(e.detail)));
   const el = S.h(S.sb.ComidaWeb);
   assert.deepEqual(S.render(el), [], 'sin comida no dibuja nada');
   P.obj.comida_web.emit(WEB_BATIDO);
@@ -414,7 +414,7 @@ test('ComidaWeb: al recargar la página con comida en la web sale ya; cambia de 
   P.obj.comida_web.emit('no es json');
   assert.equal(conClase(S.render(el), 'ln-comida-web')[0].props['data-comida'], 'batido');
   S.desmontar();
-  // En el escritorio (mascota flotante) la página no la dibuja
+  // En el escritorio (asistente flotante) la página no la dibuja
   const P2 = puenteFalso({ comida_estado: JSON.stringify({ activa: true, id: 'batido', variante: 'fresa', vista: 'escritorio' }) });
   const S2 = cargar(P2.obj);
   assert.deepEqual(S2.render(S2.h(S2.sb.ComidaWeb)), []);
@@ -431,7 +431,7 @@ function docFalso() {
   };
 }
 function luneFalso() {
-  const base = { mascota_visible(cb) { cb(false); }, proveedores(cb) { cb('{}'); }, proveedor_elegido() {} };
+  const base = { asistente_visible(cb) { cb(false); }, proveedores(cb) { cb('{}'); }, proveedor_elegido() {} };
   return new Proxy(base, { get(t, k) { if (!(k in t) && typeof k === 'string') t[k] = senal(); return t[k]; } });
 }
 /** Elementos del DOM falsos para los ref: <video> 180×320 en (10, 20) y <canvas> 200×360 en (0, 0). */
@@ -491,17 +491,17 @@ test('app: la comida de la web sobre Lune de la barra (vídeo) pone la cara cont
   a = A.pintar();
   assert.match(srcVideo(a), /lune-composed\.webm$/, 'y vuelve a la de siempre');
   // Caras que no están en la lista, ignoradas
-  A.S.dispatch(new A.S.sb.CustomEvent('lune-mascota-cara', { detail: { estado: '<img>', ms: 100 } }));
+  A.S.dispatch(new A.S.sb.CustomEvent('lune-asistente-cara', { detail: { estado: '<img>', ms: 100 } }));
   assert.match(srcVideo(A.pintar()), /lune-composed\.webm$/);
 });
 
-test('sidebar: clic central (soltado) sobre la mascota → radial «secundario»; con Lune fuera, nada', () => {
+test('sidebar: clic central (soltado) sobre la asistente → radial «secundario»; con Lune fuera, nada', () => {
   const lune = luneFalso();
   const A = cargarApp({ lune });
   const radiales = [];
   A.S.sb.addEventListener('lune-radial', (e) => radiales.push(plano(e.detail)));
   let a = A.pintar();
-  const esc = () => conClase(A.pintar(), 'ln-mascot-stage')[0];
+  const esc = () => conClase(A.pintar(), 'ln-asistente-stage')[0];
   let prevenido = false;
   esc().props.onMouseDown({ button: 1, preventDefault() { prevenido = true; } });
   assert.ok(prevenido, 'sin el autodesplazamiento del botón central');
@@ -509,7 +509,7 @@ test('sidebar: clic central (soltado) sobre la mascota → radial «secundario»
   assert.deepEqual(radiales, [], 'el izquierdo no abre nada');
   esc().props.onMouseUp({ button: 1, clientX: 50, clientY: 60, preventDefault() {} });
   assert.deepEqual(radiales, [{ x: 50, y: 60, tipo: 'secundario' }]);
-  lune.mascota_estado.emit(true);                          // Lune sale al escritorio
+  lune.asistente_estado.emit(true);                          // Lune sale al escritorio
   a = A.pintar();
   esc().props.onMouseUp({ button: 1, clientX: 50, clientY: 60, preventDefault() {} });
   assert.equal(radiales.length, 1);
@@ -519,7 +519,7 @@ test('sidebar: clic central (soltado) sobre la mascota → radial «secundario»
 test('sidebar en VRM: la cabeza proyectada (+0.1 m, r = 0.22·ancho) y nada en pausa', () => {
   const handle = {
     setEstado() {}, pausar() {}, mod() {}, usarModulo: () => Promise.resolve(true),
-    mascota: { ctx: {
+    asistente: { ctx: {
       huesos: { head: { getWorldPosition(v) { v.x = 0; v.y = 1.5; v.z = 0; return v; } } },
       THREE: { Vector3: function () { this.x = 0; this.y = 0; this.z = 0; } },
       proyectar: (v) => ({ x: 120, y: 80 - v.y * 10 }),
@@ -533,13 +533,13 @@ test('sidebar en VRM: la cabeza proyectada (+0.1 m, r = 0.22·ancho) y nada en p
   assert.equal(cab.x, 120);
   assert.ok(Math.abs(cab.y - 64) < 1e-9, `cabeza + 0.1 m (${cab.y})`);
   assert.equal(cab.r, 44);
-  handle.mascota = null;                                   // el modelo aún no está: el 35 % desde arriba
+  handle.asistente = null;                                   // el modelo aún no está: el 35 % desde arriba
   const sin = A.S.sb.__luneCabezaBarra();
   assert.ok(sin.x === 100 && Math.abs(sin.y - 126) < 1e-9 && sin.r === 44, JSON.stringify(sin));
-  lune.mascota_estado.emit(true);                          // fuera: el avatar se pausa
+  lune.asistente_estado.emit(true);                          // fuera: el avatar se pausa
   A.pintar();
   assert.equal(A.S.sb.__luneCabezaBarra, null);
-  lune.mascota_estado.emit(false);
+  lune.asistente_estado.emit(false);
   A.pintar();
   assert.equal(typeof A.S.sb.__luneCabezaBarra, 'function');
 });

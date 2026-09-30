@@ -1,11 +1,11 @@
 """
-Tests del integrador de anfitriones del corte 3 (mascota + VRM):
+Tests del integrador de anfitriones del corte 3 (asistente + VRM):
 
-  · Herramientas del modelo `mascota_dormir`, `mascota_despertar` y
-    `mascota_tamano` en la piel web (ui/web_bridge.py) y en la nativa (main.py):
-    registradas por ServiciosEscritorio, con la mascota a la vista (mock), error
-    claro sin mascota, tamaño normalizado, en_ui desde otro hilo y el modo del
-    turno ("mascota"/"vrm" con ella fuera; en "normal" no están disponibles).
+  · Herramientas del modelo `asistente_dormir`, `asistente_despertar` y
+    `asistente_tamano` en la piel web (ui/web_bridge.py) y en la nativa (main.py):
+    registradas por ServiciosEscritorio, con la asistente a la vista (mock), error
+    claro sin asistente, tamaño normalizado, en_ui desde otro hilo y el modo del
+    turno ("asistente"/"vrm" con ella fuera; en "normal" no están disponibles).
   · Slots de la biblioteca VRM (vrm_biblioteca, vrm_meta, vrm_miniatura,
     vrm_ajustes, vrm_borrar, vrm_params, vrm_barra) sobre una carpeta temporal,
     rechazando nombres con rutas.
@@ -55,7 +55,7 @@ BABEL = RAIZ / "ui_web" / "vendor" / "babel.min.js"
 
 # ── Falsos ───────────────────────────────────────────────────────────────────────
 
-class MascotaFalsa:
+class AsistenteFalsa:
     """Lo que el contrato pide a CompanionFlotante / AvatarOverlay (y poco más)."""
 
     def __init__(self, render="vrm", visible=True, dormir_ok=True, durmiendo=False):
@@ -178,7 +178,7 @@ def puente(qapp, tmp_path, monkeypatch, carpeta, almacen):
 
 def _turno(b, modo):
     from servicios.tools import ctx_acciones
-    b._turno = {"origen": "usuario", "ctx": ctx_acciones(b.ai, "ollama", modo), "mascota": False}
+    b._turno = {"origen": "usuario", "ctx": ctx_acciones(b.ai, "ollama", modo), "asistente": False}
 
 
 def _procesar_hasta(qapp, cond, t=5.0):
@@ -195,82 +195,82 @@ def _procesar_hasta(qapp, cond, t=5.0):
 def test_las_tres_herramientas_estan_en_el_catalogo_con_su_nivel():
     from lune_core import catalogo_herramientas as cat
     from lune_core.herramientas import Riesgo
-    for nombre in ("mascota_dormir", "mascota_despertar", "mascota_tamano"):
+    for nombre in ("asistente_dormir", "asistente_despertar", "asistente_tamano"):
         h = cat.obtener(nombre)
         assert h is not None, nombre
         assert h.riesgo == Riesgo.ESCRITURA and h.requiere_aprobacion is False
         assert h.disponible_en("vrm")
         # G4: el tamaño solo existe en la 3D (con sprites/animada no se vería nada).
-        assert h.disponible_en("mascota") is (nombre != "mascota_tamano")
+        assert h.disponible_en("asistente") is (nombre != "asistente_tamano")
         assert not h.disponible_en("normal") and not h.disponible_en("patata")
-    assert cat.obtener("mascota_tamano").args["tamano"].enum == ("pequeno", "normal", "grande")
+    assert cat.obtener("asistente_tamano").args["tamano"].enum == ("pequeno", "normal", "grande")
 
 
 # ── Piel web: herramientas ───────────────────────────────────────────────────────
 
 def test_web_registra_las_tres_herramientas(puente):
     b = puente
-    for nombre in ("mascota_dormir", "mascota_despertar", "mascota_tamano"):
+    for nombre in ("asistente_dormir", "asistente_despertar", "asistente_tamano"):
         assert nombre in b.tools.handlers
         assert nombre in b.acciones.ejecutor.handlers                # llegan al Ejecutor
     assert "cambiar_voz" in b.tools.handlers                         # lo del corte 2 sigue
 
 
-def test_web_dormir_ok_falla_y_sin_mascota(puente):
+def test_web_dormir_ok_falla_y_sin_asistente(puente):
     b = puente
-    dormir = b.tools.handlers["mascota_dormir"]
-    ov = MascotaFalsa()
+    dormir = b.tools.handlers["asistente_dormir"]
+    ov = AsistenteFalsa()
     b._overlay = ov
     r = dormir({}, {"modo": "vrm"})
     assert isinstance(r, str) and "siesta" in r and ov.nombres() == ["dormir"]
     assert dormir({}, {"modo": "vrm"}) == "Ya estoy dormida. Shh."   # no la vuelve a dormir
-    ov2 = MascotaFalsa(dormir_ok=False)
+    ov2 = AsistenteFalsa(dormir_ok=False)
     b._overlay = ov2
     ok, motivo = dormir({}, None)
     assert ok is False and "no puedo dormirme" in motivo
     b._overlay = None
     ok, motivo = dormir({}, {"modo": "vrm"})
-    assert ok is False and "No hay mascota" in motivo
-    b._overlay = MascotaFalsa(visible=False)                          # oculta = no está fuera
+    assert ok is False and "No estoy en el escritorio" in motivo
+    b._overlay = AsistenteFalsa(visible=False)                          # oculta = no está fuera
     ok, _ = dormir({}, {})
     assert ok is False
 
 
 def test_web_despertar(puente):
     b = puente
-    ov = MascotaFalsa(durmiendo=True)
+    ov = AsistenteFalsa(durmiendo=True)
     b._overlay = ov
-    r = b.tools.handlers["mascota_despertar"]({}, {"modo": "vrm"})
+    r = b.tools.handlers["asistente_despertar"]({}, {"modo": "vrm"})
     assert "despierta" in r and ov.nombres() == ["despertar"] and ov.durmiendo is False
-    assert b.tools.handlers["mascota_despertar"]({}, {}) == "Ya estaba despierta."
+    assert b.tools.handlers["asistente_despertar"]({}, {}) == "Ya estaba despierta."
     b._overlay = None
-    ok, motivo = b.tools.handlers["mascota_despertar"]({}, {})
+    ok, motivo = b.tools.handlers["asistente_despertar"]({}, {})
     assert ok is False and "despertar" in motivo
 
 
-def test_web_tamano_normalizado_y_sin_mascota(puente):
+def test_web_tamano_normalizado_y_sin_asistente(puente):
     b = puente
-    ov = MascotaFalsa()
+    ov = AsistenteFalsa()
     b._overlay = ov
-    ok, msg = b.tools.handlers["mascota_tamano"]({"tamano": "Pequeña"}, {"modo": "vrm"})
+    ok, msg = b.tools.handlers["asistente_tamano"]({"tamano": "Pequeña"}, {"modo": "vrm"})
     assert ok is True and "pequeña" in msg
     assert ov.llamadas == [("tamano", "pequeno")]
     assert b.config.get("avatar", "vrm_tamano") == "pequeno"
-    ok, msg = b.tools.handlers["mascota_tamano"]({"tamano": "enorme"}, {})
+    ok, msg = b.tools.handlers["asistente_tamano"]({"tamano": "enorme"}, {})
     assert ok is True and ov.llamadas[-1] == ("tamano", "grande")
-    ok, _ = b.tools.handlers["mascota_tamano"]({"tamano": "gigantesca"}, {})
+    ok, _ = b.tools.handlers["asistente_tamano"]({"tamano": "gigantesca"}, {})
     assert ok is False
-    b._overlay = None                                                 # sin mascota: se guarda
-    ok, msg = b.tools.handlers["mascota_tamano"]({"tamano": "normal"}, {})
+    b._overlay = None                                                 # sin asistente: se guarda
+    ok, msg = b.tools.handlers["asistente_tamano"]({"tamano": "normal"}, {})
     assert ok is True and msg.startswith("Guardado") and b.config.get("avatar", "vrm_tamano") == "normal"
 
 
 def test_web_herramienta_desde_otro_hilo_se_hace_en_el_de_qt(puente, qapp):
     b = puente
-    ov = MascotaFalsa()
+    ov = AsistenteFalsa()
     b._overlay = ov
     res = {}
-    hilo = threading.Thread(target=lambda: res.setdefault("r", b.tools.handlers["mascota_dormir"]({}, {})))
+    hilo = threading.Thread(target=lambda: res.setdefault("r", b.tools.handlers["asistente_dormir"]({}, {})))
     hilo.start()
     assert _procesar_hasta(qapp, lambda: not hilo.is_alive())
     assert ov.hilos == [threading.get_ident()]                       # dormir() en el hilo de Qt
@@ -293,24 +293,24 @@ def test_web_herramienta_desde_otro_hilo_se_hace_en_el_de_qt(puente, qapp):
 def test_web_modo_del_turno_y_ejecutor(puente, monkeypatch):
     b = puente
     assert b._modo_acciones() == "normal"
-    ov = MascotaFalsa(render="vrm")
+    ov = AsistenteFalsa(render="vrm")
     b._overlay = ov
     assert b._modo_acciones() == "vrm"
     ov.render = "animado"
-    assert b._modo_acciones() == "mascota"
+    assert b._modo_acciones() == "asistente"
     ov.visible = False
     assert b._modo_acciones() == "normal"
     ov.visible, ov.render = True, "vrm"
     # En modo "vrm" el Ejecutor la hace; en "normal" no está disponible.
     _turno(b, "vrm")
-    b._on_done('Me echo una siesta. <|CALL ["mascota_dormir", {}]|>')
+    b._on_done('Me echo una siesta. <|CALL ["asistente_dormir", {}]|>')
     ok, _i, _t, detalle = b.senales["herramienta"][-1]
     assert ok is True and "siesta" in detalle and "dormir" in ov.nombres()
     _turno(b, "normal")
-    b._on_done('<|CALL ["mascota_despertar", {}]|>')
+    b._on_done('<|CALL ["asistente_despertar", {}]|>')
     ok, _i, _t, detalle = b.senales["herramienta"][-1]
     assert ok is False and "disponible" in detalle and "despertar" not in ov.nombres()
-    # El envío usa el modo de la mascota (ctx y prompt del AIWorker).
+    # El envío usa el modo de la asistente (ctx y prompt del AIWorker).
     import ui.web_bridge as wb
 
     class Worker(QObject):
@@ -366,14 +366,14 @@ def test_slots_de_la_biblioteca(puente, carpeta):
 
 def test_vrm_ajustes_guarda_aplica_y_rechaza_rutas(puente, carpeta, tmp_path):
     b = puente
-    ov = MascotaFalsa()
+    ov = AsistenteFalsa()
     b._overlay = ov
     r = json.loads(b.vrm_ajustes("a_luna.vrm", json.dumps({"luz": 9, "pesoOjos": 0.3, "otra": 1})))
     assert r["ok"] is True and r["ajustes"] == {"luz": 3.0, "pesoOjos": 0.3}
     assert (carpeta / "a_luna.lune.json").is_file()
-    assert ov.nombres() == ["params"]                                 # en vivo a la mascota 3D
+    assert ov.nombres() == ["params"]                                 # en vivo a la asistente 3D
     assert json.loads(b.senales["vrm_params_cambio"][-1])["luz"] == 3.0   # y a la barra (es el actual)
-    # Otro modelo (no es el que se ve): la mascota se refresca, la barra no.
+    # Otro modelo (no es el que se ve): la asistente se refresca, la barra no.
     n = len(b.senales["vrm_params_cambio"])
     assert json.loads(b.vrm_ajustes("b_vieja.vrm", '{"altura": 0.1}'))["ok"] is True
     assert len(b.senales["vrm_params_cambio"]) == n
@@ -390,9 +390,9 @@ def test_vrm_ajustes_guarda_aplica_y_rechaza_rutas(puente, carpeta, tmp_path):
     assert json.loads(b.vrm_ajustes("a_luna.vrm", "{no es json"))["ok"] is False
 
 
-def test_vrm_borrar_recarga_la_mascota_y_la_barra(puente, carpeta, almacen):
+def test_vrm_borrar_recarga_la_asistente_y_la_barra(puente, carpeta, almacen):
     b = puente
-    ov = MascotaFalsa()
+    ov = AsistenteFalsa()
     b._overlay = ov
     for malo in ("../b_vieja.vrm", "C:\\b_vieja.vrm", str(carpeta / "b_vieja.vrm")):
         assert json.loads(b.vrm_borrar(malo))["ok"] is False
@@ -407,7 +407,7 @@ def test_vrm_borrar_recarga_la_mascota_y_la_barra(puente, carpeta, almacen):
 
 def test_modelo_vrm_cambio_con_personaje_y_asignacion(puente, almacen):
     b = puente
-    ov = MascotaFalsa()
+    ov = AsistenteFalsa()
     b._overlay = ov
     assert b.personaje_activar("Aria") is True
     assert almacen["bot"]["personaje_default"] == "Aria"
@@ -452,7 +452,7 @@ def test_guardar_config_seguir_cursor_y_render(qapp, tmp_path, monkeypatch, carp
         cambios, params = [], []
         b.modelo_vrm_cambio.connect(lambda: cambios.append(1))
         b.vrm_params_cambio.connect(params.append)
-        ov = MascotaFalsa(render="animado")
+        ov = AsistenteFalsa(render="animado")
         b._overlay = ov
         assert json.loads(b.get_config())["seguir_cursor"] is True
         assert json.loads(b.guardar_config(json.dumps({"seguir_cursor": False})))["ok"] is True
@@ -460,8 +460,8 @@ def test_guardar_config_seguir_cursor_y_render(qapp, tmp_path, monkeypatch, carp
         assert "params" in ov.nombres()
         assert params and json.loads(params[-1])["pesoCabeza"] == 0.0     # sin seguimiento
         assert cambios == []
-        monkeypatch.setattr(b, "_mascota_recrear", lambda: None)
-        assert json.loads(b.guardar_config(json.dumps({"mascota_render": "vrm"})))["ok"] is True
+        monkeypatch.setattr(b, "_asistente_recrear", lambda: None)
+        assert json.loads(b.guardar_config(json.dumps({"asistente_render": "vrm"})))["ok"] is True
         assert cfg.get("avatar", "render") == "vrm" and cambios == [1]
         assert json.loads(b.guardar_config(json.dumps({"vrm_archivo": "b_vieja.vrm"})))["ok"] is True
         assert cfg.get("avatar", "vrm_archivo") == "b_vieja.vrm" and cambios == [1, 1]
@@ -579,60 +579,60 @@ def _ventana_nativa(ov, config=None):
     yo = types.SimpleNamespace(_overlay=ov, config=config, MODO_ACCIONES="normal", ESPERA_UI_S=2.0,
                                _hilo_qt=threading.get_ident(), _en_ui_senal=emisor.senal,
                                escritorio=esc, _emisor=emisor)
-    for n in ("_mascota_viva", "_mascota_a_la_vista", "_modo_acciones", "en_ui", "_ctx_mascota",
-              "_h_mascota_dormir", "_h_mascota_despertar", "_h_mascota_tamano", "_on_vrm_cambiado",
-              "_registrar_herramientas_mascota"):
+    for n in ("_asistente_viva", "_asistente_a_la_vista", "_modo_acciones", "en_ui", "_ctx_asistente",
+              "_h_asistente_dormir", "_h_asistente_despertar", "_h_asistente_tamano", "_on_vrm_cambiado",
+              "_registrar_herramientas_asistente"):
         setattr(yo, n, types.MethodType(getattr(W, n), yo))
     return yo
 
 
 def test_nativa_registra_las_herramientas_en_escritorio(qapp):
     yo = _ventana_nativa(None)
-    yo._registrar_herramientas_mascota()
+    yo._registrar_herramientas_asistente()
     nombres = [c.args[0] for c in yo.escritorio.registrar_herramienta.call_args_list]
-    assert nombres == ["mascota_dormir", "mascota_despertar", "mascota_tamano"]
+    assert nombres == ["asistente_dormir", "asistente_despertar", "asistente_tamano"]
     src = (RAIZ / "main.py").read_text("utf-8")
-    assert src.index("self._registrar_herramientas_mascota()") < src.index(
+    assert src.index("self._registrar_herramientas_asistente()") < src.index(
         "self.escritorio.conectar_herramientas(self.tools)")
 
 
 def test_nativa_dormir_despertar_tamano(qapp, tmp_path):
     from nucleo.config import Config
     cfg = Config(str(tmp_path / "config.json"))
-    ov = MascotaFalsa()
+    ov = AsistenteFalsa()
     yo = _ventana_nativa(ov, cfg)
-    assert "siesta" in yo._h_mascota_dormir({}, {"modo": "vrm"})
-    assert "despierta" in yo._h_mascota_despertar({}, {"modo": "vrm"})
+    assert "siesta" in yo._h_asistente_dormir({}, {"modo": "vrm"})
+    assert "despierta" in yo._h_asistente_despertar({}, {"modo": "vrm"})
     ov.dormir_ok = False
-    ok, motivo = yo._h_mascota_dormir({}, None)
+    ok, motivo = yo._h_asistente_dormir({}, None)
     assert ok is False and "no puedo" in motivo
-    ok, msg = yo._h_mascota_tamano({"tamano": "GRANDE"}, {})
+    ok, msg = yo._h_asistente_tamano({"tamano": "GRANDE"}, {})
     assert ok is True and ov.llamadas[-1] == ("tamano", "grande") and cfg.get("avatar", "vrm_tamano") == "grande"
     yo._overlay = None
-    ok, motivo = yo._h_mascota_dormir({}, {})
-    assert ok is False and "No hay mascota" in motivo
-    ok, msg = yo._h_mascota_tamano({"tamano": "mediana"}, {})
+    ok, motivo = yo._h_asistente_dormir({}, {})
+    assert ok is False and "No estoy en el escritorio" in motivo
+    ok, msg = yo._h_asistente_tamano({"tamano": "mediana"}, {})
     assert ok is True and cfg.get("avatar", "vrm_tamano") == "normal"
 
 
 def test_nativa_modo_y_otro_hilo(qapp):
     from ui.avatar_overlay import AvatarOverlay
-    ov = MascotaFalsa(render="vrm")
+    ov = AsistenteFalsa(render="vrm")
     yo = _ventana_nativa(ov)
     assert yo._modo_acciones() == "vrm"
     ov.render = "animado"
-    assert yo._modo_acciones() == "mascota"
+    assert yo._modo_acciones() == "asistente"
     ov.visible = False
     assert yo._modo_acciones() == "normal"
     sprites = MagicMock(spec=AvatarOverlay)
     sprites.isVisible.return_value = True
     sprites.cerrado = False
     yo._overlay = sprites
-    assert yo._modo_acciones() == "mascota"
-    ov = MascotaFalsa()
+    assert yo._modo_acciones() == "asistente"
+    ov = AsistenteFalsa()
     yo._overlay = ov
     res = {}
-    hilo = threading.Thread(target=lambda: res.setdefault("r", yo._h_mascota_dormir({}, {})))
+    hilo = threading.Thread(target=lambda: res.setdefault("r", yo._h_asistente_dormir({}, {})))
     hilo.start()
     assert _procesar_hasta(qapp, lambda: not hilo.is_alive())
     assert ov.hilos == [threading.get_ident()] and isinstance(res["r"], str)
@@ -641,7 +641,7 @@ def test_nativa_modo_y_otro_hilo(qapp):
 
 
 def test_nativa_panel_vrm_recarga_y_aplica_params(qapp):
-    ov = MascotaFalsa()
+    ov = AsistenteFalsa()
     yo = _ventana_nativa(ov)
     yo._on_vrm_cambiado()
     assert ov.nombres() == ["recargar", "params"]
@@ -789,7 +789,7 @@ def test_patata_sin_frase_o_sin_sueno(patata_falsa):
 
 def test_patata_frases_de_verdad_y_sin_qt(patata_falsa):
     p = patata_falsa(dormir_min=1)
-    f = p._frases_mascota()
+    f = p._frases_asistente()
     assert f is not None and hasattr(f, "elegir")
     p.reloj["t"] += 600
     assert p._avisar_si_durmio().startswith("Lune se quedó dormida hace 9 min")
@@ -817,12 +817,12 @@ def test_index_importmap_modulo_y_biblioteca():
     bib = '<script type="text/babel" src="extra/vrm_biblioteca.jsx"></script>'
     assert bib in html and html.index(bib) < html.index('src="settings.jsx"')
     assert (KIT / "extra" / "vrm_biblioteca.jsx").is_file()
-    assert "canvas.ln-mascot-vrm" in html
+    assert "canvas.ln-asistente-vrm" in html
 
 
 def test_settings_enseña_la_biblioteca_con_render_vrm():
     src = (KIT / "settings.jsx").read_text("utf-8")
-    assert "c.mascota_render==='vrm' && window.VrmBiblioteca && <window.VrmBiblioteca cfg={c} set={set} />" in src
+    assert "c.asistente_render==='vrm' && window.VrmBiblioteca && <window.VrmBiblioteca cfg={c} set={set} />" in src
     assert "seguir_cursor:true" in src
 
 
@@ -952,14 +952,14 @@ function barraFalsa() {
     destruir(h) { destruidos.push(h); return true; },
   };
 }
-const stage = (props) => renderizar(React.createElement(ctx.__MascotStage, props));
+const stage = (props) => renderizar(React.createElement(ctx.__AsistenteStage, props));
 
 check('sidebar: registra Sidebar y LuneBarra', typeof W.Sidebar === 'function' && !!W.LuneBarra);
 const N = W.LuneBarra.normalizarVrmBarra;
 check('normalizar: url solo del http local', N({ url: 'http://x/y.vrm', render: 'vrm' }).url === '' && N({ url: '//x/y.vrm' }).url === ''
   && N({ url: '/\\x' }).url === '' && N('{"url":"/vrm/actual.vrm"}').url === '/vrm/actual.vrm');
 check('normalizar: basura → null', N('no json') === null && N(null) === null);
-ctx.__MascotStage = vm.runInContext('MascotStage', ctx);
+ctx.__AsistenteStage = vm.runInContext('AsistenteStage', ctx);
 
 // 1. Sin VRM: vídeo
 W.LuneVRMBarra = barraFalsa();
@@ -969,40 +969,40 @@ check('sin info: vídeo', tipos(a).includes('video') && !tipos(a).includes('canv
 // 2. Info en window.__luneVrmBarra con render vrm → canvas y crear
 reiniciar();
 W.__luneVrmBarra = { render: 'vrm', url: '/vrm/actual.vrm', v: 'a1', archivo: 'a.vrm', params: '{"luz":2}' };
-a = stage({ state: 'happy', mascotaFuera: false });
+a = stage({ state: 'happy', asistenteFuera: false });
 check('vrm: canvas', tipos(a).includes('canvas') && !tipos(a).includes('video'), tipos(a));
 check('vrm: crear una vez', creados.length === 1, creados.length);
 const h1 = creados[0];
 check('vrm: url, versión, params y sin pausa', h1 && h1.url === '/vrm/actual.vrm' && h1.opts.version === 'a1'
   && h1.opts.params === '{"luz":2}' && h1.opts.pausado === false && h1.canvas && h1.canvas.tipo === 'canvas', h1 && h1.opts);
 check('vrm: estado inicial', h1 && h1.estados[0] === 'happy', h1 && h1.estados);
-a = stage({ state: 'thinking', mascotaFuera: false });
+a = stage({ state: 'thinking', asistenteFuera: false });
 check('vrm: cambia de estado sin recrear', creados.length === 1 && h1.estados[h1.estados.length - 1] === 'thinking', h1.estados);
 
-// 3. Mascota fuera: pausa, sigue montado; vuelve: reanuda
-a = stage({ state: 'thinking', mascotaFuera: true });
+// 3. Asistente fuera: pausa, sigue montado; vuelve: reanuda
+a = stage({ state: 'thinking', asistenteFuera: true });
 check('fuera: pausar(true) y el canvas sigue', h1.pausas[h1.pausas.length - 1] === true && tipos(a).includes('canvas') && destruidos.length === 0, h1.pausas);
-a = stage({ state: 'thinking', mascotaFuera: false });
+a = stage({ state: 'thinking', asistenteFuera: false });
 check('dentro: pausar(false)', h1.pausas[h1.pausas.length - 1] === false && creados.length === 1, h1.pausas);
 
 // 4. Cambio de modelo (evento de web_shell): misma instancia (ya recargada por LuneVRMBarra.recargar)
 W.dispatchEvent(new ctx.CustomEvent('lune-vrm-modelo', { detail: { render: 'vrm', url: '/vrm/actual.vrm', v: 'b2', params: '' } }));
-a = stage({ state: 'thinking', mascotaFuera: false });
+a = stage({ state: 'thinking', asistenteFuera: false });
 check('modelo nuevo: no recrea (lo recarga vrm_barra.js)', creados.length === 1 && destruidos.length === 0);
 
 // 5. Falla WebGL o el modelo → vídeo; con otra versión se reintenta en un canvas nuevo
 h1.opts.alError('WebGL no disponible');
-a = stage({ state: 'thinking', mascotaFuera: false });
+a = stage({ state: 'thinking', asistenteFuera: false });
 check('fallo: vuelve al vídeo y destruye', tipos(a).includes('video') && !tipos(a).includes('canvas') && destruidos[0] === h1, tipos(a));
 W.dispatchEvent(new ctx.CustomEvent('lune-vrm-modelo', { detail: { render: 'vrm', url: '/vrm/actual.vrm', v: 'c3', params: '' } }));
-a = stage({ state: 'thinking', mascotaFuera: false });
+a = stage({ state: 'thinking', asistenteFuera: false });
 check('reintento con otra versión: canvas nuevo', creados.length === 2 && creados[1].canvas !== h1.canvas && creados[1].opts.version === 'c3', creados.length);
 
 // 6. Sin modelo (url vacía) → vídeo; con Lune fuera y vídeo → nada
 W.dispatchEvent(new ctx.CustomEvent('lune-vrm-modelo', { detail: { render: 'vrm', url: '', v: '' } }));
-a = stage({ state: 'normal', mascotaFuera: false });
+a = stage({ state: 'normal', asistenteFuera: false });
 check('sin modelo: vídeo y destruido', tipos(a).includes('video') && destruidos.includes(creados[1]), tipos(a));
-a = stage({ state: 'normal', mascotaFuera: true });
+a = stage({ state: 'normal', asistenteFuera: true });
 check('fuera con vídeo: no dibuja nada', tipos(a).length === 0, tipos(a));
 
 // 7. Render animado → vídeo
@@ -1068,7 +1068,7 @@ delete W.lune;
 reiniciar();
 W.__luneVrmBarra = { render: 'vrm', url: '/vrm/actual.vrm', v: 'g7' };
 W.LuneVRMBarra = barraFalsa();
-a = renderizar(React.createElement(W.Sidebar, { provider: 'local', onProvider() {}, mascotState: 'normal', mascotaFuera: true, onTraer() {} }));
+a = renderizar(React.createElement(W.Sidebar, { provider: 'local', onProvider() {}, asistenteState: 'normal', asistenteFuera: true, onTraer() {} }));
 const t = tipos(a);
 check('sidebar fuera: aviso y canvas en pausa', t.includes('canvas') && JSON.stringify(a).includes('Lune está en tu escritorio')
   && creados.length === 1 && creados[0].opts.pausado === true, t);

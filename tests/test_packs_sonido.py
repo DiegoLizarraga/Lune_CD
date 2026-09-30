@@ -1,5 +1,5 @@
 """
-Tests de nucleo/packs_sonido.py: packs de sonidos de reacción de la mascota.
+Tests de nucleo/packs_sonido.py: packs de sonidos de reacción de la asistente.
 
 Sin red ni audio. Se prueba el pack por defecto de verdad (sonidos/default, que
 apunta a los WAV de ui_web/assets/sfx) y packs hechos en tmp_path: validación de

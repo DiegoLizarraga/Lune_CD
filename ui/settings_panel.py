@@ -12,7 +12,7 @@ la del personaje ganaría y el cambio no se notaría).
 Modelos 3D (corte 3): con «Avatar VRM 3D» elegido aparece el panel de modelos
 VRM (ui/vrm_panel_nativo.py: importar, usar con el personaje, seguimiento del
 cursor por modelo). Su señal `cambiado` sale como `vrm_cambiado` para que
-main.py recargue la mascota 3D; al guardar se escribe lo pendiente del panel.
+main.py recargue la asistente 3D; al guardar se escribe lo pendiente del panel.
 
 Escritorio (corte 4): el panel ui/escritorio_panel_nativo.PanelEscritorioNativo (tema,
 modo juego, rendimiento, atajos globales y menú radial) guarda al momento y cada
@@ -201,11 +201,11 @@ def aplicar_seccion_escritorio(seccion: str, servicios, config, claves=None) -> 
     """Aplica en caliente un apartado que el panel de escritorio (corte 4,
     ui/escritorio_panel_nativo.py) acaba de escribir en config.json:
 
-      tema        → ControlTema.recargar() (mascota, bandeja y radial; la ventana
+      tema        → ControlTema.recargar() (asistente, bandeja y radial; la ventana
                     nativa se recolorea al reiniciar)
       juego       → ControlModoJuego.recargar_config()
       atajos      → GestorAtajosQt.recargar() (activo, pausar en juegos, combos)
-      rendimiento → mascota.set_fps_max / set_encima, recorte periódico
+      rendimiento → asistente.set_fps_max / set_encima, recorte periódico
                     (juego.recargar_config) y la ventana en la barra de tareas
       radial      → nada (se lee al abrirlo)
 
@@ -244,9 +244,9 @@ def aplicar_seccion_escritorio(seccion: str, servicios, config, claves=None) -> 
         llamar(getattr(servicios, "atajos", None), "recargar")
     elif seccion == "rendimiento":
         esc = getattr(servicios, "escritorio", None)
-        m = getattr(esc, "mascota", None) if esc is not None else None
+        m = getattr(esc, "asistente", None) if esc is not None else None
         if m is None:
-            f = getattr(getattr(servicios, "anfitrion", None), "mascota", None)
+            f = getattr(getattr(servicios, "anfitrion", None), "asistente", None)
             try:
                 m = f() if callable(f) else None
             except Exception:
@@ -438,7 +438,7 @@ class SettingsPanel(QFrame):
         frame_av = self._create_group_frame()
         fl_av = QVBoxLayout(frame_av); fl_av.setSpacing(8)
         info_av = QLabel("Elige el set de expresiones. Suelta nuevos packs en lune_face/packs/. "
-                         "La mascota flotante (tile MASCOTA) usa estos packs.")
+                         "Los uso cuando me sacas al escritorio (tile ESCRITORIO).")
         info_av.setWordWrap(True); info_av.setFont(QFont("Segoe UI", 9)); info_av.setStyleSheet(f"color:{COLORS['text_muted']};border:none;")
         fl_av.addWidget(info_av)
         self.pack_combo = QComboBox()
@@ -450,8 +450,8 @@ class SettingsPanel(QFrame):
         self.pack_combo.setStyleSheet(self._estilo_combo())
         fl_av.addWidget(self.pack_combo)
 
-        # ── Cómo se dibuja la mascota flotante: sprites 2D o avatar VRM 3D ──
-        lbl_r = QLabel("Mascota flotante")
+        # ── Cómo se dibuja la asistente en escritorio: sprites 2D o avatar VRM 3D ──
+        lbl_r = QLabel("Asistente en escritorio")
         lbl_r.setFont(QFont("Segoe UI", 10)); lbl_r.setStyleSheet(f"color:{COLORS['text']};border:none;padding-top:6px;")
         self.render_combo = QComboBox()
         self.render_combo.addItem("Sprites 2D (los packs de arriba)", "sprites")
@@ -1423,7 +1423,7 @@ class SettingsPanel(QFrame):
         from pathlib import Path
         hay_vrm = Path("modelo_vrm").exists() and any(Path("modelo_vrm").glob("*.vrm"))
         if webengine and hay_vrm:
-            lbl = QLabel("Avatar 3D listo: elige «Avatar VRM 3D» y saca a Lune con el tile MASCOTA. "
+            lbl = QLabel("Avatar 3D listo: elige «Avatar VRM 3D» y sácame al escritorio con el tile ESCRITORIO. "
                          "Cada personaje puede traer su propio .vrm (campo «vrm» en datos.json).")
             lbl.setStyleSheet(f"color:{COLORS['success']};border:none;")
         elif not webengine:

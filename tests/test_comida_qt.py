@@ -2,7 +2,7 @@
 Tests de ui/comida_qt.py (offscreen): el dibujo procedural, la ventanita que
 sigue al cursor (banderas, aparecer/guardar animados, balanceo) y ControlComida
 con ServiciosEscritorio real (BusEstado y tabla de prioridades de verdad), una
-mascota falsa que cumple el contrato del corte 8, un mezclador falso, un cursor
+asistente falsa que cumple el contrato del corte 8, un mezclador falso, un cursor
 falso y un reloj falso.
 """
 import json
@@ -57,8 +57,8 @@ class MezcladorFalso:
         return [s[0] for s in self.sonados]
 
 
-class MascotaFalsa:
-    """Cumple lo que usa la comida del contrato de la mascota (corte 8)."""
+class AsistenteFalsa:
+    """Cumple lo que usa la comida del contrato de la asistente (corte 8)."""
 
     def __init__(self, cabeza=(500, 300, 40), ancho=300):
         self.visible = True
@@ -121,11 +121,11 @@ class CursorFalso:
 
 
 class AnfitrionFalso:
-    def __init__(self, modo="normal", mascota_al_sacar=None, esc=None):
+    def __init__(self, modo="normal", asistente_al_sacar=None, esc=None):
         self.modo = modo
         self.avisos, self.reacciones = [], []
         self.sacadas = 0
-        self._m = mascota_al_sacar
+        self._m = asistente_al_sacar
         self._esc = esc
 
     def aviso(self, texto):
@@ -134,10 +134,10 @@ class AnfitrionFalso:
     def reaccion(self, estado, ms):
         self.reacciones.append((estado, ms))
 
-    def alternar_mascota(self):
+    def alternar_asistente(self):
         self.sacadas += 1
         if self._m is not None and self._esc is not None:
-            self._esc.set_mascota(self._m)
+            self._esc.set_asistente(self._m)
 
 
 @pytest.fixture
@@ -148,12 +148,12 @@ def montaje(qapp):
 
     creados = []
 
-    def crear(modo="normal", config=None, mascota="si", mascota_al_sacar=None):
+    def crear(modo="normal", config=None, asistente="si", asistente_al_sacar=None):
         esc = ServiciosEscritorio(config or Config())
         reloj = Reloj()
         mez = MezcladorFalso()
         pos = {"p": QPoint(100, 100)}
-        anf = AnfitrionFalso(modo, mascota_al_sacar, esc)
+        anf = AnfitrionFalso(modo, asistente_al_sacar, esc)
         en_ui = []
 
         def correr(fn):
@@ -164,9 +164,9 @@ def montaje(qapp):
                             cursor_pos=lambda: pos["p"], lanzar_sonido=lambda f: f())
         esc.registrar("comida", ctl, ("comida",))
         esc.iniciar()
-        m = MascotaFalsa() if mascota == "si" else None
+        m = AsistenteFalsa() if asistente == "si" else None
         if m is not None:
-            esc.set_mascota(m)
+            esc.set_asistente(m)
         ctl.cambios, ctl.webs = [], []
         ctl.cambio.connect(lambda s: ctl.cambios.append(json.loads(s)))
         ctl.comida_web.connect(lambda s: ctl.webs.append(json.loads(s)))
@@ -440,34 +440,34 @@ def test_juego_la_guarda_sin_sonido_y_no_deja_sacarla(montaje):
     assert x.ctl.alternar("pastel") == "aparece"
 
 
-def test_mascota_none_u_oculta_la_guarda(montaje):
+def test_asistente_none_u_oculta_la_guarda(montaje):
     x = montaje()
     x.ctl.alternar("batido")
-    x.esc.set_mascota(None)
+    x.esc.set_asistente(None)
     assert x.ctl.activa is None and not comiendo(x)
     assert x.m.activas == [True, False]                              # la que se fue también la suelta
     y = montaje()
     y.ctl.alternar("pastel")
     y.m.visible = False
-    y.esc.estado.actualizar(visible=False)                           # la mascota se oculta
+    y.esc.estado.actualizar(visible=False)                           # la asistente se oculta
     assert y.ctl.activa is None and not comiendo(y) and y.m.activas == [True, False]
 
 
-def test_otra_mascota_con_la_comida_fuera(montaje):
-    """La mascota se recrea (cambio de render) con la comida en el cursor: la
+def test_otra_asistente_con_la_comida_fuera(montaje):
+    """La asistente se recrea (cambio de render) con la comida en el cursor: la
     nueva la recibe y la vieja la suelta."""
     x = montaje()
     x.ctl.alternar("batido")
-    nueva = MascotaFalsa(cabeza=(50, 50, 20))
-    x.esc.set_mascota(nueva)
+    nueva = AsistenteFalsa(cabeza=(50, 50, 20))
+    x.esc.set_asistente(nueva)
     assert x.ctl.activa is not None and nueva.activas == [True] and x.m.activas == [True, False]
     mover(x, 10, 50)
     mover(x, 60, 50)
     assert nueva.comidas == [("beber", 2500)] and x.m.comidas == []
 
 
-def test_web_sin_mascota_la_pinta_la_pagina(montaje):
-    x = montaje(modo="normal", mascota="no")
+def test_web_sin_asistente_la_pinta_la_pagina(montaje):
+    x = montaje(modo="normal", asistente="no")
     assert x.ctl.alternar("batido") == "aparece"
     assert CursorFalso.creados == [] and not x.ctl._timer.isActive()
     web = x.ctl.webs[-1]
@@ -491,32 +491,32 @@ def test_web_sin_mascota_la_pinta_la_pagina(montaje):
     assert x.ctl.acierto_web("pastel") is False
 
 
-def test_web_con_la_comida_fuera_aparece_la_mascota_y_pasa_al_escritorio(montaje):
-    x = montaje(modo="normal", mascota="no")
+def test_web_con_la_comida_fuera_aparece_la_asistente_y_pasa_al_escritorio(montaje):
+    x = montaje(modo="normal", asistente="no")
     x.ctl.alternar("batido")
-    m = MascotaFalsa()
-    x.esc.set_mascota(m)
+    m = AsistenteFalsa()
+    x.esc.set_asistente(m)
     assert x.ctl.webs[-1]["accion"] == "guarda"
     assert x.ctl.estado()["vista"] == "escritorio" and comiendo(x)
     assert CursorFalso.creados and CursorFalso.creados[-1].de("mostrar")
     assert m.activas == [True] and x.ctl._timer.isActive()
 
 
-def test_nativa_sin_mascota_la_saca_primero(montaje):
-    m = MascotaFalsa()
-    x = montaje(modo="br", mascota="no", mascota_al_sacar=m)
+def test_nativa_sin_asistente_la_saca_primero(montaje):
+    m = AsistenteFalsa()
+    x = montaje(modo="br", asistente="no", asistente_al_sacar=m)
     assert x.ctl.alternar("pastel") == "aparece"
     assert x.anf.sacadas == 1 and x.ctl.estado()["vista"] == "escritorio"
     assert m.activas == [True] and cursor(x).de("mostrar")
 
 
-def test_nativa_la_mascota_que_tarda_en_verse_recibe_la_comida(montaje):
-    m = MascotaFalsa()
+def test_nativa_la_asistente_que_tarda_en_verse_recibe_la_comida(montaje):
+    m = AsistenteFalsa()
     m.visible = False
-    x = montaje(modo="br", mascota="no", mascota_al_sacar=m)
+    x = montaje(modo="br", asistente="no", asistente_al_sacar=m)
     assert x.ctl.alternar("batido") == "aparece"
     assert x.anf.sacadas == 1 and m.activas == [] and x.ctl.activa is not None
-    assert cursor(x).de("mostrar")[0][3] == 96                       # sin mascota a la vista aún
+    assert cursor(x).de("mostrar")[0][3] == 96                       # sin asistente a la vista aún
     m.visible = True
     x.esc.estado.actualizar(visible=True)
     assert m.activas == [True] and x.ctl.activa is not None
@@ -551,8 +551,8 @@ def test_comer_directo_sostiene_la_actividad_durante_la_reaccion(montaje):
     assert not x.ctl._t_directo.isActive() and comiendo(x)
 
 
-def test_comer_directo_sin_mascota_usa_el_anfitrion(montaje):
-    x = montaje(modo="normal", mascota="no")
+def test_comer_directo_sin_asistente_usa_el_anfitrion(montaje):
+    x = montaje(modo="normal", asistente="no")
     assert x.ctl.comer_directo("batido")
     assert x.anf.reacciones == [("happy", 2500)]
 
@@ -590,7 +590,7 @@ def test_herramienta_desde_otro_hilo(montaje, qapp):
 def test_comida_desactivada(montaje):
     x = montaje(config=Config(comida={"activa": False}))
     assert x.ctl.alternar("batido") == "" and x.ctl.ultimo_motivo == "desactivada"
-    assert x.anf.avisos == ["La comida está desactivada (Ajustes → Mascota → Comida)."]
+    assert x.anf.avisos == ["La comida está desactivada (Ajustes → Comida)."]
     assert not comiendo(x) and x.mez.sonados == []
     assert x.ctl.comer_directo("batido") == ""
     x.esc.config.set("comida", "activa", True)
@@ -625,7 +625,7 @@ def test_detener_idempotente_sin_timers(montaje):
 
 
 def test_estado_por_defecto(montaje):
-    x = montaje(mascota="no")
+    x = montaje(asistente="no")
     assert x.ctl.estado() == {"activa": False, "id": "", "variante": "", "color": "", "tipo": "",
                               "vista": "", "disponible": True}
     assert x.ctl.ultima == "" and x.ctl.alternar("pizza") == ""

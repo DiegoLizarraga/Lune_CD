@@ -1,4 +1,4 @@
-// tests/js/anim_sentarse.test.mjs — la mascota ANIMADA «apoyada» en el borde
+// tests/js/anim_sentarse.test.mjs — la asistente ANIMADA «apoyada» en el borde
 // (ui_web/anim/lune_anim_sentarse.js, corte 7, decisión D2): la clase .lune-sentada y
 // data-sentada en el #stage por el registro (el módulo NO escribe style.transform),
 // est.sentada, y el punto de asiento = centro de abajo del #stage (luneSeatPx) con el

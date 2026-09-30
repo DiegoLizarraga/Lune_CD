@@ -7,6 +7,14 @@ nunca quede desincronizada del disco.
 
 datos.json no está versionado (lleva las API keys). Si no existe, se crea
 automáticamente a partir de datos.example.json al importar este módulo.
+
+Nombres de antes de la 11: la clave de las frases de cada personaje cambió de
+nombre con el modo «asistente en escritorio» (personajes[].frases_asistente).
+Un datos.json viejo se traduce al LEERLO (la caché ya trae la clave nueva, así
+que personajes.py y quien lea las frases solo ven esa) y al GUARDARLO (en disco
+queda solo la nueva). Si están las dos, gana la nueva y de la vieja se conserva
+lo que no choque. Leer no escribe el archivo: se queda con la clave vieja hasta
+el próximo guardado, sin que nadie lo note. Ver nucleo/nombres_antiguos.py.
 """
 import json
 import os
@@ -15,6 +23,8 @@ import shutil
 import threading
 from pathlib import Path
 from typing import Any, Dict
+
+from nucleo import nombres_antiguos
 
 _ROOT = Path(__file__).parent.parent
 _PATH = _ROOT / "datos.json"
@@ -58,11 +68,21 @@ def _load() -> dict:
         mtime = -1.0
     if mtime != _cache_mtime or not _cache:
         try:
-            _cache = json.loads(_PATH.read_text("utf-8"))
-            _cache_mtime = mtime
+            nuevo = json.loads(_PATH.read_text("utf-8"))
         except (json.JSONDecodeError, OSError):
             return _cache or {}
+        _migrar(nuevo)
+        _cache, _cache_mtime = nuevo, mtime
     return _cache
+
+
+def _migrar(data: Any) -> bool:
+    """Nombres de antes de la 11 → los de ahora, en el sitio (nucleo/nombres_antiguos).
+    True si cambió algo. Nunca falla: un datos.json raro se queda como está."""
+    try:
+        return nombres_antiguos.migrar_datos(data)
+    except Exception:
+        return False
 
 
 def cargar() -> dict:
@@ -80,6 +100,7 @@ def guardar(data: dict):
     proceso lo tiene abierto justo en ese instante) se escribe directo, como antes.
     """
     global _cache, _cache_mtime
+    _migrar(data)                      # en disco solo quedan los nombres de ahora
     texto = json.dumps(data, ensure_ascii=False, indent=2)
     with _CERROJO:
         tmp = _PATH.with_name(_PATH.name + ".tmp")
@@ -305,10 +326,10 @@ def max_tokens() -> int:
 
 
 # ── Atajos: Minecraft (bot de Lune, `minecraft-bot/`) ──
-# Solo la conexión del bot y su carácter. Lo de la mascota (reaccionar al log,
-# UDP de Mate-Engine…) vive en config.json. OJO: `solo_dueno` compara el nick,
-# y en un servidor con online-mode=false el nick se puede suplantar; no es una
-# garantía de seguridad, solo un filtro.
+# Solo la conexión del bot y su carácter. Lo que hace Lune en el escritorio con tu
+# partida (reaccionar al log, UDP de Mate-Engine…) vive en config.json. OJO:
+# `solo_dueno` compara el nick, y en un servidor con online-mode=false el nick se
+# puede suplantar; no es una garantía de seguridad, solo un filtro.
 
 MINECRAFT_DEFECTO: Dict[str, Any] = {
     "host": "localhost",

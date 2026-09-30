@@ -1,6 +1,6 @@
 """
 Tests del pulso de la canción de un baile (nucleo/bailes: analizar_pcm y
-Biblioteca.analizar_pulso), el «equivalente mínimo» de las mascotas sin esqueleto
+Biblioteca.analizar_pulso), el «equivalente mínimo» de las asistentes sin esqueleto
 (D1): pista de clics sintética → BPM ± 2 y la fase del primer golpe; los
 argumentos exactos de ffmpeg; la caché (no se repite; se rehace si cambia la
 canción o el bpm del lune.json); ffmpeg que falla → 120 BPM sin caché.

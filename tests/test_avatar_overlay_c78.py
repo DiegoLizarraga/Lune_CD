@@ -1,6 +1,6 @@
 """
-Tests de la mascota de sprites (ui/avatar_overlay.py) en los cortes 7 y 8: lo que aplica
-del contrato de la mascota.
+Tests de la asistente de sprites (ui/avatar_overlay.py) en los cortes 7 y 8: lo que aplica
+del contrato de la asistente.
 
 - el arrastre es NATIVO: `nativeEvent` con WM_ENTERSIZEMOVE / WM_EXITSIZEMOVE → la señal
   `arrastre_cambio` (solo en los cambios; devuelve (False, 0)); el arrastre de respaldo
@@ -311,7 +311,7 @@ def test_con_control_asiento_real_encaja_en_la_barra_al_soltar(ov):
     esc.registrar("asiento", ctl, ("sentada",))
     esc.iniciar()
     try:
-        esc.set_mascota(ov)
+        esc.set_asistente(ov)
         nativo(ov, WM_ENTERSIZEMOVE)
         assert ctl.estado()["arrastrando"] is True
         # el SO la dejó con los pies sobre la barra (Shell_TrayWnd arriba en y = 1032)

@@ -64,17 +64,17 @@ export function correr(seg, antes = null, despues = null) {
   }
 }
 
-/** Mascota con un VRM falso ya cargado. */
+/** Asistente con un VRM falso ya cargado. */
 export function montar({ version = '1', expresiones = EXPRESIONES_BASE, canvas = null } = {}) {
   frames.length = 0;
-  const m = motor.crearMascota({ canvas: canvas || lienzoFalso(), src: '/vrm/actual.vrm' });
+  const m = motor.crearAsistente({ canvas: canvas || lienzoFalso(), src: '/vrm/actual.vrm' });
   const carga = cargas.pop();
   const vrm = crearVRMFalso({ version, expresiones });
   carga.alCargar({ scene: vrm.scene, userData: { vrm } });
   return { m, vrm, est: m.ctx.estado() };
 }
 
-/** Deja la mascota quieta en 'normal' y sin variantes de idle. */
+/** Deja la asistente quieta en 'normal' y sin variantes de idle. */
 export function quietaSinIdles(m) {
   correr(3);
   m.mod('idles', 'set', { activo: false });

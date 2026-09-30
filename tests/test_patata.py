@@ -542,6 +542,36 @@ def test_ctrl_c_fuera_del_stream_vuelve_al_prompt(crear):
     assert fin.get("r") == 0 and "Hasta luego" in p.out.getvalue()
 
 
+@pytest.mark.parametrize("argv, codigo, frase", [
+    (["--help"], 0, "Uso: python patata.py"),
+    (["-h"], 0, "Uso: python patata.py"),
+    (["/?"], 0, "Uso: python patata.py"),
+    (["--autoinicio", "--AYUDA"], 0, "Uso: python patata.py"),
+    (["--version"], 2, "No conozco «--version»"),
+    (["--sin-color", "hola"], 2, "No conozco «hola»"),
+])
+def test_main_con_ayuda_o_argumentos_raros_no_arranca_nada(monkeypatch, capsys, argv, codigo, frase):
+    """`patata.py --help` arrancaba de verdad con los archivos REALES (config.json, memoria.json):
+    ahora la ayuda y lo desconocido salen antes de tocar nada."""
+    def prohibido(*a, **k):
+        raise AssertionError("no debía arrancar")
+    monkeypatch.setattr(patata, "Patata", prohibido)
+    monkeypatch.setattr(patata, "_nueva_instancia", prohibido)
+    monkeypatch.setattr(patata, "arranque_con_windows", prohibido)
+    assert patata.main(argv) == codigo
+    assert frase in capsys.readouterr().out
+
+
+def test_main_con_las_banderas_conocidas_arranca(monkeypatch):
+    creadas = []
+    monkeypatch.setattr(patata, "Patata", lambda **k: creadas.append(k) or type(
+        "P", (), {"correr": lambda self: 0})())
+    inst = type("Inst", (), {"adquirir": lambda self: True, "escuchar": lambda self, fn: True,
+                             "liberar": lambda self: None})()
+    assert patata.main(["--sin-color"], instancia=inst) == 0
+    assert creadas == [{"color": False, "con_windows": False}]
+
+
 def test_main_sale_sin_traceback_con_ctrl_c_al_arrancar(monkeypatch):
     def revienta(*a, **k):
         raise KeyboardInterrupt

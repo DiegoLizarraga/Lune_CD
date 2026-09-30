@@ -1,6 +1,6 @@
 """
 Tests de ui/alarmas_qt.ControlAlarmasQt (offscreen, con ServiciosEscritorio de
-verdad y mutex, entrada, pantalla grande, mascota, voz, tarjeta y mezclador falsos):
+verdad y mutex, entrada, pantalla grande, asistente, voz, tarjeta y mezclador falsos):
 
 - al sonar: prioridad «alarma» en el bus; `grande.entrar("alarma")` +
   `mostrar_alarma(texto)`; sin pantalla grande → burbuja + tarjeta; si la
@@ -112,7 +112,7 @@ class Grande:
         return True
 
 
-class Mascota:
+class Asistente:
     render = "vrm"
 
     def __init__(self, diario):
@@ -122,13 +122,13 @@ class Mascota:
         return True
 
     def mostrar_alarma(self, texto, retraso_ms=3000):
-        self.diario.append(("mascota.alarma", texto))
+        self.diario.append(("asistente.alarma", texto))
 
     def ocultar_alarma(self):
-        self.diario.append(("mascota.ocultar",))
+        self.diario.append(("asistente.ocultar",))
 
     def despertar(self):
-        self.diario.append(("mascota.despertar",))
+        self.diario.append(("asistente.despertar",))
 
 
 class Voz:
@@ -194,7 +194,7 @@ def entorno(qapp, tmp_path):
         mez = Mezclador()
         aviso = ControlAviso(mezclador=mez, almacen=alm, reloj=r.monotono, epoch=r.epoch, lanzar=lambda f: f())
         avisos = []
-        m = Mascota(diario)
+        m = Asistente(diario)
         g = Grande(diario, puede_grande) if grande else None
         voz = Voz()
         ctl = ControlAlarmasQt(esc, cfg, voice=voz, grande=g, avisar=avisos.append, almacen=alm,
@@ -203,7 +203,7 @@ def entorno(qapp, tmp_path):
                                dialogo=_dialogo_falso(diario), intervalo_ms=10 ** 6, retraso_entrada_ms=0,
                                mutex_app=mutex_app)
         esc.registrar("alarmas", ctl, ("alarma",))
-        esc.set_mascota(m)
+        esc.set_asistente(m)
         if juego:
             esc.prioridad.iniciar("juego")
         esc.iniciar()
@@ -213,7 +213,7 @@ def entorno(qapp, tmp_path):
         ctl.cambio.connect(lambda s: senales["cambio"].append(json.loads(s)))
         ctl.perdidas.connect(lambda s: senales["perdidas"].append(json.loads(s)))
         e = type("E", (), dict(ctl=ctl, esc=esc, alm=alm, mez=mez, relojes=r, diario=diario, avisos=avisos,
-                               voz=voz, senales=senales, mascota=m, grande=g, cfg=cfg))()
+                               voz=voz, senales=senales, asistente=m, grande=g, cfg=cfg))()
         creados.append(e)
         return e
 
@@ -264,30 +264,30 @@ def test_juego_discreto_suena_y_avisa(entorno):
 def test_sin_pantalla_grande_burbuja_y_tarjeta(entorno):
     e = entorno(Cfg(pantalla_grande=False))
     _sonar_alarma(e)
-    assert ("mascota.alarma", "gimnasio") in e.diario
+    assert ("asistente.alarma", "gimnasio") in e.diario
     assert ("dialogo.texto", "gimnasio", 5000) in e.diario and ("dialogo.mostrar",) in e.diario
     assert e.senales["sonando"][0]["visual"] == "burbuja"
     e.relojes.avanzar(6)
     e.ctl._dialogo.apagar.emit()                            # botón «Apagar» de la tarjeta
     assert e.ctl.aviso.sonando is None
-    assert ("dialogo.cerrar",) in e.diario and ("mascota.ocultar",) in e.diario
+    assert ("dialogo.cerrar",) in e.diario and ("asistente.ocultar",) in e.diario
 
 
 def test_si_la_grande_no_puede_va_a_burbuja(entorno):
     e = entorno(puede_grande=False)
     _sonar_alarma(e)
     assert e.senales["sonando"][0]["visual"] == "burbuja"
-    assert ("mascota.alarma", "gimnasio") in e.diario
+    assert ("asistente.alarma", "gimnasio") in e.diario
     e.relojes.avanzar(6)
     e.ctl.apagar()
     assert ("grande.salir", "alarma") not in e.diario
 
 
-def test_despierta_a_la_mascota_dormida(entorno):
+def test_despierta_a_la_asistente_dormida(entorno):
     e = entorno()
     e.esc.estado.actualizar(durmiendo=True)
     _sonar_alarma(e)
-    assert ("mascota.despertar",) in e.diario
+    assert ("asistente.despertar",) in e.diario
 
 
 def test_entrada_solo_apaga_tras_el_bloqueo(entorno):
@@ -312,7 +312,7 @@ def test_ceder_por_juego_mantiene_el_sonido(entorno):
     _sonar_alarma(e)
     e.esc.prioridad.iniciar("juego")                         # entra un juego con la alarma sonando
     assert e.mez.sonando and e.ctl.aviso.sonando is not None
-    assert ("mascota.ocultar",) in e.diario
+    assert ("asistente.ocultar",) in e.diario
     assert e.avisos == ["⏰ gimnasio (sigue sonando)"]
     assert e.senales["sonando"][-1]["visual"] == "discreto"
     e.relojes.avanzar(6)

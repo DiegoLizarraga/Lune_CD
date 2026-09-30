@@ -1,5 +1,5 @@
-// tests/js/anim_video.test.mjs — clips de la mascota animada con doble búfer
-// (ui_web/anim/lune_anim_video.js) y su CSS (ui_web/css/mascota_anim.css).
+// tests/js/anim_video.test.mjs — clips de la asistente animada con doble búfer
+// (ui_web/anim/lune_anim_video.js) y su CSS (ui_web/css/asistente_anim.css).
 // Sin navegador: vídeos, stage, documento y temporizador falsos (dom_falso.mjs).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -13,7 +13,7 @@ import {
 import { crearAleatorio } from '../../ui_web/anim/lune_anim_modulos.js';
 import { crearElemento, crearDocumento, crearTemporizador } from './dom_falso.mjs';
 
-const CSS = new URL('../../ui_web/css/mascota_anim.css', import.meta.url);
+const CSS = new URL('../../ui_web/css/asistente_anim.css', import.meta.url);
 const src = (clip) => `${CARPETA}lune-${clip}.webm`;
 
 function montar(opciones = {}) {
@@ -58,8 +58,8 @@ test('clipDe: mapa de estados, mayúsculas y lo desconocido cae a composed', () 
   assert.equal(clipDe('toString'), 'composed');                        // nada del prototipo
   assert.equal(clipDe('x', { x: '../../etc/passwd' }), 'composed');    // un mapa con basura no sale de la carpeta
   assert.ok(Object.isFrozen(MAPA));
-  assert.equal(srcDe('happy'), 'assets/mascot/anime-videos/lune-happy.webm');
-  assert.equal(clipDeSrc('assets/mascot/anime-videos/lune-happy.webm?v=2'), 'happy');
+  assert.equal(srcDe('happy'), 'assets/asistente/anime-videos/lune-happy.webm');
+  assert.equal(clipDeSrc('assets/asistente/anime-videos/lune-happy.webm?v=2'), 'happy');
   assert.equal(clipDeSrc('lune-composed-2.webm'), 'composed-2');
   assert.equal(clipDeSrc('nada.png'), '');
 });
@@ -425,7 +425,7 @@ test('publicar: window.setEmocion pasa por el registro y aplica la emoción pend
 
 // ── CSS ─────────────────────────────────────────────────────────────────────────
 
-test('mascota_anim.css: doble búfer con .lune-doble, fundido por variable y colores con respaldo', () => {
+test('asistente_anim.css: doble búfer con .lune-doble, fundido por variable y colores con respaldo', () => {
   const css = readFileSync(CSS, 'utf8');
   const sinComentarios = css.replace(/\/\*[\s\S]*?\*\//g, '');
   assert.match(sinComentarios, /#stage\.lune-doble \.lune-vid\s*\{[^}]*opacity:\s*0/);

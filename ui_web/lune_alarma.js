@@ -1,5 +1,5 @@
 /*
- * ui_web/lune_alarma.js — burbuja de ALARMA de la mascota (script clásico, cortes 5 y 6).
+ * ui_web/lune_alarma.js — burbuja de ALARMA de la asistente (script clásico, cortes 5 y 6).
  *
  * Como AvatarBigScreenTimer de Mate-Engine: cuando suena una alarma, la burbuja
  * roja (#FF4826 = --lune-alarma, ui_web/css/alarma.css) aparece a los 3 s y el texto

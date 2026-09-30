@@ -1,6 +1,6 @@
 // tests/js/vrm_barra.test.mjs — avatar VRM de la barra lateral
 // (ui_web/ui_kits/lune-desktop/vrm_barra.js). Sin navegador ni three: el motor
-// (crearMascota) es falso y se inyecta con opts.crearMascota; ventana, canvas,
+// (crearAsistente) es falso y se inyecta con opts.crearAsistente; ventana, canvas,
 // requestAnimationFrame, ResizeObserver y WEBGL_lose_context también son falsos.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -8,7 +8,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import {
-  mapearCursor, urlConVersion, filtrarParams, vaciarEscena, liberarMascota, proyectarCabeza,
+  mapearCursor, urlConVersion, filtrarParams, vaciarEscena, liberarAsistente, proyectarCabeza,
   crear, destruir, params, recargar, activos, LuneVRMBarra, RUTA_MODELO, RUTA_MOTOR, DEFECTOS,
 } from '../../ui_web/ui_kits/lune-desktop/vrm_barra.js';
 
@@ -85,9 +85,9 @@ function motorFalso(lienzo, { conDestruir = false, conLuneParams = false, sobre 
   const PARAMS = { fov: 24, fpsActivo: 60, invertirEjes: 0, invertirH: 1, swayGanH: 0.012, gestoWatchdog: 0 };
   const log = (...a) => reg.llamadas.push(a);
   reg.ext = ext; reg.camera = camera; reg.PARAMS = PARAMS;
-  reg.crearMascota = (o) => {
+  reg.crearAsistente = (o) => {
     reg.creadas++; reg.opciones = o;
-    o.onEvento('cargando', o.src);                 // lune_vrm.js lo emite dentro de crearMascota
+    o.onEvento('cargando', o.src);                 // lune_vrm.js lo emite dentro de crearAsistente
     const m = {
       setEstado: (e) => log('setEstado', e),
       setHablando: (on) => log('setHablando', on),
@@ -128,7 +128,7 @@ function montar(opts = {}, motorOpts = {}) {
   const errores = [], eventos = [];
   const diferidos = [];
   const h = crear(lienzo, opts.url === undefined ? RUTA_MODELO : opts.url, {
-    ventana, crearMascota: motor.crearMascota,
+    ventana, crearAsistente: motor.crearAsistente,
     alError: (m) => errores.push(m), onEvento: (t, d) => eventos.push([t, d]),
     diferir: (fn) => diferidos.push(fn),
     ...opts,
@@ -275,7 +275,7 @@ test('vaciarEscena: cada recurso una vez, texturas de uniforms incluidas, arrays
   assert.deepEqual(vaciarEscena(null), { geometrias: 0, materiales: 0, texturas: 0 });
 });
 
-test('liberarMascota: FPS 0, alDescargar, fuera de escena, dispose y pérdida de contexto', () => {
+test('liberarAsistente: FPS 0, alDescargar, fuera de escena, dispose y pérdida de contexto', () => {
   const { raiz, cont } = escenaFalsa();
   const log = [];
   const m = {
@@ -287,14 +287,14 @@ test('liberarMascota: FPS 0, alDescargar, fuera de escena, dispose y pérdida de
       renderer: { dispose: () => log.push(['dispose']), forceContextLoss: () => { log.push(['perder']); throw new Error('ya perdido'); } },
     },
   };
-  assert.equal(liberarMascota(m), true);
+  assert.equal(liberarAsistente(m), true);
   assert.deepEqual(log, [['fps', 0], ['bus', 'alDescargar'], ['remove', true], ['dispose'], ['perder']]);
   assert.equal(cont.geo, 2);
-  assert.equal(liberarMascota(null), false);
-  assert.equal(liberarMascota({}), true, 'sin ctx no lanza');
+  assert.equal(liberarAsistente(null), false);
+  assert.equal(liberarAsistente({}), true, 'sin ctx no lanza');
 });
 
-test('liberarMascota: con m.destruir() usa solo eso, una vez; si lanza, el respaldo (sin repetir destruir)', () => {
+test('liberarAsistente: con m.destruir() usa solo eso, una vez; si lanza, el respaldo (sin repetir destruir)', () => {
   const log = [];
   const m = {
     destruir: () => log.push('destruir'),
@@ -303,20 +303,20 @@ test('liberarMascota: con m.destruir() usa solo eso, una vez; si lanza, el respa
     ctx: { vrm: () => ({ scene: { traverse() {} } }), scene: { remove: () => log.push('remove') },
       renderer: { dispose: () => log.push('dispose'), forceContextLoss: () => log.push('perder') } },
   };
-  assert.equal(liberarMascota(m), true);
+  assert.equal(liberarAsistente(m), true);
   assert.deepEqual(log, ['destruir'], 'nada del respaldo: el motor ya lo hace');
   log.length = 0;
   m.destruir = () => { log.push('destruir'); throw new Error('roto'); };
   const warn = console.warn;
   console.warn = () => {};
-  try { assert.equal(liberarMascota(m), true); } finally { console.warn = warn; }
+  try { assert.equal(liberarAsistente(m), true); } finally { console.warn = warn; }
   assert.deepEqual(log, ['destruir', 'fps', 'alDescargar', 'remove', 'dispose', 'perder']);
 });
 
 test('proyectarCabeza: usa el hueso de la cabeza + altura de ojos; null sin cabeza', () => {
   const lienzo = new LienzoFalso();
   const motor = motorFalso(lienzo);
-  const m = motor.crearMascota({ onEvento: () => {} });
+  const m = motor.crearAsistente({ onEvento: () => {} });
   const p = proyectarCabeza(m);
   cerca(p.x, 120); cerca(p.y, 194, 1e-9, 'cabeza 1.4 m + 0.06 m → 200 - 6');
   assert.equal(proyectarCabeza({ ctx: { huesos: {} } }), null);
@@ -336,7 +336,7 @@ test('crear: el motor se crea en una microtarea con src versionado, encuadre y F
   assert.equal(motor.opciones.src, '/vrm/actual.vrm?v=42');
   assert.equal(motor.opciones.encuadre, 'cuerpo');
   assert.deepEqual(motor.ultima('setFPS'), ['setFPS', DEFECTOS.fps]);
-  assert.equal(h.mascota, motor.m);
+  assert.equal(h.asistente, motor.m);
   assert.equal(h.listo, false);
   h.destruir();
 });
@@ -370,7 +370,7 @@ test('error del modelo antes de listo → alError y onEvento; alListo al cargar'
   motor.opciones.onEvento('error', '404');
   assert.deepEqual(errores, ['404']);
   assert.ok(eventos.some(([t, d]) => t === 'error' && d === '404'));
-  assert.ok(eventos.some(([t]) => t === 'cargando'), 'el evento síncrono de crearMascota también llega');
+  assert.ok(eventos.some(([t]) => t === 'cargando'), 'el evento síncrono de crearAsistente también llega');
   motor.opciones.onEvento('listo', { v: 1 });
   assert.deepEqual(listos, [{ v: 1 }]);
   h.destruir();
@@ -523,7 +523,7 @@ test('destruir antes del import: el canvas no se toca y se puede reutilizar', as
   assert.equal(ventana.escuchas.get('mousemove'), 0);
   const motor2 = motorFalso(lienzo);
   const errores = [];
-  const h2 = crear(lienzo, RUTA_MODELO, { ventana, crearMascota: motor2.crearMascota, alError: (e) => errores.push(e) });
+  const h2 = crear(lienzo, RUTA_MODELO, { ventana, crearAsistente: motor2.crearAsistente, alError: (e) => errores.push(e) });
   await microtareas();
   assert.equal(motor2.creadas, 1, 'StrictMode de React: montar-desmontar-montar funciona');
   assert.deepEqual(errores, []);
@@ -540,7 +540,7 @@ test('destruir con motor: quita listeners y usa m.destruir() si existe', async (
   assert.equal(motor.disposed, 0, 'no hace falta el respaldo');
   for (const t of ['mousemove', 'mouseout']) assert.equal(ventana.escuchas.get(t), 0, t);
   for (const t of ['click', 'webglcontextlost', 'webglcontextrestored']) assert.equal(lienzo.escuchas.get(t), 0, t);
-  assert.equal(h.mascota, null);
+  assert.equal(h.asistente, null);
   h.setEstado('happy'); h.setHablando(true); h.pausar(true);
   assert.equal(h.cargar('/otro.vrm'), false);
   assert.equal(h.luneParams({ fov: 3 }), null);
@@ -562,14 +562,14 @@ test('un canvas con un avatar ya destruido no se reutiliza (su contexto no vuelv
   h.destruir();
   const motor2 = motorFalso(lienzo);
   const errores = [];
-  const h3 = crear(lienzo, RUTA_MODELO, { ventana, crearMascota: motor2.crearMascota, alError: (e) => errores.push(e) });
+  const h3 = crear(lienzo, RUTA_MODELO, { ventana, crearAsistente: motor2.crearAsistente, alError: (e) => errores.push(e) });
   await microtareas();
   assert.equal(motor2.creadas, 0);
   assert.equal(errores.length, 1, 'se avisa en crear() (síncrono)');
   assert.match(errores[0], /canvas/);
   h3.destruir();
   // Un <canvas> nuevo (lo que hace React al volver a montar) sí vale.
-  const h4 = crear(new LienzoFalso(), RUTA_MODELO, { ventana, crearMascota: motor2.crearMascota, alError: (e) => errores.push(e) });
+  const h4 = crear(new LienzoFalso(), RUTA_MODELO, { ventana, crearAsistente: motor2.crearAsistente, alError: (e) => errores.push(e) });
   await microtareas();
   assert.equal(motor2.creadas, 1);
   assert.equal(errores.length, 1);
@@ -590,7 +590,7 @@ test('motor que no carga (importmap ausente) → alError con el motivo', async (
   const errores2 = [];
   const h2 = crear(new LienzoFalso(), RUTA_MODELO, { ventana, cargarMotor: () => ({}), alError: (e) => errores2.push(e) });
   await microtareas(5);
-  assert.match(errores2[0], /crearMascota/);
+  assert.match(errores2[0], /crearAsistente/);
   h2.destruir();
 });
 
@@ -778,7 +778,7 @@ test('cargarModulo y usarModulo: import perezoso por nombre, en caché, una vez 
   assert.equal(await p, false);
   assert.equal(c.motor.de('registrar').length, 0);
   assert.equal(pedidas.length, 2, 'en caché: no vuelve a importar');
-  // La ruta existe relativa al módulo cuando el agente de la mascota la haya creado
+  // La ruta existe relativa al módulo cuando el agente de la asistente la haya creado
   const ruta = fileURLToPath(new URL(LuneVRMBarra.RUTAS_MODULOS.baileProc, URL_MODULO));
   assert.match(ruta.replace(/\\/g, '/'), /ui_web\/vrm\/lune_baile_proc\.js$/);
 });

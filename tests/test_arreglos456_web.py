@@ -1,9 +1,9 @@
 """
-Arreglos de la revisión 4-5-6 — parte web (puente, ventana web, mascota web, Telegram,
+Arreglos de la revisión 4-5-6 — parte web (puente, ventana web, asistente web, Telegram,
 cambio de interfaz, Ejecutor).
 
-  · SB4: la vista de la mascota (ui/companion.py) lleva la guarda de navegación de la
-    ventana principal (PaginaLune con el origen del servidor local de la mascota,
+  · SB4: la vista de la asistente (ui/companion.py) lleva la guarda de navegación de la
+    ventana principal (PaginaLune con el origen del servidor local de la asistente,
     NavigateOnDropEnabled apagado): soltar un enlace o file:/data: no navega; un enlace
     pulsado va al navegador del sistema.
   · SB2: lo transcrito en el modo llamada que detecta detectar_llamadas pide permiso
@@ -374,14 +374,14 @@ class JuegoFalso:
 def test_vs6_el_modo_juego_forzado_pasa_a_la_ventana_nueva(qapp):
     import ui.web_shell as ws
     bridge = types.SimpleNamespace(_provider_web="local", voice=None, chats=None, _tg_worker=None,
-                                   mascota_visible=lambda: False)
+                                   asistente_visible=lambda: False)
     for forzado, con_propiedad in ((True, True), (False, False), (None, True)):
         vieja = types.SimpleNamespace(bridge=bridge, MODO_INTERFAZ="web",
                                       _servicios_c4=types.SimpleNamespace(juego=JuegoFalso(forzado, con_propiedad)))
         estado = ws.VentanaWeb.estado_para_cambio(vieja)
         assert estado["juego_forzado"] is forzado
         juego = JuegoFalso()
-        nb = types.SimpleNamespace(escritorio=None, mascota_visible=lambda: False, _tg_worker=None)
+        nb = types.SimpleNamespace(escritorio=None, asistente_visible=lambda: False, _tg_worker=None)
         nueva = types.SimpleNamespace(_servicios=False, bridge=nb, tray=None,
                                       _servicios_c4=types.SimpleNamespace(juego=juego, bandeja=object()))
         ws.VentanaWeb.iniciar_servicios(nueva, dict(estado))
@@ -623,7 +623,7 @@ def test_rh6_responder_orden_no_bloquea_aunque_el_bot_no_lea(qapp, monkeypatch):
         assert not h.is_alive()
 
 
-# ── SB4: la vista de la mascota con la guarda de navegación ────────────────────
+# ── SB4: la vista de la asistente con la guarda de navegación ────────────────────
 # Sin crear páginas de WebEngine de verdad (en este entorno un QWebEnginePage suelto
 # tumba el proceso): PaginaLune se sustituye por una que usa SU MISMA
 # acceptNavigationRequest y apunta los ajustes; asegurar_pagina es la real.
@@ -632,7 +632,7 @@ def test_rh6_responder_orden_no_bloquea_aunque_el_bot_no_lea(qapp, monkeypatch):
 def web_con_pagina(monkeypatch):
     """QWebEngineView falso que acepta setPage, y PaginaLune de mentira con la lógica real."""
     if not HAY_WEBENGINE:
-        pytest.skip("la mascota web necesita PyQt6-WebEngine")
+        pytest.skip("la asistente web necesita PyQt6-WebEngine")
     from PyQt6.QtCore import QUrl
     from PyQt6.QtWidgets import QWidget
     import ui.companion as comp
@@ -692,7 +692,7 @@ def web_con_pagina(monkeypatch):
     return PaginaFalsa
 
 
-def test_sb4_la_mascota_web_solo_navega_por_su_servidor(qapp, tmp_path, web_con_pagina, monkeypatch):
+def test_sb4_la_asistente_web_solo_navega_por_su_servidor(qapp, tmp_path, web_con_pagina, monkeypatch):
     from PyQt6.QtCore import QUrl
     from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineSettings
     from nucleo import personajes
@@ -722,7 +722,7 @@ def test_sb4_la_mascota_web_solo_navega_por_su_servidor(qapp, tmp_path, web_con_
         assert aceptar(QUrl("data:text/html,<b>x</b>"), T_.NavigationTypeLinkClicked, True) is False
         assert aceptar(QUrl("https://evil.example/"), T_.NavigationTypeRedirect, True) is False
         assert abiertas == []
-        # Un enlace pulsado: al navegador del sistema, no en la mascota.
+        # Un enlace pulsado: al navegador del sistema, no en la asistente.
         assert aceptar(QUrl("https://www.youtube.com/"), T_.NavigationTypeLinkClicked, True) is False
         assert abiertas == ["https://www.youtube.com/"]
     finally:
@@ -734,8 +734,8 @@ def test_sb4_la_mascota_web_solo_navega_por_su_servidor(qapp, tmp_path, web_con_
 
 def test_vs1_el_puente_filtra_el_radial_con_el_contexto_del_montaje(qapp, tmp_path):
     acc = pytest.importorskip("nucleo.acciones_ui")
-    if "mascota_barra" not in getattr(acc.Contexto, "_fields", ()):
-        pytest.skip("nucleo.acciones_ui aún sin Contexto.mascota_barra (agente NATIVA)")
+    if "asistente_barra" not in getattr(acc.Contexto, "_fields", ()):
+        pytest.skip("nucleo.acciones_ui aún sin Contexto.asistente_barra (agente NATIVA)")
     from nucleo.config import Config
     from ui.puente_escritorio import PuenteEscritorio
     cfg = Config(config_path=str(tmp_path / "config.json"))
@@ -745,15 +745,15 @@ def test_vs1_el_puente_filtra_el_radial_con_el_contexto_del_montaje(qapp, tmp_pa
     for i in ("expresiones", "bailar", "dormir", "voz"):
         desp.registrar(i, lambda i=i: hechos.append(i))
     desp.registrar("expresion", lambda arg="": hechos.append(("expresion", arg)))
-    caja = {"ctx": acc.Contexto(modo="normal", render="animado", mascota_visible=False, mascota_barra=True)}
+    caja = {"ctx": acc.Contexto(modo="normal", render="animado", asistente_visible=False, asistente_barra=True)}
     serv = types.SimpleNamespace(despachador=desp, tema=None, atajos=None, juego=None, radial=None,
                                  bandeja=None, contexto=lambda: caja["ctx"])
-    esc = types.SimpleNamespace(estado=None, mascota=None)
+    esc = types.SimpleNamespace(estado=None, asistente=None)
     p = PuenteEscritorio(serv, esc, cfg)
     ids = [i["id"] for i in json.loads(p.acciones_catalogo("radial"))]
     assert "expresiones" in ids and "bailar" in ids and "dormir" not in ids
     assert p.accion_menu("expresion", "happy") and hechos[-1] == ("expresion", "happy")
     # Sin Lune en la barra (ni la flotante): nada de expresiones ni baile.
-    caja["ctx"] = acc.Contexto(modo="normal", render="animado", mascota_visible=False, mascota_barra=False)
+    caja["ctx"] = acc.Contexto(modo="normal", render="animado", asistente_visible=False, asistente_barra=False)
     ids = [i["id"] for i in json.loads(p.acciones_catalogo("radial"))]
     assert "expresiones" not in ids and "bailar" not in ids and "voz" in ids

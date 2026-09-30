@@ -15,7 +15,7 @@ los títulos y mobs se recortan sin «§» ni controles y el resultado pasa por
 `neutralizar_marcadores`. Estas frases van a la burbuja, a la voz o al chat del
 juego; NUNCA a un turno del modelo (minecraft.comentar_con_ia queda reservada).
 
-`Resumen` cuenta lo tuyo mientras la mascota no está (modo juego) para decirlo al
+`Resumen` cuenta lo tuyo mientras la asistente no está (modo juego) para decirlo al
 volver: «Mientras jugabas: 2 muertes, 1 logro (Cazamonstruos).»
 
 ÓRDENES AL BOT
@@ -198,7 +198,7 @@ def reaccion(ev: Any, *, personaje: Optional[Mapping] = None, rng: Any = None) -
 
 
 class Resumen:
-    """Lo tuyo mientras la mascota no estaba (modo juego): muertes y logros."""
+    """Lo tuyo mientras la asistente no estaba (modo juego): muertes y logros."""
 
     MAX_LOGROS = 20
 

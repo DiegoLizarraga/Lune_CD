@@ -1,8 +1,8 @@
 """
-Tests de la integración del corte 3 en las mascotas de escritorio:
+Tests de la integración del corte 3 en las asistentes en escritorio:
 
 - ui/companion.py (animada y VRM): los eventos de la página (arrastre, soltar,
-  caricia, mareo, dormir, despertar, estado) → frase de lune_core/frases_mascota
+  caricia, mareo, dormir, despertar, estado) → frase de lune_core/frases_asistente
   en la burbuja (window.comentar(t, 3500)) con cooldown, sin pisar una respuesta
   de la IA; «aparecer» al mostrarse con la página cargada; sueño en los dos
   renders con nucleo/sueno.ReglaSueno (no se duerme arrastrándola, hablando,
@@ -37,7 +37,7 @@ try:
 except ImportError:
     HAY_WEBENGINE = False
 
-from lune_core import frases_mascota as fm  # noqa: E402
+from lune_core import frases_asistente as fm  # noqa: E402
 
 
 class Reloj:
@@ -65,7 +65,7 @@ class AzarFijo:
 
 
 def frases(reloj=None, azar=0.0, personaje=None):
-    return fm.FrasesMascota(personaje, reloj=reloj or Reloj(), rng=AzarFijo(azar))
+    return fm.FrasesAsistente(personaje, reloj=reloj or Reloj(), rng=AzarFijo(azar))
 
 
 # ── Las páginas ────────────────────────────────────────────────────────────────
@@ -84,7 +84,7 @@ def test_companion_ya_no_inyecta_lune_packs():
     assert "createElement('script')" not in src and "el.src = 'lune_packs.js'" not in src
 
 
-# ── Mascota web (ui/companion.py) ──────────────────────────────────────────────
+# ── Asistente web (ui/companion.py) ──────────────────────────────────────────────
 
 def _vrm_minimo() -> bytes:
     """GLB mínimo con la extensión VRMC_vrm (lo que nucleo/vrm.py valida)."""
@@ -99,7 +99,7 @@ def _vrm_minimo() -> bytes:
 def web_falso(monkeypatch):
     """QWebEngineView falso: anota el JS (runJavaScript) y responde a luneEventos()."""
     if not HAY_WEBENGINE:
-        pytest.skip("la mascota web necesita PyQt6-WebEngine")
+        pytest.skip("la asistente web necesita PyQt6-WebEngine")
     from PyQt6.QtCore import QObject, QUrl, pyqtSignal
     from PyQt6.QtWidgets import QWidget
     import ui.companion as comp
@@ -193,7 +193,7 @@ def js_de(c) -> str:
 
 
 def comentarios(c) -> list:
-    """Textos que la mascota puso en la burbuja con window.comentar(t, 3500)."""
+    """Textos que la asistente puso en la burbuja con window.comentar(t, 3500)."""
     out = []
     for codigo in c.web.page().js:
         if codigo.startswith("window.comentar && window.comentar(") and codigo.endswith(", 3500)"):
@@ -274,7 +274,7 @@ def test_aparecer_al_mostrarse_con_la_pagina_cargada(qapp, web_falso, config, lu
 
 def test_dormir_y_despertar_publicos_en_la_animada(animada):
     from nucleo import sueno
-    from nucleo.estado_mascota import BusEstado
+    from nucleo.estado_asistente import BusEstado
     c = animada
     bus = BusEstado()
     c.set_bus_estado(bus)
@@ -285,10 +285,10 @@ def test_dormir_y_despertar_publicos_en_la_animada(animada):
     assert c.despertar() is True and c.durmiendo is False
     assert "luneSleep(false)" in js_de(c) and bus.actual().durmiendo is False
     # las herramientas del modelo (nucleo/sueno.py) usan ese contrato
-    assert sueno.herramienta_dormir({}, {"mascota": c}) == "Vale, me echo una siesta. Una caricia y vuelvo."
+    assert sueno.herramienta_dormir({}, {"asistente": c}) == "Vale, me echo una siesta. Una caricia y vuelvo."
     assert c.durmiendo is True
-    assert sueno.herramienta_dormir({}, {"mascota": c}) == "Ya estoy dormida. Shh."
-    assert sueno.herramienta_despertar({}, {"mascota": c}) == "Ya estoy despierta. ¿Qué pasa?"
+    assert sueno.herramienta_dormir({}, {"asistente": c}) == "Ya estoy dormida. Shh."
+    assert sueno.herramienta_despertar({}, {"asistente": c}) == "Ya estoy despierta. ¿Qué pasa?"
     assert c.durmiendo is False
     c.close()
     assert c.dormir() is False and c.despertar() is False
@@ -296,12 +296,12 @@ def test_dormir_y_despertar_publicos_en_la_animada(animada):
 
 def test_no_se_duerme_arrastrando_pensando_ni_en_llamada(animada):
     from nucleo import sueno
-    from nucleo.estado_mascota import BusEstado
+    from nucleo.estado_asistente import BusEstado
     from ui.companion import REINTENTO_SUENO_MS
     c = animada
     c._arrastre = {"movido": True}
     assert c.dormir() is False and not c.durmiendo
-    assert sueno.herramienta_dormir({}, {"mascota": c})[0] is False
+    assert sueno.herramienta_dormir({}, {"asistente": c})[0] is False
     c._sueno_vencido()                                # vence el sueño arrastrándola: se reintenta
     assert not c.durmiendo and c._timer_sueno.isActive() and c._timer_sueno.interval() == REINTENTO_SUENO_MS
     c._arrastre = None
@@ -388,7 +388,7 @@ class _Raton:
 
 
 def test_eventos_dormir_despertar_y_estado_de_la_pagina(animada):
-    from nucleo.estado_mascota import BusEstado
+    from nucleo.estado_asistente import BusEstado
     c = animada
     bus = BusEstado()
     c.set_bus_estado(bus)
@@ -449,7 +449,7 @@ def test_recargar_modelo_cambia_el_personaje_de_las_frases(qapp, web_falso, conf
     try:
         assert c._frases.nombre == "Lune"
         monkeypatch.setattr(personajes, "get_activo", lambda: {
-            "nombre": "Aria", "vrm": "b.vrm", "frases_mascota": {"caricia": ["Jeje"]}})
+            "nombre": "Aria", "vrm": "b.vrm", "frases_asistente": {"caricia": ["Jeje"]}})
         c.web.page().js.clear()
         c.recargar_modelo()
         assert c._frases.nombre == "Aria" and c._frases.frases("caricia") == ["Jeje"]
@@ -467,7 +467,7 @@ def test_recargar_modelo_cambia_el_personaje_de_las_frases(qapp, web_falso, conf
 
 def test_recargar_modelo_en_la_animada_tambien_cambia_las_frases(animada, monkeypatch):
     from nucleo import personajes
-    monkeypatch.setattr(personajes, "get_activo", lambda: {"nombre": "Aria", "frases_mascota": {"mareo": ["Uy"]}})
+    monkeypatch.setattr(personajes, "get_activo", lambda: {"nombre": "Aria", "frases_asistente": {"mareo": ["Uy"]}})
     animada.recargar_modelo()
     assert animada._frases.nombre == "Aria"
     evento(animada, "mareo")
@@ -479,13 +479,13 @@ def test_herramienta_tamano_usa_aplicar_tamano_en_vrm(qapp, web_falso, config_vr
     from ui.companion import CompanionFlotante, TAMANOS_VRM
     c = CompanionFlotante(config_vrm, ai_manager=None)
     try:
-        ok, msg = vrm.herramienta_tamano({"tamano": "grande"}, {"mascota": c, "config": config_vrm})
+        ok, msg = vrm.herramienta_tamano({"tamano": "grande"}, {"asistente": c, "config": config_vrm})
         assert ok and (c.width(), c.height()) == TAMANOS_VRM["grande"]
     finally:
         c.close()
 
 
-# ── Mascota de sprites (ui/avatar_overlay.py) ──────────────────────────────────
+# ── Asistente de sprites (ui/avatar_overlay.py) ──────────────────────────────────
 
 @pytest.fixture
 def sprites(qapp, lune_activa):
@@ -517,7 +517,7 @@ def test_sprites_mareo_pone_la_cara_mareada_y_dice_su_frase(sprites):
 
 
 def test_sprites_arrastre_caras_por_velocidad_y_soltar(sprites):
-    from nucleo.estado_mascota import BusEstado
+    from nucleo.estado_asistente import BusEstado
     from ui.sprites_fx import CARA_SPRITE
     ov = sprites
     ov._frases = frases(ov.reloj, azar=0.0)
@@ -594,13 +594,13 @@ def test_sprites_dormir_y_despertar(sprites):
     assert ov.dormir() is True
     assert ov.despertar() is True and ov.durmiendo is False
     assert ov.cara._current_state == "normal" and not ov._resp.respiracion.dormida
-    assert sueno.herramienta_dormir({}, {"mascota": ov}) == "Vale, me echo una siesta. Una caricia y vuelvo."
+    assert sueno.herramienta_dormir({}, {"asistente": ov}) == "Vale, me echo una siesta. Una caricia y vuelvo."
     assert ov.durmiendo
     ov.set_emocion("happy")                           # la IA le habla: se despierta
     assert not ov.durmiendo and ov.cara._current_state == "happy"
     # arrastrándola no
     ov._fx.movimiento.emit(True)
-    assert ov.dormir() is False and sueno.herramienta_dormir({}, {"mascota": ov})[0] is False
+    assert ov.dormir() is False and sueno.herramienta_dormir({}, {"asistente": ov})[0] is False
     ov._fx.movimiento.emit(False)
 
 
@@ -641,7 +641,7 @@ def test_sprites_recargar_modelo_y_contrato_comun(sprites, monkeypatch):
         from ui.companion import CompanionFlotante
         clases.append(CompanionFlotante)
     ov = sprites
-    monkeypatch.setattr(personajes, "get_activo", lambda: {"nombre": "Aria", "frases_mascota": {"mareo": ["Uy"]}})
+    monkeypatch.setattr(personajes, "get_activo", lambda: {"nombre": "Aria", "frases_asistente": {"mareo": ["Uy"]}})
     ov.recargar_modelo()
     assert ov._frases.nombre == "Aria" and ov._frases.frases("mareo") == ["Uy"]
     # mismo contrato en las dos clases (lo usan main.py, web_bridge.py y las herramientas)
@@ -652,7 +652,7 @@ def test_sprites_recargar_modelo_y_contrato_comun(sprites, monkeypatch):
         assert isinstance(getattr(clase, "durmiendo"), property)
     assert callable(AvatarOverlay.set_habilitado_fisica)
     ov.aplicar_params_vrm()                           # no-op
-    ok, msg = vrm.herramienta_tamano({"tamano": "grande"}, {"mascota": ov})
+    ok, msg = vrm.herramienta_tamano({"tamano": "grande"}, {"asistente": ov})
     assert ok is False                                # sprites y sin config: nada que guardar
 
 

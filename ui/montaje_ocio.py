@@ -55,7 +55,7 @@ from PyQt6.QtCore import QObject, Qt, pyqtSignal
 _log = logging.getLogger("lune.montaje_ocio")
 
 ESPERA_UI_S = 5.0
-# Controlador → actividades de nucleo/estado_mascota.PRIORIDAD que hace físicamente.
+# Controlador → actividades de nucleo/estado_asistente.PRIORIDAD que hace físicamente.
 ACTIVIDADES: Dict[str, Tuple[str, ...]] = {
     "grande": ("grande", "salvapantallas"),
     "alarmas": ("alarma",),

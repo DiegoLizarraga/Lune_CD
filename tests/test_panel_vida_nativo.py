@@ -101,7 +101,7 @@ class DiscordFalso(QObject):
         super().__init__()
         self.diario = []
         self.e = {"activo": True, "conectado": True, "usuario": "diego", "error": "",
-                  "publicando": {"details": "Lune CD · Mascota 3D", "state": "Bailando ♪"}, "vista_previa": None}
+                  "publicando": {"details": "Lune CD · Escritorio · 3D", "state": "Bailando ♪"}, "vista_previa": None}
 
     def estado(self):
         return dict(self.e)
@@ -135,7 +135,7 @@ def test_carga_la_config(qapp):
     cfg = ConfigDisco()
     cfg.config["avatar"].update(sentarse_ventanas=True, sentarse_barra=False, sentarse_offset_px=99)
     cfg.config["discord"].update(activo=True, client_id=ID, mostrar_modelo=True, boton_url="javascript:x")
-    cfg.config["sistema"].update(autoinicio_como="mascota", autoinicio_retraso_s=45)
+    cfg.config["sistema"].update(autoinicio_como="asistente", autoinicio_retraso_s=45)
     cfg.config["comida"]["activa"] = False
     p = panel(qapp, cfg)
     assert p.chk_ventanas.isChecked() and not p.chk_barra.isChecked()
@@ -144,7 +144,7 @@ def test_carga_la_config(qapp):
     assert not p.chk_comida.isChecked()
     assert p.chk_discord.isChecked() and p.linea_id.text() == ID and p.chk_modelo.isChecked()
     assert p.linea_url.text() == "", "un enlace que no es https no se enseña"
-    assert p.combo_como.currentData() == "mascota" and p.spin_espera.value() == 45
+    assert p.combo_como.currentData() == "asistente" and p.spin_espera.value() == 45
     assert not p.pendiente and cfg.guardados == 0
 
 
@@ -208,7 +208,7 @@ def test_discord_ve_solo_textos_fijos(qapp):
     d = DiscordFalso()
     cfg = ConfigDisco()
     p = panel(qapp, cfg, discord=d)
-    assert p.discord_ve.text() == "Discord ve: Lune CD · Mascota 3D — Bailando ♪"
+    assert p.discord_ve.text() == "Discord ve: Lune CD · Escritorio · 3D — Bailando ♪"
     assert "Falta el Application ID" in p.estado_discord.text(), "D1: sin ID no publica"
     cfg.config["discord"]["client_id"] = ID
     d.estado_cambio.emit("{}")

@@ -1,5 +1,5 @@
 """
-Tests de ui/sprites_baile: el baile de la mascota de sprites. Giro ±4° y
+Tests de ui/sprites_baile: el baile de la asistente de sprites. Giro ±4° y
 saltitos acotados en los 8 estilos, el temporizador de 30 Hz solo mientras
 baila, fundidos, el arrastre que corta y el reloj que sigue el pulso
 (corrección ≤ 20 % por pulso). Reloj falso y `_tick()` a mano.

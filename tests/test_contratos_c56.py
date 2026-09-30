@@ -2,7 +2,7 @@
 Integración de los cortes 5 y 6 (alarmas y temporizadores, pantalla grande y
 salvapantallas, baile): las clases DE VERDAD cumplen lo que las otras les llaman.
 
-- Mascotas (ui/companion.CompanionFlotante, ui/avatar_overlay.AvatarOverlay): lo que
+- Asistentes (ui/companion.CompanionFlotante, ui/avatar_overlay.AvatarOverlay): lo que
   les piden ControlPantallaGrande, ControlAlarmasQt y ControlBaile.
 - Controladores, VentanaReloj, la tarjeta de la alarma, los puentes web (con las
   ranuras y señales que usan extra/alarmas.jsx y extra/baile.jsx), el panel nativo y
@@ -11,7 +11,7 @@ salvapantallas, baile): las clases DE VERDAD cumplen lo que las otras les llaman
   dobles del sistema (tests/ocio_falso_c56.py): acciones, las 7 herramientas en el
   ToolManager, atajos, «avísame en 1 minuto» → Llamada → Ejecutor → alarmas.json
   temporal; desmontar lo quita todo.
-- Cómo encajan las piezas: la secuencia de la pantalla grande que espera la mascota
+- Cómo encajan las piezas: la secuencia de la pantalla grande que espera la asistente
   (agente D) y la alarma que llega con el salvapantallas puesto (agentes A y B).
 - Catálogo, config por defecto y la detección de pedidos (origen usuario / remoto).
 Offscreen; nada de Win32 que cambie algo, ni audio, ni alarmas.json de verdad.
@@ -69,7 +69,7 @@ class ConfigFalsa:
         return d
 
 
-# ═══ Mascotas ═══════════════════════════════════════════════════════════════════
+# ═══ Asistentes ═══════════════════════════════════════════════════════════════════
 
 # (método, args, kwargs) tal como los llaman ControlAlarmasQt, ControlBaile y
 # ControlPantallaGrande (ui/alarmas_qt.py, ui/baile_qt.py, ui/pantalla_grande_qt.py).
@@ -97,7 +97,7 @@ def test_companion_cumple_el_contrato_de_ocio():
         assert admite(_metodo(C, nombre), None, *a, **k), f"CompanionFlotante.{nombre}{a}{k}"
     for prop in ("soporta_grande", "en_grande", "salvapantallas", "alarma_visible", "bailando", "durmiendo"):
         assert _propiedad(C, prop), prop
-    assert callable(getattr(C, "close")) and callable(getattr(C, "isVisible"))  # mascota temporal
+    assert callable(getattr(C, "close")) and callable(getattr(C, "isVisible"))  # asistente temporal
 
 
 def test_avatar_overlay_cumple_lo_que_aplica_y_no_hace_pantalla_grande():
@@ -128,7 +128,7 @@ def test_controladores_cumplen_lo_que_llaman_montaje_puentes_panel_y_herramienta
     assert admite(B.__init__, None, None, None, en_ui=None, parent=None)
     # Contrato de controlador de ServiciosEscritorio (ui/escritorio.py).
     for cls in (A, B, G):
-        for n, a in (("iniciar", ()), ("detener", ()), ("set_mascota", (None,)), ("ceder", (None,)),
+        for n, a in (("iniciar", ()), ("detener", ()), ("set_asistente", (None,)), ("ceder", (None,)),
                      ("reanudar", (None,)), ("recargar_config", ()), ("herramientas", ())):
             assert admite(_metodo(cls, n), None, *a), f"{cls.__name__}.{n}"
     # Alarmas: montaje_ocio, puente_alarmas, panel_ocio_nativo.
@@ -225,7 +225,7 @@ def test_servicios_ocio_panel_nativo_y_puentes_ocio_firmas():
 # ═══ El montaje de verdad ═══════════════════════════════════════════════════════
 
 HERRAMIENTAS = ("temporizador", "alarma", "cancelar_alarma", "listar_alarmas",
-                "mascota_bailar", "parar_baile", "mascota_pantalla_grande")
+                "asistente_bailar", "parar_baile", "asistente_pantalla_grande")
 ACCIONES = ("alarma", "temporizador_rapido", "pantalla_grande", "bailar", "baile_pausa")
 
 
@@ -346,12 +346,12 @@ def test_orden_remota_pide_permiso_antes_de_poner_la_alarma(montaje):
 # ═══ Cómo encajan las piezas ════════════════════════════════════════════════════
 
 @pytest.fixture
-def con_mascota(montaje, qapp):
-    m = of.MascotaGrande()
-    montaje.esc.set_mascota(m, render="vrm")
+def con_asistente(montaje, qapp):
+    m = of.AsistenteGrande()
+    montaje.esc.set_asistente(m, render="vrm")
     montaje.m = m
     yield montaje
-    montaje.esc.set_mascota(None)
+    montaje.esc.set_asistente(None)
 
 
 def _avanzar(s, segundos):
@@ -359,11 +359,11 @@ def _avanzar(s, segundos):
     s.ocio.grande._tic_maquina()
 
 
-def test_secuencia_de_pantalla_grande_la_que_espera_la_mascota(con_mascota):
+def test_secuencia_de_pantalla_grande_la_que_espera_la_asistente(con_asistente):
     """Agente D: geometria() → «glide» → a los 400 ms set_geometria(monitor) + «entrar»;
     salida: «salir» → set_geometria(la de antes) + «volver» → «fin». Inmediata:
     la geometría de antes y «fin» en el acto."""
-    s, m, g = con_mascota, con_mascota.m, con_mascota.ocio.grande
+    s, m, g = con_asistente, con_asistente.m, con_asistente.ocio.grande
     antes = m.geometria()
     m.diario.clear()
     assert g.entrar("manual") is True and s.esc.estado.actual().grande
@@ -390,11 +390,11 @@ def test_secuencia_de_pantalla_grande_la_que_espera_la_mascota(con_mascota):
     assert m.malas == []                                                       # firmas de CompanionFlotante
 
 
-def test_alarma_con_el_salvapantallas_puesto_sigue_en_grande_y_sale_al_apagarla(con_mascota):
+def test_alarma_con_el_salvapantallas_puesto_sigue_en_grande_y_sale_al_apagarla(con_asistente):
     """Agentes A y B: con el salvapantallas puesto, la alarma lo cede, la pantalla grande
     sigue (motivo «alarma»), grande.entrar("alarma") dice True (sin burbuja) y al apagar
     la alarma se sale de todo."""
-    s, m, g, a = con_mascota, con_mascota.m, con_mascota.ocio.grande, con_mascota.ocio.alarmas
+    s, m, g, a = con_asistente, con_asistente.m, con_asistente.ocio.grande, con_asistente.ocio.alarmas
     assert g.probar_salvapantallas() is True
     _avanzar(s, 0.41)
     _avanzar(s, 0.51)
@@ -419,7 +419,7 @@ def test_alarma_con_el_salvapantallas_puesto_sigue_en_grande_y_sale_al_apagarla(
 
 
 def test_botones_de_ventana_reloj_llegan_a_la_alarma(montaje):
-    """Sin mascota: la alarma en VentanaReloj; sus botones → ControlAlarmasQt."""
+    """Sin asistente: la alarma en VentanaReloj; sus botones → ControlAlarmasQt."""
     s, g, a = montaje, montaje.ocio.grande, montaje.ocio.alarmas
     assert a.probar() is True
     assert a._visual == "grande" and g.activo and g._vista == "reloj"
@@ -430,8 +430,8 @@ def test_botones_de_ventana_reloj_llegan_a_la_alarma(montaje):
     assert a.aviso.sonando is None and not g.activo
 
 
-def test_baile_llega_a_la_mascota_y_la_pantalla_grande_lo_cede(con_mascota):
-    s, m, b, g = con_mascota, con_mascota.m, con_mascota.ocio.baile, con_mascota.ocio.grande
+def test_baile_llega_a_la_asistente_y_la_pantalla_grande_lo_cede(con_asistente):
+    s, m, b, g = con_asistente, con_asistente.m, con_asistente.ocio.baile, con_asistente.ocio.grande
     assert b.bailar(30) is True and b.bailando and s.esc.estado.actual().bailando
     assert any(x[0] == "bailar" and x[1] is True for x in m.diario)
     assert b.detector.forzados == [True]                                       # manual: pulso de la más fuerte
@@ -476,7 +476,7 @@ def test_config_real_conserva_volumen_y_sonido_de_alarmas(tmp_path):
 @pytest.mark.parametrize("texto, esperado", [
     ("avísame en 5 minutos", ("temporizador", {"segundos": 300, "texto": ""})),
     ("recuérdame que a las 5 de la tarde tengo cita", ("alarma", {"hora": "17:00", "dias": "", "texto": "tengo cita"})),
-    ("¡baila!", ("mascota_bailar", {"segundos": 30})),
+    ("¡baila!", ("asistente_bailar", {"segundos": 30})),
     ("para de bailar", ("parar_baile", {})),
     ("abre youtube", ("abrir_url", {"url": "https://www.youtube.com"})),
     ("recuerda que mi cumple es el 5", None),

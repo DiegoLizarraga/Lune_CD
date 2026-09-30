@@ -2,7 +2,7 @@
 Tests de ui/baile_qt.ControlBaile (offscreen): la tabla de prioridades, dormida
 no baila (y baila al despertar), ceder/reanudar, baile a mano con metrónomo y
 duración, pausa hasta el silencio, el JSON de `estado_cambio`, el pulso ≤ 2 Hz y
-las llamadas a la mascota. Detector y mascota falsos; ServiciosEscritorio real.
+las llamadas a la asistente. Detector y asistente falsos; ServiciosEscritorio real.
 """
 import json
 import sys
@@ -53,7 +53,7 @@ class DetectorFalso:
         self.on_cambio(on, app if on else "")
 
 
-class MascotaFalsa:
+class AsistenteFalsa:
     def __init__(self):
         self.bailes, self.pulsos = [], []
         self.durmiendo = False
@@ -95,8 +95,8 @@ def montaje(qapp):
     ctl = ControlBaile(esc, cfg, detector=det, en_ui=en_ui, reloj=reloj)
     esc.registrar("baile", ctl, ("baile",))
     esc.iniciar()
-    m = MascotaFalsa()
-    ctl.set_mascota(m)
+    m = AsistenteFalsa()
+    ctl.set_asistente(m)
     ctl.estados = []
     ctl.pulsos = []
     ctl.estado_cambio.connect(lambda s: ctl.estados.append(json.loads(s)))
@@ -115,7 +115,7 @@ def bailando_bus(x):
     return x.esc.estado.actual().bailando
 
 
-def test_musica_pide_la_prioridad_y_la_mascota_baila(montaje):
+def test_musica_pide_la_prioridad_y_la_asistente_baila(montaje):
     x = montaje
     assert "iniciar" in x.det.llamadas and x.det.on_cambio is not None
     x.det.musica(True)
@@ -131,7 +131,7 @@ def test_musica_pide_la_prioridad_y_la_mascota_baila(montaje):
     assert not x.ctl.bailando and bailando_bus(x) == "" and x.m.bailes[-1] == (False, None)
 
 
-def test_empezar_con_musica_llama_una_sola_vez_a_la_mascota(montaje):
+def test_empezar_con_musica_llama_una_sola_vez_a_la_asistente(montaje):
     # MO10: prioridad.iniciar avisa al bus dentro de bailar(); _on_bus no puede empezar
     # otro baile (otro estilo, fundido de 2 s) antes de que este marque _bailando.
     import random
@@ -272,19 +272,19 @@ def test_parar_por_la_herramienta_no_vuelve_sola(montaje):
     x = montaje
     x.det.musica(True)
     h = x.ctl.herramientas()
-    assert set(h) == {"mascota_bailar", "parar_baile"}
+    assert set(h) == {"asistente_bailar", "parar_baile"}
     assert h["parar_baile"]({}, None) == "Vale, dejo de bailar."
     assert x.en_ui, "la herramienta pasa por en_ui"
     assert not x.ctl.bailando and x.ctl.estado()["pausado_hasta_silencio"]
-    assert h["mascota_bailar"]({"segundos": 20}, {}) == "¡A bailar! 20 s."
+    assert h["asistente_bailar"]({"segundos": 20}, {}) == "¡A bailar! 20 s."
     assert x.ctl.bailando and x.ctl.estado()["origen"] == "manual"
 
 
-def test_set_mascota_mientras_baila(montaje):
+def test_set_asistente_mientras_baila(montaje):
     x = montaje
     x.det.musica(True)
-    otra = MascotaFalsa()
-    x.ctl.set_mascota(otra)
+    otra = AsistenteFalsa()
+    x.ctl.set_asistente(otra)
     assert otra.bailes and otra.bailes[-1][0] is True and otra.pulsos
 
 
@@ -347,8 +347,8 @@ def test_con_el_detector_de_verdad_y_medidor_falso(qapp):
     ctl = ControlBaile(esc, esc.config, detector=det, reloj=reloj)
     esc.registrar("baile", ctl, ("baile",))
     esc.iniciar()
-    m = MascotaFalsa()
-    ctl.set_mascota(m)
+    m = AsistenteFalsa()
+    ctl.set_asistente(m)
     det.sondear()
     reloj.t += 2
     det.sondear()
@@ -373,7 +373,7 @@ def test_ctx_de_las_herramientas_lleva_el_reproductor_de_bailes(montaje):
     mmd = MMDFalso()
     x.esc.registrar("mmd", mmd)
     h = x.ctl.herramientas()
-    assert h["mascota_bailar"]({"cancion": "uno"}, {"origen": "usuario"}) == "¡A bailar «Uno»!"
+    assert h["asistente_bailar"]({"cancion": "uno"}, {"origen": "usuario"}) == "¡A bailar «Uno»!"
     assert mmd.textos == ["uno"] and x.en_ui and not x.ctl.bailando
     x.esc.quitar("mmd")
-    assert "reproductor" in h["mascota_bailar"]({"cancion": "uno"}, {})
+    assert "reproductor" in h["asistente_bailar"]({"cancion": "uno"}, {})

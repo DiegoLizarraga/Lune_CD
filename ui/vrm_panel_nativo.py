@@ -21,13 +21,13 @@ panel le da lo imprescindible de «Custom VRM» y del seguimiento de Mate-Engine
   quietos antes de escribir (no se reescribe el archivo en cada píxel).
 
 Señal `cambiado()`: se importó, se asignó o se guardó el seguimiento. Quien lo
-integra (settings_panel.py / main.py) recarga la mascota 3D o le manda
+integra (settings_panel.py / main.py) recarga la asistente 3D o le manda
 `window.luneParams(vrm.params_modelo_json(modelo, config))`.
 
     panel = VrmPanelNativo(config)
     panel.cambiado.connect(lambda: companion.recargar_vrm())
 
-Sin WebEngine el panel funciona igual (solo avisa de que la mascota 3D no se
+Sin WebEngine el panel funciona igual (solo avisa de que la asistente 3D no se
 podrá ver). Estilo de ui/theme.py (COLORS).
 """
 from __future__ import annotations
@@ -112,7 +112,7 @@ class VrmPanelNativo(QWidget):
         titulo.setStyleSheet(f"color:{COLORS['accent']};border:none;letter-spacing:1px;")
         raiz.addWidget(titulo)
 
-        self.aviso_webengine = QLabel("Sin PyQt6-WebEngine la mascota 3D no se puede mostrar; "
+        self.aviso_webengine = QLabel("Sin PyQt6-WebEngine no puedo salir al escritorio en 3D; "
                                       "los modelos se guardan igual.")
         self.aviso_webengine.setWordWrap(True)
         self.aviso_webengine.setStyleSheet(f"color:{COLORS['warning']};border:none;")

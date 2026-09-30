@@ -1,7 +1,7 @@
 """
 servicios/bailes_terminal.py — Los bailes de tu biblioteca en el modo patata (corte 9, D1).
 
-En patata no hay mascota ni esqueleto: la canción de un baile (bailes/, nucleo/bailes.py)
+En patata no hay asistente en escritorio ni esqueleto: la canción de un baile (bailes/, nucleo/bailes.py)
 suena por el Mezclador (servicios/cancion_python.ReproductorCancion, canal «musica») y el
 TÍTULO de la ventana baila al pulso ANALIZADO de esa canción
 (nucleo/bailes.Biblioteca.analizar_pulso → servicios/baile_terminal.BaileTerminal.
@@ -19,7 +19,7 @@ bailar_con): «ヽ(^o^)ﾉ ♪ Senbonzakura · 154 BPM». Como en la animada y e
 - Al acabar: baile.al_terminar (parar | siguiente | repetir | aleatorio) con nucleo/bailes.Cola,
   solo entre los bailes con canción (los desactivados no salen).
 - `registrar_herramientas(tools)`: listar_bailes (nucleo.bailes.herramienta_listar) y
-  mascota_bailar / parar_baile (nucleo.baile) con ESTE objeto como ctx["mmd"]
+  asistente_bailar / parar_baile (nucleo.baile) con ESTE objeto como ctx["mmd"]
   (reproducir_por_texto, ultimo_motivo, activo, parar, lista) y el baile del título como
   ctx["baile"]. Los títulos son nombres de archivo: al modelo van saneados.
 
@@ -286,7 +286,7 @@ class BailesTerminal:
 
     def reproducir_por_texto(self, texto: Any) -> Tuple[bool, str]:
         """Busca (título y autores, sin tildes) y pone el primero con canción (el título
-        exacto antes). Para mascota_bailar {cancion}."""
+        exacto antes). Para asistente_bailar {cancion}."""
         q = nbl.texto_limpio(texto, 80)
         if not q:
             return self.reproducir(None, origen="modelo")
@@ -630,7 +630,7 @@ class BailesTerminal:
         return base
 
     def bailar_pedido(self, args: Any = None) -> Any:
-        """«baila [X]» / mascota_bailar {segundos?, cancion?}: con canción, de la biblioteca; si no
+        """«baila [X]» / asistente_bailar {segundos?, cancion?}: con canción, de la biblioteca; si no
         la encuentra (o sin canción), el baile del título a su manera. Lo que devuelve nucleo.baile."""
         return nb.herramienta_bailar(args, self._ctx(None))
 
@@ -639,10 +639,10 @@ class BailesTerminal:
         return nb.herramienta_parar({}, self._ctx(None))
 
     def registrar_herramientas(self, tools: Any) -> None:
-        """listar_bailes, mascota_bailar (con «cancion»: de tu biblioteca) y parar_baile."""
+        """listar_bailes, asistente_bailar (con «cancion»: de tu biblioteca) y parar_baile."""
         handlers = {
             "listar_bailes": lambda args=None, ctx=None: nbl.herramienta_listar(args, self._ctx(ctx)),
-            "mascota_bailar": lambda args=None, ctx=None: nb.herramienta_bailar(args, self._ctx(ctx)),
+            "asistente_bailar": lambda args=None, ctx=None: nb.herramienta_bailar(args, self._ctx(ctx)),
             "parar_baile": lambda args=None, ctx=None: nb.herramienta_parar(args, self._ctx(ctx)),
         }
         for nombre, fn in handlers.items():

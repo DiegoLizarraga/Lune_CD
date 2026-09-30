@@ -10,7 +10,7 @@ Lune comenta lo que ve en tu pantalla. Dos formas de dibujarla (config avatar.re
                three.js + @pixiv/three-vrm empaquetados en ui_web/vendor). El .vrm
                se elige por personaje (nucleo/vrm.py) y se sirve por el http local.
 
-Comportamientos de mascota (modo VRM), portados de Mate-Engine a procedural:
+Comportamientos de la asistente en escritorio (modo VRM), portados de Mate-Engine a procedural:
   - sigue el cursor con cabeza, ojos y torso aunque esté fuera de la ventana
     (Python le manda la posición global a ~30 Hz);
   - al arrastrarla se balancea según la velocidad y rebota al soltarla;
@@ -30,7 +30,7 @@ En los dos renders (corte 3):
     (nucleo/sueno.herramienta_dormir/despertar). Un «duérmete» no lo deshace la
     propia respuesta: la voz y las emociones de esa respuesta la despiertan un
     momento y vuelve a dormirse al acabar;
-  - frases cortas sin pasar por el modelo (lune_core/frases_mascota.py) cuando la
+  - frases cortas sin pasar por el modelo (lune_core/frases_asistente.py) cuando la
     arrastras, la sueltas, la acaricias, se marea, se duerme, se despierta o
     aparece: los eventos llegan por window.luneEventos y la frase sale en la
     burbuja con window.comentar(t, 3500), sin pisar una respuesta de la IA.
@@ -41,7 +41,7 @@ periódico opcional (avatar.comentarios_cada_min; 0 = apagado). Con Ollama es 10
 local; el manual, con un modelo local sin visión, puede usar la nube con la captura
 (avisando una vez); el AUTOMÁTICO nunca sube la captura a la nube (comenta por la
 ventana activa, en texto). Si Ollama responde y ve se pregunta en un hilo aparte
-(con Ollama apagado tardaba 3 + 3 s con la mascota congelada). El intercambio es
+(con Ollama apagado tardaba 3 + 3 s con la asistente congelada). El intercambio es
 efímero: no entra en el historial que comparte con el chat.
 
 Canal de eventos página → Python (v10.3, en los dos renders): la página encola lo
@@ -51,15 +51,15 @@ vacía con runJavaScript y emite `evento_js(tipo, datos)` por cada evento. Va
 aparte del sondeo del cursor, que se salta cuando el cursor está quieto fuera de
 la ventana. Se para al ocultarla o cerrarla y vuelve al mostrarla.
 
-Estado compartido: si se le pasa un nucleo.estado_mascota.BusEstado
+Estado compartido: si se le pasa un nucleo.estado_asistente.BusEstado
 (`bus_estado=` o `set_bus_estado()`), lo mantiene al día (visible, arrastrando,
 durmiendo, pensando, hablando, emoción). Sin bus no cambia nada.
 
-Chat con la mascota (corte 2, ui/chat_mascota.py): doble clic (o la bandeja) →
+Chat con la asistente (corte 2, ui/chat_asistente.py): doble clic (o la bandeja) →
 `abrir_chat()` con la cajita EntradaChat anclada bajo ella. El clic simple (que
 comenta la pantalla) se retrasa el intervalo de doble clic del sistema y se
 cancela si llega el segundo. Lo escrito va a `on_chat(texto)`, que ponen quien
-lleva la app (web_bridge.enviar_desde_mascota / main._chat_desde_mascota), y la
+lleva la app (web_bridge.enviar_desde_asistente / main._chat_desde_asistente), y la
 respuesta llega con `burbuja_texto(texto)` / `burbuja_fin(ms)` (lune_burbuja.js).
 Al cargar la página se carga el pack de sonidos de reacción (luneSonidos,
 ui_web/lune_packs.js, que las dos páginas cargan con <script src>).
@@ -72,10 +72,10 @@ Navegación (revisión 4-5-6, SB4): Python le empuja a la página cada respuesta
 IA (window.comentar), las frases y las alarmas, y lee lo que dice (luneEventos,
 luneCabeza). Por eso su vista lleva la misma guarda que la ventana principal
 (ui/web_shell.asegurar_pagina): el marco principal solo navega dentro del servidor
-local de la mascota; un enlace pulsado va al navegador del sistema; soltar un enlace
+local de la asistente; un enlace pulsado va al navegador del sistema; soltar un enlace
 o un archivo sobre ella (en grande, todo el monitor), file:, data:… se rechazan.
 
-Corte 4 (contrato de la mascota, igual en ui/avatar_overlay.py):
+Corte 4 (contrato de la asistente, igual en ui/avatar_overlay.py):
   - `bandeja=False` al crearla: sin icono propio (la bandeja única es
     ui/bandeja.BandejaLune); `quitar_bandeja()` quita uno ya creado.
   - clic derecho (al SOLTAR, sin menú contextual de Chromium: NoContextMenu) →
@@ -92,7 +92,7 @@ Corte 4 (contrato de la mascota, igual en ui/avatar_overlay.py):
     fijo), `set_comentarios_auto(on)`, `llevar_a_esquina()`, propiedades
     `comentarios_auto` y `click_through`.
 
-Cortes 5 y 6 (contrato de la mascota; los controladores son ui/pantalla_grande_qt,
+Cortes 5 y 6 (contrato de la asistente; los controladores son ui/pantalla_grande_qt,
 ui/alarmas_qt y ui/baile_qt):
   - `soporta_grande` (página cargada), `geometria()` / `set_geometria(QRect)` (sin
     guardar la posición ni devolverla a la pantalla) y `grande_fase(fase, opciones)`
@@ -110,7 +110,7 @@ ui/alarmas_qt y ui/baile_qt):
     no se duerme sola.
   Si la página recarga, se le vuelve a pedir lo que estaba a la vista.
 
-Cortes 7 y 8 (contrato de la mascota; los controladores son ui/asiento_qt.ControlAsiento y
+Cortes 7 y 8 (contrato de la asistente; los controladores son ui/asiento_qt.ControlAsiento y
 ui/comida_qt.ControlComida):
   - señal `arrastre_cambio(bool)`: True al pasar el umbral del arrastre (antes del
     delegado en ese mismo MouseMove), False al soltar ANTES de devolverla a la pantalla
@@ -132,7 +132,7 @@ ui/comida_qt.ControlComida):
     clic no abre el chat y no se duerme.
   Se repite si la página recarga (como lo de los cortes 5 y 6).
 
-Cortes 9 y 10 (contrato de la mascota; los controladores son ui/mmd_qt.ControlMMD y
+Cortes 9 y 10 (contrato de la asistente; los controladores son ui/mmd_qt.ControlMMD y
 ui/minecraft_qt.ControlMinecraft):
   - `mmd(orden, datos)` → window.luneMMD(orden, datos) con orden cargar · pausa · parar ·
     volumen · offset · en_sitio · bucle. «cargar» pasa por `datos_mmd_seguros()` (id de 12
@@ -167,14 +167,14 @@ from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWebEngineCore import QWebEngineSettings
 
 from ui.servidor_web import ServidorEstatico, DIR_WEB, RAIZ
-from ui.chat_mascota import ChatMascota, DesambiguadorClic, ms_lectura
+from ui.chat_asistente import ChatAsistente, DesambiguadorClic, ms_lectura
 from nucleo import datos
 from nucleo.sueno import ReglaSueno
 from lune_core import marcadores
 from lune_core.acciones import limpiar_texto
-from lune_core.frases_mascota import frases_para
+from lune_core.frases_asistente import frases_para
 from lune_core.prompt import neutralizar_marcadores
-from nucleo.respuestas import AVISO_MASCOTA_SIN_NUBE, COMENTARIO_VACIO
+from nucleo.respuestas import AVISO_ASISTENTE_SIN_NUBE, COMENTARIO_VACIO
 
 PAGINAS = {"animado": "companion.html", "vrm": "companion_vrm.html"}
 RUTA_MODELO = "/vrm/actual.vrm"          # el .vrm activo, publicado por el http local
@@ -184,7 +184,7 @@ TAMANOS_VRM = {"pequeno": (210, 330), "normal": (290, 460), "grande": (390, 620)
 TAMANO_ANIMADO = (240, 430)
 ENCUADRES = ("retrato", "cuerpo")
 
-# Emoción canónica del modelo → estado de la mascota (mismo vocabulario en las
+# Emoción canónica del modelo → estado de la asistente (mismo vocabulario en las
 # dos páginas: companion.html lo mapea a clips y companion_vrm.html a expresiones).
 EMOCION_A_ESTADO = {
     "happy": "happy", "sad": "sad", "angry": "angry", "think": "thinking",
@@ -204,17 +204,17 @@ del _e, _s
 
 EVENTOS_JS = "window.luneEventos ? window.luneEventos() : '[]'"
 
-# Frases de la mascota (lune_core/frases_mascota.py) en la burbuja: lo que duran.
+# Frases de la asistente (lune_core/frases_asistente.py) en la burbuja: lo que duran.
 MS_FRASE = 3500
 # Sueño (nucleo/sueno.ReglaSueno): si al vencer la regla no deja dormir (hablando,
 # arrastrándola, pensando…), se vuelve a mirar a los REINTENTO_SUENO_MS.
 REINTENTO_SUENO_MS = 30_000
-# «Duérmete» (herramienta mascota_dormir): la propia respuesta (su voz, sus
+# «Duérmete» (herramienta asistente_dormir): la propia respuesta (su voz, sus
 # emociones) la despierta en la página; durante GRACIA_SUENO_S desde lo último de
 # esa respuesta vuelve a dormirse PAUSA_VOLVER_A_DORMIR_MS después de callar.
 GRACIA_SUENO_S = 30.0
 PAUSA_VOLVER_A_DORMIR_MS = 1500
-# Mascota 3D oculta este rato (Lune de vuelta en la ventana, donde la barra lateral
+# Asistente 3D oculta este rato (Lune de vuelta en la ventana, donde la barra lateral
 # tiene su propio VRM): se descarta su página para no tener dos contextos WebGL.
 LIBERAR_OCULTA_MS = 60_000
 # Estados visuales que son una ACTIVIDAD en curso. Las emociones (happy, sad…) se
@@ -325,7 +325,7 @@ _RE_ID_MMD = re.compile(r"[0-9a-f]{12}")
 _RANGOS_MMD = (("offsetMs", -500.0, 500.0), ("brazoGrados", 25.0, 45.0), ("volumen", 0.0, 1.0),
                ("bpm", 40.0, 240.0), ("fase0", 0.0, 1.0))
 _BOOLS_MMD = ("enSitio", "bucle", "autoplay")
-AVISO_SIN_ESQUELETO = "Esta mascota no tiene esqueleto: baila a su manera."
+AVISO_SIN_ESQUELETO = "En 2D mi figura no tiene esqueleto: bailo a mi manera."
 MS_AVISO_SIN_ESQUELETO = 5000
 CPS_REACCION = 35                    # la burbuja de Minecraft se escribe a 35 c/s (Mate-Engine)
 MS_REACCION = 8000
@@ -368,7 +368,7 @@ def datos_mmd_seguros(datos) -> dict | None:
     """Los datos de `mmd("cargar", …)` para la página → dict limpio o None si no valen.
 
     id ^[0-9a-f]{12}$; tipo vmd|vrma (motion 1..3 —el .vrma, 1—, cara ≤2, audio opcional)
-    o audio (la mascota animada: audio obligatorio y sin motion/cara); URL con
+    o audio (la asistente animada: audio obligatorio y sin motion/cara); URL con
     `url_mmd_segura`; offsetMs −500..500, brazoGrados 25..45, volumen 0..1, bpm 40..240,
     fase0 0..1 (fuera de rango → None); enSitio/bucle/autoplay bool; titulo ≤80 sin
     controles. Las claves que no son del contrato se descartan."""
@@ -458,13 +458,13 @@ def punto_de_pagina(resultado) -> dict | None:
 
 
 def _llamar_cb(cb, valor):
-    """Llama al callback de un controlador sin dejar que un fallo suyo tumbe la mascota."""
+    """Llama al callback de un controlador sin dejar que un fallo suyo tumbe la asistente."""
     if not callable(cb):
         return
     try:
         cb(valor)
     except Exception as e:                           # noqa: BLE001
-        _log(f"[companion] un callback de la mascota falló: {e}")
+        _log(f"[companion] un callback de la asistente falló: {e}")
 
 
 def mapa_tema(css_json):
@@ -545,7 +545,7 @@ _PROMPT_VENTANA = (
     "como lo haría una compañera ingeniosa. Si no da para mucho, suelta algo ligero."
 )
 _PREFIJOS_ERROR = ("Error Ollama:", "Error OpenRouter:", "Error:")
-# 10.9: la mascota comenta solo con la nube. La primera vez que un comentario manual
+# 10.9: la asistente comenta solo con la nube. La primera vez que un comentario manual
 # sube la captura, se avisa (los automáticos nunca la suben: van por el título).
 _AVISO_CAPTURA_NUBE = "Para mirar tu pantalla mando una captura a la nube (OpenRouter)."
 _AVISO_SIN_VISION_NUBE = "Tu modelo local no ve imágenes; para la pantalla uso la nube."
@@ -609,7 +609,7 @@ def _log(msg: str):
 
 
 class CompanionFlotante(QMainWindow):
-    """Mascota flotante (video anime o avatar VRM) + burbuja de comentarios."""
+    """Asistente flotante (video anime o avatar VRM) + burbuja de comentarios."""
 
     visibilidad = pyqtSignal(bool)       # se muestra / se oculta o cierra
     recrear = pyqtSignal()               # "ya puedo ser VRM": quien me creó debe recrearme
@@ -628,7 +628,7 @@ class CompanionFlotante(QMainWindow):
                  bus_estado=None, bandeja: bool = True):
         super().__init__(parent)
         self.config = config
-        self._bus_estado = bus_estado    # nucleo.estado_mascota.BusEstado (opcional)
+        self._bus_estado = bus_estado    # nucleo.estado_asistente.BusEstado (opcional)
         # Corte 4: menú radial, modo juego, orden Z, FPS y tema.
         self.tray = None
         self.act_auto = None
@@ -683,11 +683,11 @@ class CompanionFlotante(QMainWindow):
         self._revert_token = 0
         self.cerrado = False
         self.modelo: Path | None = None
-        # Chat con la mascota: quien lleva la app pone on_chat(texto) -> bool y,
+        # Chat con la asistente: quien lleva la app pone on_chat(texto) -> bool y,
         # opcional, proveedor_chat() -> 'ollama'|… (para precalentar el modelo local).
         self.on_chat = None
         self.proveedor_chat = None
-        self._chat = ChatMascota(self)
+        self._chat = ChatAsistente(self)
         self._clic = DesambiguadorClic(self._clic_simple, self.abrir_chat, self)
         self._sonidos_publicados = False
         # Corte 3: regla de sueño, frases y lo que la regla necesita saber.
@@ -734,7 +734,7 @@ class CompanionFlotante(QMainWindow):
 
         self.web = QWebEngineView()
         # Guarda de navegación ANTES de cargar nada (y antes de tocar la página y sus
-        # ajustes: setPage la cambia): solo el servidor local de la mascota.
+        # ajustes: setPage la cambia): solo el servidor local de la asistente.
         self._asegurar_navegacion()
         self.web.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         # Clic derecho = menú radial (al soltar): nada de menú contextual de Chromium.
@@ -803,9 +803,9 @@ class CompanionFlotante(QMainWindow):
         self._timer_eventos.timeout.connect(self._vaciar_eventos)
         self._eventos_en_vuelo = 0.0     # monotonic de la petición sin respuesta (0 = ninguna)
         # Lo que pasa en la página → frases, sueño y estado visual (y a quien escuche).
-        self.evento_js.connect(self._on_evento_mascota)
+        self.evento_js.connect(self._on_evento_asistente)
 
-        # Modo fantasma total guardado (como la mascota de sprites): se aplica ya mostrada.
+        # Modo fantasma total guardado (como la asistente de sprites): se aplica ya mostrada.
         if self._cfg_bool("click_through", False):
             QTimer.singleShot(300, self._fantasma_guardado)
         self._estado_bus(render=self.render, visible=False)
@@ -818,7 +818,7 @@ class CompanionFlotante(QMainWindow):
     # ── Render, modelo y página ──────────────────────────────────────────────────
     def _asegurar_navegacion(self):
         """PaginaLune en la vista (ui/web_shell.asegurar_pagina) con el origen del
-        servidor local de la mascota y NavigateOnDropEnabled apagado. Devuelve la
+        servidor local de la asistente y NavigateOnDropEnabled apagado. Devuelve la
         página o None si no se pudo (queda registrado)."""
         if not callable(getattr(self.web, "setPage", None)):
             _log("[companion] la vista no admite otra página: sin guarda de navegación")
@@ -826,7 +826,7 @@ class CompanionFlotante(QMainWindow):
         try:
             from ui.web_shell import asegurar_pagina
             return asegurar_pagina(self.web, QUrl(self._servidor.url(PAGINAS[self.render])))
-        except Exception as e:                       # noqa: BLE001 — la mascota sigue igual
+        except Exception as e:                       # noqa: BLE001 — la asistente sigue igual
             _log(f"[companion] no pude poner la guarda de navegación: {e}")
             return None
 
@@ -860,7 +860,7 @@ class CompanionFlotante(QMainWindow):
                 + f"?src={RUTA_MODELO}&v={v}&enc={enc if enc in ENCUADRES else 'retrato'}")
 
     def recargar_modelo(self):
-        """El personaje activo cambió: sus frases de mascota y, si tiene otro .vrm, el
+        """El personaje activo cambió: sus frases de la burbuja y, si tiene otro .vrm, el
         modelo (sin cerrar la ventana) con su calibración (`aplicar_params_vrm`).
         Si esta ventana arrancó degradada a vídeo por falta de modelo y ahora ya hay
         uno, pide que la recreen (la página de vídeo no puede volverse 3D)."""
@@ -890,7 +890,7 @@ class CompanionFlotante(QMainWindow):
         self.aplicar_params_vrm()
 
     def _actualizar_frases(self):
-        """Las frases de la mascota del personaje activo (el cooldown se conserva)."""
+        """Las frases de la asistente del personaje activo (el cooldown se conserva)."""
         try:
             from nucleo import personajes
             self._frases.set_personaje(personajes.get_activo())
@@ -925,7 +925,7 @@ class CompanionFlotante(QMainWindow):
         try:
             fp = self.web.focusProxy()
             if fp is not None:
-                fp.installEventFilter(self)   # arrastrar pinchando sobre la mascota
+                fp.installEventFilter(self)   # arrastrar pinchando sobre la asistente
         except Exception:
             pass
         if not ok:
@@ -1059,7 +1059,7 @@ class CompanionFlotante(QMainWindow):
         # La voz TTS manda: calla la «voz» de reacción del pack y el tecleo.
         self._js(_js_sonidos("hablando", on))
 
-    # ── Chat con la mascota: burbuja y cajita (ui/chat_mascota.py) ───────────────
+    # ── Chat con la asistente: burbuja y cajita (ui/chat_asistente.py) ───────────────
     def burbuja_texto(self, texto: str, tipeado: bool = False):
         """Texto en la burbuja (sin programar el cierre). En streaming se llama con el
         texto acumulado; `tipeado` = escribirlo letra a letra (respuesta de golpe)."""
@@ -1067,7 +1067,7 @@ class CompanionFlotante(QMainWindow):
         if not t or self.cerrado:
             return
         self._despertar()
-        self._burbuja_ia, self._burbuja_ultimo = True, t   # las frases de la mascota esperan
+        self._burbuja_ia, self._burbuja_ultimo = True, t   # las frases de la asistente esperan
         s = _js_str(t)
         fn = "comentarTipeado" if tipeado else "burbujaTexto"
         self._js(f"window.{fn} ? window.{fn}({s}) : (window.comentar && window.comentar({s}))")
@@ -1095,7 +1095,7 @@ class CompanionFlotante(QMainWindow):
             self._js(_js_sonidos("tecleo", "true" if (on and activo) else "false"))
 
     def abrir_chat(self):
-        """Doble clic / bandeja: la cajita para escribirle, anclada bajo la mascota."""
+        """Doble clic / bandeja: la cajita para escribirle, anclada bajo la asistente."""
         if self.cerrado:
             return
         self._clic.cancelar()
@@ -1138,9 +1138,9 @@ class CompanionFlotante(QMainWindow):
         finally:
             self._lote_viejo = False
 
-    def _on_evento_mascota(self, tipo: str, datos: dict):
+    def _on_evento_asistente(self, tipo: str, datos: dict):
         """Lo que avisa la página (lune_vrm.js / lune_anim_fisica.js): frases de la
-        mascota, sueño y estado visual. El resto de eventos (bailes…) es de otros."""
+        asistente, sueño y estado visual. El resto de eventos (bailes…) es de otros."""
         if self.cerrado:
             return
         datos = datos if isinstance(datos, dict) else {}
@@ -1184,7 +1184,7 @@ class CompanionFlotante(QMainWindow):
                     _log(f"[companion] baile: {str(datos.get('mensaje') or '')[:120]}")
                 self._mmd_reset()
 
-    # ── Frases de la mascota (lune_core/frases_mascota.py) ───────────────────────
+    # ── Frases de la asistente (lune_core/frases_asistente.py) ───────────────────────
     def _burbuja_ocupada(self) -> bool:
         """¿La burbuja es de la IA ahora (respuesta, comentario de pantalla…)?"""
         return self._pensando or self._burbuja_ia or time.monotonic() < self._burbuja_ia_hasta
@@ -1329,7 +1329,7 @@ class CompanionFlotante(QMainWindow):
         return self._durmiendo
 
     def dormir(self) -> bool:
-        """Que se duerma YA (herramienta mascota_dormir, menús). True si se durmió o ya
+        """Que se duerma YA (herramienta asistente_dormir, menús). True si se durmió o ya
         dormía; False si ahora no puede (cerrada, arrastrándola, pensando un
         comentario, en llamada, con alarma…). Aquí no cuenta la lista blanca de
         estados de la regla (se lo han pedido), pero sí lo que la ocupa. Si la voz
@@ -1348,7 +1348,7 @@ class CompanionFlotante(QMainWindow):
         return self._durmiendo
 
     def despertar(self) -> bool:
-        """Que se despierte (herramienta mascota_despertar). True si está despierta
+        """Que se despierte (herramienta asistente_despertar). True si está despierta
         (ya lo estaba o se despertó); False si la ventana está cerrada."""
         if self.cerrado:
             return False
@@ -1364,7 +1364,7 @@ class CompanionFlotante(QMainWindow):
         return self._hablando or time.monotonic() - t < GRACIA_SUENO_S
 
     def _estado_regla(self, forzado: bool = False):
-        """Lo que mira la ReglaSueno: el EstadoMascota del bus (con sus banderas:
+        """Lo que mira la ReglaSueno: el EstadoAsistente del bus (con sus banderas:
         llamada, alarma, pantalla grande…) o, sin bus, el estado visual. Una emoción
         vieja cuenta como reposo; una actividad (thinking, talking…) no. Con
         `forzado` (la herramienta) solo cuentan las banderas, y la voz tampoco
@@ -1492,7 +1492,7 @@ class CompanionFlotante(QMainWindow):
             # Solo nube (10.9): sin clave, el manual lo dice (y dónde ponerla); el
             # automático calla para no insistir cada pocos minutos. Nunca el modelo local.
             if not automatico:
-                self._decir(AVISO_MASCOTA_SIN_NUBE, "thinking")
+                self._decir(AVISO_ASISTENTE_SIN_NUBE, "thinking")
             return
         self._despertar()
         # La captura, antes de ponerse a «pensar» (que no salga en ella); si al final
@@ -1507,7 +1507,7 @@ class CompanionFlotante(QMainWindow):
         self._sondear()
 
     def _sondear(self):
-        """10.9: la mascota comenta solo con la nube, así que ya no se sondea Ollama
+        """10.9: la asistente comenta solo con la nube, así que ya no se sondea Ollama
         (con él apagado eran hasta 3 + 3 s de espera): sigue directo en _on_sondeo.
         `_sondear_ollama` queda por si vuelve a hacer falta."""
         self._on_sondeo({"local": False})
@@ -1561,7 +1561,7 @@ class CompanionFlotante(QMainWindow):
     # ── Proveedor con fallback ───────────────────────────────────────────────────
     def _elegir_proveedor(self, sondeo=None, automatico: bool = False):
         """
-        10.9 (Diego): la mascota responde SOLO con la nube. El manual manda la captura
+        10.9 (Diego): la asistente responde SOLO con la nube. El manual manda la captura
         (avisando la primera vez); el automático, nunca: solo el título de la ventana.
         """
         if not automatico:
@@ -2030,7 +2030,7 @@ class CompanionFlotante(QMainWindow):
             punto = self._punto_geometria()
         try:
             cb(punto)
-        except Exception as e:                       # noqa: BLE001 — un receptor roto no tumba la mascota
+        except Exception as e:                       # noqa: BLE001 — un receptor roto no tumba la asistente
             _log(f"[companion] el ancla del menú falló en el receptor: {e}")
 
     def _punto_cabeza(self, respuesta):
@@ -2489,7 +2489,7 @@ class CompanionFlotante(QMainWindow):
     def mmd(self, orden: str, datos: dict | None = None) -> bool:
         """Orden del reproductor de bailes → window.luneMMD(orden, datos) (ver el
         docstring del módulo). False si no se acepta (cerrada, orden o datos que no
-        valen, o un «cargar» que no es de esta mascota: la VRM baila vmd/vrma y la
+        valen, o un «cargar» que no es de esta asistente: la VRM baila vmd/vrma y la
         animada «audio»)."""
         if self.cerrado or self.web is None:
             return False
@@ -2503,7 +2503,7 @@ class CompanionFlotante(QMainWindow):
                 _log("[companion] baile rechazado: datos que no valen")
                 return False
             if (arg["tipo"] == "audio") != (self.render != "vrm"):
-                _log(f"[companion] baile rechazado: un «{arg['tipo']}» no es para la mascota {self.render}")
+                _log(f"[companion] baile rechazado: un «{arg['tipo']}» no es para la asistente {self.render}")
                 return False
             self._publicar_bailes()
             self._mmd_activo, self._mmd_id = True, arg["id"]
@@ -2591,7 +2591,7 @@ class CompanionFlotante(QMainWindow):
                 self._timer_liberar.start(LIBERAR_OCULTA_MS)
 
     def _publicar_bailes(self):
-        """bailes/ y cache/bailes/ en el servidor local de la mascota (una vez). Solo se
+        """bailes/ y cache/bailes/ en el servidor local de la asistente (una vez). Solo se
         sirve lo que hay DENTRO (ui/servidor_web: nada de salir con '..' ni de enlaces)."""
         if self._bailes_publicados or self._servidor is None:
             return
@@ -2818,7 +2818,8 @@ class CompanionFlotante(QMainWindow):
             self.tray = None
             return
         self.tray = QSystemTrayIcon(self._icono, self)
-        self.tray.setToolTip("Lune · mascota 3D" if self.render == "vrm" else "Lune · companion")
+        self.tray.setToolTip("Lune · asistente en escritorio (3D)" if self.render == "vrm"
+                             else "Lune · asistente en escritorio")
         menu = self._menu_bandeja = QMenu()
         act_chat = QAction("Escribirle a Lune…", self)
         act_chat.triggered.connect(self.abrir_chat)
@@ -2846,7 +2847,7 @@ class CompanionFlotante(QMainWindow):
             act_esq.triggered.connect(self.llevar_a_esquina)
             menu.addAction(act_esq)
         menu.addSeparator()
-        act_cerrar = QAction("Cerrar mascota", self)
+        act_cerrar = QAction("Cerrar la asistente en escritorio", self)
         act_cerrar.triggered.connect(self.close)
         menu.addAction(act_cerrar)
         self.tray.setContextMenu(menu)
@@ -2948,7 +2949,7 @@ class CompanionFlotante(QMainWindow):
             self._pagina_lista = False               # hasta que recargue (loadFinished)
             self._timer_cursor.stop()
             self._timer_sueno.stop()
-            _log("[companion] mascota 3D oculta: página liberada (se recarga al mostrarla)")
+            _log("[companion] asistente 3D oculta: página liberada (se recarga al mostrarla)")
 
     def _reactivar_pagina(self):
         if not self._liberada:
@@ -2971,7 +2972,7 @@ class CompanionFlotante(QMainWindow):
         self._ancla_cb = None
         self._cortar_arrastre()
         self._delegado_arrastre = None
-        self._mmd_activo = False                     # la página se va con el baile (ControlMMD lo ve por set_mascota)
+        self._mmd_activo = False                     # la página se va con el baile (ControlMMD lo ve por set_asistente)
         self._mmd_pendiente = []
         self._clic.cancelar()
         self._chat.destruir()

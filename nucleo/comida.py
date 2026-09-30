@@ -1,7 +1,7 @@
 """
 nucleo/comida.py — La comida de Lune (el AvatarFoodController de Mate-Engine).
 
-Con el clic central sobre la mascota (radial «secundario»), la bandeja o la
+Con el clic central sobre la asistente (radial «secundario»), la bandeja o la
 herramienta `dar_de_comer`, sale un batido o un pastel que sigue al cursor.
 Pasarlo por la cabeza de Lune es darle de comer: trago o mordisco con un tono
 al azar, cara feliz y, a veces, una frase.
@@ -61,7 +61,7 @@ class Variante:
 class Comida:
     id: str
     nombre: str
-    tipo: str                   # beber | comer (el evento del pack y de la mascota)
+    tipo: str                   # beber | comer (el evento del pack y de la asistente)
     variantes: Tuple[Variante, ...]
 
 
@@ -108,7 +108,7 @@ MOTIVOS = {
     "grande": "estoy en pantalla grande",
     "salvapantallas": "estoy de salvapantallas",
     "mmd": "estoy con un baile",
-    "desactivada": "la comida está desactivada (Ajustes → Mascota → Comida)",
+    "desactivada": "la comida está desactivada (Ajustes → Comida)",
     "desconocida": "no tengo esa comida",
 }
 

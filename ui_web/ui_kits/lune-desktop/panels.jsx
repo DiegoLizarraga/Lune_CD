@@ -25,7 +25,7 @@ function PersonajesPanel() {
   };
   React.useEffect(cargar, []);
   const activar = (nombre) => { if (window.lune) window.lune.personaje_activar(nombre, () => cargar()); };
-  // Cada personaje puede tener su propio .vrm (se ve cuando la mascota está en modo VRM).
+  // Cada personaje puede tener su propio .vrm (se ve cuando la asistente en escritorio está en modo VRM).
   const asignarVrm = (nombre, archivo) => { if (window.lune) window.lune.personaje_vrm(nombre, archivo, () => cargar()); };
   const importar = () => { if (window.lune) window.lune.vrm_importar(() => cargar()); };
   const modelos = vrm.modelos || [];
@@ -37,10 +37,10 @@ function PersonajesPanel() {
           eyebrow={p.activo ? <Badge variant="cyan">Activo</Badge> : null}>
           <p className="ln-panel-desc">{p.descripcion || '—'}</p>
           <div className="ln-panel-foot">
-            <label className="ln-vrm-pick" title={vrm.webengine ? 'Su modelo 3D cuando la mascota está en modo VRM' : 'El avatar 3D necesita PyQt6-WebEngine'}>
+            <label className="ln-vrm-pick" title={vrm.webengine ? 'Su modelo 3D cuando la asistente en escritorio está en modo VRM' : 'El avatar 3D necesita PyQt6-WebEngine'}>
               <span className="lune-overline">Modelo 3D</span>
               <select className="lune-input" value={p.vrm || ''} onChange={(e) => asignarVrm(p.nombre, e.target.value)}>
-                <option value="">— el de la mascota</option>
+                <option value="">— el modelo por defecto</option>
                 {modelos.map((m) => <option key={m} value={m}>{m}</option>)}
                 {p.vrm && !modelos.includes(p.vrm) && <option value={p.vrm}>{p.vrm}</option>}
               </select>
@@ -52,7 +52,7 @@ function PersonajesPanel() {
       <Card title="Modelos 3D (VRM)" tone="blue">
         <p className="ln-panel-desc">
           {modelos.length ? `${modelos.length} en modelo_vrm/: ${modelos.join(', ')}.` : 'Aún no hay ningún .vrm en modelo_vrm/.'}
-          {' '}Cada personaje puede tener el suyo; el resto usa el modelo por defecto de Ajustes → Mascota.
+          {' '}Cada personaje puede tener el suyo; el resto usa el modelo por defecto de Ajustes → Asistente en escritorio.
         </p>
         <div style={{ marginTop: 12 }}>
           <Button variant="ghost" size="sm" onClick={importar}>Importar .vrm…</Button>
@@ -72,6 +72,10 @@ function MemoriaPanel() {
   const i = info || {};
   const st = i.stats || {};
   const rec = i.recuerdos || [];
+  // Lo que contaste en las tres preguntas de bienvenida (también va al system prompt).
+  const personalidad = typeof i.personalidad === 'string' ? i.personalidad : '';
+  const trato = typeof i.trato === 'string' ? i.trato : '';
+  const hayAlgo = rec.length > 0 || !!i.nombre || !!personalidad || !!trato;
   return (
     <PanelShell overline="Nodos persistentes" title="MEMORIA">
       <Card tone="blue" tick title={i.nombre ? `Usuario · ${i.nombre}` : 'Memoria de Lune'}>
@@ -80,7 +84,12 @@ function MemoriaPanel() {
           {st.ultima_sesion && <Badge variant="ink" outline>últ. {String(st.ultima_sesion).slice(0, 10)}</Badge>}
           <Badge variant="cyan">{rec.length} recuerdos</Badge>
         </div>
-        {rec.length > 0 && (
+        {personalidad && <p className="ln-panel-desc" id="mem-personalidad">Cómo eres: {personalidad}</p>}
+        {trato && <p className="ln-panel-desc" id="mem-trato">Cómo quieres que sea contigo: {trato}</p>}
+        {(personalidad || trato) && (
+          <p className="ln-panel-meta">Para cambiarlo, escríbeme /conocernos.</p>
+        )}
+        {hayAlgo && (
           <div style={{ marginTop: 12 }}>
             <Button variant="danger" size="sm" onClick={olvidarTodo}>Olvidar todo</Button>
           </div>

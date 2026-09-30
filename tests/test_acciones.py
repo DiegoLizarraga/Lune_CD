@@ -212,10 +212,10 @@ def test_sin_handler_no_disponible(tmp_path):
 
 
 def test_modo_filtra(env):
-    _, llamadas = env.correr(call("mascota_dormir"), ctx={"modo": "patata"})
+    _, llamadas = env.correr(call("asistente_dormir"), ctx={"modo": "patata"})
     assert llamadas[0].motivo == A.NO_DISPONIBLE and env.llamados == []
-    env.correr(call("mascota_dormir"), ctx={"modo": "vrm"})
-    assert env.nombres_llamados() == ["mascota_dormir"]
+    env.correr(call("asistente_dormir"), ctx={"modo": "vrm"})
+    assert env.nombres_llamados() == ["asistente_dormir"]
 
 
 def test_argumentos_extra_no_llegan_al_handler(env):
@@ -455,7 +455,7 @@ def test_presupuesto_por_defecto_es_20(tmp_path):
 
 
 def test_coste_cero_no_gasta(env):
-    env.correr(call("mascota_bailar") + call("dar_de_comer", {"comida": "pastel"}))
+    env.correr(call("asistente_bailar") + call("dar_de_comer", {"comida": "pastel"}))
     assert env.sesion.gastado == 0 and len(env.llamados) == 2
 
 
@@ -530,11 +530,11 @@ def test_resultado_a_dict(env):
 
 
 def test_disponibles(env):
-    assert "mascota_sentarse" in env.ej.disponibles("vrm")
-    assert "mascota_sentarse" in env.ej.disponibles("mascota")      # cortes 7/8: también sprites y animada
-    assert "mascota_sentarse" not in env.ej.disponibles("normal")
-    assert "mascota_tamano" not in env.ej.disponibles("mascota")
-    assert "mascota_dormir" not in env.ej.disponibles("patata")
+    assert "asistente_sentarse" in env.ej.disponibles("vrm")
+    assert "asistente_sentarse" in env.ej.disponibles("asistente")      # cortes 7/8: también sprites y animada
+    assert "asistente_sentarse" not in env.ej.disponibles("normal")
+    assert "asistente_tamano" not in env.ej.disponibles("asistente")
+    assert "asistente_dormir" not in env.ej.disponibles("patata")
 
 
 # ── Acción ofrecida y pedida a la vez (prueba real 2026-09-28) ────────────────────
@@ -565,10 +565,10 @@ def test_sin_oferta_el_temporizador_se_hace_sin_preguntar(env):
     assert env.nombres_llamados() == ["temporizador"] and env.preguntas == []
 
 
-def test_ofrecida_del_cuerpo_de_la_mascota_no_pregunta(env):
+def test_ofrecida_del_cuerpo_de_la_asistente_no_pregunta(env):
     """«baila» → «¡Claro! ¿Quieres que bailemos?» + la marca (prueba real): era un pedido."""
-    env.correr("¡Claro! ¿Quieres que bailemos? " + call("mascota_bailar"), ctx={"modo": "mascota"})
-    assert env.nombres_llamados() == ["mascota_bailar"] and env.preguntas == []
+    env.correr("¡Claro! ¿Quieres que bailemos? " + call("asistente_bailar"), ctx={"modo": "asistente"})
+    assert env.nombres_llamados() == ["asistente_bailar"] and env.preguntas == []
 
 
 def test_ofrecida_de_lectura_no_pregunta(env):

@@ -99,9 +99,9 @@
   .ln-tareas-acc.has-pend .ln-tareas-acc-num{ background:var(--yellow-500); color:var(--ink-950); border-color:var(--yellow-400);
     box-shadow:0 0 12px rgb(var(--yellow-500-rgb, 255 224 0) / .35); }
 
-  .ln-mascot{ flex:1; min-height:0; display:flex; flex-direction:column; justify-content:flex-end; }
-  .ln-mascot-stage{
-    /* Los clips de la mascota son 9:16 (720×1280): el stage toma esa misma proporción
+  .ln-asistente{ flex:1; min-height:0; display:flex; flex-direction:column; justify-content:flex-end; }
+  .ln-asistente-stage{
+    /* Los clips de la asistente son 9:16 (720×1280): el stage toma esa misma proporción
        para que el video lo llene entero, sin banda vacía arriba. */
     position:relative; width:100%; aspect-ratio:9/16; height:auto; max-height:520px; min-height:150px; background:
       radial-gradient(circle at 50% 32%, rgb(var(--cyan-500-rgb, 0 229 255) / .12), transparent 62%),
@@ -109,24 +109,24 @@
     border:var(--bw) solid var(--ink-500); clip-path:var(--clip-notch);
     display:flex; align-items:flex-end; justify-content:center; overflow:hidden;
   }
-  .ln-mascot-stage::after{ display:none; }
-  .ln-mascot-stage::after{ content:""; position:absolute; inset:0; background:var(--tex-scanline); pointer-events:none; }
-  .ln-mascot-stage img, .ln-mascot-stage video{ height:100%; width:100%; object-fit:cover; object-position:center bottom; }
+  .ln-asistente-stage::after{ display:none; }
+  .ln-asistente-stage::after{ content:""; position:absolute; inset:0; background:var(--tex-scanline); pointer-events:none; }
+  .ln-asistente-stage img, .ln-asistente-stage video{ height:100%; width:100%; object-fit:cover; object-position:center bottom; }
   /* Avatar VRM 3D en la barra (vrm_barra.js). Con Lune fuera se pausa y se oculta. */
-  .ln-mascot-stage canvas.ln-mascot-vrm{ position:absolute; inset:0; width:100%; height:100%; display:block; cursor:pointer; }
-  .ln-mascot-stage.is-out canvas.ln-mascot-vrm{ visibility:hidden; pointer-events:none; }
-  .ln-mascot-tag{ display:none; }
-  /* Lune fuera (mascota de escritorio): el escenario no la dibuja dos veces */
-  .ln-mascot-stage.is-out{ align-items:center; border-style:dashed; background:
+  .ln-asistente-stage canvas.ln-asistente-vrm{ position:absolute; inset:0; width:100%; height:100%; display:block; cursor:pointer; }
+  .ln-asistente-stage.is-out canvas.ln-asistente-vrm{ visibility:hidden; pointer-events:none; }
+  .ln-asistente-tag{ display:none; }
+  /* Lune fuera (asistente en escritorio): el escenario no la dibuja dos veces */
+  .ln-asistente-stage.is-out{ align-items:center; border-style:dashed; background:
       repeating-linear-gradient(135deg, rgb(var(--cyan-500-rgb, 0 229 255) / .05) 0 10px, transparent 10px 22px), var(--ink-950); }
-  .ln-mascot-out{ display:flex; flex-direction:column; align-items:center; gap:8px; padding:18px 14px; text-align:center; }
-  .ln-mascot-out-jp{ font-size:38px; color:var(--yellow-500); opacity:.85; filter:drop-shadow(0 0 10px rgb(var(--yellow-500-rgb, 255 224 0) / .35)); }
-  .ln-mascot-out-t{ font-family:var(--font-display); font-weight:700; font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--text-strong); }
-  .ln-mascot-out-d{ font-family:var(--font-mono); font-size:10px; line-height:1.45; color:var(--text-dim); }
-  .ln-mascot-out-btn{ margin-top:6px; cursor:pointer; border:var(--bw) solid var(--cyan-700); background:var(--ink-800); color:var(--cyan-400);
+  .ln-asistente-out{ display:flex; flex-direction:column; align-items:center; gap:8px; padding:18px 14px; text-align:center; }
+  .ln-asistente-out-jp{ font-size:38px; color:var(--yellow-500); opacity:.85; filter:drop-shadow(0 0 10px rgb(var(--yellow-500-rgb, 255 224 0) / .35)); }
+  .ln-asistente-out-t{ font-family:var(--font-display); font-weight:700; font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--text-strong); }
+  .ln-asistente-out-d{ font-family:var(--font-mono); font-size:10px; line-height:1.45; color:var(--text-dim); }
+  .ln-asistente-out-btn{ margin-top:6px; cursor:pointer; border:var(--bw) solid var(--cyan-700); background:var(--ink-800); color:var(--cyan-400);
       font-family:var(--font-display); font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.06em; padding:8px 12px; clip-path:var(--clip-tr);
       transition:background var(--dur-fast), color var(--dur-fast); }
-  .ln-mascot-out-btn:hover{ background:var(--cyan-700); color:var(--ink-950); }
+  .ln-asistente-out-btn:hover{ background:var(--cyan-700); color:var(--ink-950); }
   /* Selector de modelo 3D por personaje (panel Personajes) */
   .ln-vrm-pick{ display:flex; flex-direction:column; gap:5px; min-width:220px; }
   .ln-vrm-pick .lune-input{ height:36px; padding:6px 10px; font-size:12px; }
@@ -178,12 +178,12 @@
     animation:p3-word .6s var(--ease-out);
   }
   @keyframes p3-word{ from{ opacity:0; transform:rotate(-7deg) skewX(-6deg) translateY(60px); } to{ opacity:.35; transform:rotate(-7deg) skewX(-6deg) translateY(0); } }
-  .p3-mascot{
+  .p3-asistente{
     position:absolute; left:2%; bottom:0; height:88%; z-index:2; pointer-events:none;
     filter:drop-shadow(10px 10px 0 rgb(var(--cyan-500-rgb, 0 229 255) / .55));
-    animation:p3-mascot .5s var(--ease-snap);
+    animation:p3-asistente .5s var(--ease-snap);
   }
-  @keyframes p3-mascot{ from{ opacity:0; transform:translateX(-70px) rotate(-3deg); } to{ opacity:1; transform:translateX(0) rotate(0); } }
+  @keyframes p3-asistente{ from{ opacity:0; transform:translateX(-70px) rotate(-3deg); } to{ opacity:1; transform:translateX(0) rotate(0); } }
   .p3-word-vert{
     position:absolute; top:4%; left:36%; z-index:1; pointer-events:none;
     font-family:var(--font-display); font-weight:700; font-style:italic; font-size:11vh;
@@ -324,7 +324,7 @@
   .fx-no-micro .lune-msg:hover .lune-bubble, .fx-no-micro .lune-provtab:hover,
   .fx-no-micro .ln-chip:hover, .fx-no-micro .ln-inputbar .lune-iconbtn:hover, .fx-no-micro .p3-menubtn:hover{ transform:none; }
 
-  @media (prefers-reduced-motion: reduce){ .ln-welcome > *, .p3-item, .p3-mascot, .p3-slash-bg, .p3-bigword, .ln-view, .ln-view::before, .ln-stream-inner .lune-msg, .ln-toolrow, .ln-settings-inner > *{ animation-duration:.01s !important; animation-delay:0s !important; } .p3-shard, .p3-bg::before, .p3-bg::after, .p5-moon, .p5-star, .p5-streak, .p5-bubble, .p5-fix{ animation:none !important; } }
+  @media (prefers-reduced-motion: reduce){ .ln-welcome > *, .p3-item, .p3-asistente, .p3-slash-bg, .p3-bigword, .ln-view, .ln-view::before, .ln-stream-inner .lune-msg, .ln-toolrow, .ln-settings-inner > *{ animation-duration:.01s !important; animation-delay:0s !important; } .p3-shard, .p3-bg::before, .p3-bg::after, .p5-moon, .p5-star, .p5-streak, .p5-bubble, .p5-fix{ animation:none !important; } }
   .ln-welcome-mark{ flex:none; width:clamp(110px, 24vh, 170px); height:clamp(110px, 24vh, 170px); position:relative; border:var(--bw-bold) solid var(--ink-500); clip-path:var(--clip-notch); overflow:hidden; background:radial-gradient(circle at 50% 35%, rgb(var(--cyan-500-rgb, 0 229 255) / .14), transparent 62%), var(--ink-950); display:flex; align-items:flex-end; justify-content:center; margin-bottom:6px; }
   .ln-welcome-mark img{ height:96%; object-fit:contain; object-position:bottom center; }
   .ln-welcome-jp{ font-size:18px; color:var(--yellow-500); letter-spacing:.1em; white-space:nowrap; }
@@ -573,14 +573,14 @@
     }
   </script>
   <!-- Avatar VRM de la barra lateral: publica window.LuneVRMBarra y lanza 'lune-vrm-barra'.
-       three.js solo se descarga si la mascota es VRM (import perezoso). -->
+       three.js solo se descarga si la asistente es VRM (import perezoso). -->
   <script type="module" src="vrm_barra.js"></script>
   <script type="text/babel" src="icons.jsx"></script>
   <script type="text/babel" src="menu.jsx"></script>
   <script type="text/babel" src="sidebar.jsx"></script>
   <script type="text/babel" src="chat.jsx"></script>
   <!-- Biblioteca de modelos 3D (VrmBiblioteca): se registra sola en window; settings.jsx
-       la enseña con la mascota en VRM. -->
+       la enseña con la asistente en VRM. -->
   <script type="text/babel" src="extra/vrm_biblioteca.jsx"></script>
   <script type="text/babel" src="settings.jsx"></script>
   <script type="text/babel" src="panels.jsx"></script>

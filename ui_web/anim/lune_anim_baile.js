@@ -1,5 +1,5 @@
 /*
- * ui_web/anim/lune_anim_baile.js — módulo 'baileAnim' de la mascota ANIMADA:
+ * ui_web/anim/lune_anim_baile.js — módulo 'baileAnim' de la asistente ANIMADA:
  * baile con la música sobre el #stage (cortes 5 y 6).
  *
  * Mismas funciones de página que el VRM (ui_web/vrm/lune_baile_proc.js):

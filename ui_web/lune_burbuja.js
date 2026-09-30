@@ -1,5 +1,5 @@
 /*
- * ui_web/lune_burbuja.js — burbuja de diálogo de la mascota: máquina de escribir,
+ * ui_web/lune_burbuja.js — burbuja de diálogo de la asistente: máquina de escribir,
  * texto en streaming, cierre automático y lado espejado.
  *
  * Para qué sirve: companion.html (animada) y companion_vrm.html (3D) tienen una
@@ -13,7 +13,7 @@
  *   burbujaFin(ms)                      oculta a los `ms`; sin ms, a max(8 s, 1 s por cada
  *                                       15 caracteres). Si aún está escribiendo, espera.
  *   luneLado('izq'|'der'|null)          burbuja espejada (pegada a ese lado) cuando la
- *                                       mascota está junto al borde de la pantalla
+ *                                       asistente está junto al borde de la pantalla
  *
  * Modo streaming: burbujaTexto y comentarTipeado ponen la clase .stream en #bubble;
  * con ella (css/burbuja.css) el texto tiene alto máximo y se ve el FINAL (el scroll
@@ -21,7 +21,7 @@
  * principio, como siempre.
  *
  * Boca: mientras escribe llama a luneBurbuja.onBoca(true) y al acabar onBoca(false),
- * para que la página mueva la boca (p. ej. mascota.setHablando). Si suena la voz
+ * para que la página mueva la boca (p. ej. asistente.setHablando). Si suena la voz
  * (luneBurbuja.setVoz(true)) la boca es de la voz y el tecleo no la toca.
  *
  * Compatibilidad: window.comentar(t, ms=14000), window.pensando() y

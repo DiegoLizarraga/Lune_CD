@@ -1,13 +1,13 @@
 """
-scripts/convertir_mascota.py — Convierte los videos de la mascota a WebM/VP9.
+scripts/convertir_asistente.py — Convierte los videos de la asistente a WebM/VP9.
 
 QtWebEngine (la piel web de Lune) NO reproduce H.264/MP4, pero SÍ VP9/WebM.
-Por eso los videos de la mascota se sirven como .webm. Este script toma
+Por eso los videos de la asistente se sirven como .webm. Este script toma
 cualquier `lune-<estado>.mp4` de la carpeta y lo convierte (y borra el .mp4).
 
 Uso:
     pip install imageio-ffmpeg      # trae un ffmpeg estático (solo para convertir)
-    python scripts/convertir_mascota.py
+    python scripts/convertir_asistente.py
 
 Nombres esperados (los que lee la UI), uno por emoción o estado:
     lune-composed · lune-happy · lune-sad · lune-angry · lune-surprised
@@ -19,7 +19,7 @@ en el nombre se quitan solos (`lune-working .mp4` → `lune-working.webm`).
 import subprocess
 from pathlib import Path
 
-DIR = Path(__file__).resolve().parent.parent / "ui_web" / "assets" / "mascot" / "anime-videos"
+DIR = Path(__file__).resolve().parent.parent / "ui_web" / "assets" / "asistente" / "anime-videos"
 
 
 def _ffmpeg() -> str:

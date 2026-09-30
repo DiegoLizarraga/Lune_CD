@@ -1,11 +1,11 @@
 """
 Desmontaje REAL de los servicios de escritorio (corte 4 + cortes 5/6) con trabajo en
 marcha, como el cambio de interfaz en caliente: `servicios.desmontar()`,
-`escritorio.cerrar()`, la mascota fuera y el dueño (la «ventana vieja») borrado con
+`escritorio.cerrar()`, la asistente fuera y el dueño (la «ventana vieja») borrado con
 deleteLater, en plena faena:
 
   · «Liberar memoria» en su hilo (el recorte sigue hasta después del cambio y avisa a un
-    objeto que ya se fue), el radial esperando el ancla de la mascota, los atajos
+    objeto que ya se fue), el radial esperando el ancla de la asistente, los atajos
     capturando una tecla y una vista previa del tema;
   · escenario «ocio»: una alarma sonando que abre la pantalla grande (VentanaReloj);
   · escenario «baile»: baile a mano con el detector de música de verdad en su hilo
@@ -177,7 +177,7 @@ def _escenario(esc: str) -> int:                                    # pragma: no
             self.lecturas += 1
             return 0.6 if (self.lecturas // 12) % 2 == 0 else 0.1   # pulsa a ~2 Hz a 50 Hz
 
-    class MascotaFalsa(QWidget):                  # la flotante: solo lo que reciben los servicios
+    class AsistenteFalsa(QWidget):                  # la flotante: solo lo que reciben los servicios
         visibilidad = pyqtSignal(bool)
         menu_pedido = pyqtSignal(str, object)
         cerrado = False
@@ -200,8 +200,8 @@ def _escenario(esc: str) -> int:                                    # pragma: no
 
         def __init__(self): self.avisos = []
         def mostrar_ventana(self): pass
-        def mascota(self): return None
-        def alternar_mascota(self): return False
+        def asistente(self): return None
+        def alternar_asistente(self): return False
         def voz_on(self): return False
         def alternar_voz(self): return False
         def llamada_on(self): return False
@@ -255,8 +255,8 @@ def _escenario(esc: str) -> int:                                    # pragma: no
     # ── Montaje ──────────────────────────────────────────────────────────────
     duenio = QWidget()                            # la «ventana vieja»
     escritorio = ServiciosEscritorio(cfg, parent=duenio)
-    m = MascotaFalsa()
-    escritorio.set_mascota(m, render="sprites")
+    m = AsistenteFalsa()
+    escritorio.set_asistente(m, render="sprites")
     anf = Anfitrion()
     fab = {"gestor_atajos": GestorAtajosFalso(), "recortar": recortar_lento, "autoinicio": None,
            "sonar": lambda n: None, "mezclador": MezcladorFalso, "traer_al_frente": None,
@@ -299,7 +299,7 @@ def _escenario(esc: str) -> int:                                    # pragma: no
 
     def cambio():
         log(f"cambio de interfaz con el recorte en marcha ({not liberado.is_set()}): desmontar + "
-            "escritorio.cerrar + mascota fuera + dueño.deleteLater")
+            "escritorio.cerrar + asistente fuera + dueño.deleteLater")
         s.desmontar()
         escritorio.cerrar()
         m.close()

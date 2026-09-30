@@ -8,16 +8,16 @@ del avatar al monitor entero y encuadra la cabeza; el salvapantallas
 (AvatarBigScreenScreenSaver.cs) la pone solo tras un rato sin tocar el PC. Aquí
 está la lógica pura de las dos cosas; el adaptador de Qt es
 ui/pantalla_grande_qt.ControlPantallaGrande y lo visual lo hace la página de la
-mascota (luneGrande) o ui/ventana_reloj.VentanaReloj.
+asistente (luneGrande) o ui/ventana_reloj.VentanaReloj.
 
 - `TIEMPOS`, `etiqueta(paso)`, `segundos(paso)`: los 11 pasos de espera del
   salvapantallas de Mate-Engine (TimeoutSteps, :26), de 30 s a 3 h.
-- `MaquinaGrande`: la secuencia de entrada y salida con la mascota. Entrada:
+- `MaquinaGrande`: la secuencia de entrada y salida con la asistente. Entrada:
   planeo de GLIDE_MS (la ventana aún en su sitio) → la ventana pasa al monitor y
   fundido de FADE_MS → activa. Salida al revés: fundido → la ventana vuelve a su
   sitio exacto → planeo de vuelta → fin. No sabe de ventanas: devuelve ACCIONES
   que ejecuta el controlador:
-      ("guardar_geom", {motivo})          guardar la geometría de la mascota
+      ("guardar_geom", {motivo})          guardar la geometría de la asistente
       ("fase", {fase, ms, motivo})        grande_fase(fase) en la página:
                                           glide · entrar · salir · volver · fin
       ("geom_monitor", {motivo})          la ventana al monitor de mayor intersección
@@ -34,7 +34,7 @@ mascota (luneGrande) o ui/ventana_reloj.VentanaReloj.
   llamada, que piense, que baile (Mate-Engine solo arranca desde Idle) y, si se
   sabe, que alguien pida la pantalla encendida (un vídeo). Dormida cuenta como
   reposo.
-- `herramienta(args, ctx)`: handler de `mascota_pantalla_grande`
+- `herramienta(args, ctx)`: handler de `asistente_pantalla_grande`
   (lune_core/catalogo_herramientas.py).
 """
 from __future__ import annotations
@@ -78,7 +78,7 @@ def etiqueta(paso: Any) -> str:
 
 # ── Máquina de entrada y salida ──────────────────────────────────────────────────
 class MaquinaGrande:
-    """Estado de la pantalla grande con la mascota: None · entrando · activa · saliendo.
+    """Estado de la pantalla grande con la asistente: None · entrando · activa · saliendo.
 
     `t` son segundos de un reloj monótono (el controlador pasa time.monotonic()).
     """
@@ -226,8 +226,8 @@ def _campo(obj: Any, nombre: str, defecto: Any = None) -> Any:
     return getattr(obj, nombre, defecto)
 
 
-# (campo del EstadoMascota, motivo) en el orden en que se comprueban. Los de
-# nucleo/estado_mascota.BLOQUEOS["salvapantallas"] están incluidos.
+# (campo del EstadoAsistente, motivo) en el orden en que se comprueban. Los de
+# nucleo/estado_asistente.BLOQUEOS["salvapantallas"] están incluidos.
 BLOQUEOS: Tuple[Tuple[str, str], ...] = (
     ("juego", "juego"),
     ("alarma", "alarma"),
@@ -270,7 +270,7 @@ class ReglaSalvapantallas:
 
     def motivo_no(self, estado: Any, *, pensando: bool = False, pantalla_requerida: bool = False,
                   mando: bool = False) -> str:
-        """Motivo por el que NO puede ponerse ahora ("" si puede). La mascota
+        """Motivo por el que NO puede ponerse ahora ("" si puede). La asistente
         dormida no bloquea: dormir es estar en reposo."""
         if not self.activo:
             return "apagado"
@@ -330,7 +330,7 @@ def _minutos(v: Any) -> Optional[int]:
 
 
 def herramienta(args: Any = None, ctx: Any = None) -> Union[str, Tuple[bool, str]]:
-    """Handler de `mascota_pantalla_grande` ({activar: bool, minutos?: 1–120}).
+    """Handler de `asistente_pantalla_grande` ({activar: bool, minutos?: 1–120}).
 
     `ctx["grande"]` es el ControlPantallaGrande y `ctx["en_ui"](fn)` (opcional)
     corre fn en el hilo de Qt y devuelve su resultado. Devuelve el texto para el

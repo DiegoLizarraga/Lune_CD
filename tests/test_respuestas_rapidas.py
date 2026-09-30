@@ -9,7 +9,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from nucleo.respuestas import AVISO_MASCOTA_SIN_NUBE, COMENTARIO_VACIO, BancoRespuestas  # noqa: E402
+from nucleo.respuestas import AVISO_ASISTENTE_SIN_NUBE, COMENTARIO_VACIO, BancoRespuestas  # noqa: E402
 
 
 @pytest.mark.parametrize("frase", ["qué tareas tengo", "¿Qué tareas tengo pendientes?", "mis tareas",
@@ -51,6 +51,6 @@ def test_lo_de_siempre_sigue_igual():
     assert BancoRespuestas(categorias_desactivadas={"saludo"}).responder("hola") is None
 
 
-def test_las_frases_de_la_mascota():
-    assert "OpenRouter" in AVISO_MASCOTA_SIN_NUBE and "AJUSTES" in AVISO_MASCOTA_SIN_NUBE
+def test_las_frases_de_la_asistente():
+    assert "OpenRouter" in AVISO_ASISTENTE_SIN_NUBE and "AJUSTES" in AVISO_ASISTENTE_SIN_NUBE
     assert COMENTARIO_VACIO == "Mmm… nada me pareció interesante."

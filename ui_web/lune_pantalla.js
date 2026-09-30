@@ -1,6 +1,6 @@
 /*
  * ui_web/lune_pantalla.js — lo que la PÁGINA pinta en pantalla grande y en el
- * salvapantallas (script clásico, cortes 5 y 6; lo cargan las dos páginas de la mascota).
+ * salvapantallas (script clásico, cortes 5 y 6; lo cargan las dos páginas de la asistente).
  *
  *   var p = LunePantalla.crear({ doc: document, raiz: document.body });
  *   p.fase('entrar')                 clase body.lune-grande mientras la ventana es del

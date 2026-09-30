@@ -97,7 +97,7 @@ def _nativa_falsa(main_mod, hechos, carpeta):
     tg.responder_orden = lambda oid, texto: hechos.append(("tg", oid, texto)) or True
     tg.stop = lambda: hechos.append("tg.stop")
     ov = types.SimpleNamespace(cerrado=False, isVisible=lambda: True, visibilidad=SenalFalsa(),
-                               close=lambda: hechos.append("mascota.close"), deleteLater=lambda: None)
+                               close=lambda: hechos.append("asistente.close"), deleteLater=lambda: None)
     boton = types.SimpleNamespace(hide=lambda: None, show=lambda: None, setEnabled=lambda v: None)
     yo = types.SimpleNamespace(
         _gen=1, ai_worker=HiloFalso(), ai_manager=types.SimpleNamespace(providers={"ollama": prov}),
@@ -125,7 +125,7 @@ def _nativa_falsa(main_mod, hechos, carpeta):
         MODO_INTERFAZ="nativo", _relevada=False, _servicios_listos=True)
     W = main_mod.LuneCDWindow
     for n in ("cerrar_para_cambio", "_cortar_respuesta", "_worker_vivo", "_cancelar_worker",
-              "_cancelar_plan", "_mascota_viva", "_responder_telegram", "_mascota_a_la_vista",
+              "_cancelar_plan", "_asistente_viva", "_responder_telegram", "_asistente_a_la_vista",
               "estado_para_cambio", "aplicar_estado", "iniciar_servicios", "cambio_fallido",
               "closeEvent"):
         setattr(yo, n, types.MethodType(getattr(W, n), yo))
@@ -139,7 +139,7 @@ def test_nativa_cerrar_para_cambio_suelta_todo_sin_salir(qapp, main_mod, monkeyp
     yo, prov, atajos = _nativa_falsa(main_mod, hechos, tmp_path)
     worker, tg = yo.ai_worker, yo._tg_worker
     en_marcha = yo.cerrar_para_cambio()
-    assert en_marcha == {"mascota_fuera": True, "telegram": True}
+    assert en_marcha == {"asistente_fuera": True, "telegram": True}
     # Órdenes de Telegram: la que se respondía (o1) y la que esperaba permiso (o2).
     from servicios.telegram_worker import AVISO_TG_DETENIDA
     avisos = [h for h in hechos if isinstance(h, tuple)]
@@ -149,7 +149,7 @@ def test_nativa_cerrar_para_cambio_suelta_todo_sin_salir(qapp, main_mod, monkeyp
     assert prov.cancel_flag and worker.response_ready.desconectada and worker in ci._retenidos
     assert yo._gen > 1 and yo.ai_worker is None
     for h in ("acciones.cerrar", "voz.cancelar", "timer.stop", "video.stop", "notas.cerrar",
-              "red.detener", "mascota.close", "hub_cliente.detener", "hub.detener", "c4.desmontar",
+              "red.detener", "asistente.close", "hub_cliente.detener", "hub.detener", "c4.desmontar",
               "tray.hide", "hide", "close"):
         assert h in hechos, h
     assert hechos.index("c4.desmontar") < hechos.index("tray.hide")
@@ -174,7 +174,7 @@ def test_nativa_estado_aplicar_e_iniciar_servicios(qapp, main_mod, monkeypatch, 
     yo.chats.agregar("assistant", "Dice que abras algo", no_confiable=True)
     estado = yo.estado_para_cambio()
     assert estado["proveedor"] == "ollama" and estado["voz"] is True
-    assert estado["mascota_fuera"] is True and estado["telegram"] is True
+    assert estado["asistente_fuera"] is True and estado["telegram"] is True
     assert estado["sesion"]["id"] == yo.chats.sesion_id and len(estado["sesion"]["mensajes"]) == 2
 
     # La nativa nueva: proveedor, voz y la conversación (misma id, historial marcado).
@@ -192,18 +192,18 @@ def test_nativa_estado_aplicar_e_iniciar_servicios(qapp, main_mod, monkeypatch, 
     assert otra.chats.sesion_id == yo.chats.sesion_id and pintadas[0]["id"] == yo.chats.sesion_id
     assert [bool(x.get("_no_confiable")) for x in otra.chats.como_historial()] == [False, True]
 
-    # Servicios: bandeja, escritorio (atajos) y relanzar mascota y bot.
+    # Servicios: bandeja, escritorio (atajos) y relanzar asistente y bot.
     otra.escritorio.detener()
     otra.tray = None
     otra._servicios_listos = False
     otra._build_tray = lambda: cambios.append("bandeja")
     otra._overlay = None
     otra._tg_worker = None
-    otra._toggle_overlay = lambda: cambios.append("mascota")
+    otra._toggle_overlay = lambda: cambios.append("asistente")
     otra._toggle_telegram = lambda: cambios.append("telegram")
-    otra.iniciar_servicios({"mascota_fuera": True, "telegram": True})
-    assert cambios[-3:] == ["bandeja", "mascota", "telegram"] and atajos2.vivo is True
-    otra.iniciar_servicios({"mascota_fuera": True})         # una sola vez
+    otra.iniciar_servicios({"asistente_fuera": True, "telegram": True})
+    assert cambios[-3:] == ["bandeja", "asistente", "telegram"] and atajos2.vivo is True
+    otra.iniciar_servicios({"asistente_fuera": True})         # una sola vez
     assert cambios.count("bandeja") == 1
     # Si el cambio falla, el combo de Ajustes vuelve al modo actual.
     vuelto = []

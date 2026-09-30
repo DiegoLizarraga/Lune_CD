@@ -6,7 +6,7 @@ GestorInterfaz con ventanas falsas: la nueva se crea y se enseña ANTES de cerra
 la vieja, hereda su geometría, si la fábrica falla se queda la vieja, una segunda
 petición durante un cambio se ignora, el servidor de instancia única trae al
 frente la nueva y patata lanza la terminal y cierra la app. VentanaWeb suelta
-bandeja, mascota, bot, IA en curso, aprobaciones y servicios de escritorio sin
+bandeja, asistente, bot, IA en curso, aprobaciones y servicios de escritorio sin
 llamar a QApplication.quit. Patata /interfaz con el lanzador inyectado: nunca se
 abre nada de verdad.
 """
@@ -145,7 +145,7 @@ def _fabrica(log, creadas, **kw_ventana):
 # ── GestorInterfaz ────────────────────────────────────────────────────────────────
 def test_la_nueva_se_crea_y_se_ensena_antes_de_cerrar_la_vieja(qapp):
     log, creadas = [], []
-    vieja = VentanaFalsa("web", log, en_marcha={"mascota_fuera": True, "telegram": True})
+    vieja = VentanaFalsa("web", log, en_marcha={"asistente_fuera": True, "telegram": True})
     g = _gestor(_fabrica(log, creadas), log)
     g.adoptar(vieja)
     assert g.modo == "web"
@@ -159,7 +159,7 @@ def test_la_nueva_se_crea_y_se_ensena_antes_de_cerrar_la_vieja(qapp):
     assert log.index(("mostrar", nueva)) < log.index(("cerrar", vieja)) < log.index(("servicios", nueva))
     # La nueva hereda el estado y relanza lo que estaba en marcha en la vieja.
     assert nueva.estado_recibido["proveedor"] == "compat" and nueva.estado_recibido["voz"] is True
-    assert nueva.servicios["mascota_fuera"] is True and nueva.servicios["telegram"] is True
+    assert nueva.servicios["asistente_fuera"] is True and nueva.servicios["telegram"] is True
     assert g.ventana is nueva and g.modo == "nativo" and not g.cambiando
     assert g.modos_guardados == ["nativo"] and hechos == ["nativo"]
     assert nueva.visible and not vieja.visible
@@ -417,7 +417,7 @@ def test_detener_hilo_ia_corta_desconecta_y_retiene():
     assert ci.detener_hilo_ia(None) is False
 
 
-def test_detener_bot_cerrar_mascota_quitar_bandeja():
+def test_detener_bot_cerrar_asistente_quitar_bandeja():
     tg = HiloFalso()
     assert ci.detener_bot(tg, espera_ms=10) is True
     assert tg.llamadas[:3] == ["stop", "interrumpir", ("wait", 10)] and tg.stopped.desconectada
@@ -429,10 +429,10 @@ def test_detener_bot_cerrar_mascota_quitar_bandeja():
     ov = types.SimpleNamespace(cerrado=False, isVisible=lambda: True, visibilidad=SenalFalsa(),
                                close=lambda: hechos.append("close"),
                                deleteLater=lambda: hechos.append("borrar"))
-    assert ci.cerrar_mascota(ov) is True and hechos == ["close", "borrar"]
+    assert ci.cerrar_asistente(ov) is True and hechos == ["close", "borrar"]
     oculta = types.SimpleNamespace(cerrado=False, isVisible=lambda: False,
                                    close=lambda: None, deleteLater=lambda: None)
-    assert ci.cerrar_mascota(oculta) is False and ci.cerrar_mascota(None) is False
+    assert ci.cerrar_asistente(oculta) is False and ci.cerrar_asistente(None) is False
 
     menu = types.SimpleNamespace(deleteLater=lambda: hechos.append("menu"))
     tray = types.SimpleNamespace(contextMenu=lambda: menu, hide=lambda: hechos.append("hide"),
@@ -523,7 +523,7 @@ def _puente_falso(qapp):
     esc.registrar("atajos", atajos)
     esc.iniciar()
     ov = types.SimpleNamespace(cerrado=False, isVisible=lambda: True, visibilidad=SenalFalsa(),
-                               close=lambda: hechos.append("mascota.close"),
+                               close=lambda: hechos.append("asistente.close"),
                                deleteLater=lambda: None)
     prov = types.SimpleNamespace(cancel_flag=False)
     b = types.SimpleNamespace(
@@ -541,7 +541,7 @@ def _puente_falso(qapp):
         guardar_conversacion=lambda: hechos.append("chat.guardar"),
         _provider_web="cloud", chats=None,
     )
-    b.mascota_visible = lambda: bool(b._overlay is not None and b._overlay.isVisible())
+    b.asistente_visible = lambda: bool(b._overlay is not None and b._overlay.isVisible())
     return b, prov, hechos, atajos
 
 
@@ -570,13 +570,13 @@ def test_ventana_web_cerrar_para_cambio_suelta_todo_sin_salir(qapp, ws, monkeypa
     worker, tg = b._worker, b._tg_worker
     yo, pagina = _ventana_web_falsa(ws, b, hechos)
     en_marcha = yo.cerrar_para_cambio()
-    assert en_marcha == {"mascota_fuera": True, "telegram": True}
+    assert en_marcha == {"asistente_fuera": True, "telegram": True}
     # IA en curso: cortada, sin sus señales (no pinta ni ejecuta acciones) y retenida.
     assert prov.cancel_flag is True and worker.response_ready.desconectada and b._gen == 4
     assert b._worker is None and worker in ci._retenidos
-    # Aprobaciones, voz, dictado, temporizadores, mascota, bot, atajos, bandeja, http, página.
+    # Aprobaciones, voz, dictado, temporizadores, asistente, bot, atajos, bandeja, http, página.
     for h in ("chat.guardar", "acciones.cerrar", "grab.cancelar", "aburrida.stop", "plan",
-              "voz.cancelar", "mascota.close", "escritorio.cerrar", "tray.hide", "http.detener",
+              "voz.cancelar", "asistente.close", "escritorio.cerrar", "tray.hide", "http.detener",
               "hide", "close"):
         assert h in hechos, h
     assert b.voice.al_hablar is None and b.voice.on_error is None
@@ -600,7 +600,7 @@ def test_ventana_web_estado_y_aplicar_estado(qapp, ws):
     yo, _ = _ventana_web_falsa(ws, b, hechos)
     estado = yo.estado_para_cambio()
     assert estado["modo"] == "web" and estado["proveedor"] == "openrouter"
-    assert estado["voz"] is True and estado["mascota_fuera"] is True and estado["telegram"] is True
+    assert estado["voz"] is True and estado["asistente_fuera"] is True and estado["telegram"] is True
     assert estado["sesion"] is None
     # La web nueva: proveedor en ids de la página, voz y la conversación al puente.
     elegidos, emitidos, retomadas = [], [], []
@@ -625,7 +625,7 @@ def test_ventana_web_diferida_arranca_servicios_despues(qapp, ws):
     b._overlay = None
     b._tg_worker = None
     pedidos = []
-    b.mascota_toggle = lambda: pedidos.append("mascota")
+    b.asistente_toggle = lambda: pedidos.append("asistente")
     b.telegram_toggle = lambda: pedidos.append("telegram")
     yo, _ = _ventana_web_falsa(ws, b, hechos)
     yo.tray = None
@@ -633,10 +633,10 @@ def test_ventana_web_diferida_arranca_servicios_despues(qapp, ws):
     yo._construir_bandeja = lambda: (hechos.append("bandeja"), setattr(yo, "tray", "icono"))
     yo._pausar_escritorio()                                # diferida: los atajos aún son de la vieja
     assert atajos.vivo is False
-    yo.iniciar_servicios({"mascota_fuera": True, "telegram": True})
-    assert atajos.vivo is True and "bandeja" in hechos and pedidos == ["mascota", "telegram"]
-    yo.iniciar_servicios({"mascota_fuera": True})         # una sola vez
-    assert pedidos == ["mascota", "telegram"] and hechos.count("bandeja") == 1
+    yo.iniciar_servicios({"asistente_fuera": True, "telegram": True})
+    assert atajos.vivo is True and "bandeja" in hechos and pedidos == ["asistente", "telegram"]
+    yo.iniciar_servicios({"asistente_fuera": True})         # una sola vez
+    assert pedidos == ["asistente", "telegram"] and hechos.count("bandeja") == 1
     b.escritorio.cerrar()
     b._worker.terminar()
 
@@ -675,7 +675,7 @@ def test_ventana_web_salir_de_verdad_suelta_todo_y_cierra_la_app(qapp, ws, monke
     yo.salir_de_verdad = types.MethodType(ws.VentanaWeb.salir_de_verdad, yo)
     yo.salir_de_verdad()
     assert ("wait", ws.ESPERA_IA_SALIR_MS) in worker.llamadas     # al salir, sí espera a la IA
-    assert "stop" in tg.llamadas and "mascota.close" in hechos and atajos.vivo is False
+    assert "stop" in tg.llamadas and "asistente.close" in hechos and atajos.vivo is False
     assert llamadas_quit == [1] and yo._salir is True
     for h in (worker, tg):
         h.terminar()

@@ -5,7 +5,7 @@ nucleo/baile.py — Lo común del baile procedural (con la música del PC o a ma
   con el mismo nombre; los sprites y la terminal los aproximan).
 - `opciones_pagina(config, estilo)`: lo que se manda con `luneBailar(true, opts)`
   (`{estilo, cambiar, cambiarS, particulas}`).
-- Handlers de las herramientas del modelo `mascota_bailar` y `parar_baile`
+- Handlers de las herramientas del modelo `asistente_bailar` y `parar_baile`
   (lune_core/catalogo_herramientas.py): `ctx["baile"]` es el controlador
   (ui/baile_qt.ControlBaile), `ctx["mmd"]` el reproductor de bailes
   (ui/mmd_qt.ControlMMD, corte 9: «bailar {cancion}» busca en tus bailes) y
@@ -28,7 +28,7 @@ CAMBIAR_MIN_S, CAMBIAR_MAX_S, CAMBIAR_DEFECTO_S = 5, 120, 15
 FRAMES_ASCII: Tuple[str, ...] = ("\\o/", "|o|", "/o\\", "_o_")
 FRAMES_KAOMOJI: Tuple[str, ...] = ("ヽ(^o^)ﾉ", "┏(^o^)┛", "ヾ(^o^)ノ", "┗(^o^)┓")
 
-# Motivos de la tabla de prioridades (nucleo/estado_mascota) en palabras.
+# Motivos de la tabla de prioridades (nucleo/estado_asistente) en palabras.
 MOTIVOS = {
     "juego": "hay un juego delante",
     "alarma": "hay una alarma sonando",
@@ -140,7 +140,7 @@ _SIN_BAILE_MMD = ("no_encontrado", "sin_bailes", "problema")
 
 
 def herramienta_bailar(args: Any = None, ctx: Any = None) -> Union[str, Tuple[bool, str]]:
-    """Handler de `mascota_bailar` ({segundos?, cancion?}).
+    """Handler de `asistente_bailar` ({segundos?, cancion?}).
 
     Con `cancion` y el reproductor (`ctx["mmd"]`, ui/mmd_qt.ControlMMD): busca en tus
     bailes y lo pone (`reproducir_por_texto`). Si no lo encuentra, baile procedural

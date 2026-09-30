@@ -41,7 +41,7 @@ if (typeof document !== 'undefined' && !document.getElementById('lune-chatbubble
   document.head.appendChild(s);
 }
 
-/** A single chat row — mascot/user avatar + speech bubble. */
+/** A single chat row — Lune/user avatar + speech bubble. */
 export function ChatBubble({
   children, role = 'bot', provider = 'local', sender, avatar,
   time, streaming = false, className = '', ...rest

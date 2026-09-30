@@ -40,7 +40,7 @@ if (typeof document !== 'undefined' && !document.getElementById('lune-avatar-css
   document.head.appendChild(s);
 }
 
-/** Clipped avatar — mascot image, initials, or bot mark. */
+/** Clipped avatar — Lune's portrait, initials, or bot mark. */
 function Avatar({
   src,
   alt = '',
@@ -266,7 +266,7 @@ if (typeof document !== 'undefined' && !document.getElementById('lune-chatbubble
   document.head.appendChild(s);
 }
 
-/** A single chat row — mascot/user avatar + speech bubble. */
+/** A single chat row — Lune/user avatar + speech bubble. */
 function ChatBubble({
   children,
   role = 'bot',
@@ -832,7 +832,7 @@ function App() {
   const [busy, setBusy] = useState(false);
   const [voiceOn, setVoiceOn] = useState(false);
   const [telegramOn, setTelegramOn] = useState(false);
-  const [mascot, setMascot] = useState('normal');
+  const [asistente, setAsistente] = useState('normal');
   const [menuOpen, setMenuOpen] = useState(false);
   const [fx, setFx] = useState(() => {
     try {
@@ -857,7 +857,7 @@ function App() {
     [k]: e.target.checked
   }));
   const timers = useRef([]);
-  const status = busy ? 'busy' : mascot === 'error' ? 'error' : 'live';
+  const status = busy ? 'busy' : asistente === 'error' ? 'error' : 'live';
   const clearTimers = () => {
     timers.current.forEach(clearTimeout);
     timers.current = [];
@@ -876,7 +876,7 @@ function App() {
     setMessages(m => [...m, userMsg]);
     setBusy(true);
     setTyping(true);
-    setMascot('thinking');
+    setAsistente('thinking');
     const reply = window.buildReply(text, provider);
     const t1 = setTimeout(() => {
       setTyping(false);
@@ -886,7 +886,7 @@ function App() {
           kind: 'tool',
           tool: reply.tool
         }]);
-        setMascot(reply.mascot || 'happy');
+        setAsistente(reply.asistente || 'happy');
         setBusy(false);
         return;
       }
@@ -901,7 +901,7 @@ function App() {
         time: NOW(),
         streaming: true
       }]);
-      setMascot('typing');
+      setAsistente('typing');
       let i = 0;
       const step = () => {
         i += Math.max(2, Math.round(full.length / 22));
@@ -918,9 +918,9 @@ function App() {
             ...x,
             streaming: false
           } : x));
-          setMascot(reply.mascot || 'happy');
+          setAsistente(reply.asistente || 'happy');
           setBusy(false);
-          const tr = setTimeout(() => setMascot('normal'), 4000);
+          const tr = setTimeout(() => setAsistente('normal'), 4000);
           timers.current.push(tr);
         }
       };
@@ -932,7 +932,7 @@ function App() {
     clearTimers();
     setTyping(false);
     setBusy(false);
-    setMascot('normal');
+    setAsistente('normal');
     setMessages(m => m.map(x => x.streaming ? {
       ...x,
       streaming: false
@@ -943,7 +943,7 @@ function App() {
     setMessages([]);
     setTyping(false);
     setBusy(false);
-    setMascot('normal');
+    setAsistente('normal');
     setView('chat');
   }, []);
   return /*#__PURE__*/React.createElement("div", {
@@ -951,7 +951,7 @@ function App() {
   }, fx.bg && /*#__PURE__*/React.createElement(BgShards, null), /*#__PURE__*/React.createElement(window.Sidebar, {
     provider: provider,
     onProvider: setProvider,
-    mascotState: mascot
+    asistenteState: asistente
   }), /*#__PURE__*/React.createElement("main", {
     className: "ln-main"
   }, /*#__PURE__*/React.createElement(Topbar, {
@@ -1010,8 +1010,8 @@ function App() {
       desc: 'Rendimiento del modelo',
       onClick: () => setView('chat')
     }, {
-      label: 'Mascota',
-      desc: 'Mascota flotante de escritorio',
+      label: 'Asistente en escritorio',
+      desc: 'Sacar a Lune al escritorio',
       onClick: () => setView('chat')
     }, {
       label: `Voz ${voiceOn ? 'ON' : 'OFF'}`,
@@ -1057,7 +1057,7 @@ function buildReply(text, provider) {
         title: `Abriendo ${site}`,
         detail: `https://${site}.com — lanzado en tu navegador.`
       },
-      mascot: 'happy'
+      asistente: 'happy'
     };
   }
   if (/\bbusca(r)?\b/.test(t)) {
@@ -1070,7 +1070,7 @@ function buildReply(text, provider) {
         title: 'Búsqueda lanzada',
         detail: `Resultados para “${q}”.`
       },
-      mascot: 'reading'
+      asistente: 'reading'
     };
   }
   if (/\b(lanza|abre el programa|abre la app)\b/.test(t)) {
@@ -1082,7 +1082,7 @@ function buildReply(text, provider) {
         title: 'App lanzada',
         detail: 'Proceso iniciado localmente (0.1s, sin tokens).'
       },
-      mascot: 'happy'
+      asistente: 'happy'
     };
   }
   if (/\b(estado del pc|info del sistema|sistema)\b/.test(t)) {
@@ -1094,19 +1094,19 @@ function buildReply(text, provider) {
         title: 'Estado del sistema',
         detail: 'CPU 18% · RAM 42% · Disco 61% · Red OK'
       },
-      mascot: 'reading'
+      asistente: 'reading'
     };
   }
   if (/\b(recuerda|anota)\b/.test(t)) {
     return {
       text: 'Anotado. Lo guardé en memoria — no se me olvida.',
-      mascot: 'happy'
+      asistente: 'happy'
     };
   }
   const canned = ['Listo. Lo tengo. ¿Seguimos?', 'Hecho a mi manera — directa, sin relleno. Dime el siguiente paso.', provider === 'local' ? 'Corriendo en local, cero red, cero costo. Aquí mando yo.' : 'Tirando del modelo en la nube. Respuesta lista.', 'Te dejo lo esencial. Si quieres más profundidad, pídemelo.'];
   return {
     text: canned[Math.floor(Math.random() * canned.length)],
-    mascot: 'happy'
+    asistente: 'happy'
   };
 }
 window.buildReply = buildReply;
@@ -1153,7 +1153,7 @@ function TypingIndicator({
   return /*#__PURE__*/React.createElement("div", {
     className: "ln-typing"
   }, /*#__PURE__*/React.createElement(Avatar, {
-    src: "../../assets/mascot/anime/lune-thinking.png",
+    src: "../../assets/asistente/anime/lune-thinking.png",
     size: "md",
     ring: provider === 'cloud' ? 'blue' : 'cyan'
   }), /*#__PURE__*/React.createElement("div", {
@@ -1177,7 +1177,7 @@ function Welcome({
   }, "LUNE"), /*#__PURE__*/React.createElement("div", {
     className: "ln-welcome-mark"
   }, /*#__PURE__*/React.createElement("img", {
-    src: "../../assets/mascot/anime/lune-wave.png",
+    src: "../../assets/asistente/anime/lune_inicio.png",
     alt: "Lune"
   })), /*#__PURE__*/React.createElement("div", {
     className: "ln-welcome-jp lune-jp"
@@ -1185,7 +1185,7 @@ function Welcome({
     className: "ln-welcome-title"
   }, "LUNE EN L\xCDNEA"), /*#__PURE__*/React.createElement("p", {
     className: "ln-welcome-sub"
-  }, "Tu asistente de escritorio. Memoria persistente, herramientas al instante,", provider === 'cloud' ? ' modelos en la nube.' : ' 100% local y privada.'), /*#__PURE__*/React.createElement("div", {
+  }, "Tu asistente personal. Memoria persistente, herramientas al instante,", provider === 'cloud' ? ' modelos en la nube.' : ' 100% local y privada.'), /*#__PURE__*/React.createElement("div", {
     className: "ln-welcome-chips"
   }, /*#__PURE__*/React.createElement("span", {
     className: "ln-chip"
@@ -1240,7 +1240,7 @@ function ChatStream({
       time: m.time,
       streaming: m.streaming,
       avatar: /*#__PURE__*/React.createElement(Avatar, {
-        src: `../../assets/mascot/anime/lune-${m.provider === 'cloud' ? 'happy' : 'composed'}.png`,
+        src: `../../assets/asistente/anime/lune-${m.provider === 'cloud' ? 'happy' : 'composed'}.png`,
         size: "md",
         ring: m.provider === 'cloud' ? 'blue' : 'cyan'
       })
@@ -1471,8 +1471,8 @@ function CommandMenu({
     className: "p3-slash-bg",
     "aria-hidden": "true"
   }), /*#__PURE__*/React.createElement("img", {
-    className: "p3-mascot",
-    src: "../../assets/mascot/anime/lune-base-cut.png",
+    className: "p3-asistente",
+    src: "../../assets/asistente/anime/lune-base-cut.png",
     alt: ""
   }), /*#__PURE__*/React.createElement("div", {
     className: "p3-word-vert",
@@ -1723,7 +1723,7 @@ function MoonField() {
   }, /*#__PURE__*/React.createElement("div", {
     className: "p5-bubble"
   }, "\xBFQu\xE9 ajustamos hoy?"), /*#__PURE__*/React.createElement("img", {
-    src: "../../assets/mascot/anime/lune-base-cut.png",
+    src: "../../assets/asistente/anime/lune-base-cut.png",
     alt: ""
   })));
 }
@@ -1873,18 +1873,18 @@ window.SettingsPanel = SettingsPanel;
 // ui_kits/lune-desktop/sidebar.jsx
 try { (() => {
 /* Lune CD desktop — Sidebar (v9.0) */
-const MASCOT = {
-  normal: '../../assets/mascot/anime/lune-composed.png',
-  happy: '../../assets/mascot/anime/lune-happy.png',
-  reading: '../../assets/mascot/anime/lune-thinking.png',
-  thinking: '../../assets/mascot/anime/lune-thinking.png',
-  typing: '../../assets/mascot/anime/lune-composed.png',
-  error: '../../assets/mascot/anime/lune-nervous.png'
+const ASISTENTE = {
+  normal: '../../assets/asistente/anime/lune-composed.png',
+  happy: '../../assets/asistente/anime/lune-happy.png',
+  reading: '../../assets/asistente/anime/lune-thinking.png',
+  thinking: '../../assets/asistente/anime/lune-thinking.png',
+  typing: '../../assets/asistente/anime/lune-composed.png',
+  error: '../../assets/asistente/anime/lune-nervous.png'
 };
 function Sidebar({
   provider,
   onProvider,
-  mascotState
+  asistenteState
 }) {
   const {
     ProviderTab
@@ -1922,11 +1922,11 @@ function Sidebar({
     active: provider === 'local',
     onClick: () => onProvider('local')
   })), /*#__PURE__*/React.createElement("div", {
-    className: "ln-mascot"
+    className: "ln-asistente"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "ln-mascot-stage"
+    className: "ln-asistente-stage"
   }, /*#__PURE__*/React.createElement("img", {
-    src: MASCOT[mascotState] || MASCOT.normal,
+    src: ASISTENTE[asistenteState] || ASISTENTE.normal,
     alt: "Lune"
   }))));
 }

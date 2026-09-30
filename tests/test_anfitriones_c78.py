@@ -1,10 +1,10 @@
 """
 Cortes 7/8 en los anfitriones (ui/anfitrion_web.py y ui/anfitrion_nativo.py):
 
-- `hwnd_principal()`: el HWND de la ventana principal para que la mascota pueda sentarse
+- `hwnd_principal()`: el HWND de la ventana principal para que la asistente pueda sentarse
   en ella (ControlAsiento la permite aunque sea del mismo proceso). No crea la ventana
   nativa si aún no existe (WA_WState_Created), 0 sin ventana o si ya se borró.
-- `reaccion(estado, ms)`: comer sin la mascota a la vista. Web → la cara de Lune de la
+- `reaccion(estado, ms)`: comer sin la asistente a la vista. Web → la cara de Lune de la
   barra (señal `acto`) durante ms y vuelve a «normal»; nativa → la carita de la ventana
   (lune_face.set_state con auto_revert_ms). Estados raros y ms fuera de rango, acotados.
 """
@@ -123,14 +123,14 @@ def test_reaccion_nativa_con_la_carita(qapp):
     assert AnfitrionNativo(SimpleNamespace(lune_face=SimpleNamespace(set_state=rompe))).reaccion("happy") is False
 
 
-def test_comida_sin_mascota_reacciona_por_el_anfitrion(qapp):
-    """ControlComida (agente C) llama a anfitrion.reaccion(estado, ms) sin la mascota a la vista."""
+def test_comida_sin_asistente_reacciona_por_el_anfitrion(qapp):
+    """ControlComida (agente C) llama a anfitrion.reaccion(estado, ms) sin la asistente a la vista."""
     from nucleo import comida as nc
     from ui.comida_qt import ControlComida
     llamadas = []
     cara = SimpleNamespace(set_state=lambda e, auto_revert_ms=0: llamadas.append((e, auto_revert_ms)))
     anf = AnfitrionNativo(SimpleNamespace(lune_face=cara, config=None))
-    c = ControlComida(SimpleNamespace(estado=None, prioridad=None, mascota=None), {"comida": {"activa": True}},
+    c = ControlComida(SimpleNamespace(estado=None, prioridad=None, asistente=None), {"comida": {"activa": True}},
                       anfitrion=anf, lanzar_sonido=lambda f: None)
     try:
         c._reaccionar(nc.Reaccion("beber", "happy", 2500, "trago_1", 1.0, "*glup glup*"))

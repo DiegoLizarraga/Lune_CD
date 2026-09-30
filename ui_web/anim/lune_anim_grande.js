@@ -1,5 +1,5 @@
 /*
- * ui_web/anim/lune_anim_grande.js — módulo 'grandeAnim' de la mascota ANIMADA:
+ * ui_web/anim/lune_anim_grande.js — módulo 'grandeAnim' de la asistente ANIMADA:
  * pantalla grande (cortes 5 y 6).
  *
  * La ventana la pone Python del tamaño del monitor (ui/companion.py → grande_fase) y

@@ -3,11 +3,11 @@ Arreglos de la revisión 4-5-6, parte nativa (y lo común que toca: acciones_ui,
 montaje_escritorio, anfitriones, panel de escritorio, modo juego). Offscreen y con
 dobles: sin Telegram, ni Win32 que cambie algo, ni config.json real.
 
-  VS1  Web con la flotante guardada: Lune en la barra lateral cuenta como mascota
+  VS1  Web con la flotante guardada: Lune en la barra lateral cuenta como asistente
        para expresiones y baile (radial SVG y bandeja); la expresión la pone la barra.
   VS2  Panel de escritorio nativo: relee al enseñarse y cuando la bandeja/radial/atajo
        cambian el tema, siempre encima o la barra de tareas; escribe solo lo tocado.
-  VS4  «Comentar» en la nativa durante una partida avisa sin sacar la mascota.
+  VS4  «Comentar» en la nativa durante una partida avisa sin sacar a la asistente.
   VS5  Salir de verdad y parar el bot avisan «Se detuvo…» a Telegram, una vez.
   VS6  El modo juego forzado viaja en el cambio de interfaz (y no se pierde).
   VS7  «Detener» + cambio de interfaz: un solo «Se detuvo…».
@@ -45,7 +45,7 @@ from nucleo.config import Config  # noqa: E402
 from servicios.telegram_worker import AVISO_TG_DETENIDA  # noqa: E402
 from ui import montaje_escritorio as me  # noqa: E402
 from ui.escritorio import ServiciosEscritorio  # noqa: E402
-from test_montaje_escritorio import (GestorFalso, JuegoFalso, MascotaFalsa, TemaFalso,  # noqa: E402
+from test_montaje_escritorio import (GestorFalso, JuegoFalso, AsistenteFalsa, TemaFalso,  # noqa: E402
                                      TrayFalso)
 
 
@@ -111,7 +111,7 @@ class PuenteWebFalso(QObject):
         self._llamada = None
         self.voice = types.SimpleNamespace(_enabled=False)
 
-    def mascota_toggle(self):
+    def asistente_toggle(self):
         return False
 
     def comentar_pantalla(self):
@@ -123,13 +123,13 @@ class PuenteWebFalso(QObject):
 
 def test_contexto_con_lune_en_la_barra_cuenta_para_expresiones_y_baile():
     est = types.SimpleNamespace(grande=False, sentada="", bailando="manual", durmiendo=False)
-    barra = au.Contexto(modo="normal", render="animado", mascota_visible=False, mascota_barra=True)
-    nadie = au.Contexto(modo="normal", render="animado", mascota_visible=False)
+    barra = au.Contexto(modo="normal", render="animado", asistente_visible=False, asistente_barra=True)
+    nadie = au.Contexto(modo="normal", render="animado", asistente_visible=False)
     for i in ("expresiones", "expresion", "bailar", "baile_pausa"):
         assert au.visible(i, est, barra), i
         assert not au.visible(i, est, nadie), i
     # Lo que es de la flotante (dormir, llevarla, cerrarla, sentarla) no.
-    for i in ("dormir", "esquina", "cerrar_mascota", "sentarse", "tamano"):
+    for i in ("dormir", "esquina", "cerrar_asistente", "sentarse", "tamano"):
         assert not au.visible(i, est, barra), i
     # Corte 8: la comida sí (ComidaWeb la dibuja dentro de la ventana y se come sobre la de la barra).
     assert au.visible("comer_pastel", est, barra) and not au.visible("comer_pastel", est, nadie)
@@ -160,7 +160,7 @@ def test_web_radial_y_bandeja_con_lune_en_la_barra(web, monkeypatch):
     monkeypatch.setattr(me, "MS_EXPRESION", 30)
     s, puente = web.s, web.puente
     ctx = s.contexto()
-    assert ctx.mascota_barra is True and ctx.mascota_visible is False
+    assert ctx.asistente_barra is True and ctx.asistente_visible is False
     # El radial SVG (el mismo puente que usa la página): Expresiones y Bailar.
     pe = PuenteEscritorio(s, web.esc, web.cfg, anfitrion=s.anfitrion, contexto=s.contexto)
     ids = [i["id"] for i in json.loads(pe.acciones_catalogo("radial"))]
@@ -182,15 +182,15 @@ def test_web_radial_y_bandeja_con_lune_en_la_barra(web, monkeypatch):
     assert "bailar" in rapidas and "dormir" not in rapidas
     # Con la ventana escondida no hay barra a la vista.
     web.ventana.hide()
-    assert s.contexto().mascota_barra is False
+    assert s.contexto().asistente_barra is False
     assert "expresiones" not in [i["id"] for i in json.loads(pe.acciones_catalogo("radial"))]
     # Con la flotante fuera, la expresión es suya (la barra no la dibuja).
     web.ventana.show()
-    flot = MascotaFalsa()
+    flot = AsistenteFalsa()
     flot.render = "animado"
     puente._overlay = flot
     ctx = s.contexto()
-    assert ctx.mascota_visible is True and ctx.mascota_barra is False
+    assert ctx.asistente_visible is True and ctx.asistente_barra is False
     caras.clear()
     assert pe.accion_menu("expresion", "sad") is True
     assert ("set_estado", "sad", 30) in flot.diario and caras == []
@@ -263,8 +263,8 @@ class AnfitrionNativoFalso:
 
     def mostrar_ventana(self): pass
     def ventana_visible(self): return True
-    def mascota(self): return None
-    def alternar_mascota(self): return False
+    def asistente(self): return None
+    def alternar_asistente(self): return False
     def voz_on(self): return False
     def alternar_voz(self): return False
     def llamada_on(self): return False
@@ -312,14 +312,14 @@ def test_panel_con_la_bandeja_de_verdad_y_al_enseñarse(qapp):
 
 # ═══ VS4: «Comentar» en la nativa durante una partida ══════════════════════════
 
-def test_nativa_comentar_en_partida_avisa_sin_sacar_la_mascota():
+def test_nativa_comentar_en_partida_avisa_sin_sacar_la_asistente():
     from ui.anfitrion_nativo import AVISO_JUEGO_PANTALLA, AnfitrionNativo
     from ui.web_bridge import AVISO_JUEGO_PANTALLA as AVISO_WEB
     hechos, partida = [], {"on": True}
     masc = types.SimpleNamespace(cerrado=False, isVisible=lambda: False,
                                  comentar_pantalla=lambda: hechos.append("comentar"))
     estado = types.SimpleNamespace(actual=lambda: types.SimpleNamespace(juego=partida["on"]))
-    win = types.SimpleNamespace(escritorio=types.SimpleNamespace(estado=estado), _mascota_viva=lambda: masc,
+    win = types.SimpleNamespace(escritorio=types.SimpleNamespace(estado=estado), _asistente_viva=lambda: masc,
                                 _toggle_overlay=lambda: hechos.append("sacar"),
                                 _set_status=lambda texto, color: hechos.append(("aviso", texto)))
     anf = AnfitrionNativo(win)
@@ -392,14 +392,14 @@ def _nativa_para_relevo(hechos):
         chats=types.SimpleNamespace(guardar=lambda: None),
         notas=types.SimpleNamespace(cerrar=lambda: None), red=types.SimpleNamespace(detener=lambda: None),
         _overlay=types.SimpleNamespace(cerrado=False, isVisible=lambda: True,
-                                       close=lambda: hechos.append("mascota.close"), deleteLater=lambda: None),
+                                       close=lambda: hechos.append("asistente.close"), deleteLater=lambda: None),
         _tg_worker=HiloFalso(hechos, "tg"),
         escritorio=types.SimpleNamespace(cerrar=lambda: hechos.append("escritorio.cerrar")),
         _hub_cliente=None, _hub_en_hilo=types.SimpleNamespace(detener=lambda: hechos.append("hub.detener")),
         tray=None, _servicios_c4=types.SimpleNamespace(desmontar=lambda: hechos.append("c4.desmontar")),
         hide=lambda: hechos.append("hide"), close=lambda: hechos.append("close"), _relevada=False)
     return _enlazar(yo, "cerrar_para_cambio", "_cortar_respuesta", "_worker_vivo", "_cancelar_worker",
-                    "_cancelar_plan", "_mascota_viva", "_responder_telegram", "_stop_generation")
+                    "_cancelar_plan", "_asistente_viva", "_responder_telegram", "_stop_generation")
 
 
 def _soltar(*hilos):
@@ -418,7 +418,7 @@ def test_detener_y_luego_cambiar_de_interfaz_avisa_una_vez(qapp):
     en_marcha = yo.cerrar_para_cambio()                    # y se cambia de interfaz enseguida
     avisos = [h for h in hechos if isinstance(h, tuple)]
     assert avisos == [("tg", "o1", AVISO_TG_DETENIDA)]
-    assert en_marcha == {"mascota_fuera": True, "telegram": True}
+    assert en_marcha == {"asistente_fuera": True, "telegram": True}
     _soltar(ia, tg)
 
 
@@ -443,8 +443,8 @@ def test_cerrar_para_cambio_suelta_todo_aunque_cortar_la_respuesta_falle(qapp):
         raise RuntimeError("burbuja ya borrada")
     yo._cortar_respuesta = revienta
     en_marcha = yo.cerrar_para_cambio()
-    assert en_marcha == {"mascota_fuera": True, "telegram": True}
-    for h in ("c4.desmontar", "acciones.cerrar", "mascota.close", "tg.stop", "escritorio.cerrar",
+    assert en_marcha == {"asistente_fuera": True, "telegram": True}
+    for h in ("c4.desmontar", "acciones.cerrar", "asistente.close", "tg.stop", "escritorio.cerrar",
               "hub.detener", "hide", "close"):
         assert h in hechos, h
     assert ia in ci._retenidos and yo.ai_worker is None and yo._tg_worker is None
@@ -528,7 +528,7 @@ def test_el_modo_juego_forzado_pasa_a_la_ventana_nueva_y_no_se_pierde(qapp):
     vieja = types.SimpleNamespace(MODO_INTERFAZ="nativo", current_provider="ollama",
                                   voice=types.SimpleNamespace(_enabled=False), _overlay=None, _tg_worker=None,
                                   _servicios_c4=types.SimpleNamespace(juego=vieja_j))
-    _enlazar(vieja, "estado_para_cambio", "_mascota_a_la_vista", "_mascota_viva")
+    _enlazar(vieja, "estado_para_cambio", "_asistente_a_la_vista", "_asistente_viva")
     estado = vieja.estado_para_cambio()
     assert estado["juego_forzado"] is True
     vieja_j.detener()                                      # la vieja desmonta (devuelve lo suyo)
@@ -538,12 +538,12 @@ def test_el_modo_juego_forzado_pasa_a_la_ventana_nueva_y_no_se_pierde(qapp):
     nueva = types.SimpleNamespace(_servicios_listos=False, tray=object(), escritorio=esc_nueva,
                                   _overlay=None, _tg_worker=None,
                                   _servicios_c4=types.SimpleNamespace(juego=nueva_j),
-                                  _toggle_overlay=lambda: orden.append(("mascota", nueva_j.activo())),
+                                  _toggle_overlay=lambda: orden.append(("asistente", nueva_j.activo())),
                                   _toggle_telegram=lambda: orden.append("telegram"))
-    _enlazar(nueva, "iniciar_servicios", "_mascota_a_la_vista", "_mascota_viva")
-    nueva.iniciar_servicios(dict(estado, mascota_fuera=True))
-    # La mascota sale antes (sin partida) y luego el forzado la esconde con el plan.
-    assert orden == [("mascota", False)]
+    _enlazar(nueva, "iniciar_servicios", "_asistente_a_la_vista", "_asistente_viva")
+    nueva.iniciar_servicios(dict(estado, asistente_fuera=True))
+    # La asistente sale antes (sin partida) y luego el forzado la esconde con el plan.
+    assert orden == [("asistente", False)]
     assert nueva_j.forzado is True and nueva_j.activo()
     QTest.qWait(150)                                       # unos cuantos tics del detector
     assert nueva_j.forzado is True and nueva_j.activo()

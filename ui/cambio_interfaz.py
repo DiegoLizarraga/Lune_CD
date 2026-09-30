@@ -17,10 +17,10 @@ arrancar) y hace el relevo cuando pides otro modo en Ajustes:
      la enseña ENCIMA de la vieja con un fundido corto de opacidad.
   5. La vieja se cierra de verdad sin salir de la app (`cerrar_para_cambio`):
      suelta todo lo que la nueva vuelve a crear (IA en curso, aprobaciones, voz,
-     mascota, bot de Telegram, hub, atajos, bandeja, temporizadores) y dice qué
+     asistente, bot de Telegram, hub, atajos, bandeja, temporizadores) y dice qué
      estaba en marcha.
   6. La nueva arranca sus servicios (`iniciar_servicios`) y relanza lo que estaba
-     en marcha (mascota fuera, bot de Telegram). Nunca hay dos a la vez.
+     en marcha (asistente fuera, bot de Telegram). Nunca hay dos a la vez.
 
 Patata: se abre la terminal (la fábrica no interviene: `lanzar_patata`) y, si se
 abrió, la app Qt se cierra limpia (`salir_de_verdad` de la ventana y `salir`).
@@ -33,7 +33,7 @@ ui/escritorio.py):
     aplicar_estado(dict)              antes de enseñarse: proveedor, voz, conversación…
     al_estar_lista(cb, tope_ms)       llama a cb() una vez, cuando ya se puede enseñar
     cerrar_para_cambio() -> dict|None suelta todo y se cierra SIN salir de la app;
-                                      devuelve {"mascota_fuera": bool, "telegram": bool}
+                                      devuelve {"asistente_fuera": bool, "telegram": bool}
     iniciar_servicios(dict)           bandeja, atajos… y relanzar lo que estaba en marcha
     salir_de_verdad()                 cerrar la app entera (el «Salir» de la bandeja)
     aviso_cambio(texto)               un aviso no modal (si no, QMessageBox)
@@ -42,13 +42,13 @@ ui/escritorio.py):
 ESTADO (claves que entienden las dos ventanas):
     modo, geometria (capturar_geometria), proveedor ("ollama" | "openrouter" |
     "compat"), voz (bool), sesion (copia de la conversación de chats/, con su
-    marca no_confiable por mensaje), mascota_fuera (bool), telegram (bool),
+    marca no_confiable por mensaje), asistente_fuera (bool), telegram (bool),
     juego_forzado (None | True | False: el modo juego puesto a mano en la bandeja),
     minecraft_bot (bool: el bot de Minecraft conectado o conectándose; la vieja lo para al
     desmontar y la nueva lo vuelve a conectar con reconectar_bot_minecraft; nunca lo instala).
 
 Aquí también están los ayudantes que usan las dos ventanas para soltar sus
-recursos (detener_hilo_ia, cerrar_mascota, detener_bot, quitar_bandeja…): así
+recursos (detener_hilo_ia, cerrar_asistente, detener_bot, quitar_bandeja…): así
 la web y la nativa sueltan lo mismo de la misma manera.
 
 Todo en el hilo de Qt. `pedir(modo)` difiere el cambio con QTimer.singleShot(0):
@@ -305,8 +305,8 @@ def soltar_hilos(*hilos: Any) -> None:
         retener_hasta_terminar(h)
 
 
-def cerrar_mascota(ov: Any) -> bool:
-    """Cierra la mascota flotante (su closeEvent guarda la posición y quita su icono
+def cerrar_asistente(ov: Any) -> bool:
+    """Cierra la asistente flotante (su closeEvent guarda la posición y quita su icono
     de la bandeja) y la borra. True si estaba fuera (a la vista)."""
     if ov is None:
         return False

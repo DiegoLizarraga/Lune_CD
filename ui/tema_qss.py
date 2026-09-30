@@ -4,7 +4,7 @@ ui/tema_qss.py — El tema de color (nucleo/tema.py) en los menús Qt.
 - `qss_menu(paleta)`: hoja de estilo de QMenu con el look Shibuya Punk (tinta,
   borde neón, selección con el acento translúcido) para el menú de la bandeja y
   los menús contextuales. `BandejaLune.aplicar_qss(qss)` la pone en su QMenu.
-- `colores_radial(paleta)`: colores del menú radial de la mascota
+- `colores_radial(paleta)`: colores del menú radial de la asistente
   (`MenuRadial.set_colores(c)`), con los nombres de `CircleSelector` de
   Mate-Engine en español (acento, deshabilitado, fondo…).
 

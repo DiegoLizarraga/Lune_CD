@@ -1,7 +1,7 @@
 """
 Tests del plan de expresiones (lune_core/expresiones.py), del vocabulario nuevo
 (laughing, bored) y de que todas las capas lo cubren: gramática del prompt,
-caritas del modo patata, mapas de la mascota (barra lateral, video, sprites, 3D).
+caritas del modo patata, mapas de la asistente (barra lateral, video, sprites, 3D).
 """
 import re
 import sys
@@ -95,16 +95,16 @@ def test_la_gramatica_pide_hasta_tres_marcadores_delante_del_tramo():
 
 def test_todas_las_capas_cubren_todas_las_emociones():
     import patata
-    from ui.web_bridge import EMOCION_A_MASCOTA
+    from ui.web_bridge import EMOCION_A_ASISTENTE
     from ui.companion import EMOCION_A_ESTADO
     from ui.lune_face import EMOCION_A_ESTADO as SPRITES
     for e in M.EMOCIONES:
         assert e in patata.CARITAS, f"patata sin carita para {e}"
-        assert e in EMOCION_A_MASCOTA, f"puente sin estado para {e}"
+        assert e in EMOCION_A_ASISTENTE, f"puente sin estado para {e}"
         assert e in EMOCION_A_ESTADO, f"companion sin estado para {e}"
         assert e in SPRITES, f"sprites sin estado para {e}"
-    estados = set(EMOCION_A_MASCOTA.values()) | set(EMOCION_A_ESTADO.values())
-    # los clips de la barra lateral y de la mascota en video
+    estados = set(EMOCION_A_ASISTENTE.values()) | set(EMOCION_A_ESTADO.values())
+    # los clips de la barra lateral y de la asistente en video
     side = (RAIZ / "ui_web" / "ui_kits" / "lune-desktop" / "sidebar.jsx").read_text("utf-8")
     vid = side[side.index("const VID = {"):side.index("const VID_DIR")]
     comp = (RAIZ / "ui_web" / "companion.html").read_text("utf-8")
@@ -115,20 +115,20 @@ def test_todas_las_capas_cubren_todas_las_emociones():
 
 
 def test_clips_nuevos_convertidos_a_webm():
-    carpeta = RAIZ / "ui_web" / "assets" / "mascot" / "anime-videos"
+    carpeta = RAIZ / "ui_web" / "assets" / "asistente" / "anime-videos"
     for est in ("laughing", "bored", "sad", "curious", "listening", "talking", "working", "dismiss"):
-        assert (carpeta / f"lune-{est}.webm").is_file(), f"falta lune-{est}.webm (scripts/convertir_mascota.py)"
+        assert (carpeta / f"lune-{est}.webm").is_file(), f"falta lune-{est}.webm (scripts/convertir_asistente.py)"
 
 
 def test_la_ui_web_deja_la_expresion_y_el_puente_la_lleva():
     app = (RAIZ / "ui_web" / "ui_kits" / "lune-desktop" / "app.jsx").read_text("utf-8")
-    assert "if (mascota) setMascot(mascota)" in app
-    assert "setTimeout(() => setMascot('normal'), holdRef" not in app
-    assert "setTyping(false); setMascot('typing')" not in app
+    assert "if (asistente) setAsistente(asistente)" in app
+    assert "setTimeout(() => setAsistente('normal'), holdRef" not in app
+    assert "setTyping(false); setAsistente('typing')" not in app
     bridge = (RAIZ / "ui" / "web_bridge.py").read_text("utf-8")
     for nombre in ("_on_chunk", "_al_segmento_voz", "_al_terminar_voz", "_programar_plan", "_voz_lee_al_final"):
         assert f"def {nombre}" in bridge
-    assert "al_terminar=lambda g=gen, est=mascota: self._al_terminar_voz(est, g)" in bridge
+    assert "al_terminar=lambda g=gen, est=asistente: self._al_terminar_voz(est, g)" in bridge
     # tras Detener el proveedor no puede quedarse con cancel_flag levantado
     assert "cancel_flag = False" in bridge and "self._gen += 1" in bridge
     assert "self.voice.cancelar()" in bridge

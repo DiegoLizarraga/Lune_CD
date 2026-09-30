@@ -11,7 +11,7 @@ organizarla:
 
 Un VMD con solo morfos es de «cara» (labios y expresiones); uno con solo cámara
 se ignora. La canción que se prefiere es la del mismo nombre base. La página
-de la mascota reproduce `.mp3 .ogg .oga .opus .wav .flac`; `.m4a .aac .wma` se
+de la asistente reproduce `.mp3 .ogg .oga .opus .wav .flac`; `.m4a .aac .wma` se
 convierten a Opus (`.ogg`) al importar o, si se dejaron a mano, en diferido a
 `cache/bailes/<id>.ogg`.
 
@@ -26,7 +26,7 @@ Las URL que ve la página son `/bailes/<ruta codificada>` y
   URL, metadatos (`lune.json`, escritura atómica), favoritos y desactivados (config
   `baile.favoritos` / `baile.desactivados`), importar (copia, nunca mueve; sin cerrojo),
   quitar (mueve a `bailes/.quitados/`, reversible), convertir el audio y el
-  pulso de la canción (`analizar_pulso`, para las mascotas sin esqueleto: D1).
+  pulso de la canción (`analizar_pulso`, para la animada y los sprites, sin esqueleto: D1).
 - `Cola`: siguiente / anterior / aleatorio sin repetir el actual.
 - `herramienta_listar`: handler de la herramienta del modelo `listar_bailes`.
 - `biblioteca_compartida()`: la de bailes/, una por proceso; `coincide_con_biblioteca(X)`
@@ -129,13 +129,28 @@ META_DEFECTO: Dict[str, Any] = {
     "offset_ms": 0, "brazo_a_grados": 35.0, "en_el_sitio": None, "bpm": None,
 }
 
+
+def _leeme_desfasado(leeme: Path) -> bool:
+    """¿Es `leeme` el LEEME.txt que escribió Lune antes de la 11, con el nombre viejo
+    del modo asistente en escritorio? (nucleo/nombres_antiguos.leeme_viejo). Uno que no
+    se deja leer, un enlace o algo que no es un archivo pequeño no se toca."""
+    try:
+        if leeme.is_symlink() or not leeme.is_file() or leeme.stat().st_size > 64 * 1024:
+            return False
+        texto = leeme.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    from nucleo import nombres_antiguos
+    return nombres_antiguos.leeme_viejo(texto)
+
 TEXTO_LEEME = """\
 BAILES DE LUNE
 ==============
 
 Aquí van tus bailes: un movimiento (MMD o VRM Animation) y, si quieres, su canción.
-Lune los baila en la mascota 3D (VRM). En la animada y en los sprites no hay
-esqueleto: suena la canción y Lune baila a su manera, al ritmo de la canción.
+Lune los baila en el escritorio cuando sale en 3D (VRM). Con las imágenes animadas
+y con los sprites no hay esqueleto: suena la canción y Lune baila a su manera, al
+ritmo de la canción.
 
 FORMATOS
 - Movimiento: .vmd (MikuMikuDance; uno de cuerpo y, si hay, otro de cara/labios)
@@ -646,7 +661,7 @@ def escribir_json_atomico(ruta: Path, obj: Any) -> None:
             pass
 
 
-# ── Pulso de la canción (mascotas sin esqueleto, D1) ─────────────────────────────
+# ── Pulso de la canción (la animada y los sprites, sin esqueleto, D1) ─────────────────
 
 def envolvente_pico(pcm: Any, sr: int = PULSO_SR, hz: int = PULSO_HZ) -> Tuple[np.ndarray, np.ndarray]:
     """(t, pico) a `hz`: el pico absoluto de cada trozo (0..1), con t en su centro."""
@@ -865,14 +880,16 @@ class Biblioteca:
         return base
 
     def asegurar_carpeta(self) -> bool:
-        """Crea bailes/ con su LEEME.txt si no existe. False si no se pudo."""
+        """Crea bailes/ con su LEEME.txt si no existe. Un LEEME que escribió Lune antes
+        de la 11 (con el nombre viejo del modo asistente en escritorio) se reescribe con
+        el de ahora; uno de la persona no se toca. False si no se pudo."""
         if es_unc(self.carpeta):
             self.error = "La carpeta de bailes no puede estar en la red."
             return False
         try:
             self.carpeta.mkdir(parents=True, exist_ok=True)
             leeme = self.carpeta / LEEME
-            if not leeme.exists():
+            if not leeme.exists() or _leeme_desfasado(leeme):
                 leeme.write_text(TEXTO_LEEME, encoding="utf-8")
         except OSError as e:
             self.error = f"No pude crear la carpeta de bailes: {e.strerror or e}"

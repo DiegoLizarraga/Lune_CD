@@ -15,8 +15,8 @@
  *                    derecho, soltar en la zona muerta o perder el foco lo cierran).
  *   RadialHost       lo monta app.jsx: escucha window 'lune-radial' ({x, y, tipo}), pide los botones a
  *                    acciones_catalogo(tipo) y ejecuta con accion_menu(id, arg). «ajustes»/«chat» navegan
- *                    en la propia página; «expresiones» abre un segundo radial (con la mascota en la barra,
- *                    la expresión la pone la barra; con la mascota fuera, el backend).
+ *                    en la propia página; «expresiones» abre un segundo radial (con la asistente en la barra,
+ *                    la expresión la pone la barra; con la asistente fuera, el backend).
  *   window.LuneRadial = {indice, posiciones, factorLerp, sector, abrir(x?, y?, tipo?), …}
  * Enlace con app.jsx (window.LuneApariencia):
  *   conectarApp({setFx, setModoJuego, setView}) → limpiar   efectos desde la config (localStorage solo de
@@ -52,6 +52,31 @@
   }
   const ID_OK = /^[a-z][a-z0-9_]{0,39}$/;
   const recortar = (s, n) => { const t = String(s == null ? '' : s); return t.length > n ? t.slice(0, n - 1) + '…' : t; };
+
+  /** El texto del centro del radial en líneas. Hasta 18 letras cabe en una (como siempre);
+   *  si no, se parte por palabras en líneas de como mucho 15, hasta 3 (como el TextWordWrap de
+   *  ui/menu_radial.py), y la última se corta con «…» si aún sobra. Así «Sacar a la asistente al
+   *  escritorio» no se queda en «Sacar a la asiste…». */
+  const CENTRO_UNA_LINEA = 18, CENTRO_POR_LINEA = 15, CENTRO_LINEAS = 3;
+  function lineasCentro(s) {
+    const t = String(s == null ? '' : s).trim().replace(/\s+/g, ' ');
+    if (t.length <= CENTRO_UNA_LINEA) return [t];
+    const lineas = [];
+    let actual = '';
+    for (const p of t.split(' ')) {
+      const junto = actual ? `${actual} ${p}` : p;
+      if (junto.length <= CENTRO_POR_LINEA) { actual = junto; continue; }
+      if (actual) lineas.push(actual);
+      actual = p;
+    }
+    if (actual) lineas.push(actual);
+    const out = lineas.slice(0, CENTRO_LINEAS).map((l) => recortar(l, CENTRO_POR_LINEA));
+    if (lineas.length > CENTRO_LINEAS) {
+      const u = out[CENTRO_LINEAS - 1];
+      out[CENTRO_LINEAS - 1] = (u.length >= CENTRO_POR_LINEA ? u.slice(0, CENTRO_POR_LINEA - 1) : u).replace(/…$/, '') + '…';
+    }
+    return out;
+  }
 
   // ── Geometría del radial (la misma que ui/menu_radial.py) ──────────────────
   const LIENZO = 368, CENTRO = LIENZO / 2, ZONA_MUERTA = 85, RADIO_ICONOS = 120, RADIO_EXTERIOR = 165, MAX_BOTONES = 10;
@@ -163,9 +188,9 @@
     grande: 'maximize', bajar: 'down', flecha_abajo: 'down', pastel: 'cake', comer_pastel: 'cake', comida: 'cake',
     batido: 'cup', comer_batido: 'cup', vaso: 'cup', guardar_comida: 'bookmark', guardar: 'bookmark', fantasma: 'ghost',
     llamada: 'phone', telefono: 'phone', microfono: 'mic', juego: 'gamepad', modo_juego: 'gamepad',
-    modo_juego_forzar: 'gamepad', minecraft: 'gamepad', mascota: 'user', usuario: 'user', esquina: 'corner',
+    modo_juego_forzar: 'gamepad', minecraft: 'gamepad', asistente: 'user', usuario: 'user', esquina: 'corner',
     llevar_a_esquina: 'corner', cerrar: 'close', salir: 'log_out', discord: 'chat', rayo: 'bolt', buscar: 'search',
-    message: 'chat', arrow_down: 'down', box: 'package', expresion: 'smile', cerrar_mascota: 'close',
+    message: 'chat', arrow_down: 'down', box: 'package', expresion: 'smile', cerrar_asistente: 'close',
     mostrar_lune: 'window', menu_radial: 'radial', comentarios_auto: 'message_dots', siempre_encima: 'pin',
     encuadre: 'frame', baile_pausa: 'pause', tema: 'palette', autoinicio: 'power', liberar_memoria: 'cpu',
     en_barra_tareas: 'taskbar', sentarse: 'taskbar', barra_tareas: 'taskbar',
@@ -291,6 +316,7 @@
     const n = items.length;
     const P = posiciones(n);
     const actual = sel != null ? items[sel] : null;
+    const lineas = lineasCentro(actual ? actual.etiqueta : (titulo || 'Lune'));
     return (
       <svg className={clase} width={tamano} height={tamano} viewBox={`0 0 ${LIENZO} ${LIENZO}`} style={estilo}
         role="menu" aria-label={titulo || 'Menú radial'}>
@@ -307,7 +333,9 @@
         ))}
         <circle className="ln-radial-centro" cx={CENTRO} cy={CENTRO} r={ZONA_MUERTA - 8} />
         <text className="ln-radial-txt" x={CENTRO} y={CENTRO} textAnchor="middle" dominantBaseline="central">
-          {recortar(actual ? actual.etiqueta : (titulo || 'Lune'), 18)}
+          {lineas.length === 1 ? lineas[0] : lineas.map((l, k) => (
+            <tspan key={k} x={CENTRO} dy={k === 0 ? `${-(lineas.length - 1) * 0.6}em` : '1.2em'}>{l}</tspan>
+          ))}
         </text>
       </svg>
     );
@@ -387,9 +415,9 @@
   }
 
   // ── RadialHost: lo monta app.jsx ────────────────────────────────────────────
-  function centroMascota() {
+  function centroAsistente() {
     try {
-      const el = document.querySelector('.ln-mascot-stage');
+      const el = document.querySelector('.ln-asistente-stage');
       if (el) {
         const r = el.getBoundingClientRect();
         if (r.width > 0 && r.height > 0) return { x: r.left + r.width / 2, y: r.top + r.height * 0.4 };
@@ -399,19 +427,19 @@
   }
   function abrirRadial(x, y, tipo) {
     let px = Number(x), py = Number(y);
-    if (x == null || y == null || !isFinite(px) || !isFinite(py)) { const c = centroMascota(); px = c.x; py = c.y; }
+    if (x == null || y == null || !isFinite(px) || !isFinite(py)) { const c = centroAsistente(); px = c.x; py = c.y; }
     try {
       window.dispatchEvent(new window.CustomEvent('lune-radial', { detail: { x: px, y: py, tipo: tipo || 'principal' } }));
       return true;
     } catch (e) { return false; }
   }
 
-  function RadialHost({ onNavegar, onExpresion, onAviso, mascotaFuera = false }) {
+  function RadialHost({ onNavegar, onExpresion, onAviso, asistenteFuera = false }) {
     const [menu, setMenu] = useState(null);                 // {x, y, tipo, items}
     const sonidos = useRef({ sonidos: true, volumen: 0.6 });
     const pedido = useRef(0);
     const props = useRef({});
-    props.current = { onNavegar, onExpresion, onAviso, mascotaFuera };
+    props.current = { onNavegar, onExpresion, onAviso, asistenteFuera };
     const aviso = (m) => { if (props.current.onAviso) props.current.onAviso(m); };
 
     const abrir = useCallback((d) => {
@@ -449,7 +477,7 @@
       sonar(sonidos.current, 'menu_boton');
       setMenu(null);
       if (it.id === 'expresiones' && tipo !== 'expresiones') { abrir({ x, y, tipo: 'expresiones' }); return; }
-      if (it.id === 'expresion' && it.arg && !P.mascotaFuera && P.onExpresion) { P.onExpresion(it.arg); return; }
+      if (it.id === 'expresion' && it.arg && !P.asistenteFuera && P.onExpresion) { P.onExpresion(it.arg); return; }
       if ((it.id === 'ajustes' || it.id === 'chat') && P.onNavegar) { P.onNavegar(it.id === 'ajustes' ? 'settings' : 'chat'); return; }
       const ok = llamar('accion_menu', [it.id, it.arg || ''], (r) => { if (r === false) aviso(`No pude: ${it.etiqueta}`); });
       if (!ok) aviso(`Demo · ${it.etiqueta} (necesita la app)`);
@@ -631,7 +659,7 @@
     return (
       <Card id="aj-apariencia" eyebrow={<><Icono width={13} height={13}/> Apariencia · Tema</>} title="Colores de Lune" tone="cyan" tick>
         <p className="ln-c4-nota">
-          Gira el tono de los acentos cian y azul en toda la app: esta ventana, la mascota, la burbuja, la bandeja y el menú radial.
+          Gira el tono de los acentos cian y azul en toda la app: esta ventana, la asistente en escritorio, su burbuja, la bandeja y el menú radial.
           Se aplica al momento{conBackend ? '' : ' (en la app)'}.
         </p>
         <div className="ln-c4-sub">Presets</div>
@@ -680,12 +708,12 @@
 
   // ── Atajos ─────────────────────────────────────────────────────────────────
   const NOMBRE_ATAJO = {
-    mostrar_lune: 'Mostrar Lune', mascota: 'Sacar / guardar la mascota', menu_radial: 'Menú radial',
+    mostrar_lune: 'Mostrar Lune', asistente: 'Sacar a la asistente al escritorio / guardarla', menu_radial: 'Menú radial',
     comentar: 'Comentar la pantalla', voz: 'Voz sí / no', llamada: 'Modo llamada', fantasma: 'Modo fantasma',
     dormir: 'Dormir / despertar', pantalla_grande: 'Pantalla grande', baile_pausa: 'Pausar el baile',
   };
   const ATAJOS_DEMO = [
-    ['mostrar_lune', 'ctrl+alt+shift+l', 'Ctrl+Alt+Shift+L'], ['mascota', 'ctrl+alt+shift+m', 'Ctrl+Alt+Shift+M'],
+    ['mostrar_lune', 'ctrl+alt+shift+l', 'Ctrl+Alt+Shift+L'], ['asistente', 'ctrl+alt+shift+m', 'Ctrl+Alt+Shift+M'],
     ['menu_radial', 'ctrl+alt+shift+space', 'Ctrl+Alt+Shift+Space'], ['comentar', 'ctrl+alt+shift+c', 'Ctrl+Alt+Shift+C'],
     ['voz', 'ctrl+alt+shift+v', 'Ctrl+Alt+Shift+V'],
   ].map(([id, combo, texto]) => ({ id, combo, texto, error: null, aviso: null, disponible: true }));
@@ -873,7 +901,7 @@
   // ── Listas de acciones (radial y bandeja) ──────────────────────────────────
   const NOMBRE_ACCION_DEMO = {
     ajustes: 'Ajustes', chat: 'Chat', comentar: 'Comentar pantalla', expresiones: 'Expresiones', bailar: 'Bailar',
-    alarma: 'Alarma', voz: 'Voz', dormir: 'Dormir', tamano: 'Tamaño', bajar: 'Bajar', mascota: 'Mascota', llamada: 'Llamada',
+    alarma: 'Alarma', voz: 'Voz', dormir: 'Dormir', tamano: 'Tamaño', bajar: 'Bajar', asistente: 'Sacar a la asistente al escritorio', llamada: 'Llamada',
     pantalla_grande: 'Pantalla grande', temporizador_rapido: 'Temporizador', comida: 'Comida', modo_juego_forzar: 'Modo juego',
     discord: 'Discord', minecraft: 'Reacciones a Minecraft', fantasma: 'Modo fantasma', comer_batido: 'Batido', comer_pastel: 'Pastel',
     guardar_comida: 'Guardar comida', bailes: 'Mis bailes', minecraft_bot: 'Bot de Minecraft',
@@ -979,9 +1007,9 @@
     const catalogo = est.catalogo.length ? est.catalogo : catalogoDemo(est.principal);
     const Icono = window.IconGear || (() => null);
     return (
-      <Card id="aj-radial" eyebrow={<><Icono width={13} height={13}/> Escritorio · Mascota</>} title="Menú radial" tone="cyan">
+      <Card id="aj-radial" eyebrow={<><Icono width={13} height={13}/> Asistente en escritorio</>} title="Menú radial" tone="cyan">
         <p className="ln-c4-nota">
-          Clic derecho sobre la mascota (o F1 aquí, o su atajo) abre este menú. Mueve el ratón hacia un botón y haz clic; en el
+          Clic derecho sobre mí (en el escritorio o en la barra lateral), F1 aquí o su atajo abren este menú. Mueve el ratón hacia un botón y haz clic; en el
           centro, Esc o clic derecho se cierra. Hasta {est.max} botones, en orden horario desde arriba.
         </p>
         <div className="ln-c4-grid">
@@ -1014,9 +1042,9 @@
     return { acciones: soloIds(r.acciones).slice(0, max), defecto: soloIds(r.defecto), catalogo: normalizarCatalogo(r.catalogo), max };
   }
   const BANDEJA_DEMO = {
-    acciones: ['mascota', 'comentar', 'voz', 'llamada', 'dormir'],
-    defecto: ['mascota', 'comentar', 'voz', 'llamada', 'dormir'],
-    catalogo: catalogoDemo(['mascota', 'comentar', 'voz', 'llamada', 'dormir', 'fantasma', 'modo_juego_forzar', 'bailar']),
+    acciones: ['asistente', 'comentar', 'voz', 'llamada', 'dormir'],
+    defecto: ['asistente', 'comentar', 'voz', 'llamada', 'dormir'],
+    catalogo: catalogoDemo(['asistente', 'comentar', 'voz', 'llamada', 'dormir', 'fantasma', 'modo_juego_forzar', 'bailar']),
   };
 
   function BandejaCard() {
@@ -1060,7 +1088,7 @@
     RadialHost,
     LuneRadial: {
       LIENZO, CENTRO, ZONA_MUERTA, RADIO_ICONOS, RADIO_EXTERIOR, MAX_BOTONES,
-      indice, posiciones, factorLerp, sector, colocar, normalizarItems, trazosIcono, abrir: abrirRadial, DEMO,
+      indice, posiciones, factorLerp, sector, colocar, normalizarItems, lineasCentro, trazosIcono, abrir: abrirRadial, DEMO,
     },
     LuneApariencia: {
       conectarApp, guardarEfecto, aplicarTema, fxDesdeCfg, vistaDe, crearLimitador, crearRetardo, normalizarTema,

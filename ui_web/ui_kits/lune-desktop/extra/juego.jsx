@@ -1,11 +1,11 @@
-/* Lune CD desktop — Modo juego y rendimiento de la mascota (Ajustes, corte 4).
+/* Lune CD desktop — Modo juego y rendimiento de la asistente (Ajustes, corte 4).
  *
  * JuegoCard        estado en vivo (señal juego_estado) y forzar (automático · forzar · forzar «sin juego»),
- *                  detectar juegos, qué hace la mascota (ocultar · al fondo · nada), FPS durante el juego,
+ *                  detectar juegos, qué hace la asistente (ocultar · al fondo · nada), FPS durante el juego,
  *                  silenciar la voz, bajar la prioridad, recortar la memoria, pausar los atajos, contar vídeos
  *                  a pantalla completa, contar lo que corre desde carpetas de juegos y la lista de apps que
  *                  siempre cuentan como juego (con «Añadir app» desde las ventanas abiertas).
- * RendimientoCard  FPS máximos de la mascota, siempre encima, recorte automático de memoria, mostrar Lune en la
+ * RendimientoCard  FPS máximos de la asistente, siempre encima, recorte automático de memoria, mostrar Lune en la
  *                  barra de tareas y «Liberar memoria».
  * No usan cfg/set de SettingsPanel: guardan al momento por window.luneEscritorio (ui/puente_escritorio.py):
  *   juego_config() · juego_guardar(json) · juego_estado_json() · juego_forzar(1 | 0 | -1) · juego_apps_visibles()
@@ -41,7 +41,7 @@
 
   // ── Datos y utilidades puras ───────────────────────────────────────────────
   const ACCIONES = [
-    ['ocultar', 'Ocultarla', 'La mascota desaparece hasta que acabes.'],
+    ['ocultar', 'Ocultarla', 'La asistente en escritorio desaparece hasta que acabes.'],
     ['fondo', 'Al fondo', 'Se queda detrás de las ventanas, sin molestar.'],
     ['nada', 'Nada', 'Sigue igual (solo baja FPS, voz y prioridad).'],
   ];
@@ -249,7 +249,7 @@
         </div>
         <div style={{ height: 12 }} />
         <div className="ln-settings-grid">
-          <Deslizador id="f-juego-fps" label="FPS de la mascota en juego" min={0} max={60} step={5} value={cfg.fps}
+          <Deslizador id="f-juego-fps" label="FPS de la asistente en escritorio al jugar" min={0} max={60} step={5} value={cfg.fps}
             fmt={(v) => (v === 0 ? 'en pausa' : `${v} fps`)} hint="0 = en pausa (no gasta GPU)."
             onChange={(v) => { setCfg((c) => ({ ...c, fps: v })); guardarFps(v); }} />
           <div className="ln-toggle-row">
@@ -330,16 +330,16 @@
 
     const Icono = window.IconBolt || (() => null);
     return (
-      <Card id="aj-rendimiento" eyebrow={<><Icono width={13} height={13}/> Rendimiento · Mascota</>} title="Rendimiento" tone="yellow">
+      <Card id="aj-rendimiento" eyebrow={<><Icono width={13} height={13}/> Rendimiento · Asistente en escritorio</>} title="Rendimiento" tone="yellow">
         <p className="ln-c4j-nota">
-          Cuánto gasta la mascota de escritorio. En reposo se dibuja a la mitad (máx. 30 fps). Se aplica al momento.
+          Cuánto gasta la asistente en escritorio. En reposo se dibuja a la mitad (máx. 30 fps). Se aplica al momento.
         </p>
-        <Deslizador id="f-fps-max" label="FPS máximos de la mascota" min={15} max={144} step={1} value={r.fps_max}
+        <Deslizador id="f-fps-max" label="FPS máximos de la asistente en escritorio" min={15} max={144} step={1} value={r.fps_max}
           fmt={(v) => `${v} fps`} hint="Menos FPS = menos GPU; 60 va sobrado."
           onChange={(v) => { setR((x) => ({ ...x, fps_max: v })); guardarFps(v); }} />
         <div style={{ height: 12 }} />
         <div className="ln-toggle-row">
-          <Switch label="Mascota siempre encima" checked={r.siempre_encima} onChange={(e) => guardar({ siempre_encima: !!e.target.checked })} />
+          <Switch label="Siempre encima de las ventanas" checked={r.siempre_encima} onChange={(e) => guardar({ siempre_encima: !!e.target.checked })} />
           <Switch label="Recortar la memoria de vez en cuando" checked={r.recorte_ram_auto}
             onChange={(e) => guardar({ recorte_ram_auto: !!e.target.checked })} accent="blue" />
           <Switch label="Mostrar Lune en la barra de tareas" checked={r.en_barra_tareas}

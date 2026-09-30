@@ -6,38 +6,38 @@ ui/pantalla_grande_qt.py — Pantalla grande y salvapantallas en la app (Qt).
 actividades «grande» y «salvapantallas» de la tabla de prioridades. La lógica
 pura está en nucleo/pantalla_grande.py (MaquinaGrande, ReglaSalvapantallas).
 
-PANTALLA GRANDE CON LA MASCOTA (VRM o animada con la página lista, `soporta_grande`)
+PANTALLA GRANDE CON LA ASISTENTE (VRM o animada con la página lista, `soporta_grande`)
   1. `prioridad.iniciar("grande")` (o "salvapantallas") ANTES de tocar la ventana:
      así el detector de juegos ve `grande` y no toma a Lune por un vídeo a
      pantalla completa (ui/modo_juego_qt._lune_a_pantalla_completa).
-  2. Se guarda `mascota.geometria()` y `grande_fase("glide", {ms: 400})`.
+  2. Se guarda `asistente.geometria()` y `grande_fase("glide", {ms: 400})`.
   3. A los 400 ms: `set_geometria(<monitor de mayor intersección>)` en px
      lógicos y `grande_fase("entrar", {ms: 500})`.
   4. Activa. La salida es la inversa: "salir" 500 ms → la geometría exacta de
      antes → "volver" 400 ms → "fin" → `prioridad.terminar(...)`.
-SIN MASCOTA A LA VISTA
+SIN ASISTENTE A LA VISTA
   - Pedida a mano (atajo, radial, bandeja, herramienta) con avatar.render vrm o
-    animado y QtWebEngine: se saca la mascota (`anfitrion.alternar_mascota()`),
+    animado y QtWebEngine: se saca la asistente (`anfitrion.alternar_asistente()`),
     se espera como mucho 6 s a que su página esté lista y se cierra al salir.
   - En cualquier otro caso (sprites, nativa sin VRM, alarma o salvapantallas con
-    la mascota guardada — decisión D2): ui/ventana_reloj.VentanaReloj, que se
+    la asistente guardada — decisión D2): ui/ventana_reloj.VentanaReloj, que se
     cierra con un clic en modo «grande».
 SALIDA de la grande manual: el atajo, el radial, la bandeja, la herramienta o
-`minutos`. La mascota no recibe teclado: Esc no sirve.
+`minutos`. La asistente no recibe teclado: Esc no sirve.
 
 SALVAPANTALLAS (salvapantallas.*)
   - QTimer de 1 s: `win_entrada.segundos_inactivo()`; un mando en uso cuenta
     como actividad; `ReglaSalvapantallas` decide (juego, grande, alarma,
     arrastrando, menú, hablando, llamada, pensando, bailando, pantalla pedida por
-    un vídeo). La mascota dormida cuenta como reposo.
+    un vídeo). La asistente dormida cuenta como reposo.
   - Al activarse: pantalla grande con motivo «salvapantallas» y
-    `mascota.set_salvapantallas(True, fondo_oscuro=…, reloj=…)` (la duerme); sin
-    mascota lista, VentanaReloj("salvapantallas").
+    `asistente.set_salvapantallas(True, fondo_oscuro=…, reloj=…)` (la duerme); sin
+    asistente lista, VentanaReloj("salvapantallas").
   - Salida: QTimer de 33 ms con `DetectorEntrada` (clic, tecla o mando; mover el
     ratón NO cuenta). Con `clic_sale_de_todo` sale de todo; si no, se queda en
     pantalla grande manual y despierta.
 
-PRIORIDADES (nucleo/estado_mascota.py)
+PRIORIDADES (nucleo/estado_asistente.py)
   - Entra un juego: `ceder` → salida inmediata, sin animación.
   - Suena una alarma con el salvapantallas puesto: `ceder(salvapantallas)` con
     `alarma` en el bus → si la alarma va a usar la pantalla grande
@@ -48,7 +48,7 @@ PRIORIDADES (nucleo/estado_mascota.py)
     al apagarse `salir("alarma")` (solo sale si la metió la alarma). Red de
     seguridad: si la alarma deja de sonar (el bus apaga `alarma`) con la grande
     aún en motivo «alarma», sale sola.
-  - La mascota de la pantalla grande se esconde (guardada en la bandeja…): sale ya
+  - La asistente de la pantalla grande se esconde (guardada en la bandeja…): sale ya
     (no se queda activa e invisible con `grande` en el bus).
   (Estas dos, escuchando `escritorio.estado_cambio` entre iniciar() y detener().)
 
@@ -75,7 +75,7 @@ TIC_MAQUINA_MS = 30
 TIC_INACTIVIDAD_MS = 1000
 TIC_ENTRADA_MS = 33
 TIC_ESPERA_MS = 100
-ESPERA_MASCOTA_S = 6.0
+ESPERA_ASISTENTE_S = 6.0
 GRACIA_ENTRADA_S = 1.0          # la entrada que lo abrió (soltar el clic de «Probar») no lo cierra
 IGNORAR_CLIC_S = 0.6
 RENDERS_PAGINA = ("vrm", "animado")
@@ -180,15 +180,15 @@ class ControlPantallaGrande(QObject):
         self._hay_webengine = hay_webengine if hay_webengine is not None else webengine_disponible
         self._maquina = MaquinaGrande()
         self._regla = ReglaSalvapantallas.desde_config(config)
-        self._mascota = getattr(escritorio, "mascota", None)
-        self._m_grande: Any = None                 # la mascota en pantalla grande
+        self._asistente = getattr(escritorio, "asistente", None)
+        self._m_grande: Any = None                 # la asistente en pantalla grande
         self._geom: Optional[QRect] = None
-        self._vista = ""                           # "mascota" · "reloj" · ""
+        self._vista = ""                           # "asistente" · "reloj" · ""
         self._actividad: Optional[str] = None      # "grande" · "salvapantallas" (la del BusEstado)
         self._cedida = False
         self._motivo = ""
         self._temporal = False
-        self._salva_en_mascota = False
+        self._salva_en_asistente = False
         self._alarma_texto: Optional[str] = None
         self._esperando = False
         self._espera_temporal = False
@@ -250,14 +250,14 @@ class ControlPantallaGrande(QObject):
             _llamar(v, "ocultar", 0)
             _llamar(v, "deleteLater")
 
-    def set_mascota(self, v) -> None:
-        self._mascota = v
-        if self._vista == "mascota" and self._m_grande is not None and v is not self._m_grande:
-            # La mascota de la pantalla grande se fue (cerrada o recreada): se acaba
+    def set_asistente(self, v) -> None:
+        self._asistente = v
+        if self._vista == "asistente" and self._m_grande is not None and v is not self._m_grande:
+            # La asistente de la pantalla grande se fue (cerrada o recreada): se acaba
             # ya, sin tocar una ventana que ya no está.
             self._m_grande = None
             self._temporal = False
-            self._salva_en_mascota = False
+            self._salva_en_asistente = False
             self._maquina.abortar()
             self._t_maquina.stop()
             self._terminar()
@@ -286,13 +286,13 @@ class ControlPantallaGrande(QObject):
 
     @pyqtSlot(object, object)
     def _on_bus(self, estado: Any = None, cambios: Any = None) -> None:
-        """escritorio.estado_cambio (hilo de Qt): la mascota de la pantalla grande se
+        """escritorio.estado_cambio (hilo de Qt): la asistente de la pantalla grande se
         escondió → fuera ya; la alarma dejó de sonar con la grande aún en su motivo
         (nadie llamó a salir("alarma")) → fuera."""
         cambios = cambios if isinstance(cambios, dict) else {}
-        if "visible" in cambios and self._vista == "mascota" and self._m_grande is not None \
+        if "visible" in cambios and self._vista == "asistente" and self._m_grande is not None \
                 and self._maquina.estado is not None and not _visible(self._m_grande):
-            _log_info("[grande] la mascota se escondió: sale de la pantalla grande")
+            _log_info("[grande] la asistente se escondió: sale de la pantalla grande")
             self.salir(inmediato=True)
             return
         if "alarma" in cambios and self.motivo == "alarma" and not self._bus_campo("alarma") \
@@ -300,7 +300,7 @@ class ControlPantallaGrande(QObject):
             # Con un juego el bus ya quitó `grande` a la vez: eso lo hace ceder().
             self.salir("alarma")
 
-    def evento_mascota(self, tipo: str, datos: dict) -> None:
+    def evento_asistente(self, tipo: str, datos: dict) -> None:
         if tipo == "grande_fase":
             _log.debug("pantalla grande: la página dice %s", datos)
 
@@ -346,14 +346,14 @@ class ControlPantallaGrande(QObject):
             self._minutos_pend = minutos
             self._t_maquina.start()
             return True
-        m = self._mascota_lista()
+        m = self._asistente_lista()
         if m is not None:
-            return self._entrar_con_mascota(m, motivo, minutos)
+            return self._entrar_con_asistente(m, motivo, minutos)
         if motivo in ("manual", "herramienta"):
-            if self._mascota_cargando() is not None:
-                return self._esperar_mascota(motivo, minutos, sacar=False)
-            if self._mascota_visible() is None and self._puede_sacar_mascota():
-                return self._esperar_mascota(motivo, minutos, sacar=True)
+            if self._asistente_cargando() is not None:
+                return self._esperar_asistente(motivo, minutos, sacar=False)
+            if self._asistente_visible() is None and self._puede_sacar_asistente():
+                return self._esperar_asistente(motivo, minutos, sacar=True)
         return self._entrar_con_reloj(motivo, minutos)
 
     def salir(self, motivo: Optional[str] = None, inmediato: bool = False) -> bool:
@@ -372,7 +372,7 @@ class ControlPantallaGrande(QObject):
             self._esperando = False
             if self._espera_temporal:
                 self._temporal = True
-                self._m_grande = self._mascota_visible()
+                self._m_grande = self._asistente_visible()
             self._terminar()
             return True
         if self._vista == "reloj":
@@ -380,9 +380,9 @@ class ControlPantallaGrande(QObject):
                 _llamar(self._ventana, "ocultar", 0 if inmediato else pg.FADE_MS)
             self._terminar()
             return True
-        if self._vista == "mascota" and self._maquina.estado is not None:
-            if self._salva_en_mascota:
-                self._salva_en_mascota = False
+        if self._vista == "asistente" and self._maquina.estado is not None:
+            if self._salva_en_asistente:
+                self._salva_en_asistente = False
                 _llamar(self._m_grande, "set_salvapantallas", False)
             t = self._reloj()
             acciones = self._maquina.salir_ya(t) if inmediato else self._maquina.pedir_salir(t)
@@ -428,10 +428,10 @@ class ControlPantallaGrande(QObject):
         }
 
     def mostrar_alarma(self, texto: Optional[str]) -> bool:
-        """La burbuja de la alarma en la mascota (luneAlarma) o en VentanaReloj.
+        """La burbuja de la alarma en la asistente (luneAlarma) o en VentanaReloj.
         None la quita. False si no hay pantalla grande donde enseñarla."""
         self._alarma_texto = None if texto is None else str(texto)
-        if self._vista == "mascota" and self._m_grande is not None:
+        if self._vista == "asistente" and self._m_grande is not None:
             if texto is None:
                 _llamar(self._m_grande, "ocultar_alarma")
             else:
@@ -456,7 +456,7 @@ class ControlPantallaGrande(QObject):
         return self._activar_salvapantallas()
 
     def herramientas(self) -> Dict[str, Callable]:
-        return {"mascota_pantalla_grande": self._herramienta}
+        return {"asistente_pantalla_grande": self._herramienta}
 
     def _herramienta(self, args, ctx=None):
         c = dict(ctx) if isinstance(ctx, dict) else ({"contexto": ctx} if ctx is not None else {})
@@ -485,22 +485,22 @@ class ControlPantallaGrande(QObject):
         self.cambio.emit(True, motivo)
         return True
 
-    def _entrar_con_mascota(self, m, motivo: str, minutos: Optional[int]) -> bool:
+    def _entrar_con_asistente(self, m, motivo: str, minutos: Optional[int]) -> bool:
         if not self._iniciar_actividad(motivo):
             return False
-        self._empezar_mascota(m, motivo, minutos)
+        self._empezar_asistente(m, motivo, minutos)
         return True
 
-    def _empezar_mascota(self, m, motivo: str, minutos: Optional[int]) -> None:
+    def _empezar_asistente(self, m, motivo: str, minutos: Optional[int]) -> None:
         self._m_grande = m
-        self._vista = "mascota"
+        self._vista = "asistente"
         if motivo in ("manual", "herramienta") and getattr(m, "durmiendo", False) is True:
             _llamar(m, "despertar")
         if motivo == "salvapantallas":
             _llamar(m, "set_salvapantallas", True,
                     fondo_oscuro=bool(self._cfg("salvapantallas", "fondo_oscuro", True)),
                     reloj=bool(self._cfg("salvapantallas", "reloj", True)))
-            self._salva_en_mascota = True
+            self._salva_en_asistente = True
         self._aplicar(self._maquina.pedir_entrar(motivo, self._reloj()))
         self._t_maquina.start()
         self._programar_minutos(minutos)
@@ -514,16 +514,16 @@ class ControlPantallaGrande(QObject):
         self._programar_minutos(minutos)
         return True
 
-    def _esperar_mascota(self, motivo: str, minutos: Optional[int], *, sacar: bool) -> bool:
+    def _esperar_asistente(self, motivo: str, minutos: Optional[int], *, sacar: bool) -> bool:
         if not self._iniciar_actividad(motivo):
             return False
         self._esperando = True
         self._espera_temporal = sacar
-        self._espera_hasta = self._reloj() + ESPERA_MASCOTA_S
+        self._espera_hasta = self._reloj() + ESPERA_ASISTENTE_S
         self._minutos_pend = minutos
         if sacar:
-            _llamar(self.anfitrion, "alternar_mascota")
-        if self._esperando:                             # set_mascota pudo resolverlo ya
+            _llamar(self.anfitrion, "alternar_asistente")
+        if self._esperando:                             # set_asistente pudo resolverlo ya
             self._t_espera.start()
             self._comprobar_espera()
         return True
@@ -532,19 +532,19 @@ class ControlPantallaGrande(QObject):
         if not self._esperando:
             self._t_espera.stop()
             return
-        m = self._mascota_lista()
+        m = self._asistente_lista()
         if m is not None:
             self._t_espera.stop()
             self._esperando = False
             self._temporal = self._espera_temporal
-            self._empezar_mascota(m, self._motivo, self._minutos_pend)
+            self._empezar_asistente(m, self._motivo, self._minutos_pend)
             return
         if self._reloj() >= self._espera_hasta:
             self._t_espera.stop()
             self._esperando = False
-            _log_info("[grande] la mascota no estuvo lista a tiempo: reloj")
+            _log_info("[grande] la asistente no estuvo lista a tiempo: reloj")
             if self._espera_temporal:
-                self._cerrar_temporal(self._mascota_visible())
+                self._cerrar_temporal(self._asistente_visible())
             self._mostrar_reloj(self._motivo)
             self._programar_minutos(self._minutos_pend)
 
@@ -552,8 +552,8 @@ class ControlPantallaGrande(QObject):
         if self.activo or self._maquina.estado is not None:
             return False
         self.ultimo_error = ""
-        m = self._mascota_lista()
-        ok = (self._entrar_con_mascota(m, "salvapantallas", None) if m is not None
+        m = self._asistente_lista()
+        ok = (self._entrar_con_asistente(m, "salvapantallas", None) if m is not None
               else self._entrar_con_reloj("salvapantallas", None))
         if ok:
             self._armar_entrada()
@@ -568,14 +568,14 @@ class ControlPantallaGrande(QObject):
             self._t_maquina.stop()
 
     def _aplicar(self, acciones: List) -> None:
-        m_fin = None                                    # la mascota de la salida que acaba de terminar
+        m_fin = None                                    # la asistente de la salida que acaba de terminar
         for i, (nombre, datos) in enumerate(acciones):
             m = self._m_grande
             if nombre == "guardar_geom":
                 if self._actividad is None:
                     # Entrada encolada durante la salida: la actividad se pide ahora.
                     motivo = str(datos.get("motivo") or "manual")
-                    nueva = self._mascota_lista()
+                    nueva = self._asistente_lista()
                     if nueva is None or not self._iniciar_actividad(motivo):
                         self._maquina.abortar()
                         if nueva is None and self._actividad is None:
@@ -584,7 +584,7 @@ class ControlPantallaGrande(QObject):
                             self._alarma_texto = None
                         break
                     self._m_grande = m = nueva
-                    self._vista = "mascota"
+                    self._vista = "asistente"
                     self._programar_minutos(self._minutos_pend)
                     if self._alarma_texto is not None and nueva is not m_fin:
                         _llamar(m_fin, "ocultar_alarma")
@@ -611,16 +611,16 @@ class ControlPantallaGrande(QObject):
 
     # ── Salir ───────────────────────────────────────────────────────────────────
     def _terminar(self, conservar_alarma: bool = False) -> None:
-        """Fin de la pantalla grande: soltar la mascota temporal, la actividad del
+        """Fin de la pantalla grande: soltar la asistente temporal, la actividad del
         bus y avisar. Idempotente. `conservar_alarma`: vuelve a entrar ya (entrada
         encolada) y la burbuja de la alarma sigue."""
         for t in (self._t_minutos, self._t_entrada, self._t_espera):
             t.stop()
         m = self._m_grande
-        if self._salva_en_mascota:
-            self._salva_en_mascota = False
+        if self._salva_en_asistente:
+            self._salva_en_asistente = False
             _llamar(m, "set_salvapantallas", False)
-        if self._alarma_texto is not None and self._vista == "mascota" and not conservar_alarma:
+        if self._alarma_texto is not None and self._vista == "asistente" and not conservar_alarma:
             _llamar(m, "ocultar_alarma")
         if self._temporal:
             self._cerrar_temporal(m)
@@ -651,7 +651,7 @@ class ControlPantallaGrande(QObject):
             self.cambio.emit(False, motivo)
 
     def _cerrar_temporal(self, m) -> None:
-        """La mascota que se sacó para la pantalla grande se cierra al salir."""
+        """La asistente que se sacó para la pantalla grande se cierra al salir."""
         if m is None or getattr(m, "cerrado", False):
             return
         _llamar(m, "close")
@@ -717,8 +717,8 @@ class ControlPantallaGrande(QObject):
         """Del salvapantallas a la pantalla grande despierta: con la alarma (que la
         cedió) o manual (un clic con `clic_sale_de_todo` apagado)."""
         self._t_entrada.stop()
-        if self._salva_en_mascota:
-            self._salva_en_mascota = False
+        if self._salva_en_asistente:
+            self._salva_en_asistente = False
             _llamar(self._m_grande, "set_salvapantallas", False)     # la despierta
         if motivo == "alarma":
             self._actividad = None                      # el bus ya apagó el salvapantallas
@@ -733,7 +733,7 @@ class ControlPantallaGrande(QObject):
         self._maquina.cambiar_motivo(motivo)
         if self._vista == "reloj":
             self._mostrar_reloj(motivo)
-        elif self._vista == "mascota" and getattr(self._m_grande, "durmiendo", False) is True:
+        elif self._vista == "asistente" and getattr(self._m_grande, "durmiendo", False) is True:
             _llamar(self._m_grande, "despertar")
         self.cambio.emit(True, motivo)
 
@@ -808,30 +808,30 @@ class ControlPantallaGrande(QObject):
         if self._vista == "reloj" and getattr(v, "modo", "") == "grande":
             self.salir()
 
-    # ── Mascota y pantallas ─────────────────────────────────────────────────────
-    def _mascota_actual(self):
-        m = self._mascota
+    # ── Asistente y pantallas ─────────────────────────────────────────────────────
+    def _asistente_actual(self):
+        m = self._asistente
         if m is None or getattr(m, "cerrado", False):
-            m = _llamar(self.anfitrion, "mascota")
+            m = _llamar(self.anfitrion, "asistente")
         return None if m is None or getattr(m, "cerrado", False) else m
 
-    def _mascota_visible(self):
-        m = self._mascota_actual()
+    def _asistente_visible(self):
+        m = self._asistente_actual()
         return m if _visible(m) else None
 
-    def _mascota_lista(self):
-        m = self._mascota_visible()
+    def _asistente_lista(self):
+        m = self._asistente_visible()
         return m if m is not None and _soporta(m) else None
 
-    def _mascota_cargando(self):
-        """La mascota de página (VRM o animada) a la vista pero aún sin su página lista."""
-        m = self._mascota_visible()
+    def _asistente_cargando(self):
+        """La asistente de página (VRM o animada) a la vista pero aún sin su página lista."""
+        m = self._asistente_visible()
         if m is None or _soporta(m):
             return None
         return m if str(getattr(m, "render", "") or "") in RENDERS_PAGINA else None
 
-    def _puede_sacar_mascota(self) -> bool:
-        if not callable(getattr(self.anfitrion, "alternar_mascota", None)):
+    def _puede_sacar_asistente(self) -> bool:
+        if not callable(getattr(self.anfitrion, "alternar_asistente", None)):
             return False
         render = str(self._cfg("avatar", "render", "animado") or "animado")
         modo = str(getattr(self.anfitrion, "modo", "normal") or "normal")
@@ -865,7 +865,7 @@ class ControlPantallaGrande(QObject):
         pantallas = QGuiApplication.screens()
         if not pantallas:
             return None
-        m = self._m_grande or self._mascota_visible()
+        m = self._m_grande or self._asistente_visible()
         g = self._rect_de(m) if m is not None else None
         if g is not None:
             return pantallas[indice_mayor_interseccion(g, [p.geometry() for p in pantallas])]
@@ -920,4 +920,4 @@ class ControlPantallaGrande(QObject):
             return defecto
 
 
-__all__ = ("ControlPantallaGrande", "webengine_disponible", "indice_mayor_interseccion", "ESPERA_MASCOTA_S")
+__all__ = ("ControlPantallaGrande", "webengine_disponible", "indice_mayor_interseccion", "ESPERA_ASISTENTE_S")

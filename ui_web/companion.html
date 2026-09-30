@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<!-- Corte 9: fetch/XHR solo al servidor local de la mascota (y blob:/data:), como en
+<!-- Corte 9: fetch/XHR solo al servidor local de la asistente (y blob:/data:), como en
      companion_vrm.html. Si rompiera algo en pantalla, se quita. -->
 <meta http-equiv="Content-Security-Policy" content="connect-src 'self' blob: data:" />
 <title>Lune</title>
 <link rel="stylesheet" href="styles.css" />
 <link rel="stylesheet" href="css/burbuja.css" />
-<link rel="stylesheet" href="css/mascota_anim.css" />
+<link rel="stylesheet" href="css/asistente_anim.css" />
 <!-- Cortes 5 y 6: pantalla grande y salvapantallas, burbuja de alarma y notas del baile -->
 <link rel="stylesheet" href="css/grande.css" />
 <link rel="stylesheet" href="css/alarma.css" />
@@ -22,7 +22,7 @@
   #wrap { display:flex; flex-direction:column; align-items:center; justify-content:flex-end;
     height:100vh; gap:8px; padding:8px; box-sizing:border-box; }
 
-  /* Burbuja de comentario (arriba de la mascota) */
+  /* Burbuja de comentario (arriba de la asistente) */
   #bubble { max-width:230px; background:var(--ink-800,#0F1424); color:var(--paper,#EAF1FF);
     border:2px solid var(--cyan-700,#0091AB); border-radius:3px; clip-path:var(--clip-tr, none);
     padding:9px 12px; font-size:12.5px; line-height:1.38; box-shadow:0 6px 22px rgba(0,0,0,.55);
@@ -32,7 +32,7 @@
     color:var(--cyan-400,#36ECFF); text-transform:uppercase; display:block; margin-bottom:3px; }
   #bubble .who .jp { color:var(--yellow-500,#FFE000); }
 
-  /* Mini-stage con la mascota animada */
+  /* Mini-stage con la asistente animada */
   #stage { position:relative; width:210px; height:290px; overflow:hidden;
     background:radial-gradient(circle at 50% 30%, rgb(var(--cyan-500-rgb, 0 229 255) / .16), transparent 62%), var(--ink-950,#05070F);
     border:2px solid var(--ink-500,#232F52); border-radius:7px;
@@ -68,7 +68,7 @@
      página, su reloj y el pulso (LuneMMDAudio). -->
 <script src="lune_mmd_audio.js"></script>
 <script>
-  var V = 'assets/mascot/anime-videos/';
+  var V = 'assets/asistente/anime-videos/';
   // v10 — un estado por clip; los que aún no tienen video caen al idle.
   var MAP = { normal:'composed', thinking:'thinking', happy:'happy', angry:'angry', error:'angry',
               surprised:'surprised', nervous:'nervous', wave:'wave', dismiss:'dismiss',
@@ -111,7 +111,7 @@
     window.pensando = function () { btxt.textContent = '…'; bub.classList.add('on'); };
     window.ocultarBurbuja = function () { bub.classList.remove('on'); };
   }
-  // Voz: la mascota de vídeo no tiene boca, pero la burbuja tiene que saber que suena
+  // Voz: la asistente de vídeo no tiene boca, pero la burbuja tiene que saber que suena
   // para no mover la boca al teclear cuando la haya (misma API que companion_vrm.html).
   // (corte 9: la canción de un baile baja al 35 % mientras habla: est.hablando del registro)
   window.luneSpeak = function (on) {
@@ -130,7 +130,7 @@
   // abajo), con la cabeza medida en los clips: su base (el hueso Head de un VRM)
   // al 36 % del alto y centrada. `offsetY` son metros hacia arriba como en el VRM
   // (1 m ≈ 1.29 altos del vídeo; 0.1 → a la altura de la frente) y el radio es el
-  // de la mascota 3D, 0.1732 m.
+  // de la asistente 3D, 0.1732 m.
   window.luneCabeza = function (offsetY) {
     try {
       var oy = Number(offsetY === undefined ? 0.1 : offsetY);
@@ -213,7 +213,7 @@
   window.setEmocion('wave');   // saluda al aparecer
 </script>
 <script type="module">
-// Registro de módulos de la mascota animada (ui_web/anim/*.js): el equivalente del
+// Registro de módulos de la asistente animada (ui_web/anim/*.js): el equivalente del
 // bus del VRM. El bucle arranca al registrarse el primer módulo y se pausa con la
 // ventana oculta (luneSetFPS(0) desde Python). De serie:
 //   'video'  (lune_anim_video.js)  clips con doble búfer y fundido, rotación de idles,

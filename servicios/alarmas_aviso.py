@@ -24,8 +24,8 @@ de la voz). Abrir el dispositivo puede tardar: se hace en un hilo (`lanzar`).
 Suena también en modo juego (decisión D3): el modo juego solo quita lo visual.
 
 `elegir_visual()` decide cómo se enseña: `discreto` (solo sonido y aviso de
-bandeja: hay un juego), `grande` (pantalla grande: mascota o VentanaReloj) o
-`burbuja` (burbuja de la mascota + tarjeta DialogoAlarma).
+bandeja: hay un juego), `grande` (pantalla grande: asistente o VentanaReloj) o
+`burbuja` (burbuja de la asistente + tarjeta DialogoAlarma).
 """
 from __future__ import annotations
 
@@ -48,14 +48,14 @@ CANAL = "alarma"
 
 
 def elegir_visual(*, juego: bool, pantalla_grande: bool, render: str = "",
-                  mascota_visible: bool = False) -> str:
+                  asistente_visible: bool = False) -> str:
     """discreto | grande | burbuja.
 
     - Con un juego delante: `discreto` (sonido + aviso de bandeja, nada en pantalla).
-    - `alarmas.pantalla_grande` activado: `grande` (con la mascota VRM/animada a la
+    - `alarmas.pantalla_grande` activado: `grande` (con la asistente VRM/animada a la
       vista, ella; si no, la VentanaReloj: eso lo decide ControlPantallaGrande).
       En patata no hay pantalla grande: `discreto`.
-    - Si no: `burbuja` (burbuja roja en la mascota si está a la vista + la tarjeta).
+    - Si no: `burbuja` (burbuja roja en la asistente si está a la vista + la tarjeta).
     """
     if juego:
         return "discreto"

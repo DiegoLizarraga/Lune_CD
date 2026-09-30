@@ -1,5 +1,5 @@
 """
-nucleo/packs_sonido.py — Packs de sonidos de reacción de la mascota (los «voice
+nucleo/packs_sonido.py — Packs de sonidos de reacción de la asistente (los «voice
 packs» de Mate-Engine, versión Lune).
 
 QUÉ ES UN PACK
@@ -18,7 +18,7 @@ un `pack.json`:
 
 `eventos` son los clips principales de cada evento (suena uno al azar). En los
 eventos de REACCIÓN (`REACCIONES`: caricia, pudor, mareo…) ese clip es la «voz»
-de la mascota: suena solo si no está sonando otra voz de reacción ni la voz TTS.
+de la asistente: suena solo si no está sonando otra voz de reacción ni la voz TTS.
 `capas` se superponen SIEMPRE al evento (un ronroneo bajo el maullido…). La
 lista completa de eventos está en `EVENTOS` y en `sonidos/default/pack.json`.
 
@@ -50,11 +50,11 @@ otra carpeta del disco.
 
 USO
 ---
-- Web (mascota VRM y animada): `pack_para_web(pack)` da el pack ya resuelto
+- Web (asistente VRM y animada): `pack_para_web(pack)` da el pack ya resuelto
   (mapeo aplicado, URLs del servidor local) para `luneSonidos.cargar(objeto)` de
   ui_web/lune_packs.js. ui_web/ se sirve en «/» y `sonidos/` en el prefijo que se
   publique con `ServidorEstatico.publicar_carpeta(PREFIJO_WEB, CARPETA_SONIDOS)`.
-- Patata y la mascota de sprites: `archivo_al_azar(pack, evento)` y el
+- Patata y la asistente de sprites: `archivo_al_azar(pack, evento)` y el
   mezclador (`servicios/mezclador.py`).
 - Configuración: `avatar.pack_sonidos` (id = nombre de la carpeta) y
   `avatar.volumen_sfx`.
@@ -107,7 +107,7 @@ EVENTOS: Dict[str, str] = {
     "mareo": "zarandearla (voz de reacción)",
     "despertar": "se despierta (voz de reacción)",
     "dormir": "se queda dormida (voz de reacción)",
-    "saludo": "aparece la mascota (voz de reacción)",
+    "saludo": "sale al escritorio (voz de reacción)",
     "burbuja_abrir": "sale un globo de texto",
     "burbuja_cerrar": "se va el globo de texto",
     "tecleo": "letra a letra en los globos (un blip cada 2 letras)",
@@ -121,7 +121,7 @@ EVENTOS: Dict[str, str] = {
     "menu_boton": "pulsar un botón de menú",
     "menu_interruptor": "cambiar un interruptor",
 }
-# Eventos cuyo clip principal es la «voz» de la mascota: nunca dos a la vez ni
+# Eventos cuyo clip principal es la «voz» de la asistente: nunca dos a la vez ni
 # encima de la voz TTS (las capas suenan igual).
 REACCIONES = frozenset({"caricia", "pudor", "mareo", "despertar", "dormir", "saludo"})
 

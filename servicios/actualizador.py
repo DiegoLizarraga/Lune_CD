@@ -57,7 +57,7 @@ OPCIONALES: Dict[str, Dict] = {
     },
     "Interfaz completa (piel web animada)": {
         "modulos": {"PyQt6.QtWebEngineWidgets": "PyQt6-WebEngine"},
-        "nota": "La interfaz Shibuya Punk / Nube con animaciones y la mascota en video. "
+        "nota": "La interfaz Shibuya Punk / Nube con animaciones y la asistente en escritorio animada. "
                 "Sin esto Lune usa la interfaz nativa ligera (modo bajos recursos).",
     },
     "Red local (descubrir dispositivos)": {
@@ -66,7 +66,7 @@ OPCIONALES: Dict[str, Dict] = {
     },
     "Comentar lo que ves en pantalla": {
         "modulos": {"PIL": "Pillow"},
-        "nota": "La captura de pantalla con la que la mascota comenta lo que tienes delante. "
+        "nota": "La captura de pantalla con la que Lune comenta lo que tienes delante. "
                 "Sin esto no puede mirar la pantalla (nunca lo hace con un juego abierto).",
     },
     "Voz 100% local (Kokoro)": {
@@ -86,7 +86,7 @@ OPCIONALES: Dict[str, Dict] = {
 # Lo que hace falta sí o sí (instalador para usuarios nuevos: va marcado por defecto).
 # numpy es obligatorio: lo importan al cargar el mezclador de sonidos, el pulso de la
 # música, «Mis bailes» (nucleo/bailes.py) y la canción de los bailes
-# (servicios/cancion_python.py); sin él no hay sonidos de la mascota, ni alarmas con
+# (servicios/cancion_python.py); sin él no hay sonidos de Lune, ni alarmas con
 # sonido propio, ni bailes de la biblioteca.
 NUCLEO: Dict[str, Dict] = {
     "Núcleo de Lune (obligatorio)": {
@@ -95,16 +95,17 @@ NUCLEO: Dict[str, Dict] = {
     },
     "Sonido: mezclador, alarmas y bailes (obligatorio)": {
         "modulos": {"numpy": "numpy", "sounddevice": "sounddevice", "imageio_ffmpeg": "imageio-ffmpeg"},
-        "nota": "numpy: el mezclador de sonidos de la mascota, las alarmas y los bailes (sin él no "
+        "nota": "numpy: el mezclador de sonidos de Lune, las alarmas y los bailes (sin él no "
                 "cargan) y el giro de los sprites. sounddevice: la salida del mezclador (sin él cae "
                 "a winsound, sin mezcla). imageio-ffmpeg: un ffmpeg para leer mp3/ogg/m4a de "
                 "alarmas y bailes (sin él solo .wav).",
     },
 }
 if sys.platform == "win32":
-    NUCLEO["Windows: mascota y detector de música (obligatorio)"] = {
+    NUCLEO["Windows: asistente en escritorio y detector de música (obligatorio)"] = {
         "modulos": {"win32gui": "pywin32", "comtypes": "comtypes"},
-        "nota": "pywin32: la mascota fantasma (deja pasar los clics y se queda sobre los juegos) "
+        "nota": "pywin32: el modo fantasma de la asistente en escritorio (deja pasar los clics y se "
+                "queda sobre los juegos) "
                 "y la ventana activa. comtypes: el detector de música y el audio por programa "
                 "(bailar con lo que suena). Solo Windows.",
     }

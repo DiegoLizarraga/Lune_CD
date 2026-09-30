@@ -181,10 +181,10 @@ def test_autoinicio_estado(s):
 
 
 def test_autoinicio_como(s):
-    r = s.comando("/autoinicio como mascota")
-    assert s.config.get("sistema", "autoinicio_como") == "mascota" and "mascota" in r
+    r = s.comando("/autoinicio como asistente")
+    assert s.config.get("sistema", "autoinicio_como") == "asistente" and "asistente" in r
     assert "Usa /autoinicio como" in s.comando("/autoinicio como escritorio")
-    assert s.config.get("sistema", "autoinicio_como") == "mascota"
+    assert s.config.get("sistema", "autoinicio_como") == "asistente"
 
 
 def test_autoinicio_espera(s):
@@ -202,8 +202,8 @@ def test_autoinicio_si_no_puede_activarlo(s):
 
 # ── Otros ──────────────────────────────────────────────────────────────────────
 
-def test_sentarse_es_de_la_mascota(s):
-    assert "mascota de las ventanas" in s.comando("/sentarse")
+def test_sentarse_es_de_la_asistente(s):
+    assert "asistente en escritorio" in s.comando("/sentarse")
 
 
 @pytest.mark.parametrize("linea", ["hola", "/bailar", "/discordia", "", "   ", "/auto"])

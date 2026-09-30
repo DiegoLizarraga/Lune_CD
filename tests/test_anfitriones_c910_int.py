@@ -177,7 +177,7 @@ def test_relevo_sin_el_bot_conectado_no_lo_conecta(escenario, sistema, qapp):
 
 
 def test_la_cara_de_la_barra_no_sobrevive_al_puente(qapp):
-    """La reacción de Minecraft (o de la comida) sin mascota pone la cara de la barra un rato;
+    """La reacción de Minecraft (o de la comida) sin asistente pone la cara de la barra un rato;
     si en ese rato el puente se va (cambio de interfaz en caliente), su vuelta a «normal» se va
     con él: antes era un singleShot suelto que emitía en un objeto borrado (access violation)."""
     from PyQt6.QtCore import QCoreApplication, QEvent, QTimer
@@ -247,7 +247,7 @@ def test_web_chat_conecta_el_bot_sale_como_llamada_y_la_pregunta_no(escenario, s
     assert b.memoria.vistos == [] and ia == []                         # antes que la memoria y sin IA
     b._enviar("ponme el baile de Alfa", b._provider_web)
     assert [(x.herramienta, x.args) for x in b.acciones.ejecutadas[-1][0]] == [
-        ("mascota_bailar", {"segundos": 30, "cancion": "Alfa"})]
+        ("asistente_bailar", {"segundos": 30, "cancion": "Alfa"})]
     # Una pregunta no es una orden: memoria y modelo, como siempre.
     b._enviar("¿cómo conecto el bot?", b._provider_web)
     assert len(b.acciones.ejecutadas) == 2
@@ -292,7 +292,7 @@ def test_web_pensando_mientras_responde_pausa_el_modelo_del_bot(escenario, siste
     w2 = WorkerFalso.creados[-1]
     w1.finished.emit()
     assert bus.actual().pensando is True
-    # La mascota que comenta la pantalla y acaba no apaga el del chat.
+    # La asistente que comenta la pantalla y acaba no apaga el del chat.
     bus.actualizar(pensando=True)
     bus.actualizar(pensando=False)
     assert bus.actual().pensando is True
@@ -338,7 +338,7 @@ def _nativa_chat(main, texto, memoria, ejecutadas):
         _adjuntos=[], _refrescar_adjuntos=lambda: None, _guardar_turno=lambda *a, **k: None,
         memoria=memoria, tools=ToolManager(), ai_manager=types.SimpleNamespace(providers={}),
         _modo_acciones=lambda: "normal", _scroll_bottom=lambda: None, _burbuja_bot=lambda t: None,
-        _eco_mascota=lambda *a, **k: None,
+        _eco_asistente=lambda *a, **k: None,
         lune_face=types.SimpleNamespace(set_state=lambda *a, **k: None),
         _ejecutar_acciones=lambda ll, origen, ctx, **kw: ejecutadas.append((ll, origen, dict(ctx), kw)))
 
@@ -478,9 +478,9 @@ def test_patata_por_defecto_trae_bailes_y_minecraft_y_sus_herramientas(patata_c7
     p = patata_c78(tools=tm)
     assert isinstance(p.bailes, BailesTerminal) and isinstance(p.minecraft, MinecraftTerminal)
     assert p.bailes.baile is p.baile                                  # la MISMA capa del título
-    for h in ("listar_bailes", "mascota_bailar", "parar_baile") + HERRAMIENTAS[1:]:
+    for h in ("listar_bailes", "asistente_bailar", "parar_baile") + HERRAMIENTAS[1:]:
         assert tm.tiene_handler(h), h
-    assert "mascota_bailar" in tm.disponibles("patata") and "listar_bailes" in tm.disponibles("patata")
+    assert "asistente_bailar" in tm.disponibles("patata") and "listar_bailes" in tm.disponibles("patata")
     q = patata_c78(tools=tm, bailes=None, minecraft=None)
     assert q.bailes is None and q.minecraft is None
     assert "Comando desconocido" in _cmd(q, "/bailes") and "Comando desconocido" in _cmd(q, "/mc")

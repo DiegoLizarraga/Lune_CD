@@ -4,7 +4,7 @@
  * El pulso lo calcula Python (nucleo/pulso.py, cortes 5 y 6) y llega a las páginas
  * como mucho 2 veces por segundo: {bpm, fase, energia}, con `fase` en 0..1 dentro
  * del pulso actual. Entre medias cada página extrapola con su propio reloj. Este
- * archivo es ese reloj, compartido por la mascota VRM (ui_web/vrm/lune_baile_proc.js),
+ * archivo es ese reloj, compartido por la asistente VRM (ui_web/vrm/lune_baile_proc.js),
  * la animada (ui_web/anim/lune_anim_baile.js) y la barra lateral de la web
  * (index.html lo carga con <script src>).
  *

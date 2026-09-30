@@ -15,7 +15,7 @@ Read `readme.md` in this skill for the full guide (product context, voice & copy
 - `tokens/` — colors, typography, spacing, effects (glows, clips, textures), base helpers.
 - `components/` — React primitives: Button, IconButton, Card, Avatar, ChatBubble, Input, Switch, Badge, StatusPill, ProviderTab. Each has a `.prompt.md` with usage.
 - `ui_kits/lune-desktop/` — interactive recreation of the desktop app (sidebar + chat + settings).
-- `assets/` — app logo + mascot expression PNGs. `assets/mascot/lune-*.png`.
+- `assets/` — app logo + Lune's expression PNGs (`assets/asistente/anime/lune-*.png`) and animated WebM clips (`assets/asistente/anime-videos/`).
 
 ## How to work
 If creating **visual artifacts** (slides, mocks, throwaway prototypes): copy the assets you need out of `assets/`, link `styles.css` (or inline the tokens), and build static HTML — reuse the component classes/patterns and the `.lune-backdrop` shell. Reference the `guidelines/` cards for exact swatches and specimens.

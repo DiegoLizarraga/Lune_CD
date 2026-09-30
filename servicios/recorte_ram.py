@@ -117,7 +117,7 @@ class ProgramadorRecorte:
     Cuándo toca recortar con `sistema.recorte_ram_auto` (como MemoryTrim de ME):
     a los 0, 10 y 15 s de activarlo y luego cada 600 s. Quien lo usa llama a
     `toca(animando)` de vez en cuando (cada 2 s) y recorta si devuelve True.
-    Mientras la mascota anima (arrastre, baile, pantalla grande…) no toca: el
+    Mientras la asistente anima (arrastre, baile, pantalla grande…) no toca: el
     recorte provoca tirones; lo pendiente se hace en cuanto deje de animar.
     """
 

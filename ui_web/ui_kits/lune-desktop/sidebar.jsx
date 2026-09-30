@@ -1,21 +1,21 @@
 /* Lune CD desktop — Sidebar (v10)
  *
- * Escenario de la mascota (MascotStage):
- *   · Por defecto, el vídeo del estado (assets/mascot/anime-videos/lune-<estado>.webm) o su PNG.
- *   · Con la mascota en VRM (Ajustes → Mascota → VRM 3D) y un .vrm publicado por ui/web_shell.py
+ * Escenario de la asistente (AsistenteStage):
+ *   · Por defecto, el vídeo del estado (assets/asistente/anime-videos/lune-<estado>.webm) o su PNG.
+ *   · Con la asistente en VRM (Ajustes → Asistente en escritorio → VRM 3D) y un .vrm publicado por ui/web_shell.py
  *     en /vrm/actual.vrm, el avatar 3D de vrm_barra.js (window.LuneVRMBarra) sobre un <canvas>.
  *     Si el módulo carga tarde se espera su evento 'lune-vrm-barra'; si falla WebGL o el modelo,
  *     o deja de haber modelo, se vuelve al vídeo. El cambio de personaje o de modelo lo avisa
  *     web_shell con el evento 'lune-vrm-modelo' (y ya recarga los avatares vivos).
- *   · Lune fuera (mascota de escritorio): la barra no la dibuja dos veces. El vídeo se desmonta y el
+ *   · Lune fuera (asistente en escritorio): la barra no la dibuja dos veces. El vídeo se desmonta y el
  *     avatar 3D se pausa (FPS 0 y contexto WebGL liberado) y se oculta bajo el aviso.
  *   · Modo juego (corte 4): el avatar 3D y el vídeo se pausan mientras hay un juego delante.
- *   · Clic derecho sobre la mascota → menú radial SVG (window.LuneRadial, extra/apariencia.jsx).
+ *   · Clic derecho sobre la asistente → menú radial SVG (window.LuneRadial, extra/apariencia.jsx).
  *   · Baile (cortes 5/6): app.jsx pasa `baile` = window.LuneBaileWeb.useBaile() (extra/baile.jsx). En VRM, el
  *     módulo baileProc (ui_web/vrm/lune_baile_proc.js) se registra en el avatar de la barra (h.usarModulo) y
  *     recibe bailar(on, opts) y cada pulso; en vídeo, un transform por rAF a ≤ 30 fps, solo mientras baila y
  *     no está en pausa (Lune fuera o modo juego). Encima, el rótulo «♪ Spotify · 124 BPM».
- *   · Comida (cortes 7/8): clic central (soltado) sobre la mascota → menú radial «secundario» (Batido, Pastel,
+ *   · Comida (cortes 7/8): clic central (soltado) sobre la asistente → menú radial «secundario» (Batido, Pastel,
  *     Guardar), como la flotante. `window.__luneCabezaBarra()` → {x, y, r} en px de la ventana (o null): la
  *     cabeza de Lune para el acierto de ComidaWeb (extra/vida.jsx). En VRM, el hueso de la cabeza (+0.1 m, como
  *     Mate-Engine) proyectado, r = 0.22·ancho; en vídeo, la misma fórmula que companion.html (luneCabeza) con el
@@ -28,23 +28,23 @@
  */
 
 // PNG estático (respaldo si el video de un estado aún no existe).
-const MASCOT = {
-  normal:   '../../assets/mascot/anime/lune-composed.png',
-  happy:    '../../assets/mascot/anime/lune-happy.png',
-  reading:  '../../assets/mascot/anime/lune-thinking.png',
-  thinking: '../../assets/mascot/anime/lune-thinking.png',
-  typing:   '../../assets/mascot/anime/lune-composed.png',
-  error:    '../../assets/mascot/anime/lune-nervous.png',
-  angry:    '../../assets/mascot/anime/lune-angry.png',
-  surprised:'../../assets/mascot/anime/lune-surprised.png',
-  nervous:  '../../assets/mascot/anime/lune-nervous.png',
-  wave:     '../../assets/mascot/anime/lune-wave.png',
+const ASISTENTE = {
+  normal:   '../../assets/asistente/anime/lune-composed.png',
+  happy:    '../../assets/asistente/anime/lune-happy.png',
+  reading:  '../../assets/asistente/anime/lune-thinking.png',
+  thinking: '../../assets/asistente/anime/lune-thinking.png',
+  typing:   '../../assets/asistente/anime/lune-composed.png',
+  error:    '../../assets/asistente/anime/lune-nervous.png',
+  angry:    '../../assets/asistente/anime/lune-angry.png',
+  surprised:'../../assets/asistente/anime/lune-surprised.png',
+  nervous:  '../../assets/asistente/anime/lune-nervous.png',
+  wave:     '../../assets/asistente/anime/lune-happy.png',
 };
 
-// Estado → nombre base del video (assets/mascot/anime-videos/lune-<base>.mp4).
+// Estado → nombre base del video (assets/asistente/anime-videos/lune-<base>.webm).
 // Si el clip no existe todavía, cae al idle "composed" y, si tampoco, al PNG.
 // v10 — un estado por clip. Los que aún no tienen video caen al idle hasta que
-// exista `lune-<estado>.webm` (ver scripts/convertir_mascota.py).
+// exista `lune-<estado>.webm` (ver scripts/convertir_asistente.py).
 const VID = {
   normal:'composed', thinking:'thinking', happy:'happy', angry:'angry', error:'angry',
   surprised:'surprised', nervous:'nervous', wave:'wave', dismiss:'dismiss',
@@ -52,12 +52,12 @@ const VID = {
   typing:'working', listening:'listening', talking:'talking',
   laughing:'laughing', bored:'bored',
 };
-const VID_DIR = '../../assets/mascot/anime-videos/';
+const VID_DIR = '../../assets/asistente/anime-videos/';
 const VID_IDLE = VID_DIR + 'lune-composed.webm';
 
 const FPS_BAILE_VIDEO = 30;
 
-// ── Cabeza de la mascota de la barra (comida de la web, cortes 7/8) ──────────
+// ── Cabeza de la asistente de la barra (comida de la web, cortes 7/8) ──────────
 const ALTO_CABEZA_M = 0.1;       // el acierto de Mate-Engine: cabeza + (0, 0.1, 0)
 const ALTOS_POR_METRO = 1.29;    // clips 720×1280 (companion.html, luneCabeza)
 const RADIO_CABEZA_M = 0.1732;   // 0.1·|escala| de Mate-Engine
@@ -84,7 +84,7 @@ function cabezaVrm(h, canvas) {
     const r = canvas.getBoundingClientRect();
     if (!(r.width > 0 && r.height > 0)) return null;
     const radio = 0.22 * r.width;
-    const m = h && h.mascota;
+    const m = h && h.asistente;
     const ctx = m && m.ctx;
     const cab = ctx && ctx.huesos && ctx.huesos.head;
     const T = ctx && ctx.THREE;
@@ -103,7 +103,7 @@ function publicarCabeza(fn) {
   return () => { if (window.__luneCabezaBarra === fn) window.__luneCabezaBarra = null; };
 }
 
-function MascotVideo({ state, pausado = false, baile = null }) {
+function AsistenteVideo({ state, pausado = false, baile = null }) {
   const wanted = VID_DIR + 'lune-' + (VID[state] || 'composed') + '.webm';
   const [src, setSrc] = React.useState(wanted);
   const [png, setPng] = React.useState(false);
@@ -150,7 +150,7 @@ function MascotVideo({ state, pausado = false, baile = null }) {
   React.useEffect(() => (pausado ? undefined : publicarCabeza(() => cabezaVideo(png ? imagen.current : video.current))),
     [pausado, png]);
 
-  if (png) return <img ref={imagen} src={MASCOT[state] || MASCOT.normal} alt="Lune" />;
+  if (png) return <img ref={imagen} src={ASISTENTE[state] || ASISTENTE.normal} alt="Lune" />;
   return (
     <video ref={video} key={src} src={src} autoPlay={!pausado} loop muted playsInline
       onError={() => { if (src !== VID_IDLE) setSrc(VID_IDLE); else setPng(true); }} />
@@ -220,7 +220,7 @@ function useLibVrm() {
 
 /** El <canvas> con el avatar. Se crea al montar y se destruye al desmontar (un canvas
  *  con el contexto destruido no se reutiliza: para reintentar, React monta otro). */
-function MascotVrm({ info, state, pausado, onFallo, baile = null }) {
+function AsistenteVrm({ info, state, pausado, onFallo, baile = null }) {
   const lienzo = React.useRef(null);
   const handle = React.useRef(null);
   const fallo = React.useRef(onFallo);
@@ -273,17 +273,17 @@ function MascotVrm({ info, state, pausado, onFallo, baile = null }) {
     }, () => {});
     return () => { vivo = false; if (quitar) quitar(); };
   }, [bailando, claveBaile]);
-  return <canvas ref={lienzo} className="ln-mascot-vrm" aria-label="Lune (avatar 3D)" />;
+  return <canvas ref={lienzo} className="ln-asistente-vrm" aria-label="Lune (avatar 3D)" />;
 }
 
-/** «♪ Spotify · 124 BPM» sobre la mascota de la barra mientras baila (y está a la vista). */
+/** «♪ Spotify · 124 BPM» sobre la asistente de la barra mientras baila (y está a la vista). */
 function RotuloBaile({ baile, visible }) {
   const B = window.LuneBaileWeb;
   const t = visible && baile && baile.estado && baile.estado.bailando && B && typeof B.rotulo === 'function' ? B.rotulo(baile.estado) : '';
   return t ? <div className="ln-baile-rotulo" aria-live="polite">{t}</div> : null;
 }
 
-function MascotStage({ state, mascotaFuera = false, modoJuego = false, baile = null }) {
+function AsistenteStage({ state, asistenteFuera = false, modoJuego = false, baile = null }) {
   const [info, personaje] = useVrmBarra();
   const lib = useLibVrm();
   const [fallida, setFallida] = React.useState('');    // clave (url|v) del modelo que falló
@@ -299,21 +299,21 @@ function MascotStage({ state, mascotaFuera = false, modoJuego = false, baile = n
   }, [info && info.url, info && info.v]);
   // Un modelo nuevo (otra versión) se vuelve a intentar aunque el anterior fallara.
   const usarVrm = !!(info && info.render === 'vrm' && info.url && lib && fallida !== claveVrm(info));
-  const rotulo = <RotuloBaile baile={baile} visible={!mascotaFuera && !modoJuego} />;
-  if (usarVrm) return <>{rotulo}<MascotVrm info={info} state={state} pausado={mascotaFuera || modoJuego} onFallo={onFallo} baile={baile} /></>;
-  if (mascotaFuera) return null;
-  return <>{rotulo}<MascotVideo state={state} pausado={modoJuego} baile={baile} /></>;
+  const rotulo = <RotuloBaile baile={baile} visible={!asistenteFuera && !modoJuego} />;
+  if (usarVrm) return <>{rotulo}<AsistenteVrm info={info} state={state} pausado={asistenteFuera || modoJuego} onFallo={onFallo} baile={baile} /></>;
+  if (asistenteFuera) return null;
+  return <>{rotulo}<AsistenteVideo state={state} pausado={modoJuego} baile={baile} /></>;
 }
 
-// Lune está fuera (mascota de escritorio): el escenario no la dibuja dos veces.
+// Lune está fuera (asistente en escritorio): el escenario no la dibuja dos veces.
 // Queda un aviso y un botón para traerla de vuelta a la ventana.
-function MascotFuera({ onTraer }) {
+function AsistenteFuera({ onTraer }) {
   return (
-    <div className="ln-mascot-out">
-      <div className="ln-mascot-out-jp lune-jp">月</div>
-      <div className="ln-mascot-out-t">Lune está en tu escritorio</div>
-      <div className="ln-mascot-out-d">Anda por ahí como mascota flotante. Aquí no la verás doble.</div>
-      {onTraer && <button className="ln-mascot-out-btn" onClick={onTraer}>Traerla de vuelta</button>}
+    <div className="ln-asistente-out">
+      <div className="ln-asistente-out-jp lune-jp">月</div>
+      <div className="ln-asistente-out-t">Lune está en tu escritorio</div>
+      <div className="ln-asistente-out-d">Anda suelta por ahí, fuera de esta ventana. Aquí no la verás doble.</div>
+      {onTraer && <button className="ln-asistente-out-btn" onClick={onTraer}>Traerla de vuelta</button>}
     </div>
   );
 }
@@ -379,22 +379,22 @@ function TareasAcceso({ activo = false, onAbrir }) {
   );
 }
 
-function Sidebar({ provider, onProvider, mascotState, mascotaFuera = false, onTraer, compat = null, modoJuego = false, baile = null,
+function Sidebar({ provider, onProvider, asistenteState, asistenteFuera = false, onTraer, compat = null, modoJuego = false, baile = null,
   vista = '', onTareas }) {
   const { ProviderTab } = window.LUNE;
   // Tercera pestaña: API compatible con OpenAI (LM Studio, Groq…), solo si está configurada.
   const conCompat = !!(compat && compat.on);
   const descCompat = (compat && compat.model) || 'API compatible con OpenAI';
-  // Clic derecho sobre la mascota de la barra → menú radial SVG (sin el menú de Chromium).
+  // Clic derecho sobre la asistente de la barra → menú radial SVG (sin el menú de Chromium).
   const abrirRadial = (e) => {
     if (!window.LuneRadial) return;
     e.preventDefault();
     window.LuneRadial.abrir(e.clientX, e.clientY);
   };
-  // Clic central (soltado) sobre la mascota → radial «secundario» (comida), como la flotante (cortes 7/8).
+  // Clic central (soltado) sobre la asistente → radial «secundario» (comida), como la flotante (cortes 7/8).
   const centralAbajo = (e) => { if (e && e.button === 1 && typeof e.preventDefault === 'function') e.preventDefault(); };
   const centralArriba = (e) => {
-    if (!e || e.button !== 1 || mascotaFuera || !window.LuneRadial) return;
+    if (!e || e.button !== 1 || asistenteFuera || !window.LuneRadial) return;
     if (typeof e.preventDefault === 'function') e.preventDefault();
     window.LuneRadial.abrir(e.clientX, e.clientY, 'secundario');
   };
@@ -424,12 +424,12 @@ function Sidebar({ provider, onProvider, mascotState, mascotaFuera = false, onTr
       <div className="ln-sec-label">// Mi día</div>
       <TareasAcceso activo={vista === 'tareas'} onAbrir={onTareas} />
 
-      <div className="ln-mascot">
-        <div className={`ln-mascot-stage${mascotaFuera ? ' is-out' : ''}`} onContextMenu={abrirRadial}
+      <div className="ln-asistente">
+        <div className={`ln-asistente-stage${asistenteFuera ? ' is-out' : ''}`} onContextMenu={abrirRadial}
           onMouseDown={centralAbajo} onMouseUp={centralArriba}>
           {/* El avatar 3D sigue montado (en pausa y oculto) mientras Lune está fuera. */}
-          {mascotaFuera ? <MascotFuera onTraer={onTraer} /> : null}
-          <MascotStage state={mascotState} mascotaFuera={mascotaFuera} modoJuego={modoJuego} baile={baile} />
+          {asistenteFuera ? <AsistenteFuera onTraer={onTraer} /> : null}
+          <AsistenteStage state={asistenteState} asistenteFuera={asistenteFuera} modoJuego={modoJuego} baile={baile} />
         </div>
       </div>
     </aside>

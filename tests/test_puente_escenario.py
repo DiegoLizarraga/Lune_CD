@@ -81,7 +81,7 @@ class MMDFalso(QObject):
         self.llamadas = []
         self.e = {"fase": "sonando", "id": ID, "titulo": "Senbonzakura\x07", "autor": "Kurousa-P", "t": 12.345,
                   "total": 240.0, "modo": "vrm", "al_terminar": "siguiente", "volumen": 0.4, "en_el_sitio": False,
-                  "error": "", "pausado": False, "modo_mascota": "vrm", "sin_esqueleto": False, "raro": "<script>"}
+                  "error": "", "pausado": False, "modo_asistente": "vrm", "sin_esqueleto": False, "raro": "<script>"}
         self.bailes = [
             {"id": ID, "titulo": "Senbonzakura", "tipo": "vmd", "autor_cancion": "Kurousa-P", "autor_mmd": "x",
              "duracion": 240.04, "audio": True, "favorito": True, "desactivado": False, "problema": "",
@@ -409,10 +409,10 @@ def test_senales_de_bailes_normalizadas(cfg):
     m = MMDFalso()
     p = puente(cfg, mmd=m)
     est, bail, imp, vis = cap(p.mmd_estado), cap(p.bailes_cambio), cap(p.mmd_importado), cap(p.vista_pedida)
-    m.e.update(fase="bailoteo", id="../x", modo_mascota="animado", t=-3, total=1e9)
+    m.e.update(fase="bailoteo", id="../x", modo_asistente="animado", t=-3, total=1e9)
     m.estado_cambio.emit("{}")
     e = J(est[-1])
-    assert e["fase"] == "parado" and e["id"] == "" and e["sin_esqueleto"] is True and e["modo_mascota"] == "animado"
+    assert e["fase"] == "parado" and e["id"] == "" and e["sin_esqueleto"] is True and e["modo_asistente"] == "animado"
     assert e["t"] == 0.0 and e["total"] == 0.0 and e["titulo"] == "Senbonzakura" and "raro" not in e
     assert e["servicio"] is True
     m.biblioteca_cambio.emit(json.dumps(m.bailes))
@@ -661,7 +661,7 @@ def test_con_las_clases_de_verdad(cfg, tmp_path):
         assert J(p.bailes_lista(""))["bailes"][0]["offset_ms"] == 120
         r = J(p.mmd_config_guardar(json.dumps({"volumen": 0.5, "al_terminar": "repetir", "en_el_sitio": False})))
         assert r["ok"] and cfg.get("baile", "volumen") == 0.5 and cfg.get("baile", "al_terminar") == "repetir"
-        r = J(p.mmd_reproducir(id_))                                      # sin mascota: espera a que salga
+        r = J(p.mmd_reproducir(id_))                                      # sin asistente: espera a que salga
         assert r["ok"] and r["estado"]["pendiente"] is True and r["estado"]["id"] == id_
         assert J(p.mmd_parar())["ok"] and J(p.mmd_estado_json())["fase"] == "parado"
         e = J(p.mc_estado_json())

@@ -7,29 +7,29 @@ Para qué sirve
 --------------
 Las funciones portadas de Mate-Engine necesitan tres cosas en común:
 
-1. Un estado compartido de la mascota («¿está sentada? ¿bailando? ¿hay un juego
-   delante?»). Es `self.estado`, un `nucleo.estado_mascota.BusEstado` único: la
+1. Un estado compartido de la asistente («¿está sentada? ¿bailando? ¿hay un juego
+   delante?»). Es `self.estado`, un `nucleo.estado_asistente.BusEstado` único: la
    presencia de Discord, el radial, el salvapantallas o Minecraft lo LEEN de aquí
-   en vez de preguntarle a la ventana de la mascota.
+   en vez de preguntarle a la ventana de la asistente.
 2. Una tabla de prioridades para las máquinas que se pisan (crítica b.6):
    juego > alarma > grande = salvapantallas > mmd > sentada > comida > baile > idle.
-   Es `self.prioridad`: decide con `nucleo.estado_mascota` y, al ceder o reanudar
+   Es `self.prioridad`: decide con `nucleo.estado_asistente` y, al ceder o reanudar
    una actividad, avisa a su controlador para que lo haga físicamente (levantarla
    de la barra, pausar el MMD, volver a sentarla…).
 3. Un registro de controladores con el mismo ciclo de vida: `registrar(nombre,
-   controlador, actividades)`, `iniciar()`, `detener()`, `set_mascota(ventana)`.
+   controlador, actividades)`, `iniciar()`, `detener()`, `set_asistente(ventana)`.
    Los cortes siguientes enchufan aquí sus controladores (alarmas, grande, juego,
    musica, discord, minecraft, atajos, bandeja, despachador, comida, frases,
    recorte) sin tocar main.py ni web_bridge.py cada vez. Hoy el registro está vacío.
 4. Las herramientas del modelo que dependen de la app (`cambiar_voz` hoy; las de
-   la mascota y las alarmas en cortes siguientes): `conectar_herramientas(tools)`
+   la asistente y las alarmas en cortes siguientes): `conectar_herramientas(tools)`
    las enchufa en el ToolManager de quien lleva la app, y
    `registrar_herramienta(nombre, fn)` deja a un controlador añadir la suya.
 
 Lo instancia una vez quien lleva la app: `LuneBridge` (piel web) o
 `LuneCDWindow` (nativa), como `self.escritorio` (las dos no conviven en el
-mismo proceso). Cada vez que crean, recrean o sueltan la mascota flotante
-llaman a `set_mascota(ventana | None)`, y al salir a `cerrar()`. Así la cola de
+mismo proceso). Cada vez que crean, recrean o sueltan la asistente flotante
+llaman a `set_asistente(ventana | None)`, y al salir a `cerrar()`. Así la cola de
 eventos de la página (`evento_js` de CompanionFlotante) y el BusEstado tienen
 receptor desde el primer corte. Este módulo es solo el adaptador Qt: la lógica
 vive en nucleo/ y servicios/ y se prueba sin pantalla.
@@ -38,10 +38,10 @@ Contrato de un controlador (todo opcional, por duck typing):
     iniciar()                      arrancar (timers, hilos); se llama en iniciar()
                                    o al registrarlo si ya estaba iniciado
     detener()                      parar y soltar recursos (orden inverso)
-    set_mascota(ventana | None)    la mascota flotante cambió
+    set_asistente(ventana | None)    la asistente flotante cambió
     ceder(cesion)                  la tabla le quita su actividad: deshacerla ya
     reanudar(cesion)               la actividad que la interrumpió acabó: rehacerla
-    evento_mascota(tipo, datos)    evento de la página de la mascota (luneEventos)
+    evento_asistente(tipo, datos)    evento de la página de la asistente (luneEventos)
 
 Hilos: `BusEstado` avisa en el hilo que hizo el cambio. `estado_cambio` se
 emite siempre en el hilo de este objeto (el de Qt) y en el orden de los
@@ -58,14 +58,14 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 from PyQt6 import sip
 from PyQt6.QtCore import QObject, Qt, pyqtSignal, pyqtSlot
 
-from nucleo import estado_mascota as em
-from nucleo.estado_mascota import BusEstado, Cesion, EstadoMascota, Resultado
+from nucleo import estado_asistente as em
+from nucleo.estado_asistente import BusEstado, Cesion, EstadoAsistente, Resultado
 
 _log = logging.getLogger("lune.escritorio")
 
 
-def crear_mascota(cls: Any, *args, **kw) -> Any:
-    """Crea la mascota flotante (CompanionFlotante, AvatarOverlay…) SIN su propio
+def crear_asistente(cls: Any, *args, **kw) -> Any:
+    """Crea la asistente flotante (CompanionFlotante, AvatarOverlay…) SIN su propio
     icono de bandeja: desde el corte 4 la bandeja es una sola (ui/bandeja.BandejaLune,
     que además le llama a quitar_bandeja() por si acaso). Una clase sin el parámetro
     `bandeja` (anterior al corte 4, o un doble de test) se crea como siempre."""
@@ -140,12 +140,12 @@ def _llamar(obj: Any, metodo: str, *args) -> Any:
 
 
 class Prioridad:
-    """La tabla de prioridades de `nucleo.estado_mascota` + las acciones físicas.
+    """La tabla de prioridades de `nucleo.estado_asistente` + las acciones físicas.
 
     `iniciar(actividad, valor)` pregunta a la tabla y, si se permite, llama a
     `ceder(c)` del controlador de cada actividad interrumpida. `terminar(actividad)`
     la apaga y reanuda lo que se había interrumpido (con `reanudar(c)` de su
-    controlador). Quien pide la actividad sigue siendo quien la HACE en la mascota.
+    controlador). Quien pide la actividad sigue siendo quien la HACE en la asistente.
     """
 
     TABLA = em.PRIORIDAD
@@ -204,13 +204,13 @@ class Prioridad:
 class ServiciosEscritorio(QObject):
     """Estado compartido, tabla de prioridades y registro de controladores de escritorio."""
 
-    # (EstadoMascota, {campo: (antes, después)}), siempre en el hilo de Qt.
+    # (EstadoAsistente, {campo: (antes, después)}), siempre en el hilo de Qt.
     # `object` y no `dict`: dict pasaría por QVariantMap y las tuplas saldrían listas.
     estado_cambio = pyqtSignal(object, object)
-    # Evento de la página de la mascota (CompanionFlotante.evento_js), reenviado.
-    evento_mascota = pyqtSignal(str, dict)
-    # La mascota flotante cambió (ventana o None).
-    mascota_cambio = pyqtSignal(object)
+    # Evento de la página de la asistente (CompanionFlotante.evento_js), reenviado.
+    evento_asistente = pyqtSignal(str, dict)
+    # La asistente flotante cambió (ventana o None).
+    asistente_cambio = pyqtSignal(object)
 
     _estado_desde_hilo = pyqtSignal(object, object)
 
@@ -225,7 +225,7 @@ class ServiciosEscritorio(QObject):
         self.prioridad = Prioridad(self.estado, self._controlador_de_actividad)
         self._controladores: Dict[str, Any] = {}          # nombre → controlador (orden de registro)
         self._actividades: Dict[str, str] = {}             # actividad → nombre del controlador
-        self._mascota: Optional[QObject] = None
+        self._asistente: Optional[QObject] = None
         self._iniciado = False
         self._hilo = threading.get_ident()                 # hilo de Qt que lo creó
         # Entregas de estado_cambio que esperan en la cola de eventos. Mientras
@@ -262,7 +262,7 @@ class ServiciosEscritorio(QObject):
 
     def registrar_herramienta(self, nombre: str, fn: Callable[[dict, Any], Any]) -> None:
         """Handler `fn(args, ctx) -> str` de una herramienta del catálogo (alarmas,
-        mascota…). Llega al ToolManager ya conectado o al que se conecte después."""
+        asistente…). Llega al ToolManager ya conectado o al que se conecte después."""
         self._herramientas[str(nombre)] = fn
         if self.tools is not None:
             _llamar(self.tools, "registrar_handler", str(nombre), fn)
@@ -288,8 +288,8 @@ class ServiciosEscritorio(QObject):
             self._actividades[a] = nombre
         if self._iniciado:
             _llamar(controlador, "iniciar")
-        if self._mascota is not None:
-            _llamar(controlador, "set_mascota", self._mascota)
+        if self._asistente is not None:
+            _llamar(controlador, "set_asistente", self._asistente)
         return controlador
 
     def quitar(self, nombre: str) -> bool:
@@ -331,30 +331,30 @@ class ServiciosEscritorio(QObject):
         for ctl in reversed(list(self._controladores.values())):
             _llamar(ctl, "detener")
 
-    # ── Mascota flotante ───────────────────────────────────────────────────────
+    # ── Asistente flotante ───────────────────────────────────────────────────────
     @property
-    def mascota(self) -> Optional[QObject]:
-        return self._mascota
+    def asistente(self) -> Optional[QObject]:
+        return self._asistente
 
-    def set_mascota(self, ventana: Optional[QObject], render: Optional[str] = None) -> None:
-        """La mascota flotante actual (CompanionFlotante, AvatarOverlay…) o None.
+    def set_asistente(self, ventana: Optional[QObject], render: Optional[str] = None) -> None:
+        """La asistente flotante actual (CompanionFlotante, AvatarOverlay…) o None.
 
         Le pasa el BusEstado si sabe recibirlo (`set_bus_estado`), sigue su
         visibilidad (`visibilidad(bool)`) y reenvía sus eventos (`evento_js`).
         """
-        if ventana is self._mascota:
+        if ventana is self._asistente:
             return
-        self._soltar_mascota()
-        self._mascota = ventana
+        self._soltar_asistente()
+        self._asistente = ventana
         if ventana is None:
-            # pensando=False apaga solo lo de la mascota (comentar la pantalla); el chat
+            # pensando=False apaga solo lo de la asistente (comentar la pantalla); el chat
             # de la ventana sigue pensando si lo estaba (BusEstado.pensar).
             self.estado.actualizar(render="", visible=False, arrastrando=False,
                                    durmiendo=False, hablando=False, pensando=False)
         else:
             self._conectar(ventana, "visibilidad", self._on_visibilidad)
             self._conectar(ventana, "evento_js", self._on_evento_js)
-            self._conectar(ventana, "destroyed", self._on_mascota_destruida)
+            self._conectar(ventana, "destroyed", self._on_asistente_destruida)
             r = render if render is not None else getattr(ventana, "render", "")
             visible = False
             try:
@@ -364,16 +364,16 @@ class ServiciosEscritorio(QObject):
             self.estado.actualizar(render=str(r or ""), visible=visible)
             _llamar(ventana, "set_bus_estado", self.estado)
         for ctl in list(self._controladores.values()):
-            _llamar(ctl, "set_mascota", ventana)
-        self.mascota_cambio.emit(ventana)
+            _llamar(ctl, "set_asistente", ventana)
+        self.asistente_cambio.emit(ventana)
 
-    def _soltar_mascota(self, destruida: bool = False) -> None:
-        vieja, self._mascota = self._mascota, None
+    def _soltar_asistente(self, destruida: bool = False) -> None:
+        vieja, self._asistente = self._asistente, None
         if vieja is None or destruida:
             return
         for senal, slot in (("visibilidad", self._on_visibilidad),
                             ("evento_js", self._on_evento_js),
-                            ("destroyed", self._on_mascota_destruida)):
+                            ("destroyed", self._on_asistente_destruida)):
             try:
                 getattr(vieja, senal).disconnect(slot)
             except (AttributeError, TypeError, RuntimeError):
@@ -395,22 +395,22 @@ class ServiciosEscritorio(QObject):
 
     @pyqtSlot(str, dict)
     def _on_evento_js(self, tipo: str, datos: dict) -> None:
-        self.evento_mascota.emit(tipo, datos)
+        self.evento_asistente.emit(tipo, datos)
         for ctl in list(self._controladores.values()):
-            _llamar(ctl, "evento_mascota", tipo, datos)
+            _llamar(ctl, "evento_asistente", tipo, datos)
 
-    def _on_mascota_destruida(self, *_args) -> None:
-        self._soltar_mascota(destruida=True)
-        # Como en set_mascota(None): pensando=False apaga solo la fuente de la mascota
+    def _on_asistente_destruida(self, *_args) -> None:
+        self._soltar_asistente(destruida=True)
+        # Como en set_asistente(None): pensando=False apaga solo la fuente de la asistente
         # (comentar la pantalla); el chat de la ventana sigue pensando si lo estaba.
         self.estado.actualizar(render="", visible=False, arrastrando=False,
                                durmiendo=False, hablando=False, pensando=False)
         for ctl in list(self._controladores.values()):
-            _llamar(ctl, "set_mascota", None)
-        self.mascota_cambio.emit(None)
+            _llamar(ctl, "set_asistente", None)
+        self.asistente_cambio.emit(None)
 
     # ── Estado → señal de Qt ───────────────────────────────────────────────────
-    def _on_estado(self, estado: EstadoMascota, cambios: Dict[str, Tuple[Any, Any]]) -> None:
+    def _on_estado(self, estado: EstadoAsistente, cambios: Dict[str, Tuple[Any, Any]]) -> None:
         """Del BusEstado (que avisa en orden, de uno en uno) a `estado_cambio`.
 
         Directo si viene del hilo de Qt y no hay nada encolado; si no, en cola.
@@ -440,9 +440,9 @@ class ServiciosEscritorio(QObject):
                 self._en_cola = max(0, self._en_cola - 1)
 
     def cerrar(self) -> None:
-        """Al salir de la app: detener todo y soltar la mascota y el bus."""
+        """Al salir de la app: detener todo y soltar la asistente y el bus."""
         self.detener()
-        self._soltar_mascota()
+        self._soltar_asistente()
         cancelar, self._cancelar_suscripcion = self._cancelar_suscripcion, None
         if cancelar:
             cancelar()

@@ -33,6 +33,15 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, Optional
 
+# Tipos de evento de antes de la 11 (un terminal viejo aún puede mandarlos): se traducen
+# al de ahora al decodificar. La lista vive en nucleo/nombres_antiguos (el único sitio
+# que puede escribir la palabra vieja); sin nucleo (lune_core suelto), tal cual.
+try:
+    from nucleo.nombres_antiguos import tipo_evento as _tipo_actual
+except ImportError:                                    # pragma: no cover
+    def _tipo_actual(tipo):
+        return tipo
+
 VERSION = 1
 PUERTO_POR_DEFECTO = 7777
 RUTA_WS = "/ws"
@@ -98,8 +107,8 @@ class Tipo(str, Enum):
     TOOL_APPROVAL_CLOSE = "tool:approval:close"        # S→C {id, motivo}  (caducó o se canceló)
     TOOL_RESULT = "tool:result"                        # S→C {ok, mensaje, herramienta, estado, args, pendiente_id}
 
-    # ── Mascota y alarmas ──
-    MASCOTA_ACCION = "mascota:accion"     # {accion, args}  (bailar, dormir, sentarse…)
+    # ── Asistente en escritorio y alarmas ──
+    ASISTENTE_ACCION = "asistente:accion"     # {accion, args}  (bailar, dormir, sentarse…)
     ALARMA = "alarm:fire"                 # {id, texto, tipo: "alarma"|"temporizador"}
 
 
@@ -200,6 +209,7 @@ def decodificar(texto: str | bytes) -> Evento:
     tipo = crudo.get("type")
     if not isinstance(tipo, str) or not tipo:
         raise ErrorProtocolo("falta 'type'")
+    tipo = _tipo_actual(tipo)
     data = crudo.get("data", {})
     if data is None:
         data = {}

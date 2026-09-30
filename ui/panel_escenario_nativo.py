@@ -10,8 +10,8 @@ apartado y emite `cambiado(str seccion)`.
 - BAILES (`bailes`): el reproductor (anterior, reproducir, pausa, parar, siguiente, con lo que
   suena y el tiempo), la biblioteca (doble clic = bailar; importar con el diálogo de archivos,
   abrir la carpeta, quitar, favorito, no sale al azar) y los ajustes: volumen, al terminar
-  (parar, siguiente, repetir, aleatorio) y en el sitio (config.json baile.*). Con la mascota
-  animada o los sprites avisa «esta mascota no tiene esqueleto: baila a su manera».
+  (parar, siguiente, repetir, aleatorio) y en el sitio (config.json baile.*). Con la asistente
+  animada o los sprites avisa «en 2D mi figura no tiene esqueleto: bailo a mi manera».
 - MINECRAFT (`minecraft`): reacciones a tu partida (config.json minecraft.*: reaccionar, ruta
   del latest.log con «Detectar», voz, decir en el juego, resumen al salir, pensar en juego,
   reaccionar a otros) y el bot (datos.json con nucleo.datos.guardar_minecraft: servidor,
@@ -59,7 +59,7 @@ CONFIG_MC = (("reaccionar", "Reaccionar a lo que pasa en tu partida (latest.log)
 _NICK = re.compile(r"^[A-Za-z0-9_]{3,16}$")
 _VERSION = re.compile(r"^\d+\.\d+(?:\.\d+)?$")
 _HOST = re.compile(r"^[A-Za-z0-9.\-:\[\]]{1,253}$")
-AVISO_SIN_ESQUELETO = "Esta mascota no tiene esqueleto: baila a su manera (suena la canción y baila al ritmo)."
+AVISO_SIN_ESQUELETO = "En 2D mi figura no tiene esqueleto: bailo a mi manera (suena la canción y bailo al ritmo)."
 AVISO_SUPLANTACION = ("Ojo: en un servidor sin autenticación (online-mode=false) cualquiera puede ponerse tu nick. "
                       "«Solo el dueño» filtra por nombre, no es una garantía de seguridad.")
 AVISO_ONLINE_MODE = ("El bot solo entra en servidores sin autenticación (online-mode=false): uno local o uno tuyo con "
@@ -115,7 +115,7 @@ def texto_mmd(e: Any) -> str:
     if d["fase"] == "error":
         return f"No pude bailar: {d['error']}" if d["error"] else "No pude bailar."
     if d["pendiente"]:
-        return f"Saco a la mascota para bailar {titulo}…"
+        return f"Salgo al escritorio para bailar {titulo}…"
     if d["fase"] == "cargando":
         return f"Preparando {titulo}…" + (" (escuchando el ritmo)" if d["analizando"] else "")
     if d["cedida"]:

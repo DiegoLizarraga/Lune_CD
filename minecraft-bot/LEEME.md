@@ -84,7 +84,8 @@ El canal es el stdin/stdout del propio proceso. No abre puertos. Ver `src/canal.
   - El bot nunca ejecuta comandos del servidor, lo pida un jugador o su modelo.
   - Tiene límite de ritmo: 3 mensajes seguidos y luego uno cada 1,5 s.
 - **Lista blanca de acciones** (`src/actions.js`, `src/brain.js`):
-  - `attack` solo contra monstruos y animales de granja; nunca contra jugadores, aldeanos o mascotas;
+  - `attack` solo contra monstruos y animales de granja; nunca contra jugadores, aldeanos
+    o animales domesticados (lobos, gatos, loros…);
   - `drop` solo al dueño y si está cerca;
   - `goto` solo a ≤200 bloques.
 - **Lo que escriben otros jugadores** es texto de terceros. Antes de llegar al modelo del bot:

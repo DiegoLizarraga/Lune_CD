@@ -16,8 +16,8 @@ piel web (ui/web_bridge.py):
   · Aprobaciones visibles (crítica d). Con la ventana principal a la vista:
     `preguntar(pendiente, responder)` si quien lo usa pone su propia pregunta
     (el modal web), o un QMessageBox no bloqueante sobre la ventana. Si la
-    ventana no está a la vista (bandeja, solo la mascota): `DialogoAprobacion`
-    pequeño, siempre encima, junto a la mascota, con cuenta atrás. Sin
+    ventana no está a la vista (bandeja, solo la asistente): `DialogoAprobacion`
+    pequeño, siempre encima, junto a la asistente, con cuenta atrás. Sin
     respuesta en 60 s, rechazada; cerrar = No.
   · Conversación nueva: `nueva_conversacion()` repone el presupuesto y cierra
     las preguntas abiertas sin ejecutar nada.
@@ -25,7 +25,7 @@ piel web (ui/web_bridge.py):
 Uso (nativa):
 
     self.acciones = AccionesQt(self.tools, ventana=self,
-                               ancla=lambda: mascota.frameGeometry() if mascota else None)
+                               ancla=lambda: asistente.frameGeometry() if asistente else None)
     self.acciones.resultado.connect(self._on_resultado_accion)
     ...
     texto, llamadas = self.acciones.procesar(respuesta, worker.origen, ctx)
@@ -118,7 +118,7 @@ class AccionesQt(QObject):
                            `ventana_visible`, la que decide si está «a la vista».
         ventana_visible()  ¿la ventana principal se ve? (por defecto: visible y no
                            minimizada).
-        ancla()            rectángulo global de la mascota (o None) para colocar el
+        ancla()            rectángulo global de la asistente (o None) para colocar el
                            DialogoAprobacion cuando la ventana no se ve.
         preguntar(p, r)    pregunta propia con la ventana a la vista (modal web).
         cerrar_pregunta(id) cierra esa pregunta propia (caducó o se canceló).
@@ -256,7 +256,7 @@ class AccionesQt(QObject):
         return caja
 
     def _dialogo(self, pid: str, pendiente: dict, responder: Callable[[bool], None]):
-        """DialogoAprobacion junto a la mascota (ventana principal oculta)."""
+        """DialogoAprobacion junto a la asistente (ventana principal oculta)."""
         from ui.aprobacion_qt import DialogoAprobacion
         try:
             segundos = int(float(pendiente.get("timeout") or 60))

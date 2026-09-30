@@ -1,7 +1,7 @@
 """
 Tests de nucleo/pantalla_grande.py (sin Qt): pasos del salvapantallas, la máquina
 de entrada/salida de la pantalla grande, la regla del salvapantallas y la
-herramienta `mascota_pantalla_grande`.
+herramienta `asistente_pantalla_grande`.
 """
 import sys
 from pathlib import Path
@@ -11,7 +11,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from nucleo import pantalla_grande as pg  # noqa: E402
-from nucleo.estado_mascota import EstadoMascota  # noqa: E402
+from nucleo.estado_asistente import EstadoAsistente  # noqa: E402
 from nucleo.pantalla_grande import MaquinaGrande, ReglaSalvapantallas  # noqa: E402
 
 
@@ -183,15 +183,15 @@ def test_abortar_olvida_todo():
 
 def test_regla_apagada_nunca_activa():
     r = ReglaSalvapantallas(False, 0)
-    assert r.motivo_no(EstadoMascota()) == "apagado"
-    assert r.debe_activar(10_000, EstadoMascota()) is False
+    assert r.motivo_no(EstadoAsistente()) == "apagado"
+    assert r.debe_activar(10_000, EstadoAsistente()) is False
 
 
 def test_regla_umbral_del_paso():
     r = ReglaSalvapantallas(True, 2)                    # 5 min
     assert r.umbral_s == 300 and r.etiqueta == "5 min"
-    assert r.debe_activar(299, EstadoMascota()) is False
-    assert r.debe_activar(300, EstadoMascota()) is True
+    assert r.debe_activar(299, EstadoAsistente()) is False
+    assert r.debe_activar(300, EstadoAsistente()) is True
 
 
 @pytest.mark.parametrize("campo, valor, motivo", [
@@ -203,19 +203,19 @@ def test_regla_umbral_del_paso():
 ])
 def test_regla_bloqueos(campo, valor, motivo):
     r = ReglaSalvapantallas(True, 0)
-    est = EstadoMascota(**{campo: valor})
+    est = EstadoAsistente(**{campo: valor})
     assert r.motivo_no(est) == motivo
     assert r.debe_activar(9999, est) is False
 
 
 def test_regla_dormida_cuenta_como_reposo():
     r = ReglaSalvapantallas(True, 0)
-    assert r.debe_activar(31, EstadoMascota(durmiendo=True, visible=True, render="vrm")) is True
+    assert r.debe_activar(31, EstadoAsistente(durmiendo=True, visible=True, render="vrm")) is True
 
 
 def test_regla_pensando_mando_y_pantalla_requerida():
     r = ReglaSalvapantallas(True, 0)
-    est = EstadoMascota()
+    est = EstadoAsistente()
     assert r.motivo_no(est, pensando=True) == "pensando"
     assert r.motivo_no(est, mando=True) == "mando"
     assert r.motivo_no(est, pantalla_requerida=True) == "pantalla_requerida"
@@ -294,7 +294,7 @@ def test_herramienta_errores():
     assert ok is False and "juego" in motivo
 
     def en_ui_roto(fn):
-        raise TimeoutError("la mascota no respondió a tiempo")
+        raise TimeoutError("la asistente no respondió a tiempo")
     ok, motivo = pg.herramienta({"activar": True}, {"grande": GrandeFalsa(), "en_ui": en_ui_roto})
     assert ok is False and "respondió" in motivo
 

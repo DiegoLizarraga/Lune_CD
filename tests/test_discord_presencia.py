@@ -77,10 +77,10 @@ def test_clave_por_prioridad(est, modo, render, clave):
 
 
 def test_tambien_acepta_el_estado_del_bus():
-    from nucleo.estado_mascota import EstadoMascota
-    assert dp.clave_estado(EstadoMascota(render="vrm", visible=True, bailando="musica"),
+    from nucleo.estado_asistente import EstadoAsistente
+    assert dp.clave_estado(EstadoAsistente(render="vrm", visible=True, bailando="musica"),
                            modo="normal", render="vrm") == "bailando"
-    assert dp.clave_estado(EstadoMascota(juego=True), modo="normal", render="") is None
+    assert dp.clave_estado(EstadoAsistente(juego=True), modo="normal", render="") is None
 
 
 def _act(foto, config=None):
@@ -88,10 +88,10 @@ def _act(foto, config=None):
 
 
 @pytest.mark.parametrize("foto, details, pequena", [
-    ({"modo": "normal", "render": "vrm", "visible": True}, "Lune CD · Mascota 3D", "vrm"),
-    ({"modo": "normal", "render": "animado", "visible": True}, "Lune CD · Mascota animada", "animado"),
-    ({"modo": "br", "render": "sprites", "visible": True}, "Lune CD · Mascota ligera", "sprites"),
-    ({"modo": "br", "render": "carita", "visible": True}, "Lune CD · Mascota ligera", "sprites"),
+    ({"modo": "normal", "render": "vrm", "visible": True}, "Lune CD · Escritorio · 3D", "vrm"),
+    ({"modo": "normal", "render": "animado", "visible": True}, "Lune CD · Escritorio · animación", "animado"),
+    ({"modo": "br", "render": "sprites", "visible": True}, "Lune CD · Escritorio · sprites", "sprites"),
+    ({"modo": "br", "render": "carita", "visible": True}, "Lune CD · Escritorio · sprites", "sprites"),
     ({"modo": "normal", "render": "vrm", "visible": False}, "Lune CD · Ventana", "web"),
     ({"modo": "normal", "render": "", "visible": False}, "Lune CD · Ventana", "web"),
     ({"modo": "br", "render": "", "visible": False}, "Lune CD · Ventana", "nativo"),
@@ -197,7 +197,7 @@ def test_al_conectar_publica_enseguida_con_el_pid():
     assert _estados(fab.enviadas()) == ["En el escritorio"]
     e = p.estado()
     assert e["conectado"] is True and e["usuario"] == "Diego"
-    assert e["publicando"] == {"details": "Lune CD · Mascota 3D", "state": "En el escritorio"}
+    assert e["publicando"] == {"details": "Lune CD · Escritorio · 3D", "state": "En el escritorio"}
 
 
 def test_antirrebote_de_1_5_s():

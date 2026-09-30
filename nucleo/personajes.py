@@ -30,7 +30,7 @@ Estructura de un personaje (en datos.json -> "personajes"):
     "volumen": "+0%",         #   opcional
     "tld": "com.mx"           #   opcional: acento de gTTS (com.mx · es · us · com)
   },
-  "frases_mascota": {         # opcional: frases de la mascota por evento (ver lune_core/frases_mascota.py)
+  "frases_asistente": {       # opcional: lo que dice en el escritorio (lune_core/frases_asistente.py)
     "arrastre": ["¡Eh, que me mareo!"],     # eventos: arrastre, soltar, caricia, dormir,
     "caricia": ["Jeje~"]                    #   despertar, mareo, aparecer, pudor, sentarse,
   },                          #   bajar, comer · las que falten salen de FRASES_BASE
@@ -39,6 +39,11 @@ Estructura de un personaje (en datos.json -> "personajes"):
     "logro": ["«{logro}». Bien."]           #   logro, logro_otro, conexion, peligro, dia, noche, lluvia,
   }                           #   bot_*… · huecos {jugador} {logro} {mob} {causa} · las que falten, de serie
 }
+
+Antes de la 11 la clave de las frases llevaba el nombre viejo del modo asistente en
+escritorio. No hace falta mirarlo aquí: nucleo/datos traduce un datos.json viejo al
+cargarlo y al guardarlo (ver nucleo/nombres_antiguos.py), así que listar(), get() y
+get_activo() ya traen siempre "frases_asistente", y guardar_personaje() lo escribe así.
 
 La voz del personaje manda sobre la de config (voz.edge_voz, edge_rate…), que a
 su vez manda sobre la de por defecto (es-MX-DaliaNeural). La lee también el bot

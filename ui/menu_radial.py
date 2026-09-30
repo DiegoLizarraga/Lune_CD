@@ -1,7 +1,7 @@
 """
-ui/menu_radial.py — Menú radial de la mascota (CircleSelector / MenuActions de Mate-Engine).
+ui/menu_radial.py — Menú radial de la asistente (CircleSelector / MenuActions de Mate-Engine).
 
-Se abre con el clic derecho sobre la mascota (se abre al SOLTAR), con el atajo
+Se abre con el clic derecho sobre la asistente (se abre al SOLTAR), con el atajo
 global «menu_radial» o desde la bandeja; en la web hay una versión SVG aparte
 (extra/apariencia.jsx) que usa la MISMA geometría: `indice()` de aquí y
 `window.LuneRadial.indice` de la web deben dar lo mismo (test de paridad).
@@ -20,10 +20,10 @@ frame; el arco del cursor gira y los colores cambian con lerp 0.54; el botón
 señalado se pinta con el color de fondo sobre el arco de acento; al pulsar se
 encoge a 0.8 y al SOLTAR se ejecuta; soltar en la zona muerta cierra. Los lerps
 van normalizados por dt (`factor_lerp`) para que no dependan de los fps. Con la
-mascota a la vista el menú sigue a su cabeza (MenuActions.followBone).
+asistente a la vista el menú sigue a su cabeza (MenuActions.followBone).
 
 Cierre: Esc, clic derecho o central, clic fuera (Qt.Popup) o perder el foco.
-Mientras está abierto: BusEstado.menu_abierto=True y mascota.set_menu_abierto(True)
+Mientras está abierto: BusEstado.menu_abierto=True y asistente.set_menu_abierto(True)
 (sin arrastre, caricias ni sueño). Sonidos menu_abrir / menu_cerrar / menu_boton.
 Orden de señales al elegir: primero `cerrado` (se sueltan los bloqueos) y luego
 `elegido(id, arg)`: así «Dormir» no choca con el bloqueo de sueño del menú.
@@ -297,7 +297,7 @@ class MenuRadial(QWidget):
         self.update()
 
     def seguir(self, centro: QPoint) -> None:
-        """Nuevo centro global al que deslizarse (la cabeza de la mascota)."""
+        """Nuevo centro global al que deslizarse (la cabeza de la asistente)."""
         if not self._abierto or centro is None:
             return
         self._objetivo = QPoint(centro)
@@ -640,11 +640,11 @@ def _cfg(config: Any, seccion: str, clave: str, defecto: Any = None) -> Any:
 
 
 class ControlMenuRadial(QObject):
-    """Abre el radial desde la mascota (`menu_pedido`), el atajo o la bandeja y
-    lleva sus efectos: BusEstado.menu_abierto, mascota.set_menu_abierto, sonidos,
+    """Abre el radial desde la asistente (`menu_pedido`), el atajo o la bandeja y
+    lleva sus efectos: BusEstado.menu_abierto, asistente.set_menu_abierto, sonidos,
     seguir a la cabeza y ejecutar lo elegido por el Despachador."""
 
-    ESPERA_ANCLA_MS = 350          # si la mascota no contesta dónde está su cabeza, al cursor
+    ESPERA_ANCLA_MS = 350          # si la asistente no contesta dónde está su cabeza, al cursor
     SEGUIR_MS = 120                # cada cuánto se pregunta por la cabeza con el menú abierto
 
     def __init__(self, despachador, estado, config, contexto: Callable[[], Any], *,
@@ -662,7 +662,7 @@ class ControlMenuRadial(QObject):
         self._fabrica = fabrica_menu or MenuRadial
         self._traer = traer_al_frente
         self._menu: Optional[MenuRadial] = None
-        self._mascota = None
+        self._asistente = None
         self._tipo = ""
         self._pendiente = 0               # ficha de la última petición de ancla
         self._esperando = False
@@ -678,9 +678,9 @@ class ControlMenuRadial(QObject):
         self._detenido = False
 
     def detener(self) -> None:
-        """Cierra el radial (sin sonido) y borra el widget. La mascota sigue
+        """Cierra el radial (sin sonido) y borra el widget. La asistente sigue
         enlazada: si el escritorio se reanuda (iniciar), el clic derecho vuelve a
-        funcionar sin esperar a otro set_mascota."""
+        funcionar sin esperar a otro set_asistente."""
         self._detenido = True
         self._esperando = False
         self._pendiente += 1
@@ -698,12 +698,12 @@ class ControlMenuRadial(QObject):
             finally:
                 self._callado = False
 
-    def set_mascota(self, v) -> None:
-        if v is self._mascota:
+    def set_asistente(self, v) -> None:
+        if v is self._asistente:
             return
         abierto = self.abierto()
-        self._soltar_mascota()
-        self._mascota = v
+        self._soltar_asistente()
+        self._asistente = v
         if v is not None:
             s = getattr(v, "menu_pedido", None)
             if s is not None and hasattr(s, "connect"):
@@ -714,8 +714,8 @@ class ControlMenuRadial(QObject):
         if abierto:
             self.cerrar()
 
-    def _soltar_mascota(self) -> None:
-        vieja, self._mascota = self._mascota, None
+    def _soltar_asistente(self) -> None:
+        vieja, self._asistente = self._asistente, None
         if vieja is None:
             return
         s = getattr(vieja, "menu_pedido", None)
@@ -746,10 +746,10 @@ class ControlMenuRadial(QObject):
             self._menu.cerrar()
 
     def _on_menu_pedido(self, tipo, punto=None) -> None:
-        """Clic derecho soltado sobre la mascota. Como en Mate-Engine, el radial se
+        """Clic derecho soltado sobre la asistente. Como en Mate-Engine, el radial se
         centra en su CABEZA (ancla_menu); el punto del clic es solo el respaldo."""
         punto = QPoint(punto) if isinstance(punto, QPoint) else None
-        m = self._mascota_a_la_vista()
+        m = self._asistente_a_la_vista()
         if m is not None and callable(getattr(m, "ancla_menu", None)):
             self.abrir(str(tipo or "principal"), None, respaldo=punto)
         else:
@@ -764,7 +764,7 @@ class ControlMenuRadial(QObject):
             _log.exception("menu_radial: el contexto falló")
             return []
         if tipo == "expresiones":
-            return acciones_ui.items_expresiones(self._desp) if ctx.mascota_visible else []
+            return acciones_ui.items_expresiones(self._desp) if ctx.asistente_visible else []
         if tipo not in ("principal", "secundario"):
             return []
         return acciones_ui.items_radial(self._desp, est, ctx, _cfg(self._config, "menu_radial", tipo, []))
@@ -773,7 +773,7 @@ class ControlMenuRadial(QObject):
               respaldo: Optional[QPoint] = None) -> bool:
         """Abre el radial `tipo` ("principal", "secundario", "expresiones"). Si ya
         estaba abierto, lo cierra (como F1 en Mate-Engine) y devuelve False. Sin
-        `centro`: en la cabeza de la mascota si está a la vista (su ancla_menu,
+        `centro`: en la cabeza de la asistente si está a la vista (su ancla_menu,
         que puede contestar más tarde) o en `respaldo` / el cursor. False si no se abre."""
         if self._detenido:
             return False
@@ -788,7 +788,7 @@ class ControlMenuRadial(QObject):
             return False
         self._tipo = tipo
         if centro is None:
-            m = self._mascota_a_la_vista()
+            m = self._asistente_a_la_vista()
             if m is not None and callable(getattr(m, "ancla_menu", None)):
                 self._pendiente += 1
                 ficha = self._pendiente
@@ -833,9 +833,9 @@ class ControlMenuRadial(QObject):
         if not menu.abrir(QPoint(centro), items):
             return False
         self._estado.actualizar(menu_abierto=True)
-        _llamar(self._mascota, "set_menu_abierto", True)
+        _llamar(self._asistente, "set_menu_abierto", True)
         self._tocar("menu_abrir")
-        if self._mascota_a_la_vista() is not None and callable(getattr(self._mascota, "ancla_menu", None)):
+        if self._asistente_a_la_vista() is not None and callable(getattr(self._asistente, "ancla_menu", None)):
             self._seguir_t.start()
         return True
 
@@ -847,7 +847,7 @@ class ControlMenuRadial(QObject):
             self._estado.actualizar(menu_abierto=False)
         except Exception:
             _log.exception("menu_radial: no pude soltar menu_abierto")
-        _llamar(self._mascota, "set_menu_abierto", False)
+        _llamar(self._asistente, "set_menu_abierto", False)
         if not getattr(menu, "ultimo_por_eleccion", False):
             self._tocar("menu_cerrar")
 
@@ -856,8 +856,8 @@ class ControlMenuRadial(QObject):
         self._desp.ejecutar(str(id_), str(arg or ""), origen="radial")
 
     # ── Seguir a la cabeza ─────────────────────────────────────────────────
-    def _mascota_a_la_vista(self):
-        m = self._mascota
+    def _asistente_a_la_vista(self):
+        m = self._asistente
         if m is None or getattr(m, "cerrado", False):
             return None
         try:
@@ -866,7 +866,7 @@ class ControlMenuRadial(QObject):
             return None
 
     def _pedir_seguir(self) -> None:
-        m = self._mascota_a_la_vista()
+        m = self._asistente_a_la_vista()
         if m is None or self._menu is None or not self._menu.abierto:
             self._seguir_t.stop()
             return

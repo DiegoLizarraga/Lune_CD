@@ -1,5 +1,5 @@
 """
-ui/sprites_baile.py — El baile de la mascota de sprites (ui/avatar_overlay.py).
+ui/sprites_baile.py — El baile de la asistente de sprites (ui/avatar_overlay.py).
 
 Un sprite 2D solo puede girarse un poco y moverse arriba y abajo: cada estilo de
 `nucleo.baile.ESTILOS` se aproxima con un giro de ±4° (pivote arriba, como el

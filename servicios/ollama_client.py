@@ -23,7 +23,8 @@ _session.headers.update({"User-Agent": "LuneCD/ollama-probe"})
 TIMEOUT_SONDEO = 6
 
 # (url, modelo) → (soporta_vision, cuándo se consultó). Se recuerda 5 min: la
-# mascota pregunta antes de cada comentario de pantalla y /api/show no es gratis.
+# asistente en escritorio pregunta antes de cada comentario de pantalla y /api/show
+# no es gratis.
 _cache_vision: Dict[Tuple[str, str], Tuple[Optional[bool], float]] = {}
 _CACHE_VISION_S = 300
 # Familias con proyector de imagen en versiones de Ollama sin "capabilities".

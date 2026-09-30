@@ -1,10 +1,10 @@
 """
-Tests del comentario de pantalla de la mascota (ui/companion.py) y de la
+Tests del comentario de pantalla de la asistente (ui/companion.py) y de la
 detección de visión del modelo local (servicios/ollama_client.soporta_vision).
 
 Caso real que motivó esto: el chat local con Ollama iba bien, pero el modelo
 (qwen2.5) es de solo texto, rechazaba la captura con un 400 y ese error acababa
-escrito en la burbuja de la mascota. Ahora: se pregunta antes si el modelo ve; si
+escrito en la burbuja de la asistente. Ahora: se pregunta antes si el modelo ve; si
 no ve, la nube (con clave) o Ollama en modo texto (ventana activa); y un error
 del proveedor nunca se enseña tal cual.
 """
@@ -70,13 +70,13 @@ def test_soporta_vision_cachea_y_tolera_fallos(monkeypatch):
     assert ollama_client.soporta_vision("localhost", "b") is False
 
 
-# ── La mascota: qué proveedor y si manda captura ───────────────────────────────
+# ── La asistente: qué proveedor y si manda captura ───────────────────────────────
 
-pytest.importorskip("PyQt6.QtWebEngineWidgets", reason="la mascota necesita PyQt6-WebEngine")
+pytest.importorskip("PyQt6.QtWebEngineWidgets", reason="la asistente necesita PyQt6-WebEngine")
 
 
 @pytest.fixture
-def mascota(qapp, tmp_path, monkeypatch):
+def asistente(qapp, tmp_path, monkeypatch):
     """CompanionFlotante animado con la vista web falsa y un AIWorker que no arranca."""
     from PyQt6.QtCore import QObject, QUrl, pyqtSignal
     from PyQt6.QtWidgets import QWidget
@@ -142,64 +142,64 @@ def _ollama(monkeypatch, *, modelo="qwen2.5:7b", responde=True, vision=None, nub
     monkeypatch.setattr(ollama_client, "soporta_vision", lambda url, modelo, timeout=6: vision)
 
 
-# 10.9 (Diego): la mascota comenta SOLO con la nube. Sin clave no cae a Ollama.
+# 10.9 (Diego): la asistente comenta SOLO con la nube. Sin clave no cae a Ollama.
 
-def test_el_manual_va_a_la_nube_con_captura_aunque_ollama_vea(mascota, monkeypatch):
+def test_el_manual_va_a_la_nube_con_captura_aunque_ollama_vea(asistente, monkeypatch):
     _ollama(monkeypatch, vision=True, nube="sk-or-xxx")          # antes: Ollama con captura
-    _comentar(mascota)
-    assert mascota.lanzados == [("openrouter", True)] and mascota._b64 == "captura-base64"
-    assert "captura a la nube" in _js(mascota)                   # se avisa…
-    mascota._pensando = False
-    _comentar(mascota)
-    assert _js(mascota).count("captura a la nube") == 1          # …una sola vez
+    _comentar(asistente)
+    assert asistente.lanzados == [("openrouter", True)] and asistente._b64 == "captura-base64"
+    assert "captura a la nube" in _js(asistente)                   # se avisa…
+    asistente._pensando = False
+    _comentar(asistente)
+    assert _js(asistente).count("captura a la nube") == 1          # …una sola vez
 
 
-def test_el_automatico_va_a_la_nube_sin_captura(mascota, monkeypatch):
+def test_el_automatico_va_a_la_nube_sin_captura(asistente, monkeypatch):
     _ollama(monkeypatch, vision=True, nube="sk-or-xxx")
-    _comentar(mascota, auto=True)
-    assert mascota.lanzados == [("openrouter", False)] and mascota._b64 is None
-    assert "captura a la nube" not in _js(mascota)
+    _comentar(asistente, auto=True)
+    assert asistente.lanzados == [("openrouter", False)] and asistente._b64 is None
+    assert "captura a la nube" not in _js(asistente)
 
 
-def test_sin_clave_el_manual_lo_dice_y_no_usa_ollama(mascota, monkeypatch):
-    from nucleo.respuestas import AVISO_MASCOTA_SIN_NUBE
+def test_sin_clave_el_manual_lo_dice_y_no_usa_ollama(asistente, monkeypatch):
+    from nucleo.respuestas import AVISO_ASISTENTE_SIN_NUBE
     _ollama(monkeypatch, vision=True, nube="")
-    _comentar(mascota)
-    assert mascota.lanzados == [] and mascota._pensando is False
-    assert "OpenRouter" in _js(mascota) and AVISO_MASCOTA_SIN_NUBE.split(".")[0] in _js(mascota)
+    _comentar(asistente)
+    assert asistente.lanzados == [] and asistente._pensando is False
+    assert "OpenRouter" in _js(asistente) and AVISO_ASISTENTE_SIN_NUBE.split(".")[0] in _js(asistente)
 
 
-def test_sin_clave_el_automatico_calla(mascota, monkeypatch):
+def test_sin_clave_el_automatico_calla(asistente, monkeypatch):
     _ollama(monkeypatch, vision=True, nube="")
-    _comentar(mascota, auto=True)
-    assert mascota.lanzados == [] and "OpenRouter" not in _js(mascota)
+    _comentar(asistente, auto=True)
+    assert asistente.lanzados == [] and "OpenRouter" not in _js(asistente)
 
 
-def test_ya_no_pregunta_a_ollama(mascota, monkeypatch):
+def test_ya_no_pregunta_a_ollama(asistente, monkeypatch):
     """Antes se sondeaba Ollama (hasta 3 + 3 s con él apagado) antes de comentar."""
     from servicios import ollama_client
     _ollama(monkeypatch, nube="sk-or-xxx")
     monkeypatch.setattr(ollama_client, "listar_modelos",
                         lambda *a, **k: (_ for _ in ()).throw(AssertionError("no hay que preguntar a Ollama")))
-    _comentar(mascota)
-    assert mascota.lanzados == [("openrouter", True)]
+    _comentar(asistente)
+    assert asistente.lanzados == [("openrouter", True)]
 
 
-def test_respuesta_vacia_dice_que_nada_le_parecio_interesante(mascota):
+def test_respuesta_vacia_dice_que_nada_le_parecio_interesante(asistente):
     from nucleo.respuestas import COMENTARIO_VACIO
     for vacia in ('<|ACT {"emotion":"happy","intensity":0.7}|>', "…", "   ", "..."):
-        mascota._pensando = True
-        mascota._on_comentario(vacia)
-        assert COMENTARIO_VACIO in _js(mascota).splitlines()[-1] and mascota._pensando is False
+        asistente._pensando = True
+        asistente._on_comentario(vacia)
+        assert COMENTARIO_VACIO in _js(asistente).splitlines()[-1] and asistente._pensando is False
 
 
-def test_un_error_de_la_nube_se_dice_con_gracia(mascota, monkeypatch):
+def test_un_error_de_la_nube_se_dice_con_gracia(asistente, monkeypatch):
     _ollama(monkeypatch, nube="sk-or-xxx")
-    _comentar(mascota)
-    mascota._provider_actual, mascota._con_imagen = "openrouter", True
-    mascota._on_comentario("Error OpenRouter: 401 Unauthorized")
-    assert "algo falló" in _js(mascota) and mascota._pensando is False
-    assert "Error OpenRouter" not in _js(mascota)
+    _comentar(asistente)
+    asistente._provider_actual, asistente._con_imagen = "openrouter", True
+    asistente._on_comentario("Error OpenRouter: 401 Unauthorized")
+    assert "algo falló" in _js(asistente) and asistente._pensando is False
+    assert "Error OpenRouter" not in _js(asistente)
 
 
 def test_prompt_de_ventana_y_contexto():
@@ -213,15 +213,15 @@ def test_prompt_de_ventana_y_contexto():
 
 # ── Arreglos de la revisión 2+3: S6 (automáticos sin nube), R9 (sin congelar), S1 ──
 
-def test_el_temporizador_lanza_el_automatico(mascota):
+def test_el_temporizador_lanza_el_automatico(asistente):
     llamados = []
-    mascota._comentar = lambda automatico: llamados.append(automatico)
-    mascota._timer.timeout.emit()
-    mascota.comentar_pantalla()
+    asistente._comentar = lambda automatico: llamados.append(automatico)
+    asistente._timer.timeout.emit()
+    asistente.comentar_pantalla()
     assert llamados == [True, False]
 
 
-def test_el_comentario_de_pantalla_es_efimero_y_automatico_sin_imagen_a_la_nube(mascota, monkeypatch):
+def test_el_comentario_de_pantalla_es_efimero_y_automatico_sin_imagen_a_la_nube(asistente, monkeypatch):
     """_lanzar de verdad: AIWorker con efimero=True (el título de la ventana no entra en
     el historial del chat) y, si es automático, nunca con imagen hacia la nube."""
     from PyQt6.QtCore import QObject, pyqtSignal
@@ -246,7 +246,7 @@ def test_el_comentario_de_pantalla_es_efimero_y_automatico_sin_imagen_a_la_nube(
             return False
 
     monkeypatch.setattr(aw, "AIWorker", WorkerFalso)
-    c = mascota
+    c = asistente
     c._b64, c._automatico = "captura", False
     comp.CompanionFlotante._lanzar(c, "openrouter", True)
     assert creados[-1].kw["efimero"] is True and creados[-1].kw["imagenes"] == ["captura"]

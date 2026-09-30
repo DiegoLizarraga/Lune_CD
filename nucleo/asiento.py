@@ -1,19 +1,19 @@
 """
-nucleo/asiento.py — Cuándo se sienta la mascota en una ventana o en la barra de
+nucleo/asiento.py — Cuándo se sienta la asistente en una ventana o en la barra de
 tareas, dónde la clava y cuándo se levanta. Sin Qt ni Win32: puro y con el reloj
 inyectado, así se prueba en seco.
 
 Es el port de `AvatarWindowHandler.cs` (TrySnap, PinToTarget,
 IsStillNearSnappedWindow) y `AvatarTaskbarController.cs` (la «zona rosa») de
 Mate-Engine, con los valores de su escena. El adaptador Qt que lee las ventanas
-y mueve la de la mascota es `ui/asiento_qt.py` (ControlAsiento).
+y mueve la de la asistente es `ui/asiento_qt.py` (ControlAsiento).
 
 COORDENADAS
 -----------
 Todo en px FÍSICOS del escritorio (crítica c.16: con DPI mixto las coordenadas
 lógicas de Qt no son continuas). Los parámetros de `ParamsAsiento` en px son
-LÓGICOS y se multiplican por el `dpr` de la mascota (kw `dpr` de cada método);
-el radio de la sonda sale del alto físico de la ventana de la mascota
+LÓGICOS y se multiplican por el `dpr` de la asistente (kw `dpr` de cada método);
+el radio de la sonda sale del alto físico de la ventana de la asistente
 (`radio_sonda`). Las páginas dan sus puntos en px lógicos relativos a su
 ventana: `punto_fisico` los pasa a físicos del escritorio.
 
@@ -55,7 +55,7 @@ REGLAS (de ME, valores de la escena)
   (regla anti-hundimiento de ME).
 - 4 poses de ventana al azar (variante 0..3); en la barra, la 0.
 
-`herramienta(args, ctx)` es el handler de `mascota_sentarse`
+`herramienta(args, ctx)` es el handler de `asistente_sentarse`
 ({"sitio": "barra" | "ventana" | "bajar"}) con `ctx["asiento"]` (el
 ControlAsiento) y `ctx["en_ui"]` (corre en el hilo de Qt).
 """
@@ -94,7 +94,7 @@ def _rect(r) -> Rect:
 
 @dataclass(frozen=True)
 class ParamsAsiento:
-    """Valores de la escena de ME. Los px son LÓGICOS (× dpr de la mascota)."""
+    """Valores de la escena de ME. Los px son LÓGICOS (× dpr de la asistente)."""
     hold_s: float = 0.5                  # agarre mínimo antes de poder sentarse (ventanas)
     min_px: float = 10                   # arrastre mínimo (px)
     radio_frac: float = 0.09             # radio de la sonda = 9 % del alto físico de la ventana…
@@ -137,7 +137,7 @@ class Desnap:
 
 @dataclass(frozen=True)
 class Mover:
-    """Nueva posición (esquina superior izquierda, px físicos) de la ventana de la mascota."""
+    """Nueva posición (esquina superior izquierda, px físicos) de la ventana de la asistente."""
     x: int
     y: int
 
@@ -172,9 +172,9 @@ def toca_barra(zona, barra, franja_px: float) -> bool:
     return z.der > b.izq and z.izq < b.der and z.abajo > arriba and z.arriba < abajo
 
 
-def punto_fisico(rect_mascota_fisico, rel_logico, dpr) -> Tuple[int, int]:
+def punto_fisico(rect_asistente_fisico, rel_logico, dpr) -> Tuple[int, int]:
     """Un punto de la página (px lógicos relativos a su ventana) en px físicos del escritorio."""
-    r = _rect(rect_mascota_fisico)
+    r = _rect(rect_asistente_fisico)
     d = dpr if dpr and dpr > 0 else 1.0
     return int(round(r.izq + float(rel_logico[0]) * d)), int(round(r.arriba + float(rel_logico[1]) * d))
 
@@ -230,7 +230,7 @@ class MaquinaAsiento:
 
     # ── Arrastre ───────────────────────────────────────────────────────────────
     def al_pulsar(self, t: float, cursor: Optional[Punto]) -> None:
-        """Empieza un arrastre (el umbral de la mascota ya se pasó)."""
+        """Empieza un arrastre (el umbral de la asistente ya se pasó)."""
         self._arrastrando = True
         self._t0 = float(t)
         self._c0 = (float(cursor[0]), float(cursor[1])) if cursor else None
@@ -342,9 +342,9 @@ class MaquinaAsiento:
         self._rect_prev = None
 
     # ── Clavar ─────────────────────────────────────────────────────────────────
-    def pin(self, t: float, dt: float, rect_objetivo, asiento_rel: Punto, rect_mascota, *, arrastrando: bool,
+    def pin(self, t: float, dt: float, rect_objetivo, asiento_rel: Punto, rect_asistente, *, arrastrando: bool,
             cursor: Optional[Punto] = None, dpr: float = 1.0) -> Union[Mover, Desnap, None]:
-        """Dónde poner la ventana de la mascota para que el asiento (`asiento_rel`,
+        """Dónde poner la ventana de la asistente para que el asiento (`asiento_rel`,
         px LÓGICOS relativos a su ventana) quede en el borde del objetivo.
 
         `rect_objetivo` None → la ventana ya no está (Desnap "cerrada"). Mover si
@@ -355,7 +355,7 @@ class MaquinaAsiento:
             return None
         if rect_objetivo is None:
             return self.levantar("cerrada")
-        ro, rm = _rect(rect_objetivo), _rect(rect_mascota)
+        ro, rm = _rect(rect_objetivo), _rect(rect_asistente)
         if ro != s.objetivo.rect:
             s = self.sentada = dataclasses.replace(s, objetivo=dataclasses.replace(s.objetivo, rect=ro))
         if self._rect_prev is not None and ro != self._rect_prev:
@@ -512,9 +512,9 @@ class MaquinaAsiento:
         return self.sentada
 
 
-# ── Herramienta del modelo (mascota_sentarse) ──────────────────────────────────
+# ── Herramienta del modelo (asistente_sentarse) ──────────────────────────────────
 
-TEXTO_SIN_CONTROL = "Ahora mismo no puedo sentarme aquí: necesito la mascota a la vista."
+TEXTO_SIN_CONTROL = "Ahora mismo no puedo sentarme aquí: necesito estar a la vista en el escritorio."
 
 
 def _de_ctx(ctx: Any, clave: str) -> Any:
@@ -534,7 +534,7 @@ def _en_ui(ctx: Any, fn: Callable[[], Any]) -> Any:
 
 
 def herramienta(args: Any = None, ctx: Any = None) -> Union[str, Tuple[bool, str]]:
-    """Handler de `mascota_sentarse` ({"sitio": "barra" | "ventana" | "bajar"})."""
+    """Handler de `asistente_sentarse` ({"sitio": "barra" | "ventana" | "bajar"})."""
     asiento = _de_ctx(ctx, "asiento")
     if asiento is None or not callable(getattr(asiento, "sentar", None)):
         return False, TEXTO_SIN_CONTROL

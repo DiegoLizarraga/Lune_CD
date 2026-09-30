@@ -4,7 +4,7 @@ servicios/ventanas_ajenas.py — Qué ventanas de OTROS programas hay y dónde e
 PARA QUÉ SIRVE
 --------------
 Sentarse en ventanas y en la barra de tareas (corte 7, P03; `ui/asiento_qt.py`
-y `nucleo/asiento.py`): mientras arrastras a la mascota, Lune mira qué ventanas
+y `nucleo/asiento.py`): mientras arrastras a la asistente, Lune mira qué ventanas
 tienen el borde superior cerca para sentarse encima, y cuando ya está sentada
 vigila si esa ventana se movió, se minimizó o se cerró. Es el port de
 `AvatarWindowHandler.cs` de Mate-Engine (enumeración y filtros) y de
@@ -22,7 +22,7 @@ abre ningún proceso ajeno:
   GetMonitorInfoW;
 - DwmGetWindowAttribute (EXTENDED_FRAME_BOUNDS y CLOAKED);
 - el pid con GetWindowThreadProcessId, sin abrir el proceso.
-Lo único que se mueve o se reordena es la ventana PROPIA de la mascota, y eso lo
+Lo único que se mueve o se reordena es la ventana PROPIA de la asistente, y eso lo
 hace `servicios/win_ventana.py` (que comprueba antes que es propia).
 
 QUÉ OFRECE
@@ -32,7 +32,7 @@ QUÉ OFRECE
 - `listar_candidatas(api, excluir_pid=…, permitir=…)`: ventanas donde sentarse,
   en orden Z (de arriba abajo), con los filtros de ME: raíz y sin dueño, con
   título, ≥ 200×60, visibles y sin «cloak», ni el escritorio ni clases raras, ni
-  transparentes ni otras mascotas, ni a pantalla completa en SU monitor, ni
+  transparentes ni otros avatares de escritorio, ni a pantalla completa en SU monitor, ni
   minimizadas ni maximizadas. Las barras de tareas salen marcadas `es_barra`.
   Tope de 128.
 - `ocluida_en(api, hwnd, x, y)`: ¿otra ventana tapa ese punto de `hwnd`?
@@ -40,7 +40,7 @@ QUÉ OFRECE
   pantalla_completa · cloaked (por qué hay que levantarse).
 - `encima_de(api, a, b)`: ¿a está por encima de b en el orden Z?
 - `barra_asiento(hmon_o_rect)`: la barra de tareas de ABAJO del monitor donde
-  está la mascota, como `Candidata` (las barras laterales o arriba no valen).
+  está la asistente, como `Candidata` (las barras laterales o arriba no valen).
 
 COORDENADAS
 -----------
@@ -93,7 +93,7 @@ ESTADOS = ("ok", "cerrada", "oculta", "minimizada", "maximizada", "pantalla_comp
 
 @dataclass(frozen=True)
 class Candidata:
-    """Una ventana donde la mascota se puede sentar (o una barra de tareas)."""
+    """Una ventana donde la asistente se puede sentar (o una barra de tareas)."""
     hwnd: int
     rect: Rect            # px físicos; en ventanas, el borde visible (sin el invisible de Win11)
     es_barra: bool
@@ -346,7 +346,7 @@ def _seguro(fn, *args, defecto=None):
         return defecto
 
 
-# ── Filtros (IsEffectivelyTransparentWindow, IsLikelyUniWindowMascot, IsSitEligibleWindow) ──
+# ── Filtros (IsEffectivelyTransparentWindow, IsLikelyUniWindow…, IsSitEligibleWindow de ME) ──
 
 def _transparente(api, h, clase: str, ex: int) -> bool:
     if not ex & WS_EX_LAYERED:
@@ -381,7 +381,7 @@ def es_transparente(api, h, clase) -> bool:
     return _transparente(api, h, str(clase or ""), ex)
 
 
-def _parece_mascota(api, h, clase: str, ex: int) -> bool:
+def _parece_asistente(api, h, clase: str, ex: int) -> bool:
     if not ex & WS_EX_LAYERED:
         return False
     rara = bool(ex & (WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_TRANSPARENT))
@@ -393,17 +393,18 @@ def _parece_mascota(api, h, clase: str, ex: int) -> bool:
     if not rara:
         return False
     if clase == "UnityWndClass":
-        return True                                    # Mate-Engine abierto, u otra mascota de Unity
+        return True                                    # Mate-Engine abierto, u otro avatar hecho en Unity
     st = int(_seguro(api.estilo, h, defecto=0) or 0)
     return not st & WS_CAPTION and int(_seguro(api.largo_titulo, h, defecto=0) or 0) <= 1
 
 
-def parece_mascota(api, h, clase) -> bool:
-    """IsLikelyUniWindowMascot de ME: en capas, «rara» (de herramienta, sin activar,
-    sin clics o translúcida) y sin título, o de Unity (Mate-Engine abierto)."""
+def parece_asistente(api, h, clase) -> bool:
+    """¿Es otro avatar de escritorio? (IsLikelyUniWindow… de ME): en capas, «rara» (de
+    herramienta, sin activar, sin clics o translúcida) y sin título, o de Unity
+    (Mate-Engine abierto). Ahí no se sienta la asistente."""
     api = api or api_defecto()
     ex = int(_seguro(api.estilo_ex, h, defecto=0) or 0)
-    return _parece_mascota(api, h, str(clase or ""), ex)
+    return _parece_asistente(api, h, str(clase or ""), ex)
 
 
 def _pantalla_completa(rect: Rect, mon: Optional[Tuple[Rect, Rect]], tol: int = TOL_PANTALLA_COMPLETA) -> bool:
@@ -453,9 +454,9 @@ def listar_candidatas(api=None, *, excluir_pid: int, permitir: Iterable[int] = (
                       barras: bool = True, maximo: int = MAX_CANDIDATAS) -> List[Candidata]:
     """Ventanas donde sentarse, en orden Z (de arriba abajo).
 
-    - `excluir_pid`: las del propio proceso no cuentan (la mascota, la burbuja,
+    - `excluir_pid`: las del propio proceso no cuentan (la asistente, la burbuja,
       el radial…), salvo las de `permitir` (la ventana principal de Lune), a las
-      que además no se les pasan los filtros de transparencia y de mascota.
+      que además no se les pasan los filtros de transparencia y de otros avatares.
     - `ventanas` / `barras`: qué entra; las barras de tareas (Shell_TrayWnd y
       Shell_SecondaryTrayWnd) salen con `es_barra` y su GetWindowRect.
     - Como mucho `maximo` (128).
@@ -494,7 +495,7 @@ def listar_candidatas(api=None, *, excluir_pid: int, permitir: Iterable[int] = (
             if r is None:
                 continue
             r = _rect(r)
-            if not propia and _parece_mascota(api, h, clase, ex):
+            if not propia and _parece_asistente(api, h, clase, ex):
                 continue
             if not es_elegible(api, h, r, clase):
                 continue
@@ -508,7 +509,7 @@ def listar_candidatas(api=None, *, excluir_pid: int, permitir: Iterable[int] = (
 def ocluida_en(api, hwnd, x, y, *, excluir_pid: int, pasos: int = MAX_PASOS_Z) -> bool:
     """IsOccludedByHigherWindowsAtPoint de ME: ¿alguna ventana por encima de `hwnd`
     en el orden Z tapa el punto (x, y)? Se saltan las propias, las invisibles, las
-    «cloaked», las minimizadas, las transparentes, otras mascotas, las que dejan
+    «cloaked», las minimizadas, las transparentes, otros avatares de escritorio, las que dejan
     pasar los clics y las casi invisibles (alfa ≤ 8). Como mucho `pasos` ventanas
     hacia arriba."""
     api = api or api_defecto()
@@ -529,7 +530,7 @@ def ocluida_en(api, hwnd, x, y, *, excluir_pid: int, pasos: int = MAX_PASOS_Z) -
                 continue
             clase = api.clase(h) or ""
             ex = int(api.estilo_ex(h) or 0)
-            if _transparente(api, h, clase, ex) or _parece_mascota(api, h, clase, ex) or api.minimizada(h):
+            if _transparente(api, h, clase, ex) or _parece_asistente(api, h, clase, ex) or api.minimizada(h):
                 h = api.anterior(h)
                 continue
             if ex & WS_EX_TRANSPARENT:
@@ -590,7 +591,7 @@ def encima_de(api, a, b, pasos: int = MAX_PASOS_Z) -> bool:
 # ── Barra de tareas donde sentarse ─────────────────────────────────────────────
 
 def _monitor_para(x, api) -> Optional[wp.Monitor]:
-    """El Monitor de `x`: un hmon (int), un Monitor o el rect de la mascota (el
+    """El Monitor de `x`: un hmon (int), un Monitor o el rect de la asistente (el
     monitor que contiene su centro o, si ninguno, el que más se solapa)."""
     if isinstance(x, wp.Monitor):
         return x
@@ -630,15 +631,15 @@ def _hwnd_barra(mon_rect: Rect, api) -> int:
     return 0
 
 
-def barra_asiento(hmon_o_rect_mascota, api_pantalla=None) -> Optional[Candidata]:
-    """La barra de tareas de ABAJO del monitor de la mascota, como Candidata.
+def barra_asiento(hmon_o_rect_asistente, api_pantalla=None) -> Optional[Candidata]:
+    """La barra de tareas de ABAJO del monitor de la asistente, como Candidata.
 
     Sale de `win_pantalla.barra_tareas` (rcMonitor − rcWork, como MonitorHelper de
     ME). Solo si está abajo: en una barra lateral o arriba no se sienta. Con la
     barra auto-oculta el borde es el de abajo del monitor y no sigue a la barra
     cuando se despliega (el rect va de rcMonitor.abajo a +1 px). None si no hay."""
     api = api_pantalla or wp.api_defecto()
-    mon = _monitor_para(hmon_o_rect_mascota, api)
+    mon = _monitor_para(hmon_o_rect_asistente, api)
     if mon is None:
         return None
     m = _rect(mon.rect)
@@ -654,7 +655,7 @@ def barra_asiento(hmon_o_rect_mascota, api_pantalla=None) -> Optional[Candidata]
 
 
 __all__ = (
-    "Candidata", "ApiVentanasWin32", "ApiVentanasNula", "api_defecto", "es_transparente", "parece_mascota",
+    "Candidata", "ApiVentanasWin32", "ApiVentanasNula", "api_defecto", "es_transparente", "parece_asistente",
     "es_elegible", "listar_candidatas", "ocluida_en", "estado_ventana", "encima_de", "barra_asiento",
     "ESTADOS", "MAX_CANDIDATAS", "MAX_PASOS_Z",
 )

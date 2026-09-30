@@ -8,9 +8,10 @@ Comandos (devuelven el texto a imprimir; None si la línea no es suya):
   hay tarjeta donde pegarlo).
 - `/autoinicio` · `/autoinicio estado|on|off`: la entrada Run en su variante
   patata (consola minimizada, sin PyQt6: servicios/autoinicio.py).
-- `/autoinicio como bandeja|mascota|ventana` y `/autoinicio espera N` (0–120 s):
-  cómo arranca la app de ventanas (se guarda aunque ahora estés en patata).
-- `/sentarse`: eso lo hace la mascota de las ventanas.
+- `/autoinicio como bandeja|asistente|ventana` y `/autoinicio espera N` (0–120 s):
+  cómo arranca la app de ventanas (se guarda aunque ahora estés en patata). El nombre
+  de antes de la 11 también vale (nucleo/nombres_antiguos.como_autoinicio).
+- `/sentarse`: eso lo hace la asistente en escritorio (en la app de ventanas).
 
 La presencia de patata es propia (servicios/discord_presencia.Presencia) y solo
 publica «Lune CD · Terminal» con «En la terminal», «Pensando…» o nada (null)
@@ -26,17 +27,18 @@ from __future__ import annotations
 import logging
 from typing import Any, Callable, Optional
 
-from nucleo import arranque
+from nucleo import arranque, nombres_antiguos
 
 _log = logging.getLogger("lune.sistema_terminal")
 
 AYUDA = ("/discord on|off|estado · /discord id <número> · "
-         "/autoinicio [on|off|estado|como bandeja|mascota|ventana|espera N]")
+         "/autoinicio [on|off|estado|como bandeja|asistente|ventana|espera N]")
 ESPERA_MAX_S = 120
 _SI = {"on", "si", "sí", "1", "true", "activar", "encender"}
 _NO = {"off", "no", "0", "false", "desactivar", "apagar"}
 _BORRAR = {"borrar", "quitar", "-", "ninguno", "vacio", "vacío"}
-_COMO_TXT = {"bandeja": "en la bandeja", "mascota": "con la mascota fuera", "ventana": "con la ventana abierta"}
+_COMO_TXT = {"bandeja": "en la bandeja", "asistente": "como asistente en escritorio",
+             "ventana": "con la ventana abierta"}
 
 
 class SistemaTerminal:
@@ -107,8 +109,8 @@ class SistemaTerminal:
         if cmd == "/autoinicio":
             return self._cmd_autoinicio(args)
         if cmd in ("/sentarse", "/sientate", "/siéntate"):
-            return ("Sentarse es cosa de la mascota de las ventanas: aquí, en la terminal, "
-                    "no tengo barra ni ventanas donde sentarme.")
+            return ("Sentarse es cosa de la asistente en escritorio, en la app de ventanas: aquí, "
+                    "en la terminal, no tengo barra ni ventanas donde sentarme.")
         return None
 
     # ── /discord ─────────────────────────────────────────────────────────────────
@@ -201,8 +203,9 @@ class SistemaTerminal:
                     else "Lune ya no arranca con Windows.")
         if a0 == "como":
             c = args[1].lower() if len(args) > 1 else ""
+            c = nombres_antiguos.como_autoinicio(c)          # el nombre de antes, por costumbre
             if c not in arranque.COMOS:
-                return "Usa /autoinicio como bandeja, /autoinicio como mascota o /autoinicio como ventana."
+                return "Usa /autoinicio como bandeja, /autoinicio como asistente o /autoinicio como ventana."
             self._guardar("sistema", "autoinicio_como", c)
             return (f"Hecho: con la interfaz de ventanas arrancaré {_COMO_TXT[c]}. "
                     "(En patata se abre esta terminal, minimizada.)")

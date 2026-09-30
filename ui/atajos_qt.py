@@ -29,7 +29,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from PyQt6.QtCore import QObject, Qt, QTimer, pyqtSignal
 
-from nucleo import acciones_ui
+from nucleo import acciones_ui, nombres_antiguos
 from servicios.atajos_globales import GestorAtajos, comprobar, normalizar, parsear_combo, texto_combo
 
 _log = logging.getLogger("lune.atajos_qt")
@@ -106,10 +106,12 @@ class GestorAtajosQt(QObject):
         return bool(self._get("pausar_en_juegos", True))
 
     def lista(self) -> List[Tuple[str, str]]:
-        """[(id, combo)] de la config: ids del catálogo que admiten atajo, sin repetir."""
+        """[(id, combo)] de la config: ids del catálogo que admiten atajo, sin repetir.
+        Un id de antes de la 11 que siga en config.json sale con su nombre de ahora
+        (nucleo/nombres_antiguos; si están los dos, gana el nuevo)."""
         out: List[Tuple[str, str]] = []
         vistos = set()
-        crudo = self._get("lista", [])
+        crudo, _ = nombres_antiguos.migrar_atajos(self._get("lista", []))
         for e in crudo if isinstance(crudo, list) else []:
             if not isinstance(e, dict):
                 continue
@@ -332,7 +334,7 @@ class GestorAtajosQt(QObject):
                 if otro != id_ and c and _norm(c) == norm:
                     return (f"{texto_combo(*parsear_combo(norm))} ya lo usa "
                             f"«{acciones_ui.etiqueta_de(otro)}».")
-        crudo = self._get("lista", [])
+        crudo, _ = nombres_antiguos.migrar_atajos(self._get("lista", []))
         crudo = [e for e in crudo if isinstance(e, dict)] if isinstance(crudo, list) else []
         anterior = copy.deepcopy(crudo)
         for e in crudo:

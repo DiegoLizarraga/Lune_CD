@@ -1,8 +1,8 @@
 """
 Tests de ui/bandeja.py (BandejaLune): un solo icono con el menú reconstruido en
 aboutToShow, acciones por el Despachador (solo `triggered`), clic izquierdo →
-Abrir Lune, clic central → mascota, tooltip ≤ 127 caracteres como mucho una vez
-por segundo, avisos, QSS del tema, red de seguridad con la mascota y detener.
+Abrir Lune, clic central → asistente, tooltip ≤ 127 caracteres como mucho una vez
+por segundo, avisos, QSS del tema, red de seguridad con la asistente y detener.
 Con una fábrica de QSystemTrayIcon falsa (offscreen).
 """
 import os
@@ -19,7 +19,7 @@ from PyQt6.QtCore import QObject, pyqtSignal  # noqa: E402
 from PyQt6.QtWidgets import QMenu, QSystemTrayIcon  # noqa: E402
 
 from nucleo.acciones_ui import ACCIONES, Contexto, Despachador  # noqa: E402
-from nucleo.estado_mascota import BusEstado  # noqa: E402
+from nucleo.estado_asistente import BusEstado  # noqa: E402
 from ui.bandeja import TOOLTIP_MAX, BandejaLune, texto_tooltip  # noqa: E402
 
 R = QSystemTrayIcon.ActivationReason
@@ -85,7 +85,7 @@ def bandeja(qapp):
     hechos = []
     for i in ACCIONES:
         desp.registrar(i, lambda arg="", i=i: hechos.append((i, arg)))
-    ctx = {"v": Contexto(modo="normal", render="vrm", mascota_visible=True, voz_on=True,
+    ctx = {"v": Contexto(modo="normal", render="vrm", asistente_visible=True, voz_on=True,
                          tema_preset="ambar")}
     b = BandejaLune(desp, bus, lambda: ctx["v"], ConfigFalsa(["voz", "comentar", "bailar"]),
                     icono=None, fabrica_tray=TrayFalso,
@@ -145,16 +145,16 @@ def test_about_to_show_reconstruye_con_el_estado_actual(bandeja):
     voz = buscar(menu, "Lune", "Voz")
     assert voz.isCheckable() and voz.isChecked()
     assert buscar(menu, "Tema", "Ámbar").isChecked()
-    assert buscar(menu, "Mascota", "Dormir")
+    assert buscar(menu, "Asistente en escritorio", "Dormir")
     # cambia el estado → al abrir otra vez el menú refleja lo nuevo
-    bandeja.ctx["v"] = bandeja.ctx["v"]._replace(voz_on=False, mascota_visible=False)
+    bandeja.ctx["v"] = bandeja.ctx["v"]._replace(voz_on=False, asistente_visible=False)
     bandeja.bus.actualizar(durmiendo=True)
     menu.aboutToShow.emit()
     assert not buscar(menu, "Lune", "Voz").isChecked()
     with pytest.raises(AssertionError):
-        buscar(menu, "Mascota", "Dormir")               # sin mascota a la vista no se ofrece
-    assert buscar(menu, "Mascota", "Sacar a la mascota")
-    # «bailar» está en bandeja.acciones pero no se ve sin mascota: no sale
+        buscar(menu, "Asistente en escritorio", "Dormir")               # sin asistente a la vista no se ofrece
+    assert buscar(menu, "Asistente en escritorio", "Sacar a la asistente al escritorio")
+    # «bailar» está en bandeja.acciones pero no se ve sin asistente: no sale
     assert "Bailar" not in [t for t, _, _ in acciones_de(buscar(menu, "Lune", "Voz").parent())]
 
 
@@ -192,7 +192,7 @@ def test_clics_en_el_icono(bandeja, qapp):
     tray.activated.emit(R.DoubleClick)
     tray.activated.emit(R.MiddleClick)
     tray.activated.emit(R.Context)
-    assert bandeja.hechos == [("mostrar_lune", ""), ("mostrar_lune", ""), ("mascota", "")]
+    assert bandeja.hechos == [("mostrar_lune", ""), ("mostrar_lune", ""), ("asistente", "")]
 
 
 def test_tooltip_corto_y_como_mucho_una_vez_por_segundo(bandeja, qapp):
@@ -211,7 +211,7 @@ def test_tooltip_corto_y_como_mucho_una_vez_por_segundo(bandeja, qapp):
     QTest.qWait(250)
     assert len(tray.tooltips) == n + 1
     assert all(len(t) <= TOOLTIP_MAX for t in tray.tooltips)
-    assert "modo juego" in tray.tooltip and "mascota durmiendo" in tray.tooltip
+    assert "modo juego" in tray.tooltip and "dormida en el escritorio" in tray.tooltip
 
 
 def test_texto_tooltip_se_recorta():
@@ -235,17 +235,17 @@ def test_avisos_y_qss(bandeja):
     assert all(s.styleSheet() == "QMenu { color: red; }" for s in bandeja._submenus)
 
 
-def test_set_mascota_quita_su_bandeja(bandeja):
-    class Mascota:
+def test_set_asistente_quita_su_bandeja(bandeja):
+    class Asistente:
         quitadas = 0
 
         def quitar_bandeja(self):
-            Mascota.quitadas += 1
+            Asistente.quitadas += 1
     bandeja.iniciar()
-    bandeja.set_mascota(Mascota())
-    bandeja.set_mascota(None)
-    bandeja.set_mascota(object())                        # sin quitar_bandeja: se tolera
-    assert Mascota.quitadas == 1
+    bandeja.set_asistente(Asistente())
+    bandeja.set_asistente(None)
+    bandeja.set_asistente(object())                        # sin quitar_bandeja: se tolera
+    assert Asistente.quitadas == 1
 
 
 def test_detener_quita_el_icono_ya(bandeja):

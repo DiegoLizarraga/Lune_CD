@@ -1,5 +1,5 @@
 """
-Tests del contrato de la mascota de los cortes 9 y 10 (ui/companion.py y ui/avatar_overlay.py):
+Tests del contrato de la asistente de los cortes 9 y 10 (ui/companion.py y ui/avatar_overlay.py):
 
 - `datos_mmd_seguros`: acepta el payload EXACTO de ui/mmd_qt.ControlMMD (listas motion/cara o
   los planos motion0..2/cara0..1) y rechaza http:, '..', '/ui/', '//', '\\', query, %2f,
@@ -64,7 +64,7 @@ def lune_activa(monkeypatch):
 
 @pytest.fixture
 def bailes_tmp(tmp_path, monkeypatch):
-    """bailes/ y cache/bailes/ en una carpeta temporal (lo que publica la mascota)."""
+    """bailes/ y cache/bailes/ en una carpeta temporal (lo que publica la asistente)."""
     from nucleo import bailes as nbl
     carpeta, cache = tmp_path / "bailes", tmp_path / "cache" / "bailes"
     (carpeta / "Alfa").mkdir(parents=True)
@@ -81,7 +81,7 @@ def bailes_tmp(tmp_path, monkeypatch):
 def web_falso(monkeypatch):
     """QWebEngineView falso: anota el JS; `pagina.respuestas` = [(trozo, valor)]."""
     if not HAY_WEBENGINE:
-        pytest.skip("la mascota web necesita PyQt6-WebEngine")
+        pytest.skip("la asistente web necesita PyQt6-WebEngine")
     from PyQt6.QtCore import QUrl
     from PyQt6.QtWidgets import QWidget
     import ui.companion as comp
@@ -293,7 +293,7 @@ def test_cargar_manda_el_json_exacto_y_publica_bailes_una_vez(vrm, bailes_tmp, m
             urllib.request.urlopen(c._servidor.url(malo)).read()
 
 
-def test_ordenes_validadas_y_un_cargar_que_no_es_de_esta_mascota(vrm, animada):
+def test_ordenes_validadas_y_un_cargar_que_no_es_de_esta_asistente(vrm, animada):
     c = vrm
     assert c.mmd("cargar", {**PAYLOAD_VRM, "motion": ["http://evil.com/x.vmd"]}) is False
     assert c.mmd("cargar", PAYLOAD_AUDIO) is False, "la VRM no baila «audio»"
@@ -502,7 +502,7 @@ def control_mmd(qapp, tmp_path):
 def test_contrato_controlmmd_vrm_payload_aceptado_eventos_y_recarga(vrm, control_mmd):
     esc, ctl, ids, avisos = control_mmd
     c = vrm
-    esc.set_mascota(c)
+    esc.set_asistente(c)
     ok, texto = ctl.reproducir(ids["Alfa"])
     assert ok, texto
     cargas = [d for o, d in ordenes_mmd(c) if o == "cargar"]
@@ -526,7 +526,7 @@ def test_contrato_controlmmd_vrm_payload_aceptado_eventos_y_recarga(vrm, control
 def test_contrato_controlmmd_animada_tipo_audio(animada, control_mmd):
     esc, ctl, ids, avisos = control_mmd
     c = animada
-    esc.set_mascota(c)
+    esc.set_asistente(c)
     ok, texto = ctl.reproducir(ids["Alfa"])
     assert ok, texto
     cargas = [d for o, d in ordenes_mmd(c) if o == "cargar"]
@@ -585,8 +585,8 @@ def test_contrato_controlminecraft_una_muerte_sale_en_la_burbuja(animada, qapp):
     ctl = ControlMinecraft(esc, Cfg(), proceso=Proceso(), lector=Lector(), rng=Azar(), reloj=lambda: 1000.0,
                            personaje=lambda: {"nombre": "Lune"}, llm=lambda: None, hilo=lambda fn, *a: fn())
     try:
-        esc.set_mascota(animada)
-        ctl.set_mascota(animada)
+        esc.set_asistente(animada)
+        ctl.set_asistente(animada)
         js(animada).clear()
         ctl._leer()
         dichos = [x for x in js(animada) if "comentarTipeado" in x]

@@ -175,7 +175,7 @@ class PantallaInicio(QMainWindow):
         fila = QHBoxLayout(); fila.setSpacing(10)
         self.botones_modo = {}
         for modo, texto, tip in (
-            ("web", "COMPLETO", "Piel web animada, mascota en video, tema Nube/Local"),
+            ("web", "COMPLETO", "Piel web animada, asistente en escritorio con video, tema Nube/Local"),
             ("nativo", "BAJOS RECURSOS", "Interfaz nativa ligera: sin animaciones ni videos"),
             ("patata", "PATATA", "Solo terminal: texto y caritas :D  (sin Qt, sin imágenes)"),
         ):

@@ -1,4 +1,4 @@
-// tests/js/burbuja.test.mjs — burbuja de la mascota (ui_web/lune_burbuja.js).
+// tests/js/burbuja.test.mjs — burbuja de la asistente (ui_web/lune_burbuja.js).
 // Script clásico evaluado en un contexto vm con DOM y temporizadores falsos.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

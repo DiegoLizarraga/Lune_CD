@@ -14,7 +14,7 @@ lune_core/herramientas.py (fail-closed, deny-list, presupuesto y auditoría).
 Reglas (plan §2.5 y crítica d):
   · Máximo 3 CALL por respuesta; el resto se descarta sin ejecutar.
   · Tolerancia (prueba real con modelos locales): las formas mal escritas que
-    lune_core/marcadores.py sabe leer (<|mascota_bailar(segundos=60)|>,
+    lune_core/marcadores.py sabe leer (<|asistente_bailar(segundos=60)|>,
     <|OPEN_URL https://…|>, |<CALL …>|, JSON con una llave de más…) se
     interpretan y pasan por AQUÍ como cualquier CALL: misma Política, misma
     aprobación, mismo origen.
@@ -95,13 +95,13 @@ AVISO_LLAMADA = ("Lo oí en la llamada (puede ser ruido de fondo, la tele u otra
 # que nadie había pedido. No se tira (a veces es una pregunta de más tras un pedido
 # de verdad): se pregunta.
 AVISO_OFRECIDA = "Te lo ofrecí yo en la respuesta; no me consta que lo pidieras."
-# Lo que hace el cuerpo de la mascota: se ve al momento y se deshace con un clic, así que
+# Lo que hace el cuerpo de Lune en pantalla: se ve al momento y se deshace con un clic, así que
 # aunque lo ofrezca no se pregunta («baila» → «¿quieres que bailemos?» + la marca era un
 # pedido de verdad en la prueba real). Lo que dura o sale de Lune (temporizador, alarma,
 # web, voz, tamaño, bot de Minecraft) sí se pregunta.
 _OFRECIDA_SIN_PREGUNTA = frozenset({
-    "mascota_bailar", "parar_baile", "mascota_dormir", "mascota_despertar",
-    "mascota_sentarse", "mascota_pantalla_grande", "dar_de_comer"})
+    "asistente_bailar", "parar_baile", "asistente_dormir", "asistente_despertar",
+    "asistente_sentarse", "asistente_pantalla_grande", "dar_de_comer"})
 # Formas vistas en 4 rondas de la prueba real: «¿Quieres que te ponga uno?», «¿O prefieres
 # que busque…?», «¿Te interesa programar algo?», «¿Te lo pongo?», «Puedo ponerte uno de 5
 # minutos, ¿te interesa?». Una pregunta cualquiera NO basta: el modelo acaba con «¿algo

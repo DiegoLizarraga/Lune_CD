@@ -2,7 +2,7 @@
 ui/alarmas_dialogo.py — Las dos ventanas Qt de las alarmas.
 
 - `DialogoAlarma`: la tarjeta que sale al sonar cuando no hay pantalla grande
-  (alarmas.pantalla_grande desactivado, sprites o sin mascota). Sin bordes,
+  (alarmas.pantalla_grande desactivado, sprites o sin asistente). Sin bordes,
   siempre encima, abajo a la derecha, sin robar el foco. Texto de la alarma,
   la hora y dos botones: «Apagar» (con la cuenta atrás del bloqueo: «Apagar
   (4)») y «Posponer N min». Señales `apagar` y `posponer`.

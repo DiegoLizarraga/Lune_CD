@@ -2,7 +2,7 @@
 Tests de ui/vrm_panel_nativo.py: el panel de modelos VRM de la interfaz nativa.
 
 Con QT_QPA_PLATFORM=offscreen, la carpeta de modelos en tmp (monkeypatch de
-nucleo.vrm.CARPETA, como tests/test_mascota_vrm.py) y datos.json de mentira para
+nucleo.vrm.CARPETA, como tests/test_asistente_vrm.py) y datos.json de mentira para
 los personajes. Los GLB sintéticos son los de tests/test_vrm_miniatura.py.
 """
 import json

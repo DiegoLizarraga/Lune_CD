@@ -3,7 +3,7 @@ lune_face.py — Cara animada de Lune, emociones y avatar packs.
 Maneja imágenes/videos de expresión y los packs intercambiables
 (base para modelos VRM/Live2D; ver avatar_overlay.py).
 
-La mascota de sprites (avatar_overlay.py) pinta el sprite girado/respirando con
+La asistente de sprites (avatar_overlay.py) pinta el sprite girado/respirando con
 `set_pixmap_compuesto(pm)` sin cambiar de estado, y duerme con el estado
 `sleeping` (lune_sleeping.png si el pack lo trae; si no, la cara más cercana).
 Sentada (corte 7) usa `sitting` (lune_sitting.png) como cara de reposo SOLO si el pack
@@ -18,7 +18,7 @@ from PyQt6.QtGui import QFont, QPixmap
 
 from ui.theme import COLORS, FONT_MONO, FONT_JP
 
-# Etiqueta de estado que se muestra en el escenario de la mascota (月 EN LÍNEA)
+# Etiqueta de estado que se muestra en el escenario de la asistente (月 EN LÍNEA)
 STATE_LABELS = {
     "normal": "EN LÍNEA", "happy": "OK", "reading": "LEYENDO",
     "thinking": "PENSANDO", "typing": "ESCRIBIENDO",
@@ -54,7 +54,7 @@ FACE_FALLBACK_IMAGE = {
 }
 
 # Estado sin archivo propio (ni en el pack ni en lune_face/) → la cara más cercana.
-# Dormida: «EN PAUSA» (sad) es la de ojos bajos; la mascota además la oscurece.
+# Dormida: «EN PAUSA» (sad) es la de ojos bajos; la asistente además la oscurece.
 FACE_FALLBACK_STATE = {
     "sleeping": "sad",
     "sitting": "normal",
@@ -245,7 +245,7 @@ class LuneFaceWidget(QFrame):
         self._fallback_label.setText(fallback_marks.get(state, "月")); self._fallback_label.show(); self.image_label.hide()
 
     def set_pixmap_compuesto(self, pm):
-        """Muestra `pm` (el sprite girado/desplazado que compone la mascota de sprites)
+        """Muestra `pm` (el sprite girado/desplazado que compone la asistente de sprites)
         en lugar del pixmap del estado, sin cambiar de estado. `_pixmap_actual` sigue
         siendo el sprite sin tocar. None → vuelve a mostrar el del estado. No hace nada
         si el estado es un vídeo o no tiene imagen."""
@@ -262,7 +262,7 @@ class LuneFaceWidget(QFrame):
     def etiqueta_flotante(self):
         """La etiqueta de estado (月 EN LÍNEA) deja de ocupar su fila: queda encima
         de la cara y la coloca quien la contiene (`state_tag.move`); la imagen y el
-        vídeo usan todo el alto. La mascota de sprites la pega a la figura (su lienzo
+        vídeo usan todo el alto. La asistente de sprites la pega a la figura (su lienzo
         con margen no cabría debajo de la fila, y con la letra a más de 100 % menos)."""
         if self._tag_flotante:
             return self.state_tag

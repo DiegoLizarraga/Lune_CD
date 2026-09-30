@@ -22,6 +22,7 @@ alarmas.json.corrupto-*
 # Memoria personal del usuario (y el temporal de su escritura atómica)
 memoria.json
 .memoria.json.*.tmp
+memoria.json.corrupto-*
 telegram-bot-or/data/
 
 # Registro del instalador (rutas de tu equipo)

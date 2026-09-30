@@ -248,11 +248,11 @@ def test_fallo_de_audio_no_rompe_el_aviso():
 
 
 @pytest.mark.parametrize("kw,esperado", [
-    (dict(juego=True, pantalla_grande=True, render="vrm", mascota_visible=True), "discreto"),
-    (dict(juego=False, pantalla_grande=True, render="vrm", mascota_visible=True), "grande"),
-    (dict(juego=False, pantalla_grande=True, render="", mascota_visible=False), "grande"),
-    (dict(juego=False, pantalla_grande=False, render="sprites", mascota_visible=True), "burbuja"),
-    (dict(juego=False, pantalla_grande=True, render="patata", mascota_visible=False), "discreto"),
+    (dict(juego=True, pantalla_grande=True, render="vrm", asistente_visible=True), "discreto"),
+    (dict(juego=False, pantalla_grande=True, render="vrm", asistente_visible=True), "grande"),
+    (dict(juego=False, pantalla_grande=True, render="", asistente_visible=False), "grande"),
+    (dict(juego=False, pantalla_grande=False, render="sprites", asistente_visible=True), "burbuja"),
+    (dict(juego=False, pantalla_grande=True, render="patata", asistente_visible=False), "discreto"),
 ])
 def test_elegir_visual(kw, esperado):
     assert elegir_visual(**kw) == esperado

@@ -1,7 +1,7 @@
 // tests/js/tema.test.mjs — tema de color en la página y ancla de la cabeza:
 //   · ui_web/tema.js (script clásico, en un contexto vm con un <html> falso):
 //     window.luneTema(mapa | JSON | null) con lista blanca y validación.
-//   · window.luneCabeza(offsetY) de las dos páginas de la mascota:
+//   · window.luneCabeza(offsetY) de las dos páginas de la asistente:
 //     companion.html (geometría del vídeo) ejecutando su <script> clásico en un vm,
 //     y companion_vrm.html ejecutando su módulo con three.js DE VERDAD (ui_web/vendor)
 //     y un motor falso que expone el ctx (huesos.head, camera, proyectar) de lune_vrm.js.
@@ -142,7 +142,7 @@ test('companion.html: luneCabeza sale de la geometría del vídeo (contain, pega
   const c = JSON.parse(w.luneCabeza());                 // offsetY = 0.1 por defecto
   cerca(c.x, izq + 0.505 * cw, 0.06, 'x centrada en la cara');
   cerca(c.y, arriba + (0.36 - 0.1 * 1.29) * ch, 0.06, 'y a la altura de la frente');
-  cerca(c.r, 0.1732 * 1.29 * ch, 0.06, 'radio de la mascota 3D');
+  cerca(c.r, 0.1732 * 1.29 * ch, 0.06, 'radio de la asistente 3D');
   // Más offset = más arriba; offset inválido = el de por defecto
   assert.ok(JSON.parse(w.luneCabeza(0.2)).y < c.y);
   assert.deepEqual(JSON.parse(w.luneCabeza('no')), c);
@@ -199,15 +199,15 @@ async function cargarPaginaVRM() {
   globalThis.document = crearDocumento(raiz);
   globalThis.location = { search: '' };
   if (typeof globalThis.addEventListener !== 'function') globalThis.addEventListener = () => {};
-  const estado = { mascota: null };
+  const estado = { asistente: null };
   globalThis.__motorFalsoTema = (opts) => {
     estado.opts = opts;
     const m = { listo: false, ctx: null, luneParams: () => null, setEstado() {}, setHablando() {} };
-    estado.mascota = m;
+    estado.asistente = m;
     return m;
   };
   const motor = 'data:text/javascript;base64,' + Buffer.from(
-    'export function crearMascota(o) { return globalThis.__motorFalsoTema(o); }', 'utf8').toString('base64');
+    'export function crearAsistente(o) { return globalThis.__motorFalsoTema(o); }', 'utf8').toString('base64');
   const scripts = scriptsEnLinea('companion_vrm.html');
   for (const s of scripts) {
     if (!s.modulo) { vm.runInThisContext(s.codigo, { filename: 'companion_vrm.html' }); continue; }
@@ -237,9 +237,9 @@ test('companion_vrm.html: luneCabeza proyecta el hueso Head + (0, offsetY, 0) en
   // Sin modelo cargado todavía
   assert.equal(globalThis.luneCabeza(), 'null');
   const esc = escena();
-  pagina.mascota.ctx = { THREE, huesos: { head: esc.head }, camera: esc.camera, proyectar: esc.proyectar };
+  pagina.asistente.ctx = { THREE, huesos: { head: esc.head }, camera: esc.camera, proyectar: esc.proyectar };
   assert.equal(globalThis.luneCabeza(), 'null', 'hasta que el motor está listo');
-  pagina.mascota.listo = true;
+  pagina.asistente.listo = true;
   const c = JSON.parse(globalThis.luneCabeza());
   const e = esperado(esc, 0.1);
   cerca(c.x, e.x, 0.06, 'x'); cerca(c.y, e.y, 0.06, 'y'); cerca(c.r, e.r, 0.06, 'r');
@@ -254,9 +254,9 @@ test('companion_vrm.html: luneCabeza proyecta el hueso Head + (0, offsetY, 0) en
 
 test('companion_vrm.html: luneCabeza sigue la inclinación de la cabeza y la escala del modelo', async () => {
   const pagina = await cargarPaginaVRM();
-  pagina.mascota.listo = true;
+  pagina.asistente.listo = true;
   const inclinada = escena({ inclinacion: 0.5 });
-  pagina.mascota.ctx = { THREE, huesos: { head: inclinada.head }, camera: inclinada.camera, proyectar: inclinada.proyectar };
+  pagina.asistente.ctx = { THREE, huesos: { head: inclinada.head }, camera: inclinada.camera, proyectar: inclinada.proyectar };
   const c = JSON.parse(globalThis.luneCabeza());
   const e = esperado(inclinada, 0.1);
   cerca(c.x, e.x, 0.06, 'x inclinada'); cerca(c.y, e.y, 0.06, 'y inclinada');
@@ -264,14 +264,14 @@ test('companion_vrm.html: luneCabeza sigue la inclinación de la cabeza y la esc
   assert.ok(c.x < recta.x - 1, 'girada en z positivo, el offset se va a la izquierda');
   // El doble de grande: el radio escala con |escala del hueso|
   const grande = escena({ escala: 2 });
-  pagina.mascota.ctx = { THREE, huesos: { head: grande.head }, camera: grande.camera, proyectar: grande.proyectar };
+  pagina.asistente.ctx = { THREE, huesos: { head: grande.head }, camera: grande.camera, proyectar: grande.proyectar };
   const g = JSON.parse(globalThis.luneCabeza());
   cerca(g.r, esperado(grande, 0.1).r, 0.06, 'r con escala 2');
   // Sin hueso de cabeza o con una proyección rota: "null", nunca una excepción
-  pagina.mascota.ctx = { THREE, huesos: {}, camera: grande.camera, proyectar: grande.proyectar };
+  pagina.asistente.ctx = { THREE, huesos: {}, camera: grande.camera, proyectar: grande.proyectar };
   assert.equal(globalThis.luneCabeza(), 'null');
-  pagina.mascota.ctx = { THREE, huesos: { head: grande.head }, camera: grande.camera, proyectar: () => ({ x: NaN, y: 0 }) };
+  pagina.asistente.ctx = { THREE, huesos: { head: grande.head }, camera: grande.camera, proyectar: () => ({ x: NaN, y: 0 }) };
   assert.equal(globalThis.luneCabeza(), 'null');
-  pagina.mascota.ctx = { THREE, huesos: { head: grande.head }, camera: grande.camera, proyectar: () => { throw new Error('x'); } };
+  pagina.asistente.ctx = { THREE, huesos: { head: grande.head }, camera: grande.camera, proyectar: () => { throw new Error('x'); } };
   assert.equal(globalThis.luneCabeza(), 'null');
 });

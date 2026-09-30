@@ -5,7 +5,7 @@
  *     de luneEscritorio, «Abrir alarmas» → 'lune-vista');
  *   · extra/baile.jsx: BaileCard (estado en vivo, apps permitidas y «suenan ahora») y LuneBaileWeb
  *     (useBaile, reloj del pulso, transform del vídeo, rótulo);
- *   · app.jsx + sidebar.jsx: vista «alarmas», banner global, CommandMenu (accion_menu) y la mascota de la
+ *   · app.jsx + sidebar.jsx: vista «alarmas», banner global, CommandMenu (accion_menu) y la asistente de la
  *     barra bailando en vídeo (transform ≤ 30 fps) y en VRM (baileProc por h.usarModulo/h.mod).
  * Lo lanza también tests/test_jsx_ocio.py.
  */
@@ -555,7 +555,7 @@ function docFalso() {
   };
 }
 function luneFalso() {
-  const base = { mascota_visible(cb) { cb(false); }, proveedores(cb) { cb('{}'); }, proveedor_elegido() {} };
+  const base = { asistente_visible(cb) { cb(false); }, proveedores(cb) { cb('{}'); }, proveedor_elegido() {} };
   return new Proxy(base, { get(t, k) { if (!(k in t) && typeof k === 'string') t[k] = senal(); return t[k]; } });
 }
 /** Elementos del DOM falsos para los ref (el React falso no los pone): <video> y <canvas>. */

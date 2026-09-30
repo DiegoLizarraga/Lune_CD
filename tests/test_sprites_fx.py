@@ -1,6 +1,6 @@
 """
 Tests de ui/sprites_fx.py: balanceo, caras por velocidad, mareo, respiración y
-mirada de la mascota de sprites, y sus adaptadores Qt.
+mirada de la asistente de sprites, y sus adaptadores Qt.
 
 La lógica pura se prueba con reloj falso; FisicaSpriteQt / RespiracionSpriteQt y
 SpriteRotado con QT_QPA_PLATFORM=offscreen (fixture `qapp` de conftest.py). Los

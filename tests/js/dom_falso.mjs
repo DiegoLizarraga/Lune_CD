@@ -1,4 +1,4 @@
-// tests/js/dom_falso.mjs — DOM y temporizador de mentira para los tests de la mascota
+// tests/js/dom_falso.mjs — DOM y temporizador de mentira para los tests de la asistente
 // animada (anim_video.test.mjs, anim_fisica.test.mjs). No es un test: node --test solo
 // ejecuta los *.test.mjs y test_js_modulos.py lanza solo esos.
 

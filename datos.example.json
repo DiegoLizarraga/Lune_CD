@@ -1,5 +1,5 @@
 {
-  "_nota": "Plantilla de configuración. Al arrancar, datos.py copia este archivo a datos.json si no existe. NO pongas claves reales aquí: datos.json está en .gitignore, esta plantilla no. Personajes: 'voz' = {motor: 'auto' | 'edge' | 'gtts' | 'kokoro', id: voz del motor (en edge el ShortName, p. ej. es-MX-DaliaNeural; en kokoro ef_dora…), rate: '+0%' (de -50% a +50%), pitch: '+0Hz' (de -50Hz a +50Hz)}; manda sobre la voz de config.json y la usa también el bot de Telegram (ver nucleo/personajes.py). 'frases_mascota' = {evento: [frases]} con eventos arrastre, soltar, caricia, dormir, despertar, mareo, aparecer, pudor, sentarse (en la barra o en una ventana), bajar o comer; vacío = las frases de serie. 'frases_minecraft' = {clave: [frases]} para las reacciones a tu partida de Minecraft (claves de lune_core/minecraft.FRASES: muerte, muerte_otro, logro, logro_otro, conexion, desconexion, peligro, dia, noche, lluvia, bot_*…; huecos {jugador} {logro} {mob} {causa}); las que falten salen de serie.",
+  "_nota": "Plantilla de configuración. Al arrancar, datos.py copia este archivo a datos.json si no existe. NO pongas claves reales aquí: datos.json está en .gitignore, esta plantilla no. Personajes: 'voz' = {motor: 'auto' | 'edge' | 'gtts' | 'kokoro', id: voz del motor (en edge el ShortName, p. ej. es-MX-DaliaNeural; en kokoro ef_dora…), rate: '+0%' (de -50% a +50%), pitch: '+0Hz' (de -50Hz a +50Hz)}; manda sobre la voz de config.json y la usa también el bot de Telegram (ver nucleo/personajes.py). 'frases_asistente' = {evento: [frases]}, lo que dice en el modo asistente en escritorio, con eventos arrastre, soltar, caricia, dormir, despertar, mareo, aparecer, pudor, sentarse (en la barra o en una ventana), bajar o comer; vacío = las frases de serie. 'frases_minecraft' = {clave: [frases]} para las reacciones a tu partida de Minecraft (claves de lune_core/minecraft.FRASES: muerte, muerte_otro, logro, logro_otro, conexion, desconexion, peligro, dia, noche, lluvia, bot_*…; huecos {jugador} {logro} {mob} {causa}); las que falten salen de serie.",
   "apis": {
     "telegram_token": "",
     "telegram_admin_id": "",
@@ -40,7 +40,7 @@
         "rate": "+0%",
         "pitch": "+0Hz"
       },
-      "frases_mascota": {}
+      "frases_asistente": {}
     }
   ],
   "hub": {

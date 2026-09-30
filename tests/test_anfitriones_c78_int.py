@@ -10,7 +10,7 @@ Windows sigue al modo. Nativa: la vida va con el corte 4. Ajustes nativos: el pa
 vida recibe los servicios, «Guardar» escribe lo pendiente y la casilla del autoinicio deja
 `sistema.autoinicio` como el registro. Chat (web y nativa): «siéntate en la barra» sale
 como Llamada por el Ejecutor sin pasar por la memoria; «¿te puedes sentar?» NO.
-main.py: plan de arranque (splash, bandeja, mascota, ventana, espera), instancia única
+main.py: plan de arranque (splash, bandeja, asistente, ventana, espera), instancia única
 silenciosa, reparar la entrada al arrancar y al cambiar de modo, patata minimizada.
 Patata: comida y Discord/autoinicio sin Qt, /ayuda, «Pensando…», --autoinicio.
 Nada de registro de Windows, config.json de verdad, audio ni Discord.
@@ -84,7 +84,7 @@ def test_web_registra_el_puente_vida_antes_de_cargar_y_lo_enlaza(vida, sistema):
     assert vv is not None and vv.asiento is vida.reg.asientos[-1] and vv.comida is vida.reg.comidas[-1]
     pv = v._puente_vida
     assert pv.asiento is vv.asiento and pv.comida is vv.comida and pv.discord is vv.discord
-    for h in ("mascota_sentarse", "dar_de_comer"):
+    for h in ("asistente_sentarse", "dar_de_comer"):
         assert v.bridge.tools.tiene_handler(h), h                      # el ToolManager del puente
     for a in ACCIONES_VIDA:
         assert s.despachador.tiene(a), a
@@ -198,7 +198,7 @@ def test_web_chat_sientate_sale_como_llamada_y_la_pregunta_no(vida, sistema):
     assert b._enviar("siéntate en la barra", b._provider_web) is True
     llamadas, origen, _ctx = b.acciones.ejecutadas[-1]
     assert origen == USUARIO and [(x.herramienta, x.args, x.directa) for x in llamadas] == [
-        ("mascota_sentarse", {"sitio": "barra"}, True)]
+        ("asistente_sentarse", {"sitio": "barra"}, True)]
     assert b.memoria.vistos == [] and ia == []                         # antes que la memoria y sin IA
     b._enviar("toma un pastel", b._provider_web)
     assert [x.herramienta for x in b.acciones.ejecutadas[-1][0]] == ["dar_de_comer"]
@@ -242,13 +242,13 @@ def test_nativa_chat_sientate_va_al_ejecutor_y_la_pregunta_no(qapp, monkeypatch)
         _adjuntos=[], _refrescar_adjuntos=lambda: None, _guardar_turno=lambda *a, **k: None,
         memoria=memoria, tools=ToolManager(), ai_manager=types.SimpleNamespace(providers={}),
         _modo_acciones=lambda: "vrm", _scroll_bottom=lambda: None, _burbuja_bot=lambda t: None,
-        _eco_mascota=lambda *a, **k: None,
+        _eco_asistente=lambda *a, **k: None,
         lune_face=types.SimpleNamespace(set_state=lambda *a, **k: None),
         _ejecutar_acciones=lambda ll, origen, ctx, **kw: ejecutadas.append((ll, origen, dict(ctx), kw)))
     main.LuneCDWindow._send_message(yo)
     ll, origen, ctx, kw = ejecutadas[-1]
     assert origen == USUARIO and kw["directo"] is True and memoria.vistos == [] and ctx["modo"] == "vrm"
-    assert [(x.herramienta, x.args) for x in ll] == [("mascota_sentarse", {"sitio": "barra"})]
+    assert [(x.herramienta, x.args) for x in ll] == [("asistente_sentarse", {"sitio": "barra"})]
     texto["t"] = "¿te puedes sentar?"
     main.LuneCDWindow._send_message(yo)
     assert len(ejecutadas) == 1 and memoria.vistos == ["¿te puedes sentar?"]
@@ -325,11 +325,11 @@ def test_plan_de_arranque_a_mano_y_con_windows(tmp_path):
     cfg = Config(str(tmp_path / "config.json"))
     opc, plan, c = main._preparar_arranque([], config=cfg)
     assert c is cfg and opc.autoinicio is False and plan.splash is True and plan.mostrar_ventana is True
-    cfg.set("sistema", "autoinicio_como", "mascota")
+    cfg.set("sistema", "autoinicio_como", "asistente")
     cfg.set("sistema", "autoinicio_retraso_s", 7)
     opc, plan, _ = main._preparar_arranque(["--autoinicio"], config=cfg)
     assert opc.autoinicio is True
-    assert (plan.splash, plan.mostrar_ventana, plan.abrir_mascota, plan.retraso_s, plan.silencioso) == (
+    assert (plan.splash, plan.mostrar_ventana, plan.abrir_asistente, plan.retraso_s, plan.silencioso) == (
         False, False, True, 7, True)
 
 
@@ -385,25 +385,25 @@ def test_presentar_la_ventana_segun_el_plan():
     assert main._presentar_principal(w, plan("ventana")) == "ventana"
     d = _Desp()
     w = _VentanaFalsa(desp=d)
-    assert main._presentar_principal(w, plan("mascota")) == "mascota" and d.ejecutadas == ["mascota"]
+    assert main._presentar_principal(w, plan("asistente")) == "asistente" and d.ejecutadas == ["asistente"]
     assert w.diario == []
-    # Sin icono de bandeja nunca queda invisible (ni si la mascota no pudo salir).
+    # Sin icono de bandeja nunca queda invisible (ni si la asistente no pudo salir).
     w = _VentanaFalsa(tray=False)
     assert main._presentar_principal(w, plan("bandeja")) == "ventana" and "show" in w.diario
     w = _VentanaFalsa(tray=False, desp=_Desp(ok=False))
-    assert main._presentar_principal(w, plan("mascota")) == "ventana"
+    assert main._presentar_principal(w, plan("asistente")) == "ventana"
 
 
-def test_presentar_con_la_ventana_web_de_verdad_en_la_bandeja_o_con_la_mascota(entorno, sistema):
+def test_presentar_con_la_ventana_web_de_verdad_en_la_bandeja_o_con_la_asistente(entorno, sistema):
     import main
     from nucleo import arranque
     v = entorno.web()
     plan = arranque.plan_arranque({"sistema": {"autoinicio_como": "bandeja"}}, arranque.Opciones(True))
     assert main._presentar_principal(v, plan) == "bandeja"
     assert not v.isVisible() and v.tray is v._servicios_c4.bandeja.icono_tray and len(sistema.iconos) == 1
-    plan = arranque.plan_arranque({"sistema": {"autoinicio_como": "mascota"}}, arranque.Opciones(True))
-    assert main._presentar_principal(v, plan) == "mascota"
-    assert not v.isVisible() and c4.MascotaFalsa.creadas and c4.MascotaFalsa.creadas[-1].visible
+    plan = arranque.plan_arranque({"sistema": {"autoinicio_como": "asistente"}}, arranque.Opciones(True))
+    assert main._presentar_principal(v, plan) == "asistente"
+    assert not v.isVisible() and c4.AsistenteFalsa.creadas and c4.AsistenteFalsa.creadas[-1].visible
 
 
 class _Servidor(QObject):
@@ -769,10 +769,10 @@ def test_patata_comandos_ayuda_y_menu(patata_c78):
     assert "Application ID guardado" in _cmd(p, f"/discord id {ID_DISCORD}")
     assert p.cfg.get("discord", "client_id") == ID_DISCORD
     assert "Lune arrancará con Windows" in _cmd(p, "/autoinicio on") and p._autoinicio.modos[-1] == "patata"
-    assert "Sentarse es cosa de la mascota" in _cmd(p, "/sentarse")
+    assert "Sentarse es cosa de la asistente" in _cmd(p, "/sentarse")
     ayuda = _cmd(p, "/ayuda")
     for c in ("/comer [batido|pastel]", "/discord [on|off|estado]", "/autoinicio [on|off|estado",
-              "Sentarse en la barra o en una ventana es cosa de la mascota"):
+              "Sentarse en la barra o en una ventana es cosa de la asistente"):
         assert c in ayuda, c
     # /menu: Discord con su ✓ (y lo alterna la presencia de patata).
     texto = _cmd(p, "/menu")
@@ -795,8 +795,8 @@ def test_patata_chat_toma_un_batido_sientate_y_la_pregunta(patata_c78):
     assert tp.esperar(lambda: "glup" in p.out.getvalue().lower())
     assert ai.system == "" and memoria.vistos == [] and mez.reproducidos
     antes = len(p.out.getvalue())
-    p.responder("siéntate")                                            # eso es de la mascota
-    assert "Sentarse es cosa de la mascota" in p.out.getvalue()[antes:] and ai.system == ""
+    p.responder("siéntate")                                            # eso es de la asistente
+    assert "Sentarse es cosa de la asistente" in p.out.getvalue()[antes:] and ai.system == ""
     p.responder("¿te puedes sentar?")                                  # no es una orden: el modelo
     assert ai.system != "" and memoria.vistos == ["¿te puedes sentar?"]
 

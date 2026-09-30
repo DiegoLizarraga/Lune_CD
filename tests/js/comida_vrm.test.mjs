@@ -154,10 +154,10 @@ test('companion_vrm.html: luneComer/luneComidaActiva antes y después del módul
   assert.equal(globalThis.luneComer('comer', 2500), false);
   frames.length = 0;
   await import(aDataURL(reescribirImports(scripts[1].codigo, new URL('companion_vrm.html', UI), { './vrm/lune_vrm.js': DATA_MOTOR }) + '\n// comida'));
-  const mascota = globalThis.luneMascota;
+  const asistente = globalThis.luneAsistente;
   try {
-    assert.ok(mascota.bus.lista().includes('comida'));
-    assert.equal(mascota.bus.lista().includes('sentarse'), false, 'sentarse no se registra si no se usa');
+    assert.ok(asistente.bus.lista().includes('comida'));
+    assert.equal(asistente.bus.lista().includes('sentarse'), false, 'sentarse no se registra si no se usa');
     const s = globalThis.luneMod('comida', 'estado');
     assert.equal(s.activa, true);
     assert.equal(s.reaccion, 'comer', 'la reacción pendiente se repitió');
@@ -168,6 +168,6 @@ test('companion_vrm.html: luneComer/luneComidaActiva antes y después del módul
     assert.equal(globalThis.luneComidaActiva(false), true);
     assert.equal(globalThis.luneMod('comida', 'estado').activa, false);
   } finally {
-    try { mascota.destruir(); } catch (_) { /* sigue */ }
+    try { asistente.destruir(); } catch (_) { /* sigue */ }
   }
 });

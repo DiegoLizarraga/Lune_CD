@@ -7,7 +7,7 @@ lanza `iniciar_lune.vbs` con wscript (sin consola):
 
 - web y nativa: `wscript.exe "<raíz>\\iniciar_lune.vbs" /autoinicio`
   → pythonw main.py --autoinicio (sin pantalla de inicio; nucleo/arranque.py
-  decide si abre en la bandeja, con la mascota o con la ventana, tras la espera).
+  decide si abre en la bandeja, con la asistente o con la ventana, tras la espera).
 - patata:      `wscript.exe "<raíz>\\iniciar_lune.vbs" /autoinicio /patata`
   → python.exe patata.py --autoinicio en una consola MINIMIZADA, sin exigir PyQt6.
 

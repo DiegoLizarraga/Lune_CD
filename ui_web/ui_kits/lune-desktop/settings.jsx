@@ -35,7 +35,7 @@ function MoonField() {
       <div className="p5-horizon" />
       <div className="p5-lune-sil">
         <div className="p5-bubble">¿Qué ajustamos hoy?</div>
-        <img src="../../assets/mascot/anime/lune-base-cut.png" alt="" />
+        <img src="../../assets/asistente/anime/lune-base-cut.png" alt="" />
       </div>
     </div>
   );
@@ -47,12 +47,12 @@ const CFG_DEMO = {
   telegram_token:'', telegram_admin_id:'', telegram_ordenes_pc:false, nombre:'Lune',
   system_prompt:'Eres Lune. Directa, con personalidad y filo. Sin relleno, sin emoji.',
   voz:false, memoria:true, acciones_ia:true,
-  mascota_render:'animado', interfaz_modo:'web',
+  asistente_render:'animado', interfaz_modo:'web',
   vrm_webengine:false, vrm_modelos:[], vrm_archivo:'', vrm_tamano:'normal', vrm_encuadre:'retrato', vrm_fantasma_auto:true, dormir_min:10,
   seguir_cursor:true,
   autoinicio:false, aburrimiento_min:10,
   dispositivo_entrada:'', dispositivo_salida:'', modelo_whisper:'base', voz_idioma:'es',
-  // Voz de salida (VozCard) y sonidos de la mascota (PackSonidosCard)
+  // Voz de salida (VozCard) y sonidos de la asistente (PackSonidosCard)
   motor_salida:'auto', edge_voz:'es-MX-DaliaNeural', edge_rate:'+0%', edge_pitch:'+0Hz', gtts_tld:'com.mx', kokoro_voz:'ef_dora',
   pack_sonidos:'default', volumen_sfx:0.7,
   // API compatible con OpenAI (CompatCard) y parámetros del modelo (AvanzadoCard)
@@ -76,10 +76,10 @@ const AUDIO_DEMO = { entradas:[], salidas:[], faltan:[], modelos_whisper:['tiny'
 
 /* «Guardar configuración» manda SOLO lo que cambiaste en Ajustes: cada clave de `cfg` cuyo
    valor no es el de la foto que dio get_config al abrir (o al último guardado). Así no se
-   revierte lo cambiado fuera con Ajustes abierto (tamaño o encuadre de la mascota desde el
+   revierte lo cambiado fuera con Ajustes abierto (tamaño o encuadre de la asistente desde el
    radial o la bandeja, «Arrancar con Windows» desde la bandeja…). `fuera`: claves que no
    se mandan nunca (solo lectura o con su propio interruptor). */
-const AJUSTES_SOLO_LECTURA = ['voz', 'vrm_modelos', 'vrm_webengine', 'mascota_fuera'];
+const AJUSTES_SOLO_LECTURA = ['voz', 'vrm_modelos', 'vrm_webengine', 'asistente_fuera'];
 function cambiosAjustes(foto, cfg, fuera = AJUSTES_SOLO_LECTURA) {
   const out = {};
   const base = foto || {};
@@ -134,7 +134,7 @@ function AyudaOllama({ onClose }) {
                 <span className="ln-modal-nota">Solo afecta enchufada; la pantalla puede apagarse igual.</span></li>
             </ol>
             <p className="ln-modal-nota">⚠️ No expongas Ollama a internet: no trae autenticación. Solo en tu red local.
-              Si el modelo remoto falla, la mascota cae sola a la nube (OpenRouter) para no dejarte colgado.</p>
+              Si el modelo remoto falla, Lune se pasa sola a la nube (OpenRouter) para no dejarte colgado.</p>
           </div>
         )}
         <div className="ln-modal-foot">
@@ -146,7 +146,7 @@ function AyudaOllama({ onClose }) {
   );
 }
 
-/* Opciones de la mascota 3D (VRM): modelo por defecto, tamaño, encuadre, sueño y clics. */
+/* Opciones de la asistente 3D (VRM): modelo por defecto, tamaño, encuadre, sueño y clics. */
 function VrmOpciones({ c, set, setBl, setCfg }) {
   const { Button, Switch, Input } = window.LUNE;
   const modelos = c.vrm_modelos || [];
@@ -441,25 +441,25 @@ function SettingsPanel({ voiceOn, onVoice, fx = { bg:true, sweep:true, micro:tru
           </div>
         </Card>
 
-        <Card eyebrow={<><window.IconMoon width={13} height={13}/> Escritorio</>} title="Mascota" tone="cyan">
+        <Card eyebrow={<><window.IconMoon width={13} height={13}/> Escritorio</>} title="Asistente en escritorio" tone="cyan">
           <p style={{margin:'0 0 12px', font:'var(--text-data)', fontSize:12, color:'var(--text-dim)'}}>
-            Cómo se dibuja Lune cuando la sacas al escritorio (menú → Mascota). Mientras está fuera, la barra lateral no la dibuja. Haz clic sobre ella para que comente tu pantalla, o doble clic para escribirle.
+            Cómo se dibuja Lune cuando la sacas al escritorio (menú → Asistente en escritorio). Mientras está fuera, la barra lateral no la dibuja. Haz clic sobre ella para que comente tu pantalla, o doble clic para escribirle.
           </p>
           <div className="ln-seg-row">
-            <Button variant={c.mascota_render==='animado'?'primary':'ghost'} size="sm" onClick={()=>set('mascota_render')('animado')}>Imágenes animadas</Button>
-            <Button variant={c.mascota_render==='vrm'?'primary':'ghost'} size="sm" disabled={!c.vrm_webengine}
+            <Button variant={c.asistente_render==='animado'?'primary':'ghost'} size="sm" onClick={()=>set('asistente_render')('animado')}>Imágenes animadas</Button>
+            <Button variant={c.asistente_render==='vrm'?'primary':'ghost'} size="sm" disabled={!c.vrm_webengine}
               title={c.vrm_webengine ? 'Avatar 3D con un modelo VRM' : 'Necesita PyQt6-WebEngine (Sistema → Instalar componentes…)'}
-              onClick={()=>set('mascota_render')('vrm')}>VRM 3D</Button>
-            <Button variant={c.mascota_render==='sprites'?'primary':'ghost'} size="sm" onClick={()=>set('mascota_render')('sprites')}>Sprites ligeros</Button>
+              onClick={()=>set('asistente_render')('vrm')}>VRM 3D</Button>
+            <Button variant={c.asistente_render==='sprites'?'primary':'ghost'} size="sm" onClick={()=>set('asistente_render')('sprites')}>Sprites ligeros</Button>
           </div>
-          {c.mascota_render==='vrm' && <VrmOpciones c={c} set={set} setBl={setBl} setCfg={setCfg} />}
+          {c.asistente_render==='vrm' && <VrmOpciones c={c} set={set} setBl={setBl} setCfg={setCfg} />}
         </Card>
 
         {/* Biblioteca de modelos 3D (extra/vrm_biblioteca.jsx): rejilla, ficha, calibración en vivo,
-            seguimiento del cursor y borrar. Solo con la mascota en VRM. */}
-        {c.mascota_render==='vrm' && window.VrmBiblioteca && <window.VrmBiblioteca cfg={c} set={set} />}
+            seguimiento del cursor y borrar. Solo con la asistente en VRM. */}
+        {c.asistente_render==='vrm' && window.VrmBiblioteca && <window.VrmBiblioteca cfg={c} set={set} />}
 
-        {/* Sonidos de reacción de la mascota y su volumen (extra/voz.jsx) */}
+        {/* Sonidos de reacción de la asistente y su volumen (extra/voz.jsx) */}
         {window.PackSonidosCard && <window.PackSonidosCard cfg={c} set={set} />}
 
         {/* Corte 4 (extra/apariencia.jsx y extra/juego.jsx): guardan al momento por window.luneEscritorio. */}

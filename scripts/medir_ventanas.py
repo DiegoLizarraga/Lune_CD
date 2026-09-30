@@ -5,7 +5,7 @@ Mide, con las ventanas REALES del escritorio y SOLO LEYENDO (no mueve ni
 reordena nada, ni siquiera ventanas propias):
 
 1. `listar_candidatas` (la enumeración que corre a 15 Hz mientras arrastras a
-   la mascota con «Sentarse en ventanas» activo), N veces.
+   la asistente con «Sentarse en ventanas» activo), N veces.
 2. `barra_asiento` (lo que corre a 4 Hz con solo la barra), N veces.
 3. El tic de «sentada» (15 Hz, 60 Hz en ráfagas) sobre la ventana activa o la
    primera candidata: `estado_ventana` + `rect_visible` + `monitor` +

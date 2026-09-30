@@ -30,12 +30,12 @@ CAMBIO DE MODO EN CALIENTE (ui/cambio_interfaz.py): la ventana cumple el contrat
 de GestorInterfaz. Con `diferir_servicios=True` (la construye el gestor mientras
 la vieja sigue viva) no pone su icono en la bandeja ni arranca los servicios de
 escritorio (atajos globales…) hasta `iniciar_servicios(estado)`, que además
-relanza la mascota y el bot de Telegram si estaban en marcha. Hereda el proveedor,
+relanza la asistente y el bot de Telegram si estaban en marcha. Hereda el proveedor,
 la voz y la conversación (`aplicar_estado`), se enseña cuando la página ya pintó
 (`al_estar_lista`, con tope) y el fondo de la página es el de la app (sin destello
 blanco). `cerrar_para_cambio()` la cierra de verdad SIN salir de la app: corta la
 IA en curso sin ejecutar sus acciones, cierra las aprobaciones, calla la voz, cierra
-la mascota, para el bot, suelta los servicios de escritorio, quita la bandeja y
+la asistente, para el bot, suelta los servicios de escritorio, quita la bandeja y
 para el servidor http. «Salir» (bandeja) suelta lo mismo antes de cerrar la app.
 
 CORTES 5 Y 6 (alarmas, pantalla grande y salvapantallas, baile): los objetos `alarmas`
@@ -87,10 +87,10 @@ from PyQt6.QtWebChannel import QWebChannel
 from PyQt6.QtGui import QColor, QDesktopServices, QIcon, QAction
 
 # El servidor http vive en ui/servidor_web.py (sin WebEngine) para que la
-# mascota lo comparta; aquí se conservan los nombres antiguos por compatibilidad.
+# asistente lo comparta; aquí se conservan los nombres antiguos por compatibilidad.
 from ui.servidor_web import RAIZ, DIR_WEB, ServidorEstatico as _ServidorEstatico, HandlerSilencioso as _HandlerSilencioso  # noqa: F401
 from ui.cambio_interfaz import (PROVEEDOR_A_WEB, PROVEEDOR_DESDE_WEB, TOPE_CARGA_MS, bot_minecraft_de,
-                                callar_voz, cerrar_mascota, desmontar_servicios_c4, detener_bot,
+                                callar_voz, cerrar_asistente, desmontar_servicios_c4, detener_bot,
                                 detener_hilo_ia, hilo_vivo, instantanea_sesion, ordenes_cortadas,
                                 parar_temporizadores, quitar_bandeja, reconectar_bot_minecraft,
                                 soltar_hilos)
@@ -391,7 +391,7 @@ class VentanaWeb(QMainWindow):
     # ── Servicios exclusivos (bandeja, escritorio) ──────────────────────────────
     def iniciar_servicios(self, estado=None):
         """Bandeja y servicios de escritorio (atajos globales, controladores) y lo que
-        estaba en marcha en la ventana anterior (mascota fuera, bot de Telegram). Una
+        estaba en marcha en la ventana anterior (asistente fuera, bot de Telegram). Una
         sola vez; al arrancar normal, desde el constructor."""
         if self._servicios:
             return
@@ -414,12 +414,12 @@ class VentanaWeb(QMainWindow):
                 _log_error(f"[interfaz] servicios de escritorio: {e}")
         if b is None:
             return
-        if estado.get("mascota_fuera"):
+        if estado.get("asistente_fuera"):
             try:
-                if not b.mascota_visible():
-                    b.mascota_toggle()
+                if not b.asistente_visible():
+                    b.asistente_toggle()
             except Exception as e:
-                _log_error(f"[interfaz] no pude volver a sacar la mascota: {e}")
+                _log_error(f"[interfaz] no pude volver a sacar a la asistente: {e}")
         # El modo juego forzado a mano en la ventana anterior sigue forzado (VS6).
         forzado = estado.get("juego_forzado")
         juego = getattr(getattr(self, "_servicios_c4", None), "juego", None)
@@ -592,9 +592,9 @@ class VentanaWeb(QMainWindow):
         estado["voz"] = bool(getattr(getattr(b, "voice", None), "_enabled", False))
         estado["sesion"] = instantanea_sesion(getattr(b, "chats", None))
         try:
-            estado["mascota_fuera"] = bool(b.mascota_visible())
+            estado["asistente_fuera"] = bool(b.asistente_visible())
         except Exception:
-            estado["mascota_fuera"] = False
+            estado["asistente_fuera"] = False
         estado["telegram"] = hilo_vivo(getattr(b, "_tg_worker", None))
         # Modo juego forzado desde la bandeja (VS6): True/False a mano, None = detectar.
         estado["juego_forzado"] = juego_forzado_de(getattr(self, "_servicios_c4", None))
@@ -694,12 +694,12 @@ class VentanaWeb(QMainWindow):
 
     def _liberar_todo(self, espera_ia_ms: int = 0) -> dict:
         """Suelta lo que tiene la ventana (una vez): IA en curso (sin ejecutar sus
-        acciones), aprobaciones, voz, llamada y dictado, temporizadores, mascota,
+        acciones), aprobaciones, voz, llamada y dictado, temporizadores, asistente,
         bot, servicios de escritorio, bandeja, servidor http y página."""
         if getattr(self, "_liberada", False):
             return dict(getattr(self, "_en_marcha", {}) or {})
         self._liberada = True
-        en_marcha = {"mascota_fuera": False, "telegram": False}
+        en_marcha = {"asistente_fuera": False, "telegram": False}
         b = getattr(self, "bridge", None)
         # Puentes de ocio (cortes 5/6) fuera del canal antes de desmontar sus
         # controladores (alarmas, pantalla grande, baile: van con el corte 4).
@@ -733,7 +733,7 @@ class VentanaWeb(QMainWindow):
             self._puente_tareas = None
         # Corte 4 lo primero (bandeja única, atajos, detector de juego, radial, tema y
         # el puente `escritorio`), una sola vez: el modo juego devuelve lo que cambió
-        # (prioridad, voz, la mascota que escondió: cuenta como «fuera») antes de que
+        # (prioridad, voz, la asistente que escondió: cuenta como «fuera») antes de que
         # se suelte el resto, y la bandeja propia de respaldo se quita después.
         desmontar_servicios_c4(self, b)
         puente = getattr(self, "_puente_esc", None)
@@ -792,8 +792,8 @@ class VentanaWeb(QMainWindow):
                 except Exception:
                     pass
             callar_voz(getattr(b, "voice", None))
-            # Mascota y bot: la ventana nueva los relanza si estaban en marcha.
-            en_marcha["mascota_fuera"] = cerrar_mascota(getattr(b, "_overlay", None))
+            # Asistente y bot: la ventana nueva los relanza si estaban en marcha.
+            en_marcha["asistente_fuera"] = cerrar_asistente(getattr(b, "_overlay", None))
             b._overlay = None
             en_marcha["telegram"] = detener_bot(getattr(b, "_tg_worker", None))
             b._tg_worker = None
@@ -918,7 +918,7 @@ class VentanaWeb(QMainWindow):
         self.showNormal(); self.raise_(); self.activateWindow()
 
     def salir_de_verdad(self):
-        """«Salir»: suelta todo (bot, mascota, IA en curso…) y cierra la app."""
+        """«Salir»: suelta todo (bot, asistente, IA en curso…) y cierra la app."""
         self._salir = True
         self._liberar_todo(espera_ia_ms=ESPERA_IA_SALIR_MS)
         self.close()

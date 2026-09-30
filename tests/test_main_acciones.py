@@ -4,7 +4,7 @@ Tests de integración de la ventana nativa (main.py) con el corte 2:
   · _on_response procesa las <|CALL|> con el Ejecutor (AccionesQt) al terminar
     la respuesta; el formato antiguo ya no ejecuta nada; «Detener», acciones_ia
     apagado o el modo terminal (el host ya las hizo) no ejecutan.
-  · El chat de la mascota (`on_chat`) entra por el flujo normal y la respuesta
+  · El chat de la asistente (`on_chat`) entra por el flujo normal y la respuesta
     sale también en su burbuja.
   · La pestaña del proveedor 'compat' aparece y desaparece con la config.
 
@@ -70,7 +70,7 @@ def ventana(qapp, monkeypatch):
     yo._cancelado = False
     yo._overlay = None
     yo._turno = {"origen": A.USUARIO, "ctx": {"modo": "normal", "proveedor": "ollama", "url": ""},
-                 "mascota": False}
+                 "asistente": False}
     yo.ai_worker = None
     yo._gen = 0
     yo._esperando_corte = False
@@ -78,8 +78,8 @@ def ventana(qapp, monkeypatch):
     acc.resultado.connect(resultados.append)
     # _resultado_turno: la señal de verdad no existe en el MagicMock; se entrega directa.
     yo._resultado_turno = types.SimpleNamespace(emit=lambda r, i: yo._on_resultado_turno(r, i))
-    _enlazar(yo, "_on_response", "_on_token", "_on_error", "_acciones_locales", "_eco_mascota",
-             "_burbuja_mascota", "_chat_desde_mascota", "_ejecutar_acciones", "_on_resultado_turno",
+    _enlazar(yo, "_on_response", "_on_token", "_on_error", "_acciones_locales", "_eco_asistente",
+             "_burbuja_asistente", "_chat_desde_asistente", "_ejecutar_acciones", "_on_resultado_turno",
              "_on_resultado_accion", "_worker_vivo", "_cancelar_worker", "_stop_generation",
              "_cortar_respuesta", "_al_terminar_worker")
     yield {"yo": yo, "acc": acc, "preguntas": preguntas, "lanzadas": lanzadas, "urls": urls,
@@ -140,40 +140,40 @@ def test_casos_en_que_no_se_ejecuta_nada(ventana, ajuste):
     assert _texto_guardado(yo) == "Hecho."                  # la marca nunca se ve
 
 
-def test_la_respuesta_del_chat_de_la_mascota_sale_en_su_burbuja(ventana):
+def test_la_respuesta_del_chat_de_la_asistente_sale_en_su_burbuja(ventana):
     yo = ventana["yo"]
     ov = MagicMock()
     ov.cerrado = False
-    yo._mascota_viva = lambda: ov
-    yo._turno["mascota"] = True
+    yo._asistente_viva = lambda: ov
+    yo._turno["asistente"] = True
     yo._on_response("¡Hola! <|ACT {\"emotion\": \"happy\"}|>")
     ov.burbuja_texto.assert_called_with("¡Hola!")
     assert ov.burbuja_fin.call_args.args[0] >= 8000
     ov.reset_mock()
     yo._current_bubble = MagicMock(name="burbuja")
-    yo._turno["mascota"] = False                            # turno de la ventana: nada
+    yo._turno["asistente"] = False                            # turno de la ventana: nada
     yo._on_response("Otra cosa.")
     ov.burbuja_texto.assert_not_called()
 
 
-def test_chat_desde_mascota_usa_el_flujo_normal(ventana):
+def test_chat_desde_asistente_usa_el_flujo_normal(ventana):
     yo = ventana["yo"]
     yo.ai_worker = None
-    assert yo._chat_desde_mascota("  hola lune  ") is True
-    yo._send_message.assert_called_once_with(texto="hola lune", desde_mascota=True)
-    assert yo._chat_desde_mascota("   ") is False
+    assert yo._chat_desde_asistente("  hola lune  ") is True
+    yo._send_message.assert_called_once_with(texto="hola lune", desde_asistente=True)
+    assert yo._chat_desde_asistente("   ") is False
     # Si aún está respondiendo, no se pisa: aviso en la burbuja.
     yo._send_message.reset_mock()
     yo.ai_worker = MagicMock()
     yo.ai_worker.isRunning.return_value = True
     ov = MagicMock()
-    yo._mascota_viva = lambda: ov
-    assert yo._chat_desde_mascota("otra") is False
+    yo._asistente_viva = lambda: ov
+    assert yo._chat_desde_asistente("otra") is False
     yo._send_message.assert_not_called()
     ov.burbuja_texto.assert_called_once()
 
 
-def test_crear_mascota_le_pone_on_chat(qapp, tmp_path, monkeypatch):
+def test_crear_asistente_le_pone_on_chat(qapp, tmp_path, monkeypatch):
     import main
     from nucleo.config import Config
 
@@ -185,11 +185,11 @@ def test_crear_mascota_le_pone_on_chat(qapp, tmp_path, monkeypatch):
     cfg = Config(str(tmp_path / "config.json"))
     cfg.set("avatar", "render", "sprites")
     yo = types.SimpleNamespace(config=cfg, ai_manager=None, escritorio=None, _overlay=None,
-                               _on_mascota_visible=lambda v: None, _mascota_recrear=lambda: None,
-                               _chat_desde_mascota=lambda t: True)
-    _enlazar(yo, "_escritorio_mascota", "_crear_mascota")
-    ov = yo._crear_mascota()
-    assert ov.on_chat is yo._chat_desde_mascota
+                               _on_asistente_visible=lambda v: None, _asistente_recrear=lambda: None,
+                               _chat_desde_asistente=lambda t: True)
+    _enlazar(yo, "_escritorio_asistente", "_crear_asistente")
+    ov = yo._crear_asistente()
+    assert ov.on_chat is yo._chat_desde_asistente
 
 
 def test_pestana_compat_aparece_y_desaparece(qapp, monkeypatch):
@@ -234,8 +234,8 @@ def test_main_ya_no_llama_al_parser_antiguo():
     assert "self.voice.on_error" in codigo and "reiniciar_motor()" in codigo
 
 
-def test_la_pregunta_va_junto_a_la_mascota_si_la_ventana_no_esta_delante():
-    yo = types.SimpleNamespace(_turno={"mascota": False})
+def test_la_pregunta_va_junto_a_la_asistente_si_la_ventana_no_esta_delante():
+    yo = types.SimpleNamespace(_turno={"asistente": False})
     estado = {"vis": True, "min": False, "act": True}
     yo.isVisible = lambda: estado["vis"]
     yo.isMinimized = lambda: estado["min"]
@@ -246,11 +246,11 @@ def test_la_pregunta_va_junto_a_la_mascota_si_la_ventana_no_esta_delante():
         estado.update({"vis": True, "min": False, "act": True, clave: valor})
         assert yo._ventana_a_la_vista() is False                # DialogoAprobacion
     estado.update({"vis": True, "min": False, "act": True})
-    yo._turno["mascota"] = True                                 # chat de la mascota
+    yo._turno["asistente"] = True                                 # chat de la asistente
     assert yo._ventana_a_la_vista() is False
 
 
-# ── Revisión cortes 2+3: generación, cortes, proveedor, mascota y lo pedido ─────────
+# ── Revisión cortes 2+3: generación, cortes, proveedor, asistente y lo pedido ─────────
 
 from unittest.mock import ANY  # noqa: E402
 
@@ -396,18 +396,18 @@ def test_cambiar_de_proveedor_a_mitad_detiene_el_del_turno_y_el_uso_es_del_turno
     yo.ai_manager.uso.assert_called_with("ollama")
 
 
-def test_resultado_de_acciones_del_chat_de_la_mascota_sale_en_su_burbuja(ventana):
+def test_resultado_de_acciones_del_chat_de_la_asistente_sale_en_su_burbuja(ventana):
     """Funcional 4: el ✓/✕ de una acción (también tras aprobar) de un turno que salió
-    de la mascota se ve en su burbuja, aunque entre tanto escribas en la ventana."""
+    de la asistente se ve en su burbuja, aunque entre tanto escribas en la ventana."""
     yo = ventana["yo"]
     ov = MagicMock()
     ov.cerrado = False
     ov.isVisible.return_value = True
-    yo._mascota_viva = lambda: ov
-    yo._turno["mascota"] = True
+    yo._asistente_viva = lambda: ov
+    yo._turno["asistente"] = True
     yo._on_response('Va. <|CALL ["lanzar_app", {"app": "calc"}]|>')
     _pendiente, responder = ventana["preguntas"][0]
-    yo._turno = {"origen": A.USUARIO, "ctx": None, "mascota": False}      # otro turno, de la ventana
+    yo._turno = {"origen": A.USUARIO, "ctx": None, "asistente": False}      # otro turno, de la ventana
     ov.reset_mock()
     responder(True)
     assert ventana["lanzadas"] == ["calc"]
@@ -416,15 +416,15 @@ def test_resultado_de_acciones_del_chat_de_la_mascota_sale_en_su_burbuja(ventana
     yo._burbuja_bot.assert_called_with(texto)                              # y en el chat
 
 
-def test_eco_de_la_mascota_nada_si_esta_oculta(ventana):
-    """F2/R6: con la mascota oculta, la burbuja no reaparece sola en cada trozo."""
+def test_eco_de_la_asistente_nada_si_esta_oculta(ventana):
+    """F2/R6: con la asistente oculta, la burbuja no reaparece sola en cada trozo."""
     yo = ventana["yo"]
     ov = MagicMock()
     ov.cerrado = False
     ov.isVisible.return_value = False
-    yo._mascota_viva = lambda: ov
-    yo._turno["mascota"] = True
-    yo._eco_mascota("Hola", fin=True)
+    yo._asistente_viva = lambda: ov
+    yo._turno["asistente"] = True
+    yo._eco_asistente("Hola", fin=True)
     yo._on_token("Hola, ¿qué")
     ov.burbuja_texto.assert_not_called()
     ov.burbuja_fin.assert_not_called()
@@ -432,7 +432,7 @@ def test_eco_de_la_mascota_nada_si_esta_oculta(ventana):
 
 def test_lo_pedido_con_palabras_va_por_el_ejecutor_y_se_guarda(ventana, monkeypatch):
     """«abre youtube»: detectar_llamadas → Ejecutor (sin IA); el ✓ sale en el chat, se
-    guarda en la conversación y, si vino de la mascota, en su burbuja."""
+    guarda en la conversación y, si vino de la asistente, en su burbuja."""
     import main
     yo = ventana["yo"]
     monkeypatch.setattr(main, "MessageBubble", lambda *a, **k: MagicMock(name="burbuja"))
@@ -444,9 +444,9 @@ def test_lo_pedido_con_palabras_va_por_el_ejecutor_y_se_guarda(ventana, monkeypa
     ov = MagicMock()
     ov.cerrado = False
     ov.isVisible.return_value = True
-    yo._mascota_viva = lambda: ov
+    yo._asistente_viva = lambda: ov
     _enlazar(yo, "_send_message")
-    yo._send_message(texto="abre youtube", desde_mascota=True)
+    yo._send_message(texto="abre youtube", desde_asistente=True)
     assert ventana["urls"] == ["https://www.youtube.com"]
     assert yo.ai_worker is None                                            # sin IA
     assert yo._turno["ctx"]["ai"] is yo.ai_manager
@@ -488,12 +488,12 @@ def test_red_de_excepciones_la_app_sigue_tras_un_error_en_un_slot(tmp_path):
     assert "LOG [ui] excepción no capturada" in r.stdout and "simulado" in r.stderr
 
 
-def test_on_hablando_llega_tambien_a_la_mascota_oculta():
-    """Si se oculta la mascota mientras habla, el «ya calló» tiene que llegarle:
+def test_on_hablando_llega_tambien_a_la_asistente_oculta():
+    """Si se oculta la asistente mientras habla, el «ya calló» tiene que llegarle:
     si no, se queda «hablando» para siempre (no se duerme, sonidos callados)."""
     import main
 
-    class MascotaOculta:
+    class AsistenteOculta:
         def __init__(self):
             self.recibido = []
 
@@ -503,8 +503,8 @@ def test_on_hablando_llega_tambien_a_la_mascota_oculta():
         def set_hablando(self, on):
             self.recibido.append(on)
 
-    ov = MascotaOculta()
-    falso = types.SimpleNamespace(_mascota_viva=lambda: ov)
+    ov = AsistenteOculta()
+    falso = types.SimpleNamespace(_asistente_viva=lambda: ov)
     main.LuneCDWindow._on_hablando(falso, True)
     main.LuneCDWindow._on_hablando(falso, False)
     assert ov.recibido == [True, False]

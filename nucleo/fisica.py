@@ -3,7 +3,7 @@ nucleo/fisica.py — Suavizados y muelles para todo lo que se mueve en Lune.
 
 PARA QUÉ SIRVE
 --------------
-Una sola copia de las cuentas que usan los adaptadores de la mascota: la
+Una sola copia de las cuentas que usan los adaptadores de la asistente: la
 ventana que sigue a la barra de tareas o a otra ventana al sentarse, la comida
 que persigue al cursor, el balanceo de los sprites al arrastrarlos, los
 fundidos entre poses... Sin Qt ni ventanas: son funciones puras que se prueban

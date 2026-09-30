@@ -2,8 +2,8 @@
  * ui_web/ui_kits/lune-desktop/vrm_barra.js — avatar VRM en la barra lateral del modo normal.
  *
  * Para qué sirve: la piel web (index.html) carga todo con Babel (`text/babel`) y no
- * tiene three.js. Este módulo ES es el puente: crea la mascota 3D de
- * ui_web/vrm/lune_vrm.js (crearMascota) sobre un <canvas> de la barra lateral y la
+ * tiene three.js. Este módulo ES es el puente: crea la asistente 3D de
+ * ui_web/vrm/lune_vrm.js (crearAsistente) sobre un <canvas> de la barra lateral y la
  * publica en `window.LuneVRMBarra` para que sidebar.jsx la use sin imports.
  *
  * Se carga con un <script type="module"> DESPUÉS de un importmap igual al de
@@ -13,7 +13,7 @@
  *   "@pixiv/three-vrm": "../../vendor/three/three-vrm.module.min.js"
  * No importa nada de forma estática: el motor (y three) se piden con import()
  * la primera vez que se crea un avatar, así la página no paga three.js si la
- * mascota no es VRM, y el archivo se prueba en Node (tests/js/vrm_barra.test.mjs).
+ * asistente no es VRM, y el archivo se prueba en Node (tests/js/vrm_barra.test.mjs).
  *
  * API (window.LuneVRMBarra y exports):
  *   const h = LuneVRMBarra.crear(canvas, '/vrm/actual.vrm', opts)   → handle
@@ -25,7 +25,7 @@
  *   h.luneParams(json) · h.encuadrar(modo) · h.cursor(clientX, clientY) · h.destruir()
  *   h.registrar(instalar) → módulo | null   módulo del bus de lune_vrm.js (lune_modulos.js);
  *                           antes de que haya motor se encola y se registra al crearlo
- *   h.mod(nombre, metodo, ...args)          API de un módulo (= window.luneMod en la mascota);
+ *   h.mod(nombre, metodo, ...args)          API de un módulo (= window.luneMod en la asistente en escritorio);
  *                           sin motor se encola (las 32 últimas) y se llama tras los registros
  *   h.usarModulo(nombre, {opciones, importar}) → Promise<bool>   import() perezoso de
  *                           RUTAS_MODULOS[nombre] y registrar(ctx => mod.instalar(ctx, opciones)),
@@ -35,12 +35,12 @@
  *   LuneVRMBarra.recargar(url, v) (cambio de personaje) · .precargar() · .activos()
  *   LuneVRMBarra.cargarModulo(nombre) → Promise<módulo | null> (en caché; un fallo se reintenta)
  *
- * Cursor: la mascota mira al ratón de la PÁGINA (mousemove de window). clientX/Y se
+ * Cursor: la asistente mira al ratón de la PÁGINA (mousemove de window). clientX/Y se
  * mapean a nx/ny como hace companion.py con el cursor global: respecto a la cara
  * (proyección del hueso de la cabeza; si no, 35 % desde arriba del canvas) y a
  * media ventana, en −1.6..1.6. Fuera de la ventana no llegan eventos: se queda el
  * último nx/ny con `dentro = false`. `dentro` = el puntero está sobre el canvas
- * (caricia en la cabeza y hit-test por alfa, igual que en la mascota flotante).
+ * (caricia en la cabeza y hit-test por alfa, igual que en la asistente flotante).
  *
  * Recursos: pausar(true) pone FPS 0 y, con liberarAlPausar, suelta el contexto
  * WebGL (WEBGL_lose_context) para no tener dos avatares en la GPU cuando Lune sale
@@ -52,7 +52,7 @@
 
 /** Ruta del .vrm activo que publica el http local (ServidorEstatico.publicar). */
 export const RUTA_MODELO = '/vrm/actual.vrm';
-/** Motor de la mascota, relativo a este archivo (ui_web/vrm/lune_vrm.js). */
+/** Motor de la asistente, relativo a este archivo (ui_web/vrm/lune_vrm.js). */
 export const RUTA_MOTOR = '../../vrm/lune_vrm.js';
 
 /** Opciones por defecto de crear(). */
@@ -80,7 +80,7 @@ function aviso(...args) { try { console.warn('[vrm_barra]', ...args); } catch (e
 
 /**
  * Mapea la posición del ratón en la página (clientX/Y) a lo que espera
- * mascota.cursor(nx, ny, px, py, dentro):
+ * asistente.cursor(nx, ny, px, py, dentro):
  *   nx, ny  −tope..tope; 0 = la cara; +nx a la derecha, +ny hacia ARRIBA.
  *           Escala: media ventana (vista.ancho/2, vista.alto/2) × alcance.
  *   px, py  las mismas coordenadas cliente (lune_vrm.js las compara con
@@ -201,14 +201,14 @@ export function vaciarEscena(raiz) {
 }
 
 /**
- * Libera una mascota de lune_vrm.js. Si trae destruir() (lune_vrm.js v10.3+: bucle,
+ * Libera la asistente que creó lune_vrm.js. Si trae destruir() (lune_vrm.js v10.3+: bucle,
  * resize, modelo, módulos, contexto y cargas en vuelo) se usa SOLO eso, una vez.
  * Si no lo trae, o lanza, el respaldo: FPS 0, alDescargar a los módulos del bus,
  * fuera de la escena, vaciarEscena, renderer.dispose() y pérdida forzada del
  * contexto (el bucle rAF de un motor viejo sigue vivo, pero a FPS 0 no hace nada).
  * Nunca lanza.
  */
-export function liberarMascota(m) {
+export function liberarAsistente(m) {
   if (!m) return false;
   if (typeof m.destruir === 'function') {
     try { m.destruir(); return true; } catch (e) { aviso('destruir', e && e.message); }   // → respaldo
@@ -314,7 +314,7 @@ export function crear(canvas, urlModelo, opts = {}) {
   const reloj = typeof opts.reloj === 'function' ? opts.reloj
     : () => (globalThis.performance && performance.now ? performance.now() : Date.now());
 
-  let m = null;                     // la mascota de lune_vrm.js
+  let m = null;                     // la asistente de lune_vrm.js
   let url = String(urlModelo || '');
   let version = opts.version !== undefined ? opts.version : null;
   let estado = 'normal', hablando = false, pausado = !!opts.pausado;
@@ -359,18 +359,18 @@ export function crear(canvas, urlModelo, opts = {}) {
     arrancando = true;
     let motor;
     try {
-      motor = typeof opts.crearMascota === 'function' ? { crearMascota: opts.crearMascota }
+      motor = typeof opts.crearAsistente === 'function' ? { crearAsistente: opts.crearAsistente }
         : (typeof opts.cargarMotor === 'function' ? opts.cargarMotor() : cargarMotorPorDefecto());
     } catch (e) { motor = Promise.reject(e); }
     Promise.resolve(motor).then((mod) => {
       arrancando = false;
       if (destruido || m || pausado) return;          // pausado: arranca en pausar(false)
-      const crearMascota = mod && mod.crearMascota;
-      if (typeof crearMascota !== 'function') throw new Error('el motor no exporta crearMascota');
+      const crearAsistente = mod && mod.crearAsistente;
+      if (typeof crearAsistente !== 'function') throw new Error('el motor no exporta crearAsistente');
       lienzosUsados.add(canvas);
       listo = false;
-      const nueva = crearMascota({ canvas, src: urlConVersion(url, version), encuadre: cfg.encuadre, onEvento: alEventoMotor });
-      if (destruido) { liberarMascota(nueva); return; }
+      const nueva = crearAsistente({ canvas, src: urlConVersion(url, version), encuadre: cfg.encuadre, onEvento: alEventoMotor });
+      if (destruido) { liberarAsistente(nueva); return; }
       m = nueva;
       try { m.setFPS(cfg.fps); } catch (e) { /* sigue */ }
       if (paramsGlobales) aplicarParams(paramsGlobales);
@@ -691,7 +691,7 @@ export function crear(canvas, urlModelo, opts = {}) {
       instaladores.length = 0; colaMod.length = 0;
       const mm = m;
       m = null; listo = false;
-      liberarMascota(mm);             // m.destruir() si lo trae (una sola vez); si no, el respaldo
+      liberarAsistente(mm);             // m.destruir() si lo trae (una sola vez); si no, el respaldo
       return true;
     },
     get listo() { return listo; },
@@ -700,7 +700,7 @@ export function crear(canvas, urlModelo, opts = {}) {
     get estado() { return estado; },
     get url() { return url; },
     get contexto() { return ctxEstado; },
-    get mascota() { return m; },
+    get asistente() { return m; },
   };
 
   vivos.add(handle);

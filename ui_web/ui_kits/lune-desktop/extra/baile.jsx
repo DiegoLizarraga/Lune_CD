@@ -3,7 +3,7 @@
  * BaileCard              Ajustes: bailar sola con la música (auto), sensibilidad (umbral), apps permitidas como
  *                        chips + «suenan ahora» (con «+» para permitirlas), cambiar de baile cada N s, notas ♪,
  *                        estado en vivo y Bailar/Parar.
- * window.LuneBaileWeb    para app.jsx y sidebar.jsx (la mascota de la barra baila):
+ * window.LuneBaileWeb    para app.jsx y sidebar.jsx (la asistente de la barra baila):
  *   useBaile() → {estado, config, reloj, suscribir(fn)}   estado_json + señal baile_estado; config_baile (y el
  *                        evento de window 'lune-baile-config' cuando BaileCard guarda); reloj = crearReloj()
  *                        alimentado por la señal baile_pulso; suscribir(fn) → quitar: fn({bpm, fase, energia})
@@ -136,7 +136,7 @@
   /** Reloj del pulso: la página no recibe más de 2 pulsos por segundo; entre uno y otro extrapola con el
    *  BPM. `beat(t)` = pulsos transcurridos (continuo). Con ui_web/lune_ritmo.js cargado (index.html) usa
    *  LuneRitmo.crearReloj (corrige la fase cambiando la velocidad ±20 %, sin saltos, el mismo reloj que las
-   *  páginas de la mascota); sin él, uno propio que corrige la fase como mucho 0.2 por pulso. */
+   *  páginas de la asistente); sin él, uno propio que corrige la fase como mucho 0.2 por pulso. */
   function crearReloj(ahora) {
     const reloj = typeof ahora === 'function' ? ahora : () => Date.now() / 1000;
     const R = window.LuneRitmo;
@@ -261,7 +261,7 @@
           padding:3px 8px; clip-path:var(--clip-tr); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
           box-shadow:3px 3px 0 rgb(var(--ink-950-rgb, 5 7 15) / .7); animation:ln-baile-in .3s var(--ease-snap); }
         @keyframes ln-baile-in{ from{ opacity:0; transform:translateY(-8px) skewX(-8deg); } to{ opacity:1; transform:none; } }
-        .ln-mascot-stage video.is-bailando{ transform-origin:50% 100%; will-change:transform; }
+        .ln-asistente-stage video.is-bailando{ transform-origin:50% 100%; will-change:transform; }
         @media (prefers-reduced-motion: reduce){ .ln-baile-rotulo{ animation:none; } }
       `;
       document.head.appendChild(st);

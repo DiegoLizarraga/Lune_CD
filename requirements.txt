@@ -14,14 +14,14 @@ zeroconf>=0.130          # descubrir dispositivos Lune en la red local
 # ── SISTEMA: Optimizador e info de hardware ──────────────────────
 psutil>=5.9.0
 
-# ── WINDOWS: ventanas, mascota y audio por proceso ───────────────
-# pywin32: win32gui/win32con (fantasma de la mascota, ventana activa).
+# ── WINDOWS: ventanas, asistente y audio por proceso ───────────────
+# pywin32: win32gui/win32con (fantasma de la asistente, ventana activa).
 # comtypes: sesiones de audio WASAPI por proceso (bailar con la música),
 #           sin pycaw. Solo existen en Windows.
 pywin32>=306 ; sys_platform == "win32"
 comtypes>=1.2.0 ; sys_platform == "win32"
 
-# ── AUDIO Y MASCOTA (serie 10.3+) ────────────────────────────────
+# ── AUDIO Y ASISTENTE (serie 10.3+) ────────────────────────────────
 # numpy: mezclador de sonidos propio (servicios/mezclador.py) y los
 #        efectos que genera scripts/generar_sfx.py.
 # sounddevice: salida del mezclador (alarmas, comida, bailes); si falla,
@@ -42,8 +42,8 @@ pygame>=2.5.0
 pypdf>=4.0.0
 python-docx>=1.1.0
 
-# ── MASCOTA: comentar lo que ves en pantalla ─────────────────────
-# Pillow: la captura (PIL.ImageGrab) de ui/companion.py. Sin él la mascota no
+# ── ASISTENTE: comentar lo que ves en pantalla ─────────────────────
+# Pillow: la captura (PIL.ImageGrab) de ui/companion.py. Sin él la asistente no
 # puede mirar la pantalla (falla en silencio). Nunca captura con un juego abierto.
 Pillow>=10.0
 
@@ -65,8 +65,8 @@ Pillow>=10.0
 # modelo de voz .pth entrenado aparte:
 #     pip install rvc-python
 #
-# PIEL WEB, MASCOTA ANIMADA Y AVATAR 3D (VRM): QtWebEngine. Sin él, Lune
-# arranca con la interfaz nativa y la mascota de sprites. Debe coincidir con
+# PIEL WEB, ASISTENTE ANIMADA Y AVATAR 3D (VRM): QtWebEngine. Sin él, Lune
+# arranca con la interfaz nativa y la asistente de sprites. Debe coincidir con
 # tu versión de PyQt6 (p. ej. PyQt6 6.9 → PyQt6-WebEngine 6.9):
 #     pip install PyQt6-WebEngine
 #

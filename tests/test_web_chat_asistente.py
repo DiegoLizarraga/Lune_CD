@@ -1,7 +1,7 @@
 """
-Tests de la integración web y mascota del corte 2:
+Tests de la integración web y asistente del corte 2:
 
-  · ui/chat_mascota.py: el clic simple se retrasa el intervalo de doble clic y el
+  · ui/chat_asistente.py: el clic simple se retrasa el intervalo de doble clic y el
     doble clic lo cancela y abre la cajita (con un QTimer de mentira).
   · ui/companion.py y ui/avatar_overlay.py: doble clic → abrir_chat, clic simple →
     comentar (animada) o reacción (sprites), burbuja_texto/burbuja_fin, pack de
@@ -9,7 +9,7 @@ Tests de la integración web y mascota del corte 2:
   · ui/web_bridge.py: la piel web ya ejecuta las <|CALL|> con el Ejecutor al
     terminar (y NO el formato antiguo), pide permiso con aprobacion_pedida y
     resolver_aprobacion, usa DialogoAprobacion si la ventana no está delante,
-    limpiar_chat reinicia historial y Ejecutor, enviar_desde_mascota comparte el
+    limpiar_chat reinicia historial y Ejecutor, enviar_desde_asistente comparte el
     historial, y los slots de voz, sonidos e IA avanzada.
   · Los JSX (app, settings, sidebar) transpilan con el Babel vendorizado y se
     cablean al puente (sandbox de Node con un React de mentira).
@@ -97,7 +97,7 @@ PRESS, RELEASE, DBL, MOVE = (QEvent.Type.MouseButtonPress, QEvent.Type.MouseButt
 
 @pytest.fixture
 def timer_falso(monkeypatch):
-    import ui.chat_mascota as cm
+    import ui.chat_asistente as cm
     TimerFalso.creados = []
     monkeypatch.setattr(cm, "QTimer", TimerFalso)
     return TimerFalso
@@ -106,7 +106,7 @@ def timer_falso(monkeypatch):
 # ── DesambiguadorClic ──────────────────────────────────────────────────────────
 
 def test_clic_simple_espera_el_intervalo_y_el_doble_lo_cancela(qapp, timer_falso):
-    from ui.chat_mascota import DesambiguadorClic, intervalo_doble_clic
+    from ui.chat_asistente import DesambiguadorClic, intervalo_doble_clic
     simples, dobles = [], []
     d = DesambiguadorClic(lambda: simples.append(1), lambda: dobles.append(1))
     t = timer_falso.creados[-1]
@@ -124,14 +124,14 @@ def test_clic_simple_espera_el_intervalo_y_el_doble_lo_cancela(qapp, timer_falso
 
 def test_intervalo_doble_clic_es_el_del_sistema(qapp):
     from PyQt6.QtWidgets import QApplication
-    from ui.chat_mascota import intervalo_doble_clic, ms_lectura
+    from ui.chat_asistente import intervalo_doble_clic, ms_lectura
     assert intervalo_doble_clic() == QApplication.doubleClickInterval()
     assert ms_lectura("") == 8000 and ms_lectura("x" * 300) == 20000
 
 
-def test_chat_mascota_manda_a_on_chat_o_avisa(qapp):
+def test_chat_asistente_manda_a_on_chat_o_avisa(qapp):
     from PyQt6.QtWidgets import QWidget
-    from ui.chat_mascota import AVISO_SIN_CHAT, ChatMascota
+    from ui.chat_asistente import AVISO_SIN_CHAT, ChatAsistente
 
     class Entrada(QObject):
         enviado = pyqtSignal(str)
@@ -155,7 +155,7 @@ def test_chat_mascota_manda_a_on_chat_o_avisa(qapp):
     dueno.burbuja_texto = lambda t: burbuja.append(t)
     dueno.burbuja_fin = lambda ms: None
     entrada = Entrada()
-    chat = ChatMascota(dueno, crear_entrada=lambda: entrada)
+    chat = ChatAsistente(dueno, crear_entrada=lambda: entrada)
     chat.abrir()
     assert entrada.junto and entrada.junto[0].width() == dueno.frameGeometry().width()
     assert entrada.pre == []                               # sin proveedor_chat no precalienta
@@ -171,13 +171,13 @@ def test_chat_mascota_manda_a_on_chat_o_avisa(qapp):
     dueno.deleteLater()
 
 
-# ── Mascota animada / VRM (ui/companion.py) ────────────────────────────────────
+# ── Asistente animada / VRM (ui/companion.py) ────────────────────────────────────
 
 @pytest.fixture
-def mascota(qapp, tmp_path, monkeypatch, timer_falso):
+def asistente(qapp, tmp_path, monkeypatch, timer_falso):
     """CompanionFlotante animado con la vista web falsa y el temporizador del clic falso."""
     if not HAY_WEBENGINE:
-        pytest.skip("la mascota necesita PyQt6-WebEngine")
+        pytest.skip("la asistente necesita PyQt6-WebEngine")
     from PyQt6.QtCore import QUrl
     from PyQt6.QtWidgets import QWidget
     import ui.companion as comp
@@ -240,8 +240,8 @@ def _js(c):
     return "\n".join(c.web.page().js)
 
 
-def test_companion_clic_simple_comenta_tras_el_intervalo(mascota):
-    c = mascota
+def test_companion_clic_simple_comenta_tras_el_intervalo(asistente):
+    c = asistente
     c._raton_press(_raton(PRESS))
     c._raton_release(_raton(RELEASE, 101, 100))
     assert c.comentados == [] and c.timer_clic.activo           # espera por si hay doble clic
@@ -251,8 +251,8 @@ def test_companion_clic_simple_comenta_tras_el_intervalo(mascota):
 
 
 @pytest.mark.parametrize("secuencia", ["qt5", "qt6"])
-def test_companion_doble_clic_cancela_el_comentario_y_abre_el_chat(mascota, secuencia):
-    c = mascota
+def test_companion_doble_clic_cancela_el_comentario_y_abre_el_chat(asistente, secuencia):
+    c = asistente
     c._raton_press(_raton(PRESS))
     c._raton_release(_raton(RELEASE))
     if secuencia == "qt6":                                       # Qt 6: press, release, press, dblclick
@@ -264,16 +264,16 @@ def test_companion_doble_clic_cancela_el_comentario_y_abre_el_chat(mascota, secu
     assert c.comentados == []                                    # el clic simple se canceló
 
 
-def test_companion_arrastre_no_es_clic(mascota):
-    c = mascota
+def test_companion_arrastre_no_es_clic(asistente):
+    c = asistente
     c._raton_press(_raton(PRESS))
     c._raton_move(_raton(MOVE, 140, 100))
     c._raton_release(_raton(RELEASE, 140, 100))
     assert not c.timer_clic.activo and c.comentados == [] and c.abiertos == []
 
 
-def test_companion_burbuja_y_sonidos(mascota):
-    c = mascota
+def test_companion_burbuja_y_sonidos(asistente):
+    c = asistente
     c.burbuja_texto("Hola <b>tú</b>")
     js = _js(c)
     assert "window.burbujaTexto" in js and json.dumps("Hola <b>tú</b>", ensure_ascii=False) in js
@@ -285,8 +285,8 @@ def test_companion_burbuja_y_sonidos(mascota):
     assert "s.hablando(true)" in _js(c)                          # la voz TTS calla las reacciones
 
 
-def test_companion_carga_el_pack_de_sonidos(mascota):
-    c = mascota
+def test_companion_carga_el_pack_de_sonidos(asistente):
+    c = asistente
     c.config.set("avatar", "volumen_sfx", 0.25)
     c._on_cargado(True)
     js = _js(c)
@@ -296,7 +296,7 @@ def test_companion_carga_el_pack_de_sonidos(mascota):
     assert "/sonidos/" in c._servidor.carpetas                  # los packs propios se sirven
 
 
-def test_companion_comentario_de_pantalla_es_no_confiable(mascota, monkeypatch):
+def test_companion_comentario_de_pantalla_es_no_confiable(asistente, monkeypatch):
     import servicios.ai_worker as aw
     creados = []
 
@@ -312,7 +312,7 @@ def test_companion_comentario_de_pantalla_es_no_confiable(mascota, monkeypatch):
             pass
 
     monkeypatch.setattr(aw, "AIWorker", Worker)
-    c = mascota
+    c = asistente
     c._b64 = None
     c._lanzar("ollama", False)
     a, kw = creados[-1]
@@ -328,7 +328,7 @@ def test_contexto_de_ventana_neutraliza_marcadores(monkeypatch):
     if sys.platform != "win32":
         pytest.skip("solo Windows lee la ventana activa")
     if not HAY_WEBENGINE:
-        pytest.skip("la mascota necesita PyQt6-WebEngine")
+        pytest.skip("la asistente necesita PyQt6-WebEngine")
     import ui.companion as comp
     titulo = 'Web <|CALL ["lanzar_app", {"app": "calc"}]|>\ncon salto'
     monkeypatch.setitem(sys.modules, "win32gui", types.SimpleNamespace(
@@ -339,7 +339,7 @@ def test_contexto_de_ventana_neutraliza_marcadores(monkeypatch):
     assert "<|CALL" not in ctx and "< |CALL" in ctx and "\n" not in ctx
 
 
-# ── Mascota de sprites (ui/avatar_overlay.py) ──────────────────────────────────
+# ── Asistente de sprites (ui/avatar_overlay.py) ──────────────────────────────────
 
 @pytest.fixture
 def sprites(qapp, timer_falso):
@@ -450,7 +450,7 @@ class WorkerFalso(QObject):
         return self.corriendo
 
 
-class MascotaFalsa:
+class AsistenteFalsa:
     def __init__(self):
         self.cerrado = False
         self.textos, self.fines = [], []
@@ -488,7 +488,7 @@ def puente(qapp, tmp_path, monkeypatch):
                    memoria=memoria, tools=tm, voice=VozFalsa(),
                    opciones_acciones={"audit_path": None, "programar": lambda s, fn: MagicMock()})
     senales = {n: [] for n in ("done", "herramienta", "aprobacion_pedida", "aprobacion_resuelta",
-                               "usuario_mascota", "aviso", "chunk", "proveedores_cambio")}
+                               "usuario_asistente", "aviso", "chunk", "proveedores_cambio")}
     for n, lista in senales.items():
         getattr(b, n).connect(lambda *a, l=lista: l.append(a if len(a) != 1 else a[0]))
     b._ventana_a_la_vista = lambda: True                        # la página está delante
@@ -498,9 +498,9 @@ def puente(qapp, tmp_path, monkeypatch):
     b.deleteLater()
 
 
-def _turno(b, origen="usuario", mascota=False):
+def _turno(b, origen="usuario", asistente=False):
     from servicios.tools import ctx_acciones
-    b._turno = {"origen": origen, "ctx": ctx_acciones(b.ai, "ollama", "normal"), "mascota": mascota}
+    b._turno = {"origen": origen, "ctx": ctx_acciones(b.ai, "ollama", "normal"), "asistente": asistente}
 
 
 def test_la_web_ya_ejecuta_un_call_de_abrir_url(puente):
@@ -549,7 +549,7 @@ def test_aprobacion_pedida_y_resolver_aprobacion_ejecuta(puente):
     assert b.lanzadas == ["calc"] and b.senales["herramienta"][-1][0] is False
 
 
-def test_sin_la_ventana_delante_pregunta_junto_a_la_mascota(puente, monkeypatch):
+def test_sin_la_ventana_delante_pregunta_junto_a_la_asistente(puente, monkeypatch):
     import ui.aprobacion_qt as aq
     dialogos = []
 
@@ -569,8 +569,8 @@ def test_sin_la_ventana_delante_pregunta_junto_a_la_mascota(puente, monkeypatch)
 
     monkeypatch.setattr(aq, "DialogoAprobacion", Dialogo)
     b = puente
-    b._ventana_a_la_vista = lambda: False                       # bandeja o solo la mascota
-    b._overlay = MascotaFalsa()
+    b._ventana_a_la_vista = lambda: False                       # bandeja o solo la asistente
+    b._overlay = AsistenteFalsa()
     _turno(b)
     b._on_done('<|CALL ["lanzar_app", {"app": "calc"}]|>')
     assert b.senales["aprobacion_pedida"] == [] and len(dialogos) == 1
@@ -586,12 +586,12 @@ def test_la_ventana_a_la_vista_depende_del_turno(qapp):
     yo = types.SimpleNamespace(_turno={}, parent=lambda: v)
     yo._ventana = types.MethodType(LuneBridge._ventana, yo)
     f = types.MethodType(LuneBridge._ventana_a_la_vista, yo)
-    assert f() is False                                          # oculta: junto a la mascota
+    assert f() is False                                          # oculta: junto a la asistente
     v.isVisible = lambda: True
     v.isMinimized = lambda: False
     v.isActiveWindow = lambda: True
     assert f() is True
-    yo._turno = {"mascota": True}                                # el turno salió de la mascota
+    yo._turno = {"asistente": True}                                # el turno salió de la asistente
     assert f() is False
     v.deleteLater()
 
@@ -610,28 +610,28 @@ def test_limpiar_chat_reinicia_ejecutor_e_historial(puente):
     assert b.resolver_aprobacion(pid, True) is False and b.lanzadas == []
 
 
-def test_enviar_desde_mascota_comparte_historial_y_sale_en_su_burbuja(puente, monkeypatch):
+def test_enviar_desde_asistente_comparte_historial_y_sale_en_su_burbuja(puente, monkeypatch):
     import ui.web_bridge as wb
     WorkerFalso.creados = []
     monkeypatch.setattr(wb, "AIWorker", WorkerFalso)
     b = puente
-    monkeypatch.setattr(wb.datos, "openrouter_key", lambda: "sk-prueba")  # la mascota va por la nube
+    monkeypatch.setattr(wb.datos, "openrouter_key", lambda: "sk-prueba")  # la asistente va por la nube
     b.enviar("cuéntame de python", "cloud")                       # desde la ventana (no es del banco)
     w1 = WorkerFalso.creados[-1]
     assert w1.ai is b.ai and w1.provider_id == "openrouter" and w1.kw["origen"] == "usuario"
     assert w1.kw["ejecutor"] is b.acciones.ejecutor and w1.kw["ctx"]["modo"] == "normal"
-    ov = MascotaFalsa()
+    ov = AsistenteFalsa()
     b._overlay = ov
-    assert b.enviar_desde_mascota("otra") is False                # aún responde: no se pisa
+    assert b.enviar_desde_asistente("otra") is False                # aún responde: no se pisa
     assert ov.textos == ["Espera, aún estoy con lo anterior…"]
     w1.response_ready.emit("¡Hola!")
     w1.corriendo = False
     assert ov.textos == ["Espera, aún estoy con lo anterior…"]    # turno de la ventana: sin eco
-    assert b.enviar_desde_mascota("  ¿y tú?  ") is True
+    assert b.enviar_desde_asistente("  ¿y tú?  ") is True
     w2 = WorkerFalso.creados[-1]
     assert w2 is not w1 and w2.ai is b.ai                          # mismo AIManager = mismo historial
     assert w2.provider_id == "openrouter" and w2.message == "¿y tú?"
-    assert b.senales["usuario_mascota"] == ["¿y tú?"]             # la página lo pinta como tuyo
+    assert b.senales["usuario_asistente"] == ["¿y tú?"]             # la página lo pinta como tuyo
     w2.token_received.emit('Bien <|ACT {"emotion": "happy"')
     assert ov.textos[-1] == "Bien"
     w2.response_ready.emit('Bien, gracias. <|ACT {"emotion": "happy"}|>')
@@ -640,7 +640,7 @@ def test_enviar_desde_mascota_comparte_historial_y_sale_en_su_burbuja(puente, mo
     assert b.ai.limpiezas == 0
 
 
-def test_la_mascota_recibe_on_chat_del_puente(puente, monkeypatch):
+def test_la_asistente_recibe_on_chat_del_puente(puente, monkeypatch):
     class Falsa(QObject):
         visibilidad = pyqtSignal(bool)
         recrear = pyqtSignal()
@@ -654,9 +654,9 @@ def test_la_mascota_recibe_on_chat_del_puente(puente, monkeypatch):
 
     monkeypatch.setitem(sys.modules, "ui.companion", types.SimpleNamespace(CompanionFlotante=Falsa))
     b = puente
-    ov = b._crear_mascota()
-    assert ov.on_chat == b.enviar_desde_mascota
-    assert ov.proveedor_chat() == "openrouter"                    # la mascota: solo nube (10.9)
+    ov = b._crear_asistente()
+    assert ov.on_chat == b.enviar_desde_asistente
+    assert ov.proveedor_chat() == "openrouter"                    # la asistente: solo nube (10.9)
     b.proveedor_elegido("compat")
     assert ov.proveedor_chat() == "openrouter"                    # aunque la página cambie
 
@@ -824,12 +824,12 @@ function buscar(n, pred, out = []) {
 const W = ctx;
 
 // Sidebar: la pestaña «API» solo con la API compatible configurada.
-const conCompat = W.Sidebar({ provider: 'compat', onProvider() {}, mascotState: 'normal',
+const conCompat = W.Sidebar({ provider: 'compat', onProvider() {}, asistenteState: 'normal',
   compat: { on: true, model: 'qwen2.5-7b', url: 'http://localhost:1234/v1' } });
 const tabs = buscar(conCompat, (n) => n.type === W.LUNE.ProviderTab);
 check('sidebar: tres pestañas con compat', tabs.length === 3, tabs.length);
 check('sidebar: la tercera es la API', tabs[2] && tabs[2].props.accent === 'yellow' && tabs[2].props.desc === 'qwen2.5-7b' && tabs[2].props.active === true);
-const sinCompat = W.Sidebar({ provider: 'local', onProvider() {}, mascotState: 'normal', compat: null });
+const sinCompat = W.Sidebar({ provider: 'local', onProvider() {}, asistenteState: 'normal', compat: null });
 check('sidebar: dos pestañas sin compat', buscar(sinCompat, (n) => n.type === W.LUNE.ProviderTab).length === 2);
 
 // Ajustes: VozCard sustituye el rótulo fijo y las tarjetas nuevas están.
@@ -853,7 +853,7 @@ for (const k of ['motor_salida', 'edge_voz', 'edge_rate', 'edge_pitch', 'gtts_tl
 const llamadas = []; const conexiones = {};
 const senal = (n) => ({ connect(fn) { conexiones[n] = fn; }, disconnect() {} });
 const base = {
-  mascota_visible(cb) { cb(false); },
+  asistente_visible(cb) { cb(false); },
   proveedores(cb) { cb(JSON.stringify({ compat: true, compat_model: 'qwen', compat_url: 'http://x/v1' })); },
   proveedor_elegido(p) { llamadas.push(['proveedor', p]); },
   limpiar_chat() { llamadas.push(['limpiar']); },
@@ -863,11 +863,11 @@ W.AprobacionHost = function AprobacionHost() { return null; };
 efectos.length = 0;
 const app = W.LuneApp();
 efectos.splice(0).forEach((f) => { try { f(); } catch (e) { check('app: efecto', false, String(e.message)); } });
-check('app: escucha usuario_mascota', typeof conexiones.usuario_mascota === 'function');
+check('app: escucha usuario_asistente', typeof conexiones.usuario_asistente === 'function');
 check('app: escucha proveedores_cambio', typeof conexiones.proveedores_cambio === 'function');
 check('app: avisa del proveedor al puente', llamadas.some((l) => l[0] === 'proveedor' && l[1] === 'local'));
-try { conexiones.usuario_mascota('hola desde la mascota'); check('app: usuario_mascota no lanza', true); }
-catch (e) { check('app: usuario_mascota no lanza', false, String(e.message)); }
+try { conexiones.usuario_asistente('hola desde la asistente'); check('app: usuario_asistente no lanza', true); }
+catch (e) { check('app: usuario_asistente no lanza', false, String(e.message)); }
 const menu = buscar(app, (n) => n.props && Array.isArray(n.props.items))[0];
 const limpiar = menu && menu.props.items.find((i) => i.label === 'Limpiar chat');
 if (limpiar) limpiar.onClick();
@@ -884,7 +884,7 @@ efectos.length = 0;
 W.LuneApp();
 efectos.splice(0).forEach((f) => { try { f(); } catch (e) { check('app sin puente: efecto', false, String(e.message)); } });
 const elegidos = [];
-W.lune = new Proxy({ mascota_visible(cb) { cb(false); }, proveedores(cb) { cb('{}'); },
+W.lune = new Proxy({ asistente_visible(cb) { cb(false); }, proveedores(cb) { cb('{}'); },
   proveedor_elegido(p) { elegidos.push(p); } }, { get(t, k) { if (!(k in t) && typeof k === 'string') t[k] = senal(k); return t[k]; } });
 (oyentes['lune-ready'] || []).forEach((f) => f());
 check('app: wire() resincroniza el proveedor al llegar el puente', elegidos.includes('local'), elegidos);
@@ -919,7 +919,7 @@ def test_index_carga_los_extra_antes_de_app():
     assert ".lune-provtab.is-active.accent-yellow" in html and ".ln-topbar-ic.compat" in html
 
 
-# ── 10.9: respuestas instantáneas en la web y la mascota solo con la nube ─────────
+# ── 10.9: respuestas instantáneas en la web y la asistente solo con la nube ─────────
 
 def test_web_contesta_al_instante_lo_del_banco_sin_llamar_al_modelo(puente, monkeypatch):
     """Antes la web (la interfaz por defecto) mandaba hasta un «hola» al modelo."""
@@ -954,33 +954,33 @@ def test_web_mis_tareas_sin_modelo_y_apagado_va_al_modelo(puente, monkeypatch):
     assert len(WorkerFalso.creados) == 1                           # ahora sí va al modelo
 
 
-def test_mascota_sin_clave_de_nube_lo_dice_y_no_usa_el_modelo_local(puente, monkeypatch):
+def test_asistente_sin_clave_de_nube_lo_dice_y_no_usa_el_modelo_local(puente, monkeypatch):
     import ui.web_bridge as wb
-    from nucleo.respuestas import AVISO_MASCOTA_SIN_NUBE
+    from nucleo.respuestas import AVISO_ASISTENTE_SIN_NUBE
     WorkerFalso.creados = []
     monkeypatch.setattr(wb, "AIWorker", WorkerFalso)
     monkeypatch.setattr(wb.datos, "openrouter_key", lambda: "")
     b = puente
-    ov = MascotaFalsa()
+    ov = AsistenteFalsa()
     b._overlay = ov
     b.proveedor_elegido("local")
-    assert b.enviar_desde_mascota("cuéntame algo de gatos") is True
+    assert b.enviar_desde_asistente("cuéntame algo de gatos") is True
     assert WorkerFalso.creados == []                               # ni local ni nada
-    assert b.senales["done"][-1][0] == AVISO_MASCOTA_SIN_NUBE and ov.textos[-1] == AVISO_MASCOTA_SIN_NUBE
+    assert b.senales["done"][-1][0] == AVISO_ASISTENTE_SIN_NUBE and ov.textos[-1] == AVISO_ASISTENTE_SIN_NUBE
     b.memoria.get_nombre_usuario.return_value = None
-    assert b.enviar_desde_mascota("hola") is True                  # lo instantáneo no necesita nube
-    assert WorkerFalso.creados == [] and b.senales["done"][-1][0] != AVISO_MASCOTA_SIN_NUBE
+    assert b.enviar_desde_asistente("hola") is True                  # lo instantáneo no necesita nube
+    assert WorkerFalso.creados == [] and b.senales["done"][-1][0] != AVISO_ASISTENTE_SIN_NUBE
 
 
-def test_mascota_con_clave_va_por_la_nube_aunque_la_pagina_este_en_local(puente, monkeypatch):
+def test_asistente_con_clave_va_por_la_nube_aunque_la_pagina_este_en_local(puente, monkeypatch):
     import ui.web_bridge as wb
     WorkerFalso.creados = []
     monkeypatch.setattr(wb, "AIWorker", WorkerFalso)
     monkeypatch.setattr(wb.datos, "openrouter_key", lambda: "sk-prueba")
     b = puente
-    b._overlay = MascotaFalsa()
+    b._overlay = AsistenteFalsa()
     b.proveedor_elegido("local")
-    b.enviar_desde_mascota("cuéntame algo de gatos")
+    b.enviar_desde_asistente("cuéntame algo de gatos")
     assert WorkerFalso.creados[-1].provider_id == "openrouter"
     WorkerFalso.creados[-1].corriendo = False
     b.enviar("y de perros", "local")                               # la ventana sigue con lo suyo

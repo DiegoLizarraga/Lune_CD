@@ -3,7 +3,7 @@ ui/alarmas_qt.py — Alarmas y temporizadores en la app (web y nativa).
 
 `ControlAlarmasQt` es un controlador de `ServiciosEscritorio` (ui/escritorio.py)
 con la actividad «alarma»: lo crea `montar_ocio` (ui/montaje_ocio.py) y recibe
-`iniciar`, `detener`, `set_mascota`, `ceder` y `reanudar` como los demás.
+`iniciar`, `detener`, `set_asistente`, `ceder` y `reanudar` como los demás.
 
 CADA SEGUNDO (`_tic`)
 - Si es dueño del mutex `Local\\Lune_CD_Alarmas` (se reintenta cada 10 s):
@@ -23,9 +23,9 @@ AL SONAR (`on_mostrar`)
   (sonido + aviso de bandeja; D3: suena aunque juego.silenciar esté activado).
 - Si no, la despierta y según `elegir_visual`:
   · `grande`: `grande.entrar("alarma")` + `grande.mostrar_alarma(texto)` (la
-    mascota o la VentanaReloj; eso es de ControlPantallaGrande);
+    asistente o la VentanaReloj; eso es de ControlPantallaGrande);
   · `burbuja` (alarmas.pantalla_grande desactivado, o sin pantalla grande):
-    `mascota.mostrar_alarma(texto)` + la tarjeta `DialogoAlarma`;
+    `asistente.mostrar_alarma(texto)` + la tarjeta `DialogoAlarma`;
   · `discreto`: `avisar("⏰ texto")`.
 - Siempre emite `sonando(json)` (el banner de la web lo usa).
 - Mientras suena, un QTimer de 33 ms mira `DetectorEntrada.poll()` (flanco de
@@ -126,7 +126,7 @@ class ControlAlarmasQt(QObject):
         self._ultimo_intento_app: Optional[float] = None
         self._fallo_tic = ""                           # el último fallo del tic ya trazado
         self._entrada = entrada
-        self._mascota = getattr(escritorio, "mascota", None)
+        self._asistente = getattr(escritorio, "asistente", None)
         self._iniciado = False
         self._dueno = False
         self._recien_dueno = False
@@ -247,10 +247,10 @@ class ControlAlarmasQt(QObject):
         self._dialogo = None
         self._editor = None
 
-    def set_mascota(self, v) -> None:
-        if v is self._mascota:
+    def set_asistente(self, v) -> None:
+        if v is self._asistente:
             return
-        self._mascota = v
+        self._asistente = v
         if self._mostrando and self._visual == "burbuja" and v is not None and self.aviso.sonando:
             _llamar(v, "mostrar_alarma", texto_visible(self.aviso.sonando))
 
@@ -438,9 +438,9 @@ class ControlAlarmasQt(QObject):
         except Exception:
             return None
 
-    def _mascota_actual(self):
-        m = getattr(self.escritorio, "mascota", None)
-        return m if m is not None else self._mascota
+    def _asistente_actual(self):
+        m = getattr(self.escritorio, "asistente", None)
+        return m if m is not None else self._asistente
 
     def _on_mostrar(self, d: Disparo) -> None:
         texto = texto_visible(d)
@@ -460,14 +460,14 @@ class ControlAlarmasQt(QObject):
             if not permitido:
                 self._visual = "discreto"
             else:
-                m = self._mascota_actual()
+                m = self._asistente_actual()
                 if m is not None and (est is None or getattr(est, "durmiendo", False)):
                     _llamar(m, "despertar")
                 self._visual = elegir_visual(
                     juego=bool(getattr(est, "juego", False)),
                     pantalla_grande=bool(self._cfg("pantalla_grande", True)),
                     render=str(getattr(est, "render", "") or ""),
-                    mascota_visible=bool(getattr(est, "visible", False)))
+                    asistente_visible=bool(getattr(est, "visible", False)))
             if self._visual == "grande":
                 ok = _llamar(self.grande, "entrar", "alarma") if self.grande is not None else False
                 if ok is False or ok is None:
@@ -483,7 +483,7 @@ class ControlAlarmasQt(QObject):
             _llamar(self.grande, "mostrar_alarma", texto)
         elif self._visual == "burbuja":
             est = self._estado_bus()
-            m = self._mascota_actual()
+            m = self._asistente_actual()
             if m is not None and (est is None or getattr(est, "visible", True)):
                 _llamar(m, "mostrar_alarma", texto)
             self._mostrar_dialogo(d, texto)
@@ -514,7 +514,7 @@ class ControlAlarmasQt(QObject):
         mirar la entrada y suelta la actividad «alarma» del bus."""
         if terminar:
             self._timer_entrada.stop()
-        _llamar(self._mascota_actual(), "ocultar_alarma")
+        _llamar(self._asistente_actual(), "ocultar_alarma")
         if self._grande_mio:
             _llamar(self.grande, "salir", "alarma")
             self._grande_mio = False

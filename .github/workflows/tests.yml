@@ -9,7 +9,7 @@ name: Tests
 # tests tocan PyQt6, pygame y compañía: por eso fallaba SIEMPRE. Ahora instala
 # requirements.txt (igual que instalar_lune.bat) y corre Qt sin pantalla.
 # Desde 10.3 también PyQt6-WebEngine: es la «Interfaz completa» que ofrece el
-# instalador y la usan la piel web, la mascota animada y el VRM. Sin él fallaban
+# instalador y la usan la piel web, la asistente animada y el VRM. Sin él fallaban
 # ~100 tests (la cruz roja «1 / 2» de cada commit hasta 10.7).
 
 on:

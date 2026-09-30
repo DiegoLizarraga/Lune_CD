@@ -50,7 +50,8 @@ const HOSTILES = new Set([
 ])
 
 // Lo ÚNICO que el bot ataca (lo pida el chat, Lune o su modelo): hostiles y animales
-// de granja. Nunca `player`, aldeanos, mascotas, golems, soportes de armadura…
+// de granja. Nunca `player`, aldeanos, animales domesticados (lobos, gatos…), golems,
+// soportes de armadura…
 const MOBS_ATACABLES = new Set([...HOSTILES, 'cow', 'pig', 'sheep', 'chicken', 'rabbit'])
 
 function normalize (str) {

@@ -11,7 +11,7 @@ determinista, así que solo cambian los archivos cuya receta cambió.
 
 Sonidos:
   alarma_1..3        pitidos 880/660 Hz para sonar en bucle (~1.4 s)
-  drag_start/stop    levantar y soltar a la mascota
+  drag_start/stop    levantar y soltar a la asistente
   comida_aparece     aparece un plato
   comida_capa_1..2   se añade una capa a la comida
   trago_1..3         beber

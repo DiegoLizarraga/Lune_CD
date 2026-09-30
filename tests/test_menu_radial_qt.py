@@ -2,7 +2,7 @@
 Tests del menú radial en Qt (offscreen): el widget MenuRadial (elegir al soltar
 fuera de la zona muerta; Esc, clic derecho, perder el foco o soltar en el centro
 cierran sin elegir; teclado) y ControlMenuRadial (BusEstado.menu_abierto,
-mascota.set_menu_abierto, sonidos, menu_pedido, ancla de la cabeza, segundo
+asistente.set_menu_abierto, sonidos, menu_pedido, ancla de la cabeza, segundo
 radial de expresiones, detener).
 """
 import os
@@ -20,7 +20,7 @@ from PyQt6.QtGui import QKeyEvent, QMouseEvent  # noqa: E402
 from PyQt6.QtWidgets import QApplication  # noqa: E402
 
 from nucleo.acciones_ui import Contexto, Despachador, ItemRadial  # noqa: E402
-from nucleo.estado_mascota import BusEstado  # noqa: E402
+from nucleo.estado_asistente import BusEstado  # noqa: E402
 from ui.menu_radial import LIENZO, ControlMenuRadial, MenuRadial, centro_sector  # noqa: E402
 
 C = LIENZO / 2
@@ -202,7 +202,7 @@ def test_set_colores_acepta_alias_y_css(menu):
 
 # ── Controlador ───────────────────────────────────────────────────────────────
 
-class MascotaFalsa(QObject):
+class AsistenteFalsa(QObject):
     menu_pedido = pyqtSignal(str, object)
 
     def __init__(self, ancla_async=False):
@@ -241,7 +241,7 @@ def control(qapp):
     for i in ("voz", "dormir", "ajustes", "chat"):
         desp.registrar(i, lambda arg="", i=i: hechos.append((i, arg)))
     sonidos = []
-    ctx = {"v": Contexto(modo="normal", render="vrm", mascota_visible=True)}
+    ctx = {"v": Contexto(modo="normal", render="vrm", asistente_visible=True)}
     ctl = ControlMenuRadial(desp, bus, Config(["voz", "dormir", "ajustes", "bailar", "chat"]),
                             lambda: ctx["v"], sonar=sonidos.append)
     ctl.bus, ctl.desp, ctl.hechos, ctl.sonidos, ctl.ctx = bus, desp, hechos, sonidos, ctx
@@ -283,23 +283,23 @@ def test_control_sin_botones_no_abre(control):
     assert control.bus.actual().menu_abierto is False
 
 
-def test_control_mascota_menu_pedido_y_bloqueos(control):
-    masc = MascotaFalsa()
-    control.set_mascota(masc)
+def test_control_asistente_menu_pedido_y_bloqueos(control):
+    masc = AsistenteFalsa()
+    control.set_asistente(masc)
     masc.menu_pedido.emit("principal", QPoint(410, 290))
     assert control.abierto()
     assert masc.diario == [("menu_abierto", True)]
     assert control.menu.centro_global() == QPoint(390, 310)     # en la cabeza, como en ME
     tecla(control.menu, Qt.Key.Key_Escape)
     assert masc.diario == [("menu_abierto", True), ("menu_abierto", False)]
-    control.set_mascota(None)
+    control.set_asistente(None)
     masc.menu_pedido.emit("principal", QPoint(650, 420))       # ya desconectada
     assert not control.abierto()
 
 
 def test_control_ancla_de_la_cabeza_asincrona_y_seguir(control):
-    masc = MascotaFalsa(ancla_async=True)
-    control.set_mascota(masc)
+    masc = AsistenteFalsa(ancla_async=True)
+    control.set_asistente(masc)
     assert control.abrir("principal") is True                  # pendiente de la cabeza
     assert control.abierto() and (control.menu is None or not control.menu.abierto)
     masc.callbacks.pop(0)(QPoint(380, 300))
@@ -320,15 +320,15 @@ def test_control_clic_derecho_sin_ancla_abre_en_el_punto(control):
         def isVisible(self):
             return True
     m = SinAncla()
-    control.set_mascota(m)
+    control.set_asistente(m)
     m.menu_pedido.emit("principal", QPoint(410, 290))
     assert control.menu.centro_global() == QPoint(410, 290)
 
 
 def test_control_clic_derecho_con_ancla_que_no_contesta_usa_el_punto(control, qapp):
     from PyQt6.QtTest import QTest
-    masc = MascotaFalsa(ancla_async=True)
-    control.set_mascota(masc)
+    masc = AsistenteFalsa(ancla_async=True)
+    control.set_asistente(masc)
     control.ESPERA_ANCLA_MS = 20
     masc.menu_pedido.emit("principal", QPoint(405, 295))
     QTest.qWait(80)
@@ -337,8 +337,8 @@ def test_control_clic_derecho_con_ancla_que_no_contesta_usa_el_punto(control, qa
 
 def test_control_ancla_que_no_contesta_abre_en_el_cursor(control, qapp):
     from PyQt6.QtTest import QTest
-    masc = MascotaFalsa(ancla_async=True)
-    control.set_mascota(masc)
+    masc = AsistenteFalsa(ancla_async=True)
+    control.set_asistente(masc)
     control.ESPERA_ANCLA_MS = 20
     assert control.abrir("principal") is True
     QTest.qWait(80)
@@ -348,10 +348,10 @@ def test_control_ancla_que_no_contesta_abre_en_el_cursor(control, qapp):
 
 
 def test_control_expresiones_abre_segundo_radial(control):
-    masc = MascotaFalsa()
+    masc = AsistenteFalsa()
     estados = []
     masc.set_estado = lambda e, ms: estados.append((e, ms))
-    control.set_mascota(masc)
+    control.set_asistente(masc)
     control.desp.registrar("expresiones", lambda: control.abrir("expresiones"))
     control.desp.registrar("expresion", lambda arg="": masc.set_estado(arg, 4000))
     control._config.d["menu_radial"]["principal"] = ["expresiones", "voz"]
@@ -365,8 +365,8 @@ def test_control_expresiones_abre_segundo_radial(control):
 
 
 def test_control_detener_cierra_sin_sonido_y_suelta(control):
-    masc = MascotaFalsa()
-    control.set_mascota(masc)
+    masc = AsistenteFalsa()
+    control.set_asistente(masc)
     control.abrir("principal", QPoint(600, 500))
     control.sonidos.clear()
     control.detener()
@@ -375,7 +375,7 @@ def test_control_detener_cierra_sin_sonido_y_suelta(control):
     assert ("menu_abierto", False) in masc.diario
     masc.menu_pedido.emit("principal", QPoint(1, 1))
     assert not control.abierto()
-    # El escritorio se reanuda: la mascota sigue enlazada y el clic derecho vuelve a abrir
+    # El escritorio se reanuda: la asistente sigue enlazada y el clic derecho vuelve a abrir
     control.iniciar()
     masc.menu_pedido.emit("principal", QPoint(400, 300))
     assert control.abierto() and control.menu is not None

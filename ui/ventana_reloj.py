@@ -2,8 +2,8 @@
 ui/ventana_reloj.py — Ventana de pantalla completa con reloj y carita (Qt puro, sin GPU).
 
 La usan la pantalla grande, el salvapantallas y la alarma cuando no hay una
-mascota 3D o animada a la vista (decisión D2 del plan de los cortes 5 y 6):
-con sprites, con la mascota guardada, en la nativa sin VRM o sin QtWebEngine.
+asistente 3D o animada a la vista (decisión D2 del plan de los cortes 5 y 6):
+con sprites, con la asistente guardada, en la nativa sin VRM o sin QtWebEngine.
 Es barata: un QWidget que se pinta con QPainter, una carita PNG de lune_face/
 (nada de QVideoWidget) y un QTimer de 1 s para la hora solo mientras se ve.
 

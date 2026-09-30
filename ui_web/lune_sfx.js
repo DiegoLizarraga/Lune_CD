@@ -2,7 +2,7 @@
  * ui_web/lune_sfx.js — efectos de sonido cortos de las páginas (WebAudio).
  *
  * Para qué sirve: arrastrar, soltar, comer, abrir menús o sonar una alarma dentro
- * de la mascota o de la web sin pasar por Python ni por pygame (que es solo de la
+ * de la asistente o de la web sin pasar por Python ni por pygame (que es solo de la
  * voz). Cada archivo se descarga y decodifica una vez (caché por URL) y se toca
  * con un volumen y un tono (playbackRate) aleatorio dentro de un rango, para que
  * no suene siempre igual. Todo pasa por un GainNode maestro (volumen general).

@@ -1,5 +1,5 @@
 """
-nucleo/vrm.py — Modelos 3D (VRM) de la mascota y su relación con los personajes.
+nucleo/vrm.py — Modelos 3D (VRM) de la asistente y su relación con los personajes.
 
 Los .vrm viven en `modelo_vrm/` (gitignored: son pesados y de terceros). Cada
 personaje de datos.json puede llevar `"vrm": "<archivo>"` (nombre dentro de
@@ -26,10 +26,10 @@ Biblioteca (v10.x, «Custom VRM» de Mate-Engine):
                              → calibración por modelo en modelo_vrm/<modelo>.lune.json
                                (claves de AJUSTES, validadas y con rango).
   params_modelo(nombre, config)
-                             → lo que se manda a window.luneParams de la mascota:
+                             → lo que se manda a window.luneParams de la asistente:
                                calibración del modelo + pesos de seguimiento de
                                config (avatar.peso_cabeza/torso/ojos, seguir_cursor).
-  herramienta_tamano(args, ctx) → handler de la herramienta `mascota_tamano`.
+  herramienta_tamano(args, ctx) → handler de la herramienta `asistente_tamano`.
 
 Los rangos de AJUSTES son los mismos que ui_web/vrm/lune_params.js (lo comprueba
 tests/test_vrm_ajustes.py con Node).
@@ -736,7 +736,7 @@ def borrar_modelo(nombre: str, config=None) -> Dict[str, Any]:
     try:
         ruta.unlink()                                    # un enlace simbólico se borra él, no su destino
     except PermissionError:
-        raise ValueError(f"No pude borrar «{archivo}»: está en uso. Cierra la mascota 3D e inténtalo otra vez.")
+        raise ValueError(f"No pude borrar «{archivo}»: lo estoy usando. Quítame del escritorio e inténtalo otra vez.")
     except OSError as e:
         raise ValueError(f"No pude borrar «{archivo}»: {e}")
     try:
@@ -1014,7 +1014,7 @@ def borrar_json(nombre: str, config=None) -> str:
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-#  Herramienta del modelo: mascota_tamano
+#  Herramienta del modelo: asistente_tamano
 # ═════════════════════════════════════════════════════════════════════════════
 
 TAMANOS = ("pequeno", "normal", "grande")
@@ -1049,9 +1049,9 @@ def _de_ctx(ctx, clave: str, _hondo: int = 0):
 
 def herramienta_tamano(args, ctx=None) -> Tuple[bool, str]:
     """
-    Handler de `mascota_tamano` ({tamano: pequeno|normal|grande}) → (ok, mensaje).
-    Guarda avatar.vrm_tamano en ctx['config'] y, si ctx['mascota'] tiene
-    aplicar_tamano (la mascota 3D), la cambia ya. ctx['en_ui'] opcional: fn(callable)
+    Handler de `asistente_tamano` ({tamano: pequeno|normal|grande}) → (ok, mensaje).
+    Guarda avatar.vrm_tamano en ctx['config'] y, si ctx['asistente'] tiene
+    aplicar_tamano (la asistente 3D), la cambia ya. ctx['en_ui'] opcional: fn(callable)
     que ejecuta en el hilo de Qt (si el Ejecutor corre en otro hilo) y devuelve lo
     que devuelva fn; si aplicar_tamano devuelve False, no se da por hecho.
     """
@@ -1060,14 +1060,14 @@ def herramienta_tamano(args, ctx=None) -> Tuple[bool, str]:
     if t is None:
         return False, "Ese tamaño no existe: usa pequeno, normal o grande."
     config = _de_ctx(ctx, "config")
-    mascota = _de_ctx(ctx, "mascota")
+    asistente = _de_ctx(ctx, "asistente")
     if config is not None:
         try:
             config.set("avatar", "vrm_tamano", t)
         except Exception:
             config = None
-    fn = getattr(mascota, "aplicar_tamano", None) if mascota is not None else None
-    if callable(fn) and getattr(mascota, "render", "vrm") == "vrm":
+    fn = getattr(asistente, "aplicar_tamano", None) if asistente is not None else None
+    if callable(fn) and getattr(asistente, "render", "vrm") == "vrm":
         en_ui = _de_ctx(ctx, "en_ui")
         try:
             # Contrato: en_ui(fn) devuelve lo que devuelve fn (web_bridge, main.py).
@@ -1078,5 +1078,5 @@ def herramienta_tamano(args, ctx=None) -> Tuple[bool, str]:
             return False, "Ahora no puedo cambiar de tamaño."
         return True, f"Listo: ahora soy {_ETIQUETA_TAMANO[t]}."
     if config is None:
-        return False, "No hay mascota abierta ni configuración donde guardar el tamaño."
-    return True, f"Guardado: cuando salga como mascota 3D seré {_ETIQUETA_TAMANO[t]}."
+        return False, "No estoy en el escritorio ni tengo configuración donde guardar el tamaño."
+    return True, f"Guardado: cuando salga al escritorio en 3D seré {_ETIQUETA_TAMANO[t]}."

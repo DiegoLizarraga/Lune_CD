@@ -1,7 +1,7 @@
 """
 Tests de ControlMinecraft (ui/minecraft_qt.py) con el ServiciosEscritorio de verdad
 (BusEstado y estado_cambio) y dobles para todo lo demás: proceso del bot, lector del
-log, mascota, anfitrión, voz y config. Nada de red, de node ni de archivos del juego.
+log, asistente, anfitrión, voz y config. Nada de red, de node ni de archivos del juego.
 """
 import json
 import sys
@@ -94,7 +94,7 @@ class Lector:
         return 0.0
 
 
-class Mascota:
+class Asistente:
     def __init__(self, visible=True, acepta=True):
         self.visible = visible
         self.acepta = acepta
@@ -158,7 +158,7 @@ def escritorio(qapp):
     e.deleteLater()
 
 
-def montar(escritorio, *, config=None, proceso=None, lector="fijo", mascota=None, anfitrion=None, voz=None,
+def montar(escritorio, *, config=None, proceso=None, lector="fijo", asistente=None, anfitrion=None, voz=None,
            datos=None, personaje=None, rutas=None, juego=None, **kw):
     from ui.minecraft_qt import ControlMinecraft
     if juego is not None:
@@ -171,8 +171,8 @@ def montar(escritorio, *, config=None, proceso=None, lector="fijo", mascota=None
         datos_mc=lambda: dict(datos or {"dueno": "Diego_01", "host": "localhost", "port": 25565}),
         personaje=lambda: dict(personaje or {"nombre": "Lune", "systemPrompt": "Eres Lune."}),
         llm=lambda: None, hilo=lambda fn, *a: fn(), **kw)
-    if mascota is not None:
-        ctl.set_mascota(mascota)
+    if asistente is not None:
+        ctl.set_asistente(asistente)
     ctl.reloj = reloj
     ctl.lec = lec
     return ctl
@@ -192,9 +192,9 @@ MUERTE = Evento("muerte", "Diego_01", "Zombie", propio=True)
 
 # ── Reacciones ─────────────────────────────────────────────────────────────────
 
-def test_reaccion_en_la_mascota_con_cara_y_voz(escritorio):
-    m, voz = Mascota(), Voz()
-    ctl = montar(escritorio, config=Config(voz_reacciones=True), mascota=m, voz=voz)
+def test_reaccion_en_la_asistente_con_cara_y_voz(escritorio):
+    m, voz = Asistente(), Voz()
+    ctl = montar(escritorio, config=Config(voz_reacciones=True), asistente=m, voz=voz)
     capt = señales(ctl)
     ctl.iniciar()
     ctl.lec.pendientes = [MUERTE]
@@ -207,17 +207,17 @@ def test_reaccion_en_la_mascota_con_cara_y_voz(escritorio):
 
 
 def test_voz_silenciada_no_habla(escritorio):
-    m, voz = Mascota(), Voz(silenciada=True)
-    ctl = montar(escritorio, config=Config(voz_reacciones=True), mascota=m, voz=voz)
+    m, voz = Asistente(), Voz(silenciada=True)
+    ctl = montar(escritorio, config=Config(voz_reacciones=True), asistente=m, voz=voz)
     ctl.iniciar()
     ctl._recibir(MUERTE)
     assert m.dichas and voz.dichos == []
     ctl.detener()
 
 
-def test_sin_mascota_aviso_y_cara_del_anfitrion(escritorio):
+def test_sin_asistente_aviso_y_cara_del_anfitrion(escritorio):
     a = Anfitrion()
-    ctl = montar(escritorio, anfitrion=a, mascota=Mascota(visible=False))
+    ctl = montar(escritorio, anfitrion=a, asistente=Asistente(visible=False))
     ctl.iniciar()
     ctl._recibir(Evento("logro", "Diego_01", "Diamonds!", propio=True))
     assert a.avisos == ["¡Logro! «Diamonds!». Me lo apunto."]
@@ -230,8 +230,8 @@ def test_sin_mascota_aviso_y_cara_del_anfitrion(escritorio):
 def test_filtro_de_estados_sin_burbuja_y_fuera_del_modo_juego_sin_resumen(escritorio, campo):
     """BM9: fuera del modo juego lo que no se puede decir NO va al resumen (antes se mezclaba
     con el de la partida siguiente); queda en los eventos recientes sin entregar."""
-    m = Mascota()
-    ctl = montar(escritorio, mascota=m)
+    m = Asistente()
+    ctl = montar(escritorio, asistente=m)
     ctl.iniciar()
     escritorio.estado.actualizar(**{campo: True})
     ctl._recibir(MUERTE)
@@ -243,8 +243,8 @@ def test_filtro_de_estados_sin_burbuja_y_fuera_del_modo_juego_sin_resumen(escrit
 
 
 def test_la_burbuja_de_la_ia_manda(escritorio):
-    m = Mascota(acepta=False)
-    ctl = montar(escritorio, mascota=m)
+    m = Asistente(acepta=False)
+    ctl = montar(escritorio, asistente=m)
     ctl.iniciar()
     ctl._recibir(MUERTE)
     assert len(m.dichas) == 1 and ctl._resumen.vacio
@@ -255,8 +255,8 @@ def test_el_resumen_es_solo_de_la_partida_en_modo_juego(escritorio, qapp, monkey
     """BM9: lo apuntado antes (o de otra partida) se vacía al ENTRAR en modo juego."""
     import ui.minecraft_qt as mq
     monkeypatch.setattr(mq, "RETRASO_RESUMEN_MS", 0)
-    m = Mascota()
-    ctl = montar(escritorio, mascota=m)
+    m = Asistente()
+    ctl = montar(escritorio, asistente=m)
     ctl.iniciar()
     ctl._resumen.anotar(Evento("muerte", "Diego_01", "Creeper", propio=True))     # de antes
     escritorio.estado.actualizar(juego=True)
@@ -271,8 +271,8 @@ def test_el_resumen_es_solo_de_la_partida_en_modo_juego(escritorio, qapp, monkey
 
 
 def test_duplicado_del_log_y_del_bot_cuenta_una_vez(escritorio):
-    m = Mascota()
-    ctl = montar(escritorio, mascota=m)
+    m = Asistente()
+    ctl = montar(escritorio, asistente=m)
     ctl.iniciar()
     ctl._recibir(MUERTE)
     ctl._recibir(Evento("muerte", "Diego_01", "zombie", fuente="bot", propio=True))
@@ -284,8 +284,8 @@ def test_duplicado_del_log_y_del_bot_cuenta_una_vez(escritorio):
 
 
 def test_eventos_del_bot_via_on_evento(escritorio, qapp):
-    m = Mascota()
-    ctl = montar(escritorio, mascota=m)
+    m = Asistente()
+    ctl = montar(escritorio, asistente=m)
     ctl.iniciar()
     ctl.proceso.on_evento({"tipo": "evento", "evento": "muerte", "jugador": "Diego_01", "detalle": "Zombie"})
     ctl.proceso.on_evento({"tipo": "evento", "evento": "muerte", "jugador": "Steve", "detalle": "Zombie"})
@@ -304,8 +304,8 @@ def conectado(ctl):
 
 
 def test_en_juego_lo_dice_el_bot_y_pausa_su_cerebro(escritorio):
-    m = Mascota()
-    ctl = montar(escritorio, mascota=m)
+    m = Asistente()
+    ctl = montar(escritorio, asistente=m)
     ctl.iniciar()
     conectado(ctl)
     m.dichas.clear()
@@ -325,8 +325,8 @@ def test_en_juego_lo_dice_el_bot_y_pausa_su_cerebro(escritorio):
 def test_sin_bot_en_juego_al_salir_sale_el_resumen(escritorio, qapp, monkeypatch):
     import ui.minecraft_qt as mq
     monkeypatch.setattr(mq, "RETRASO_RESUMEN_MS", 0)
-    m = Mascota()
-    ctl = montar(escritorio, mascota=m)
+    m = Asistente()
+    ctl = montar(escritorio, asistente=m)
     capt = señales(ctl)
     ctl.iniciar()
     escritorio.estado.actualizar(juego=True)
@@ -541,8 +541,8 @@ def test_estado_forma(escritorio, qapp):
 
 
 def test_con_reacciones_apagadas_solo_el_estado_del_bot(escritorio):
-    m = Mascota()
-    ctl = montar(escritorio, config=Config(reaccionar=False), mascota=m, lector=None)
+    m = Asistente()
+    ctl = montar(escritorio, config=Config(reaccionar=False), asistente=m, lector=None)
     ctl.iniciar()
     ctl._recibir(MUERTE)
     ctl._recibir(Evento("peligro", "Diego_01", "zombie", fuente="bot"))
@@ -702,8 +702,8 @@ def test_log_soltado_por_inactividad_sigue_donde_se_quedo(escritorio, tmp_path):
         lec = LectorLog(ruta, ahora=lambda: t[0])
         creados.append(lec)
         return lec
-    m = Mascota()
-    ctl = montar(escritorio, config=Config(auto_con_juego=False), lector=fabrica, rutas=lambda: [log], mascota=m)
+    m = Asistente()
+    ctl = montar(escritorio, config=Config(auto_con_juego=False), lector=fabrica, rutas=lambda: [log], asistente=m)
     ctl.iniciar()
     assert len(creados) == 1
     t[0] += 700                                          # 11 min sin cambios → se suelta

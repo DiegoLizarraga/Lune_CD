@@ -1,6 +1,6 @@
 """
 Tests de nucleo/baile: opciones para las páginas, duración, cuadros de la
-terminal y los handlers de las herramientas `mascota_bailar` y `parar_baile`
+terminal y los handlers de las herramientas `asistente_bailar` y `parar_baile`
 (con un controlador falso y un `en_ui` que apunta en qué hilo se llamó).
 """
 import random

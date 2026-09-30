@@ -2,7 +2,7 @@
 lune_core/hub.py — El bus de eventos del host.
 
 Un servidor WebSocket al que se conectan los terminales (la app de escritorio,
-la mascota, el bot de Telegram, un navegador) como *peers*. El hub no piensa:
+la asistente en escritorio, el bot de Telegram, un navegador) como *peers*. El hub no piensa:
 reparte eventos y mantiene la lista de quién está vivo. Los servicios del
 núcleo (memoria, agente, voz) se registran como manejadores internos.
 

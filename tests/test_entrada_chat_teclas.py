@@ -1,9 +1,9 @@
 """
-Tests de ui/entrada_chat.py: la cajita para escribirle a Lune desde la mascota.
+Tests de ui/entrada_chat.py: la cajita para escribirle a Lune desde la asistente.
 
 Sin red ni pantalla (QT_QPA_PLATFORM=offscreen). Lo principal es la función pura
 `manejar_tecla` (Enter envía, Shift+Enter salta de línea, Esc cierra) y la
-colocación junto a la mascota (`posicion_junto_a`). Con la ventana de verdad se
+colocación junto a la asistente (`posicion_junto_a`). Con la ventana de verdad se
 comprueban las banderas (acepta foco: sin WindowDoesNotAcceptFocus), el ancho
 mínimo de 280 px, que las teclas lleguen a la caja por el filtro de eventos y el
 precalentado de Ollama con un POST falso (nada sale a la red).
@@ -63,7 +63,7 @@ def test_manejar_tecla_acepta_enteros_y_texto_none():
 PANTALLA = (0, 0, 1920, 1040)
 
 
-def test_debajo_de_la_mascota_y_centrada():
+def test_debajo_de_la_asistente_y_centrada():
     x, y = ec.posicion_junto_a((800, 300, 300, 400), (320, 60), PANTALLA)
     assert (x, y) == (800 + (300 - 320) // 2, 300 + 400 + ec.MARGEN)
 
@@ -74,7 +74,7 @@ def test_encima_si_no_cabe_debajo():
 
 
 def test_siempre_dentro_de_la_pantalla():
-    # Mascota pegada a la esquina superior izquierda y más alta que la pantalla.
+    # Asistente pegada a la esquina superior izquierda y más alta que la pantalla.
     x, y = ec.posicion_junto_a((-50, -30, 100, 2000), (320, 60), PANTALLA)
     assert 0 <= x <= 1920 - 320 and 0 <= y <= 1040 - 60
     # Pantalla secundaria a la izquierda (coordenadas negativas).
@@ -140,7 +140,7 @@ def test_banderas_acepta_foco_y_ancho_minimo(caja):
 
 def test_mostrar_junto_a_ancla_ancho_y_activa(caja):
     from ui.entrada_chat import pantalla_disponible
-    ancla = QRect(200, 100, 150, 200)                 # mascota estrecha
+    ancla = QRect(200, 100, 150, 200)                 # asistente estrecha
     caja.mostrar_junto_a(ancla)
     assert caja.isVisible()
     assert caja.width() >= 280
@@ -148,7 +148,7 @@ def test_mostrar_junto_a_ancla_ancho_y_activa(caja):
     pant = pantalla_disponible(ancla)
     esperado = ec.posicion_junto_a(ancla, (caja.width(), caja.sizeHint().height()), pant)
     assert (caja.x(), caja.y()) == esperado
-    # Una mascota muy ancha no la estira más allá de ANCHO_MAX.
+    # Una asistente muy ancha no la estira más allá de ANCHO_MAX.
     caja.mostrar_junto_a((0, 0, 2000, 300))
     assert caja.width() == ec.ANCHO_MAX
     # Con texto inicial (p. ej. desde un atajo).

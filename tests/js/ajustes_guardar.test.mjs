@@ -1,6 +1,6 @@
 // tests/js/ajustes_guardar.test.mjs — «Guardar configuración» de la piel web (settings.jsx) manda
 // SOLO lo que cambiaste en Ajustes (revisión 4-5-6, VS3): lo cambiado fuera con Ajustes abierto
-// (tamaño/encuadre de la mascota desde el radial o la bandeja, «Arrancar con Windows» desde la
+// (tamaño/encuadre de la asistente desde el radial o la bandeja, «Arrancar con Windows» desde la
 // bandeja…) no se revierte con la foto que dio get_config al abrir. Igual al cambiar de modo.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -14,9 +14,9 @@ const ICONOS = ['IconCloud', 'IconCpu', 'IconTelegram', 'IconBrain', 'IconMic', 
 const FOTO = {
   openrouter_key: '••••', openrouter_model: 'openrouter/auto', ollama_url: 'http://localhost:11434', ollama_model: 'm',
   telegram_token: '', telegram_admin_id: '', telegram_ordenes_pc: false, nombre: 'Lune', system_prompt: 'x',
-  voz: false, memoria: true, acciones_ia: true, mascota_render: 'vrm', interfaz_modo: 'web',
+  voz: false, memoria: true, acciones_ia: true, asistente_render: 'vrm', interfaz_modo: 'web',
   vrm_webengine: true, vrm_modelos: ['a.vrm'], vrm_archivo: '', vrm_tamano: 'normal', vrm_encuadre: 'retrato',
-  vrm_fantasma_auto: true, seguir_cursor: true, dormir_min: 10, mascota_fuera: true, autoinicio: false,
+  vrm_fantasma_auto: true, seguir_cursor: true, dormir_min: 10, asistente_fuera: true, autoinicio: false,
   aburrimiento_min: 10, dispositivo_entrada: '', dispositivo_salida: '', modelo_whisper: 'base', voz_idioma: 'es',
 };
 
@@ -47,7 +47,7 @@ test('cambiosAjustes: solo las claves que cambiaron, sin las de solo lectura', (
   const f = S.sb.cambiosAjustes;
   assert.deepEqual(plano(f({ a: 1, b: [1, 2], voz: true }, { a: 1, b: [1, 2], voz: false })), {});
   assert.deepEqual(plano(f({ a: 1, b: 'x' }, { a: 2, b: 'x', c: null })), { a: 2, c: null });
-  assert.deepEqual(plano(f(null, { a: 1, mascota_fuera: true })), { a: 1 });   // sin foto: todo (menos lo de solo lectura)
+  assert.deepEqual(plano(f(null, { a: 1, asistente_fuera: true })), { a: 1 });   // sin foto: todo (menos lo de solo lectura)
   assert.deepEqual(plano(f({ m: 'web' }, { m: 'nativo' }, ['m'])), {});
 });
 

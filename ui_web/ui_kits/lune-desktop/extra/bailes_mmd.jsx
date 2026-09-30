@@ -4,7 +4,7 @@
  *               parar / siguiente / repetir / aleatorio, en el sitio y volumen), la biblioteca (buscador, favoritos,
  *               «al azar», bailar, ajustes por baile: sincronía ±500 ms, ángulo de los brazos 25–45° y en el sitio;
  *               quitar con confirmación: se mueve a bailes/.quitados), importar (diálogo de archivos de la app),
- *               abrir la carpeta y el aviso «esta mascota no tiene esqueleto: baila a su manera» con la animada o
+ *               abrir la carpeta y el aviso «En 2D mi figura no tiene esqueleto: bailo a mi manera» con la animada o
  *               los sprites.
  * BailesCard    Ajustes: volumen, al terminar, en el sitio, abrir la carpeta y «Abrir mis bailes» (evento de window
  *               'lune-vista' {detail: 'bailes'}).
@@ -87,10 +87,10 @@
   const T_MAX = 7200;
   const MAX_BAILES = 500;
   const MAX_BUSQUEDA = 60;
-  const AVISO_SIN_ESQUELETO = 'Esta mascota no tiene esqueleto: baila a su manera (suena la canción y baila al ritmo).';
+  const AVISO_SIN_ESQUELETO = 'En 2D mi figura no tiene esqueleto: bailo a mi manera (suena la canción y bailo al ritmo).';
   const ESTADO_DEFECTO = { fase: 'parado', id: '', titulo: '', autor: '', autor_mmd: '', t: 0, total: 0, modo: '',
     al_terminar: 'parar', volumen: 0.25, en_el_sitio: true, error: '', analizando: false, pausado: false, cedida: false,
-    pendiente: false, modo_mascota: '', sin_esqueleto: false, importando: false, servicio: false };
+    pendiente: false, modo_asistente: '', sin_esqueleto: false, importando: false, servicio: false };
 
   function normalizarBaile(o) {
     const r = o && typeof o === 'object' ? o : null;
@@ -123,7 +123,7 @@
   }
   function normalizarEstado(o) {
     const r = o && typeof o === 'object' ? o : {};
-    const modoM = MODOS.includes(r.modo_mascota) ? r.modo_mascota : '';
+    const modoM = MODOS.includes(r.modo_asistente) ? r.modo_asistente : '';
     const t = numEn(r.t, 0, T_MAX), total = numEn(r.total, 0, T_MAX), vol = numEn(r.volumen, 0, 1);
     return {
       fase: FASES.includes(r.fase) ? r.fase : 'parado', id: ID_OK.test(String(r.id || '')) ? r.id : '',
@@ -132,7 +132,7 @@
       al_terminar: AL_TERMINAR.some(([k]) => k === r.al_terminar) ? r.al_terminar : 'parar',
       volumen: vol === null ? 0.25 : vol, en_el_sitio: r.en_el_sitio !== false, error: txt(r.error, 300),
       analizando: r.analizando === true, pausado: r.pausado === true, cedida: r.cedida === true,
-      pendiente: r.pendiente === true, modo_mascota: modoM,
+      pendiente: r.pendiente === true, modo_asistente: modoM,
       sin_esqueleto: r.sin_esqueleto === true || modoM === 'animado' || modoM === 'sprites',
       importando: r.importando === true, servicio: r.servicio === true,
     };
@@ -151,7 +151,7 @@
     const titulo = e.titulo ? `«${e.titulo}»` : 'un baile';
     if (!e.servicio) return 'El reproductor necesita la app abierta.';
     if (e.fase === 'error') return e.error ? `No pude bailar: ${e.error}` : 'No pude bailar.';
-    if (e.pendiente) return `Saco a la mascota para bailar ${titulo}…`;
+    if (e.pendiente) return `Salgo al escritorio para bailar ${titulo}…`;
     if (e.fase === 'cargando') return `Preparando ${titulo}…${e.analizando ? ' (escuchando el ritmo)' : ''}`;
     if (e.cedida) return `En pausa mientras dura el juego, la alarma o la pantalla grande: ${titulo}.`;
     if (e.fase === 'pausado' || e.pausado) return `En pausa: ${titulo}.`;
@@ -172,7 +172,7 @@
     let actual = null, pausado = false;
     const estado = () => {
       const b = lista.find((x) => x.id === actual);
-      return { ...ESTADO_DEFECTO, ...cfg, servicio: true, modo_mascota: 'vrm', fase: b ? (pausado ? 'pausado' : 'sonando') : 'parado',
+      return { ...ESTADO_DEFECTO, ...cfg, servicio: true, modo_asistente: 'vrm', fase: b ? (pausado ? 'pausado' : 'sonando') : 'parado',
         id: b ? b.id : '', titulo: b ? b.titulo : '', autor: b ? (b.autor_cancion || '') : '', total: b ? b.duracion : 0,
         pausado: !!b && pausado };
     };
@@ -575,8 +575,9 @@
     return (
       <Card id="aj-bailes" eyebrow={<><IconoBaile width={13} height={13}/> Baile · MMD y VRMA</>} title="Mis bailes" tone="cyan" tick={puesto(e)}>
         <p className="ln-bl-nota">
-          Lune baila tus .vmd (MikuMikuDance) y .vrma con su canción. Pausar o parar la deja en reposo con los brazos abajo;
-          al reanudar sigue desde el mismo punto. Con la mascota animada o la ligera, suena la canción y baila a su manera.
+          Bailo tus .vmd (MikuMikuDance) y .vrma con su canción. Si me pausas o me paras, me quedo en reposo con los brazos
+          abajo; al reanudar sigo desde el mismo punto. Con las imágenes animadas o los sprites no hay esqueleto: suena la
+          canción y bailo a mi manera.
         </p>
         <ControlesConfig e={e} cfg={cfg} />
         <div className="ln-bl-botones">

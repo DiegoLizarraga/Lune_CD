@@ -1,5 +1,5 @@
 """
-Páginas de la mascota en los cortes 5 y 6 (companion.html y companion_vrm.html):
+Páginas de la asistente en los cortes 5 y 6 (companion.html y companion_vrm.html):
 
 - enlazan grande.css, alarma.css y baile.css tras burbuja.css, y cargan lune_ritmo.js,
   lune_alarma.js y lune_pantalla.js después de tema.js y antes de su código;

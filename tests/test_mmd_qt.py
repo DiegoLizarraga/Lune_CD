@@ -1,15 +1,15 @@
 """
 Tests de ui/mmd_qt.ControlMMD (offscreen): el reproductor de bailes con el
 ServiciosEscritorio de verdad, la Biblioteca de verdad en una carpeta temporal
-(ffmpeg falso) y mascotas y canción falsas.
+(ffmpeg falso) y asistentes y canción falsas.
 
 - VRM → prioridad «mmd» + payload `cargar` exacto; eventos cargando/listo/sonando/t;
 - animada (D1) → `tipo:"audio"` con el bpm y la fase analizados;
 - sprites (D1) → canción por el Mezclador (falsa) + bailar/pulso a 2 Hz;
-- sin mascota → despachador.ejecutar("mascota") y arranca al llegar;
+- sin asistente → despachador.ejecutar("asistente") y arranca al llegar;
 - `al_terminar` × 4; ceder (juego) → pausa y reanudar → sigue; parar → reanuda la
-  sentada; error → aviso; mascota None → para; detener idempotente;
-- herramientas: listar_bailes, mascota_bailar{cancion} → MMD o respaldo, parar_baile.
+  sentada; error → aviso; asistente None → para; detener idempotente;
+- herramientas: listar_bailes, asistente_bailar{cancion} → MMD o respaldo, parar_baile.
 """
 import json
 import sys
@@ -24,7 +24,7 @@ import bailes_falsos as bf  # noqa: E402
 from nucleo import bailes as nbl  # noqa: E402
 
 
-class MascotaFalsa:
+class AsistenteFalsa:
     def __init__(self, render="vrm", con_mmd=True):
         self.render = render
         self.ordenes, self.bailes, self.pulsos = [], [], []
@@ -95,7 +95,7 @@ class DespachadorFalso:
         self.al_ejecutar = al_ejecutar
 
     def tiene(self, id_):
-        return id_ == "mascota"
+        return id_ == "asistente"
 
     def ejecutar(self, id_, arg="", **kw):
         self.ejecutados.append(id_)
@@ -123,7 +123,7 @@ class Anfitrion:
     def aviso(self, texto):
         self.avisos.append(texto)
 
-    def alternar_mascota(self):
+    def alternar_asistente(self):
         self.alternadas += 1
         return True
 
@@ -167,9 +167,9 @@ def bus(x):
     return x.esc.estado.actual()
 
 
-def con_mascota(x, render="vrm", con_mmd=True):
-    mas = MascotaFalsa(render, con_mmd)
-    x.esc.set_mascota(mas)
+def con_asistente(x, render="vrm", con_mmd=True):
+    mas = AsistenteFalsa(render, con_mmd)
+    x.esc.set_asistente(mas)
     return mas
 
 
@@ -180,7 +180,7 @@ def ev(x, fase, id_=None, **kw):
 # ── VRM ──────────────────────────────────────────────────────────────────────────
 
 def test_vrm_prioridad_y_payload_exacto(m):
-    mas = con_mascota(m)
+    mas = con_asistente(m)
     ok, texto = m.ctl.reproducir(m.ids["Alfa"])
     assert ok and texto == "¡A bailar «Alfa»!"
     assert bus(m).bailando == "mmd" and mas.despertares == 1
@@ -206,7 +206,7 @@ def test_vrm_prioridad_y_payload_exacto(m):
 
 
 def test_vrma_y_meta_del_baile_en_el_payload(m):
-    mas = con_mascota(m)
+    mas = con_asistente(m)
     m.bib.guardar_meta(m.ids["Beta"], {"offset_ms": -120, "brazo_a_grados": 41, "en_el_sitio": False})
     m.cfg.set("baile", "al_terminar", "repetir")
     m.ctl.reproducir(m.ids["Beta"])
@@ -218,7 +218,7 @@ def test_vrma_y_meta_del_baile_en_el_payload(m):
 
 @pytest.mark.parametrize("modo", ["parar", "siguiente", "repetir", "aleatorio"])
 def test_fin_segun_al_terminar(m, modo):
-    mas = con_mascota(m)
+    mas = con_asistente(m)
     m.ctl.set_al_terminar(modo)
     m.ctl.reproducir(m.ids["Alfa"])
     ev(m, "sonando")
@@ -238,7 +238,7 @@ def test_fin_segun_al_terminar(m, modo):
 
 
 def test_evento_parado_y_error_de_la_pagina(m):
-    mas = con_mascota(m)
+    mas = con_asistente(m)
     m.ctl.reproducir(m.ids["Alfa"])
     ev(m, "parado")                                         # la página salió sola al reposo
     assert not m.ctl.activo and bus(m).bailando == "" and ("parar", None) not in mas.ordenes
@@ -254,8 +254,8 @@ def test_evento_parado_y_error_de_la_pagina(m):
     assert not m.ctl.activo and len(m.anf.avisos) == n and m.ctl.estado()["fase"] == "parado"
 
 
-def test_vigia_sin_respuesta_y_mascota_que_no_acepta(m):
-    mas = con_mascota(m)
+def test_vigia_sin_respuesta_y_asistente_que_no_acepta(m):
+    mas = con_asistente(m)
     m.ctl.reproducir(m.ids["Alfa"])
     m.ctl._vigia_vencido()
     assert not m.ctl.activo and "no respondió" in m.anf.avisos[-1] and bus(m).bailando == ""
@@ -264,10 +264,10 @@ def test_vigia_sin_respuesta_y_mascota_que_no_acepta(m):
     assert not ok and "no aceptó" in texto and bus(m).bailando == ""
 
 
-# ── Mascotas sin esqueleto (D1) ─────────────────────────────────────────────────
+# ── Asistentes sin esqueleto (D1) ─────────────────────────────────────────────────
 
 def test_animada_tipo_audio_con_bpm_y_fase(m):
-    mas = con_mascota(m, "animado")
+    mas = con_asistente(m, "animado")
     ok, texto = m.ctl.reproducir(m.ids["Alfa"])
     assert ok and "no tiene esqueleto" in texto
     p = mas.cargas()[-1]
@@ -285,14 +285,14 @@ def test_animada_con_m4a_se_convierte_antes(m):
     bf.escribir(m.dir / "Delta" / "baile.vmd", bf.vmd())
     bf.escribir(m.dir / "Delta" / "tema.m4a", bf.M4A)
     id_ = [b.id for b in m.bib.escanear() if b.titulo == "Delta"][0]
-    mas = con_mascota(m, "animado")
+    mas = con_asistente(m, "animado")
     assert m.ctl.reproducir(id_)[0]
     assert mas.cargas()[-1]["audio"] == f"/bailes_cache/{id_}.ogg" and m.ej.de_tipo("libopus")
 
 
 def test_sprites_cancion_por_el_mezclador_y_pulso_a_2_hz(m):
     import pytest as _p
-    mas = con_mascota(m, "sprites", con_mmd=False)
+    mas = con_asistente(m, "sprites", con_mmd=False)
     ok, texto = m.ctl.reproducir(m.ids["Alfa"])
     assert ok and "no tiene esqueleto" in texto and bus(m).bailando == "mmd"
     assert m.cancion.cargadas == [m.dir / "Alfa" / "cancion.mp3"] and m.cancion.reproducciones == [0.25]
@@ -315,7 +315,7 @@ def test_sprites_cancion_por_el_mezclador_y_pulso_a_2_hz(m):
 
 
 def test_sprites_repetir_y_siguiente_solo_con_cancion(m):
-    mas = con_mascota(m, "sprites", con_mmd=False)
+    mas = con_asistente(m, "sprites", con_mmd=False)
     m.ctl.set_al_terminar("repetir")
     m.ctl.reproducir(m.ids["Alfa"])
     m.cancion.terminado = True
@@ -329,37 +329,38 @@ def test_sprites_repetir_y_siguiente_solo_con_cancion(m):
 
 
 def test_sprites_error_al_cargar_la_cancion(m):
-    con_mascota(m, "sprites", con_mmd=False)
+    con_asistente(m, "sprites", con_mmd=False)
     m.cancion.ok = (False, "ffmpeg no pudo leer cancion.mp3")
     ok, texto = m.ctl.reproducir(m.ids["Alfa"])
     assert not ok and "ffmpeg" in texto and "ffmpeg" in m.anf.avisos[-1] and bus(m).bailando == ""
 
 
-# ── Sin mascota ──────────────────────────────────────────────────────────────────
+# ── Sin asistente ──────────────────────────────────────────────────────────────────
 
-def test_sin_mascota_la_saca_y_arranca_al_llegar(m):
+def test_sin_asistente_la_saca_y_arranca_al_llegar(m):
     desp = DespachadorFalso()
     m.esc.registrar("despachador", desp)
     ok, _ = m.ctl.reproducir(m.ids["Alfa"])
-    assert ok and desp.ejecutados == ["mascota"] and m.ctl.estado()["pendiente"]
-    assert bus(m).bailando == "mmd" and m.ctl._t_mascota.isActive()
-    mas = con_mascota(m)
+    assert ok and desp.ejecutados == ["asistente"] and m.ctl.estado()["pendiente"]
+    assert bus(m).bailando == "mmd" and m.ctl._t_asistente.isActive()
+    mas = con_asistente(m)
     assert mas.cargas() and mas.cargas()[0]["id"] == m.ids["Alfa"] and mas.despertares == 1
-    assert not m.ctl.estado()["pendiente"] and not m.ctl._t_mascota.isActive()
+    assert not m.ctl.estado()["pendiente"] and not m.ctl._t_asistente.isActive()
 
 
-def test_sin_mascota_sale_en_el_acto_o_no_llega(m):
-    nueva = MascotaFalsa("vrm")
-    desp = DespachadorFalso(al_ejecutar=lambda: m.esc.set_mascota(nueva))
+def test_sin_asistente_sale_en_el_acto_o_no_llega(m):
+    nueva = AsistenteFalsa("vrm")
+    desp = DespachadorFalso(al_ejecutar=lambda: m.esc.set_asistente(nueva))
     m.esc.registrar("despachador", desp)
     assert m.ctl.reproducir(m.ids["Beta"])[0]
-    assert nueva.cargas()[0]["id"] == m.ids["Beta"] and not m.ctl._t_mascota.isActive()
-    m.esc.set_mascota(None)                                  # se cierra la mascota: para
+    assert nueva.cargas()[0]["id"] == m.ids["Beta"] and not m.ctl._t_asistente.isActive()
+    m.esc.set_asistente(None)                                  # se cierra la asistente: para
     assert not m.ctl.activo and bus(m).bailando == ""
     desp.al_ejecutar = None
     m.ctl.reproducir(m.ids["Beta"])
-    m.ctl._mascota_no_llego()
-    assert not m.ctl.activo and "mascota" in m.anf.avisos[-1] and bus(m).bailando == ""
+    m.ctl._asistente_no_llego()
+    assert not m.ctl.activo and m.anf.avisos[-1] == "No pude salir al escritorio para bailar."
+    assert bus(m).bailando == ""
 
 
 def test_sin_despachador_usa_el_anfitrion(m):
@@ -370,7 +371,7 @@ def test_sin_despachador_usa_el_anfitrion(m):
 # ── Tabla de prioridades ─────────────────────────────────────────────────────────
 
 def test_juego_pausa_y_al_salir_sigue(m):
-    mas = con_mascota(m)
+    mas = con_asistente(m)
     m.ctl.reproducir(m.ids["Alfa"])
     ev(m, "sonando")
     assert m.esc.prioridad.iniciar("juego")
@@ -385,7 +386,7 @@ def test_juego_pausa_y_al_salir_sigue(m):
 
 
 def test_pausa_de_la_persona_sobrevive_a_la_alarma(m):
-    mas = con_mascota(m)
+    mas = con_asistente(m)
     m.ctl.reproducir(m.ids["Alfa"])
     ev(m, "sonando")
     assert m.ctl.pausa() is True and mas.ordenes[-1] == ("pausa", {"on": True})
@@ -399,7 +400,7 @@ def test_pausa_de_la_persona_sobrevive_a_la_alarma(m):
 def test_parar_reanuda_la_sentada(m):
     a = AsientoFalso()
     m.esc.registrar("asiento", a, ("sentada",))
-    con_mascota(m)
+    con_asistente(m)
     assert m.esc.prioridad.iniciar("sentada", "barra")
     m.ctl.reproducir(m.ids["Alfa"])
     assert a.cedidas == ["mmd"] and bus(m).sentada == ""
@@ -409,7 +410,7 @@ def test_parar_reanuda_la_sentada(m):
 
 
 def test_parar_durante_el_juego_no_vuelve_al_acabar(m):
-    mas = con_mascota(m)
+    mas = con_asistente(m)
     m.ctl.reproducir(m.ids["Alfa"])
     m.esc.prioridad.iniciar("juego")
     m.ctl.parar()
@@ -419,17 +420,17 @@ def test_parar_durante_el_juego_no_vuelve_al_acabar(m):
 
 
 def test_no_empieza_con_alarma(m):
-    mas = con_mascota(m)
+    mas = con_asistente(m)
     m.esc.prioridad.iniciar("alarma")
     ok, texto = m.ctl.reproducir(m.ids["Alfa"])
     assert (ok, texto) == (False, "Ahora no puedo bailar: hay una alarma sonando.")
     assert mas.cargas() == [] and m.ctl.ultimo_motivo == "alarma"
 
 
-def test_detener_idempotente_y_cambio_de_mascota(m):
-    mas = con_mascota(m)
+def test_detener_idempotente_y_cambio_de_asistente(m):
+    mas = con_asistente(m)
     m.ctl.reproducir(m.ids["Alfa"])
-    otra = con_mascota(m)                                    # otra mascota: el baile acaba
+    otra = con_asistente(m)                                    # otra asistente: el baile acaba
     assert not m.ctl.activo and bus(m).bailando == "" and otra.cargas() == []
     m.ctl.reproducir(m.ids["Alfa"])
     m.ctl.detener()
@@ -440,7 +441,7 @@ def test_detener_idempotente_y_cambio_de_mascota(m):
 # ── Órdenes y ajustes ────────────────────────────────────────────────────────────
 
 def test_volumen_al_terminar_y_en_el_sitio(m):
-    mas = con_mascota(m)
+    mas = con_asistente(m)
     m.ctl.reproducir(m.ids["Alfa"])
     m.ctl.volumen(0.6)
     assert m.cfg.get("baile", "volumen") == 0.6 and mas.ordenes[-1] == ("volumen", {"volumen": 0.6})
@@ -458,7 +459,7 @@ def test_volumen_al_terminar_y_en_el_sitio(m):
 
 
 def test_siguiente_anterior_y_reproducir_sin_id(m):
-    mas = con_mascota(m)
+    mas = con_asistente(m)
     assert m.ctl.reproducir()[0] and mas.cargas()[-1]["id"] == m.ids["Alfa"]     # el primero
     m.ctl.siguiente()
     assert mas.cargas()[-1]["id"] == m.ids["Beta"]
@@ -470,7 +471,7 @@ def test_siguiente_anterior_y_reproducir_sin_id(m):
 
 
 def test_reproducir_por_texto_favoritos_y_no_encontrado(m):
-    mas = con_mascota(m)
+    mas = con_asistente(m)
     bf.hacer_baile(m.dir, "Alfa remix")
     idr = [b.id for b in m.bib.escanear() if b.titulo == "Alfa remix"][0]
     m.bib.favorito(idr, True)
@@ -498,7 +499,7 @@ def test_biblioteca_importar_quitar_y_vista(m, tmp_path):
     assert m.ctl.favorito(r["id"], True) and m.ctl.bibl[-1][0]["titulo"] == "Nuevo"
     assert m.ctl.favorito("malo", True) is False
     assert m.ctl.desactivar(r["id"], True) and m.ctl.bibl[-1][0]["desactivado"]
-    mas = con_mascota(m)
+    mas = con_asistente(m)
     m.ctl.reproducir(r["id"])
     ok, _ = m.ctl.quitar(r["id"])
     assert ok and not m.ctl.activo and mas.ordenes[-1] == ("parar", None)
@@ -514,7 +515,7 @@ def test_biblioteca_importar_quitar_y_vista(m, tmp_path):
 
 
 def test_estado_json_estable(m):
-    con_mascota(m)
+    con_asistente(m)
     m.ctl.reproducir(m.ids["Alfa"])
     e = m.ctl.estados[-1]
     assert set(e) >= {"fase", "id", "titulo", "autor", "t", "total", "modo", "al_terminar", "volumen",
@@ -569,26 +570,26 @@ def test_listar_bailes(m):
     assert h["listar_bailes"]({"texto": "beta"}, {"origen": "usuario"}) == "Tus bailes con «beta» (1): «Beta»."
 
 
-def test_mascota_bailar_con_cancion_usa_el_mmd_o_el_respaldo(con_baile):
+def test_asistente_bailar_con_cancion_usa_el_mmd_o_el_respaldo(con_baile):
     m = con_baile
-    mas = con_mascota(m)
+    mas = con_asistente(m)
     h = m.baile.herramientas()
-    assert h["mascota_bailar"]({"cancion": "beta"}, {}) == "¡A bailar «Beta»!"
+    assert h["asistente_bailar"]({"cancion": "beta"}, {}) == "¡A bailar «Beta»!"
     assert bus(m).bailando == "mmd" and mas.cargas()[-1]["id"] == m.ids["Beta"]
     assert h["parar_baile"]({}, None) == "Vale, dejo de bailar."
     assert not m.ctl.activo and bus(m).bailando == "" and mas.ordenes[-1] == ("parar", None)
-    r = h["mascota_bailar"]({"cancion": "no existe", "segundos": 10}, {})
+    r = h["asistente_bailar"]({"cancion": "no existe", "segundos": 10}, {})
     assert r == "¡A bailar! 10 s. No encontré «no existe» en tus bailes: bailo a mi manera."
     assert m.baile.bailando and bus(m).bailando == "manual" and not m.ctl.activo
     m.baile.parar()
     m.esc.prioridad.iniciar("alarma")
-    r = h["mascota_bailar"]({"cancion": "alfa"}, {})
+    r = h["asistente_bailar"]({"cancion": "alfa"}, {})
     assert r == (False, "Ahora no puedo bailar: hay una alarma sonando.")
 
 
 def test_mmd_le_quita_el_sitio_al_baile_automatico_y_vuelve(con_baile):
     m = con_baile
-    mas = con_mascota(m)
+    mas = con_asistente(m)
     m.det.on_cambio(True, "Spotify")                         # suena música: baila sola
     assert m.baile.bailando and bus(m).bailando == "musica"
     m.ctl.reproducir(m.ids["Alfa"])
@@ -601,12 +602,12 @@ def test_mmd_le_quita_el_sitio_al_baile_automatico_y_vuelve(con_baile):
     assert not m.baile.bailando and not m.ctl.activo and bus(m).bailando == ""   # y no vuelve sola
 
 
-# ── Mascota escondida (revisión 7-10, BM2) y sprites que se esconden (BM8/RR6) ─────
+# ── Asistente escondida (revisión 7-10, BM2) y sprites que se esconden (BM8/RR6) ─────
 
 from PyQt6.QtCore import QObject, pyqtSignal  # noqa: E402
 
 
-class MascotaQueCalla(QObject):
+class AsistenteQueCalla(QObject):
     """Como ui/companion.py: ESCONDIDA no lee su cola de eventos (la página sigue, pero a
     Python no llega nada hasta que se la ve). Visible, contesta al «cargar» en el acto."""
     visibilidad = pyqtSignal(bool)
@@ -654,15 +655,15 @@ class MascotaQueCalla(QObject):
 
 
 class AnfitrionQueSaca(Anfitrion):
-    """alternar_mascota como el de verdad: si está escondida, la enseña (si puede)."""
-    def __init__(self, mascota=None):
+    """alternar_asistente como el de verdad: si está escondida, la enseña (si puede)."""
+    def __init__(self, asistente=None):
         super().__init__()
-        self.mascota = mascota
+        self.asistente = asistente
 
-    def alternar_mascota(self):
+    def alternar_asistente(self):
         self.alternadas += 1
-        if self.mascota is not None:
-            (self.mascota.hide if self.mascota.isVisible() else self.mascota.show)()
+        if self.asistente is not None:
+            (self.asistente.hide if self.asistente.isVisible() else self.asistente.show)()
         return True
 
 
@@ -678,12 +679,12 @@ def esperar(ms):
     QTest.qWait(ms)
 
 
-def test_mascota_escondida_se_saca_para_bailar_y_no_falla(m, vigia_corto):
-    mas = MascotaQueCalla(m.esc)
-    m.esc.set_mascota(mas)
+def test_asistente_escondida_se_saca_para_bailar_y_no_falla(m, vigia_corto):
+    mas = AsistenteQueCalla(m.esc)
+    m.esc.set_asistente(mas)
     m.ctl.anfitrion = AnfitrionQueSaca(mas)
     ok, _ = m.ctl.reproducir(m.ids["Alfa"])
-    assert ok and m.ctl.anfitrion.alternadas == 1 and mas.isVisible(), "se saca como la acción «mascota»"
+    assert ok and m.ctl.anfitrion.alternadas == 1 and mas.isVisible(), "se saca como la acción «asistente»"
     assert mas.cargas()[0]["id"] == m.ids["Alfa"] and m.ctl.estado()["fase"] == "sonando"
     esperar(200)
     assert m.ctl.activo and not m.ctl.anfitrion.avisos and bus(m).bailando == "mmd"
@@ -692,11 +693,11 @@ def test_mascota_escondida_se_saca_para_bailar_y_no_falla(m, vigia_corto):
 
 
 def test_escondida_que_no_se_puede_sacar_avisa_y_el_vigia_espera_a_verla(m, vigia_corto):
-    mas = MascotaQueCalla(m.esc)
-    m.esc.set_mascota(mas)
+    mas = AsistenteQueCalla(m.esc)
+    m.esc.set_asistente(mas)
     m.ctl.anfitrion = AnfitrionQueSaca(None)          # no sabe sacarla
     ok, _ = m.ctl.reproducir(m.ids["Alfa"])
-    assert ok and m.ctl.anfitrion.avisos == ["La mascota está escondida: bailaré cuando la saques."]
+    assert ok and m.ctl.anfitrion.avisos == ["Estoy escondida: bailaré cuando me saques al escritorio."]
     assert mas.cargas() and not m.ctl._t_vigia.isActive(), "el vigía no cuenta escondida"
     esperar(250)
     assert m.ctl.activo and m.ctl.estado()["fase"] == "cargando" and len(m.ctl.anfitrion.avisos) == 1
@@ -711,9 +712,9 @@ def test_escondida_que_no_se_puede_sacar_avisa_y_el_vigia_espera_a_verla(m, vigi
     assert not m.ctl.activo and "no respondió" in m.ctl.anfitrion.avisos[-1]
 
 
-def test_siguiente_con_la_mascota_escondida_espera_a_que_se_vea(m, vigia_corto):
-    mas = MascotaQueCalla(m.esc, visible=True)
-    m.esc.set_mascota(mas)
+def test_siguiente_con_la_asistente_escondida_espera_a_que_se_vea(m, vigia_corto):
+    mas = AsistenteQueCalla(m.esc, visible=True)
+    m.esc.set_asistente(mas)
     m.ctl.anfitrion = AnfitrionQueSaca(mas)
     m.ctl.reproducir(m.ids["Alfa"])
     mas.hide()
@@ -769,7 +770,7 @@ class SpritesFalsos(QObject):
 
 def test_sprites_escondidos_pausan_la_cancion_y_al_volver_sigue(m, caplog):
     s = SpritesFalsos()
-    m.esc.set_mascota(s)
+    m.esc.set_asistente(s)
     assert m.ctl.reproducir(m.ids["Alfa"])[0] and m.ctl.estado()["fase"] == "sonando"
     assert m.cancion.reproducciones == [0.25] and s.bailes == [True] and m.ctl._t_pulso.isActive()
     s.hide()
@@ -777,7 +778,7 @@ def test_sprites_escondidos_pausan_la_cancion_y_al_volver_sigue(m, caplog):
     assert m.cancion.pausas == [True] and s.bailes[-1] is False and not m.ctl._t_pulso.isActive()
     assert e["fase"] == "pausado" and e["pausado"] and not bus(m).visible
     n = s.pulsos
-    m.ctl._tic_pulso()                                # ni pulsos a la mascota escondida
+    m.ctl._tic_pulso()                                # ni pulsos a la asistente escondida
     assert s.pulsos == n
     s.show()
     assert m.cancion.pausas == [True, False] and s.bailes[-1] is True and m.ctl._t_pulso.isActive()
@@ -788,7 +789,7 @@ def test_sprites_escondidos_pausan_la_cancion_y_al_volver_sigue(m, caplog):
     s.show()
     assert m.ctl.estado()["fase"] == "pausado" and m.cancion.pausas[-1] is True
     m.ctl.pausa(False)
-    # «Cerrar mascota»: en pausa; y cuando se borra, el baile acaba sin tocarla (ni un error)
+    # «Cerrar asistente»: en pausa; y cuando se borra, el baile acaba sin tocarla (ni un error)
     s.close()
     assert m.cancion.pausas[-1] is True and m.ctl.estado()["fase"] == "pausado"
     from PyQt6 import sip
@@ -801,7 +802,7 @@ def test_sprites_escondidos_pausan_la_cancion_y_al_volver_sigue(m, caplog):
 def test_sprites_escondidos_al_empezar_no_suenan_hasta_verla(m):
     s = SpritesFalsos()
     s.vis = False
-    m.esc.set_mascota(s)
+    m.esc.set_asistente(s)
     m.ctl.siguiente()                                 # sin baile puesto: como ▶ … pero no sabe sacarla
     assert m.ctl.activo and m.cancion.cargadas and m.cancion.reproducciones == []
     assert m.ctl.estado()["fase"] == "pausado"
@@ -825,7 +826,7 @@ def test_lista_favorito_meta_y_por_texto_no_esperan_al_escaneo(m, monkeypatch):
     leerse); la lista, buscar, ★, la meta y «pon X» del hilo de Qt usan la foto: ≤ 50 ms."""
     import threading
     import time
-    con_mascota(m)
+    con_asistente(m)
     bf.hacer_baile(m.dir, "Nuevo")
     real = nbl.info_vmd
 
@@ -926,8 +927,8 @@ def test_detener_mata_el_ffmpeg_que_sigue_convirtiendo(m):
 
 
 def test_con_un_juego_delante_no_saca_a_la_escondida(m):
-    mas = MascotaQueCalla(m.esc, visible=True)
-    m.esc.set_mascota(mas)
+    mas = AsistenteQueCalla(m.esc, visible=True)
+    m.esc.set_asistente(mas)
     m.ctl.anfitrion = AnfitrionQueSaca(mas)
     m.ctl.reproducir(m.ids["Alfa"])
     assert m.esc.prioridad.iniciar("juego")

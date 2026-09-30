@@ -30,8 +30,15 @@ del Ejecutor (defensa en profundidad). El formato antiguo `ABRIR_URL:` /
 `ABRIR_BUSQUEDA:` / `TOOL:` ya no se ejecuta en ningún caso.
 
 Modos: "normal" (piel web), "patata" (terminal), "br" (bajos recursos:
-interfaz nativa y sprites), "mascota" (mascota animada o de sprites) y "vrm"
-(mascota 3D). Lo que vale para "mascota" vale también para "vrm".
+interfaz nativa y sprites), "asistente" (asistente en escritorio animada o de
+sprites) y "vrm" (asistente en escritorio 3D). Lo que vale para "asistente" vale
+también para "vrm".
+
+Las herramientas `asistente_*` mueven el cuerpo de Lune en pantalla: en el escritorio
+o, `asistente_bailar`, también en la barra lateral y en el título de la terminal. El
+prefijo NO habla de «asistente» como papel (Lune es la asistente en todo): las que
+solo existen en el escritorio (`es_de_escritorio`) hacen que lune_core/reglas_prompt
+se lo aclare al modelo junto a la lista.
 """
 from __future__ import annotations
 
@@ -47,9 +54,11 @@ from .herramientas import Descriptor, Registro, Riesgo
 
 # ── Modos y orígenes ─────────────────────────────────────────────────────────────
 
-MODOS: Tuple[str, ...] = ("normal", "patata", "br", "mascota", "vrm")
+MODOS: Tuple[str, ...] = ("normal", "patata", "br", "asistente", "vrm")
 TODOS: FrozenSet[str] = frozenset(MODOS)
-_MASCOTA: FrozenSet[str] = frozenset({"mascota", "vrm"})
+_ASISTENTE: FrozenSet[str] = frozenset({"asistente", "vrm"})     # la asistente en escritorio
+# Prefijo de las herramientas del cuerpo de Lune en pantalla (asistente_bailar…).
+PREFIJO_ASISTENTE = "asistente_"
 
 ORIGEN_USUARIO = "usuario"
 ORIGEN_NO_CONFIABLE = "no_confiable"
@@ -126,7 +135,7 @@ class Herramienta:
         modo = str(modo).strip().lower()
         if modo in self.modos:
             return True
-        return modo == "vrm" and "mascota" in self.modos
+        return modo == "vrm" and "asistente" in self.modos
 
 
 def _h(nombre, descripcion, riesgo, aprobacion, coste, modos, args=None, **kw) -> Herramienta:
@@ -189,45 +198,46 @@ _LISTA: List[Herramienta] = [
        handler="nucleo.alarmas.herramienta_listar",
        resumen="Mirar las alarmas"),
 
-    # ── Mascota (P02, P03, P04, P05, P14) ──
+    # ── Asistente en escritorio: el cuerpo de Lune en pantalla (P02, P03, P04, P05, P14) ──
     # Cortes 9/10: con «cancion», una de la biblioteca de bailes (bailes/); en patata también
     # (el título baila al ritmo de la canción: servicios/bailes_terminal).
     # Prueba real: el modelo se inventaba canciones («Dance Monkey»): solo títulos que
     # haya dado listar_bailes o el usuario; si no, sin cancion (el handler avisa si no está).
-    _h("mascota_bailar", "Bailar (cancion: solo un título de listar_bailes o que diga el "
-                         "usuario; si no, omítela)", _E, False, 0,
-       {"normal", "br", "mascota", "patata"},
+    _h("asistente_bailar", "Bailar (cancion: solo un título de listar_bailes o que diga el "
+                           "usuario; si no, omítela)", _E, False, 0,
+       {"normal", "br", "asistente", "patata"},
        {"segundos": Arg("int", min=5, max=300, defecto=30),
         "cancion": Arg("str", maxlen=80, recortar=True)},
        handler="nucleo.baile.herramienta_bailar",
        resumen="Bailar {segundos} s", ejemplo={"segundos": 30}),
-    _h("parar_baile", "Dejar de bailar", _E, False, 0, {"normal", "br", "mascota", "patata"},
+    _h("parar_baile", "Dejar de bailar", _E, False, 0, {"normal", "br", "asistente", "patata"},
        handler="nucleo.baile.herramienta_parar", resumen="Dejar de bailar"),
     # Títulos saneados (son nombres de archivo). Sin controlador lee bailes/ sin tocar nada.
     _h("listar_bailes", "Ver tus bailes (úsala si preguntan cuáles sabes)", _L, False, 0, TODOS,
        {"texto": _TEXTO_CORTO},
        handler="nucleo.bailes.herramienta_listar", resumen="Mirar tus bailes"),
-    _h("mascota_dormir", "Echarte a dormir", _E, False, 0, _MASCOTA,
+    _h("asistente_dormir", "Echarte a dormir", _E, False, 0, _ASISTENTE,
        handler="nucleo.sueno.herramienta_dormir", resumen="Echarse a dormir"),
-    _h("mascota_despertar", "Despertarte", _E, False, 0, _MASCOTA,
+    _h("asistente_despertar", "Despertarte", _E, False, 0, _ASISTENTE,
        handler="nucleo.sueno.herramienta_despertar", resumen="Despertarse"),
-    _h("mascota_pantalla_grande", "Ponerte en pantalla grande o quitarla", _E, False, 0,
-       _MASCOTA,
+    _h("asistente_pantalla_grande", "Ponerte en pantalla grande o quitarla", _E, False, 0,
+       _ASISTENTE,
        {"activar": Arg("bool", requerido=True),
         "minutos": Arg("int", min=1, max=120)},
        handler="nucleo.pantalla_grande.herramienta",
        resumen="Pantalla grande: {activar}", ejemplo={"activar": True, "minutos": 5}),
     # «ventana» solo si avatar.sentarse_ventanas está activo: lo comprueba el handler.
-    # Cortes 7/8: con cualquier mascota a la vista (la 3D se sienta; la animada y los
-    # sprites se apoyan de pie en el borde y lo siguen igual).
-    _h("mascota_sentarse", "Sentarte en la barra de tareas o en una ventana, o bajarte "
-                           "(la animada y la ligera se apoyan en el borde)",
-       _E, False, 0, _MASCOTA,
+    # Cortes 7/8: con la asistente en escritorio a la vista, sea cual sea (la 3D se sienta;
+    # la animada y los sprites se apoyan de pie en el borde y lo siguen igual). La
+    # descripción ya no lo cuenta (11): el modelo no lo necesita para pedirla y el hueco
+    # del prompt es para la nota «asistente_* = tu cuerpo en el escritorio».
+    _h("asistente_sentarse", "Sentarte en la barra de tareas o en una ventana, o bajarte",
+       _E, False, 0, _ASISTENTE,
        {"sitio": Arg("str", requerido=True, enum=("barra", "ventana", "bajar"))},
        handler="nucleo.asiento.herramienta",
        resumen="Sentarse: {sitio}", ejemplo={"sitio": "barra"}),
     # Solo la 3D cambia de tamaño (con sprites o animada no se vería nada).
-    _h("mascota_tamano", "Cambiar tu tamaño", _E, False, 0, {"vrm"},
+    _h("asistente_tamano", "Cambiar tu tamaño", _E, False, 0, {"vrm"},
        {"tamano": Arg("str", requerido=True, enum=("pequeno", "normal", "grande"))},
        handler="nucleo.vrm.herramienta_tamano",
        resumen="Cambiar el tamaño a {tamano}", ejemplo={"tamano": "grande"}),
@@ -246,7 +256,7 @@ _LISTA: List[Herramienta] = [
 
     # ── Pantalla (integración, companion) ──
     # LECTURA, pero con la nube la captura sale del PC → aprobacion_dinamica.
-    _h("comentar_pantalla", "Mirar la pantalla y comentarla", _L, False, 1, _MASCOTA,
+    _h("comentar_pantalla", "Mirar la pantalla y comentarla", _L, False, 1, _ASISTENTE,
        handler="ui.companion (integración)",
        resumen="Hacer una captura de pantalla para comentarla"),
 
@@ -273,6 +283,14 @@ NUEVAS: Tuple[str, ...] = tuple(h.nombre for h in _LISTA if not h.existente)
 def obtener(nombre: str, catalogo: Optional[Mapping[str, Herramienta]] = None
             ) -> Optional[Herramienta]:
     return (catalogo if catalogo is not None else CATALOGO).get(str(nombre or "").strip())
+
+
+def es_de_escritorio(h: Optional[Herramienta]) -> bool:
+    """¿Es una `asistente_*` que solo existe con la asistente en escritorio a la vista
+    (dormir, sentarse, tamaño…)? `asistente_bailar` no: también baila en la barra
+    lateral y en la terminal."""
+    return (h is not None and h.nombre.startswith(PREFIJO_ASISTENTE)
+            and bool(h.modos) and h.modos <= _ASISTENTE)
 
 
 def registrar_extras(registro: Registro) -> Registro:

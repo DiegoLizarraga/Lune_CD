@@ -1,4 +1,4 @@
-// tests/js/anim_baile.test.mjs — módulo 'baileAnim' de la mascota animada
+// tests/js/anim_baile.test.mjs — módulo 'baileAnim' de la asistente animada
 // (ui_web/anim/lune_anim_baile.js, cortes 5 y 6): translateY −6..0 px, giro ±4° alterno,
 // aplastado en el golpe, todo por el registro (el módulo no escribe style.transform),
 // clip happy con una capa de emoción, el arrastre lo corta y dormida no baila.

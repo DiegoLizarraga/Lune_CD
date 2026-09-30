@@ -1,4 +1,4 @@
-// tests/js/modulos.test.mjs — bus de módulos del VRM, registro de la mascota animada
+// tests/js/modulos.test.mjs — bus de módulos del VRM, registro de la asistente animada
 // y utilidades de física (ui_web/vrm/lune_modulos.js, ui_web/anim/lune_anim_modulos.js).
 // Sin DOM ni three: se ejecuta con `node --test tests/js`.
 import { test } from 'node:test';
@@ -300,7 +300,7 @@ test('suav, smoothstep y poses', () => {
   assert.deepEqual(medio, { head: [0.5, 0, 0.5], neck: [0, 1, 0] });
 });
 
-// ── Registro de la mascota animada ─────────────────────────────────────────────
+// ── Registro de la asistente animada ─────────────────────────────────────────────
 
 function registroAnim(extra = {}) {
   const stage = { style: {} };

@@ -15,7 +15,7 @@ reciben sin cambios propios y el cambio de interfaz en caliente lo desmonta solo
 Qué hace, en este orden:
  1. crea `asiento` (ui/asiento_qt.ControlAsiento, con `hwnd_principal` = la ventana
     principal de Lune, que sí puede ser asiento aunque sea del mismo proceso),
-    `comida` (ui/comida_qt.ControlComida, con el anfitrión: sin mascota a la vista
+    `comida` (ui/comida_qt.ControlComida, con el anfitrión: sin asistente a la vista
     reacciona con `anfitrion.reaccion` y en la web la dibuja la página) y `discord`
     (ui/discord_qt.ControlDiscord, con el modo del anfitrión). Se importan en
     diferido: si una pieza falta o falla, las demás siguen (queda None). Todas con
@@ -30,15 +30,15 @@ Qué hace, en este orden:
       guardar_comida  → comida.guardar()
       comida          → comida.alternar(la última o «batido»), marcado = hay comida
       discord         → discord.alternar(), marcado = discord.activo
-    En la web con la ventana oculta y sin la mascota flotante, la comida que aparece
+    En la web con la ventana oculta y sin la asistente flotante, la comida que aparece
     enseña antes la ventana (si no, la página la dibujaría donde nadie la ve).
     «esquina» (de montar_escritorio) se envuelve: con Lune sentada (o cedida: de pie
     por un juego o un baile, pendiente de volver a su sitio), primero
     asiento.bajar("usuario"); si no, ControlAsiento la volvería a clavar en el borde.
     Lo mismo con lo que la coloca por código FUERA del Despachador (el «Llevar a la
-    esquina» del menú propio de la mascota): la mascota emite `antes_de_colocar` y aquí,
-    siguiendo a la actual por `escritorio.mascota_cambio`, se baja antes;
- 4. las herramientas del modelo (`herramientas()`: mascota_sentarse y dar_de_comer)
+    esquina» del menú propio de la asistente): la asistente emite `antes_de_colocar` y aquí,
+    siguiendo a la actual por `escritorio.asistente_cambio`, se baja antes;
+ 4. las herramientas del modelo (`herramientas()`: asistente_sentarse y dar_de_comer)
     con `escritorio.registrar_herramienta`;
  5. `atajos.recargar()`: las acciones nuevas ya tienen handler.
 Al desmontar, en orden inverso: herramientas, acciones y controladores fuera y lo
@@ -60,7 +60,7 @@ from PyQt6.QtCore import QObject
 
 _log = logging.getLogger("lune.montaje_vida")
 
-# Controlador → actividades de nucleo/estado_mascota.PRIORIDAD que hace físicamente.
+# Controlador → actividades de nucleo/estado_asistente.PRIORIDAD que hace físicamente.
 ACTIVIDADES: Dict[str, Tuple[str, ...]] = {
     "asiento": ("sentada",),
     "comida": ("comida",),
@@ -243,7 +243,7 @@ def montar_vida(servicios_c4: Any, config: Any, *, voice: Any = None,
     if desp is not None:
         _registrar_acciones(vida, desp, anfitrion, avisar, d)
     if vida.asiento is not None and escritorio is not None:
-        _bajar_al_colocar_mascota(vida.asiento, escritorio, d)
+        _bajar_al_colocar_asistente(vida.asiento, escritorio, d)
 
     # 4. Herramientas del modelo.
     if escritorio is not None:
@@ -316,7 +316,7 @@ def _registrar_acciones(vida: ServiciosVida, desp: Any, anfitrion: Any,
             la página, así que primero se enseña la ventana."""
             if getattr(c, "activa", None) is not None or str(getattr(anfitrion, "modo", "")) != "normal":
                 return
-            m = _llamar(anfitrion, "mascota")
+            m = _llamar(anfitrion, "asistente")
             if _visible(m):
                 return
             if _llamar(anfitrion, "ventana_visible") is False:
@@ -345,9 +345,9 @@ def _registrar_acciones(vida: ServiciosVida, desp: Any, anfitrion: Any,
     deshacer.append(quitar_acciones)
 
 
-# Acciones del corte 4 que colocan la mascota por código: con Lune sentada, ControlAsiento
+# Acciones del corte 4 que colocan la asistente por código: con Lune sentada, ControlAsiento
 # la volvería a clavar en el borde, así que primero se baja (motivo «usuario»).
-COLOCAN_MASCOTA = ("esquina",)
+COLOCAN_ASISTENTE = ("esquina",)
 
 
 def _hay_que_bajar(asiento: Any) -> bool:
@@ -357,7 +357,7 @@ def _hay_que_bajar(asiento: Any) -> bool:
 
 
 def _bajar_antes_de_colocar(asiento: Any, desp: Any, deshacer: List[Callable[[], None]]) -> None:
-    """Envuelve los handlers de COLOCAN_MASCOTA que ya estén registrados (montar_escritorio
+    """Envuelve los handlers de COLOCAN_ASISTENTE que ya estén registrados (montar_escritorio
     los pone antes): si está sentada, `asiento.bajar("usuario")` y luego el de siempre, con
     los mismos argumentos y el mismo ✔. Al desmontar vuelve el original (si nadie lo cambió)."""
     from nucleo.acciones_ui import Despachador
@@ -365,7 +365,7 @@ def _bajar_antes_de_colocar(asiento: Any, desp: Any, deshacer: List[Callable[[],
     marcados = getattr(desp, "_marcados", None)
     if not isinstance(fns, dict):
         return
-    for id_ in COLOCAN_MASCOTA:
+    for id_ in COLOCAN_ASISTENTE:
         original = fns.get(id_)
         if original is None:
             continue
@@ -395,12 +395,12 @@ def _bajar_antes_de_colocar(asiento: Any, desp: Any, deshacer: List[Callable[[],
         deshacer.append(restaurar)
 
 
-def _bajar_al_colocar_mascota(asiento: Any, escritorio: Any, deshacer: List[Callable[[], None]]) -> None:
-    """La mascota colocada por código sin pasar por el Despachador (su propio menú «Llevar a
+def _bajar_al_colocar_asistente(asiento: Any, escritorio: Any, deshacer: List[Callable[[], None]]) -> None:
+    """La asistente colocada por código sin pasar por el Despachador (su propio menú «Llevar a
     la esquina»): emite `antes_de_colocar` antes de moverse y, si está sentada, aquí se baja
-    (motivo «usuario»). Sigue a la mascota actual por `escritorio.mascota_cambio`; al
+    (motivo «usuario»). Sigue a la asistente actual por `escritorio.asistente_cambio`; al
     desmontar se desconecta todo."""
-    senal_cambio = getattr(escritorio, "mascota_cambio", None)
+    senal_cambio = getattr(escritorio, "asistente_cambio", None)
     if senal_cambio is None or not hasattr(senal_cambio, "connect"):
         return
     actual: Dict[str, Any] = {"m": None}
@@ -428,7 +428,7 @@ def _bajar_al_colocar_mascota(asiento: Any, escritorio: Any, deshacer: List[Call
         senal_cambio.connect(poner)
     except (TypeError, RuntimeError):
         return
-    poner(getattr(escritorio, "mascota", None))
+    poner(getattr(escritorio, "asistente", None))
 
     def soltar() -> None:
         try:
@@ -439,4 +439,4 @@ def _bajar_al_colocar_mascota(asiento: Any, escritorio: Any, deshacer: List[Call
     deshacer.append(soltar)
 
 
-__all__ = ("ServiciosVida", "montar_vida", "ACTIVIDADES", "ORDEN", "COLOCAN_MASCOTA", "hwnd_principal_de")
+__all__ = ("ServiciosVida", "montar_vida", "ACTIVIDADES", "ORDEN", "COLOCAN_ASISTENTE", "hwnd_principal_de")

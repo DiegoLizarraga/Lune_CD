@@ -3,7 +3,7 @@ ui/discord_qt.py — La presencia de Discord en la app (web y nativa).
 
 `ControlDiscord` es un controlador de `ServiciosEscritorio` (ui/escritorio.py):
 lo registra el montaje (`("discord", d)`, sin actividades de la tabla) y recibe
-`iniciar`, `detener` y `set_mascota` como los demás.
+`iniciar`, `detener` y `set_asistente` como los demás.
 
 - Escucha `escritorio.estado_cambio` (hilo de Qt) y guarda una FOTO del estado
   (los campos del BusEstado + el modo del anfitrión + el nombre del modelo si
@@ -71,7 +71,7 @@ class ControlDiscord(QObject):
         self._iniciado = False
         self._conectado_bus = False
         self._vista_emitida: Any = None              # la «vista_previa» del último estado_cambio
-        self._mascota = getattr(escritorio, "mascota", None)
+        self._asistente = getattr(escritorio, "asistente", None)
         self._presencia = presencia if presencia is not None else dp.Presencia(config, self.foto)
         try:
             self._presencia.estado_fn = self.foto
@@ -129,8 +129,8 @@ class ControlDiscord(QObject):
         except Exception:
             _log.exception("discord: cerrar la presencia falló")
 
-    def set_mascota(self, v: Any) -> None:
-        self._mascota = v
+    def set_asistente(self, v: Any) -> None:
+        self._asistente = v
         self._refrescar_foto()
         if self._iniciado and self.activo:
             self._presencia.actualizar()

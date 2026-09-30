@@ -54,7 +54,7 @@ se envía al proveedor), y los `<|CALL|>` de esa respuesta, neutralizados.
 `contexto_contaminado(proveedor)` dice si la ventana enviada en el último turno
 (o el historial actual) lleva algo marcado: el Ejecutor lo consulta al ejecutar
 y, si es así, todo lo que no sea de LECTURA pide permiso a un humano. Un turno
-`efimero` (el comentario de pantalla de la mascota) ni se guarda ni marca nada.
+`efimero` (el comentario de pantalla de la asistente) ni se guarda ni marca nada.
 `clear_history()` quita las marcas con la conversación.
 
 CLAVES
@@ -111,7 +111,7 @@ _CALL_EN_HISTORIAL = re.compile(r"<\|(\s*)(CALL)(?![A-Za-z0-9_])", re.IGNORECASE
 # Recorte del historial por bloques (mensajes; par, para no partir user/assistant).
 BLOQUE_RECORTE = 10
 # Mensajes de la conversación que ve un turno efímero (el comentario de pantalla de la
-# mascota): los últimos, no todos (prueba real: 22 s con el historial entero y otro
+# asistente): los últimos, no todos (prueba real: 22 s con el historial entero y otro
 # system prompt, sin caché).
 VENTANA_EFIMERA = 4
 

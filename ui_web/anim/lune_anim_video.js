@@ -1,8 +1,8 @@
 /*
- * ui_web/anim/lune_anim_video.js — clips de la mascota animada con DOBLE BÚFER.
+ * ui_web/anim/lune_anim_video.js — clips de la asistente animada con DOBLE BÚFER.
  *
  * Para qué sirve: antes, cambiar de emoción en companion.html cambiaba el `src` del
- * único <video> y la mascota daba un salto (pantallazo del primer frame o un negro
+ * único <video> y la asistente daba un salto (pantallazo del primer frame o un negro
  * mientras cargaba). Este módulo del registro (ui_web/anim/lune_anim_modulos.js)
  * usa DOS vídeos apilados (#va y #vb):
  *
@@ -17,8 +17,8 @@
  * una que llega mientras se carga otra reutiliza el vídeo oculto (no se ve nada).
  *
  * Además:
- *   - Rotación de idles: si assets/mascot/anime-videos/idles.json lista dos o más
- *     clips idle, con la mascota en `normal` cambia de uno a otro cada 12–18 s
+ *   - Rotación de idles: si assets/asistente/anime-videos/idles.json lista dos o más
+ *     clips idle, con la asistente en `normal` cambia de uno a otro cada 12–18 s
  *     (Bolsa sin repetir). Sin json, o con uno solo, no hace nada.
  *     Formato: ["composed", "composed-2"] o {"idles": [...]}; cada entrada es un
  *     nombre (→ lune-<nombre>.webm) o un archivo .webm de esa carpeta.
@@ -32,7 +32,7 @@
  * Contrato con la página (lo aplica la integración en companion.html):
  *   <div id="stage"><video id="va" class="lune-vid" muted loop playsinline preload="auto"></video>
  *                   <video id="vb" class="lune-vid" muted loop playsinline preload="auto"></video></div>
- *   + <link rel="stylesheet" href="css/mascota_anim.css">
+ *   + <link rel="stylesheet" href="css/asistente_anim.css">
  *   reg.registrar(instalar);  window.setEmocion = (s) => reg.emocion(s);   (o publicar(window, reg))
  * Si solo existe el <video id="v"> de siempre, se usa como #va y se crea #vb a su lado.
  * Al instalarse pone .lune-doble en el stage (el CSS solo oculta el vídeo inactivo con
@@ -53,9 +53,9 @@ export const NOMBRE = 'video';
 export const ORDEN = 10;
 
 /** Carpeta de los clips, relativa a ui_web/ (la sirve el http local de companion.py). */
-export const CARPETA = 'assets/mascot/anime-videos/';
+export const CARPETA = 'assets/asistente/anime-videos/';
 
-/** Estado de la mascota → clip (lune-<clip>.webm). Lo que no esté cae al idle. */
+/** Estado de la asistente → clip (lune-<clip>.webm). Lo que no esté cae al idle. */
 export const MAPA = Object.freeze({
   normal: 'composed', thinking: 'thinking', happy: 'happy', angry: 'angry', error: 'angry',
   surprised: 'surprised', nervous: 'nervous', wave: 'wave', dismiss: 'dismiss',
@@ -494,7 +494,7 @@ export function instalar(ctx = {}, opciones = {}) {
   // El módulo es el dueño de los dos vídeos: fuera el onerror del script clásico de
   // companion.html (ponía el idle a mano en #v y competía con el respaldo de aquí).
   for (const v of [va, vb]) { if (v) { try { v.onerror = null; } catch (e) { /* elemento falso */ } } }
-  // mascota_anim.css solo oculta los vídeos inactivos con .lune-doble en el stage: sin
+  // asistente_anim.css solo oculta los vídeos inactivos con .lune-doble en el stage: sin
   // esta clase los dos se veían a la vez y no había fundido.
   clase(stage, 'lune-doble', true);
 

@@ -1,5 +1,5 @@
 /*
- * ui_web/anim/lune_anim_fisica.js — arrastre, toque y sueño de la mascota ANIMADA.
+ * ui_web/anim/lune_anim_fisica.js — arrastre, toque y sueño de la asistente ANIMADA.
  *
  * Para qué sirve: en el modo VRM, lune_vrm.js ya reacciona a luneDrag/luneTouch/
  * luneSleep; en el modo animado (clips WebM de companion.html) esas funciones no
@@ -38,7 +38,7 @@
  *
  * El registro es el dueño de style.transform del stage: aquí solo se añaden piezas
  * en `pose(out)` (rotarEn / escalarEn / mover). Las clases CSS (.lune-dormida) están
- * en ui_web/css/mascota_anim.css.
+ * en ui_web/css/asistente_anim.css.
  *
  * En la página: publicar(window, reg) crea window.luneDrag, luneTouch y luneSleep
  * (misma firma que en companion_vrm.html) sobre reg.api('fisica', …).

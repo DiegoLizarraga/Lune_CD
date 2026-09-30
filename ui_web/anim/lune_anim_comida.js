@@ -1,5 +1,5 @@
 /*
- * ui_web/anim/lune_anim_comida.js — módulo 'comidaAnim' de la mascota ANIMADA: la
+ * ui_web/anim/lune_anim_comida.js — módulo 'comidaAnim' de la asistente ANIMADA: la
  * reacción al comer o beber (corte 8).
  *
  * Mismas funciones de página que el VRM (ui_web/vrm/lune_comida.js):

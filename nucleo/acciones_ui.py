@@ -3,10 +3,10 @@ nucleo/acciones_ui.py — Catálogo común de acciones de la interfaz (corte 4).
 
 Qué es
 ------
-Las mismas acciones («sacar a la mascota», «voz», «modo juego», «dormir»…) se
-piden desde cinco sitios: el menú de la bandeja, el menú radial de la mascota,
-los atajos globales, las tarjetas de la web y el /menu de patata. En vez de que
-cada uno sepa qué hacer, todos hablan con un `Despachador`:
+Las mismas acciones («sacar a la asistente al escritorio», «voz», «modo juego»,
+«dormir»…) se piden desde cinco sitios: el menú de la bandeja, el menú radial de
+la asistente en escritorio, los atajos globales, las tarjetas de la web y el /menu
+de patata. En vez de que cada uno sepa qué hacer, todos hablan con un `Despachador`:
 
     desp = Despachador()
     desp.registrar("voz", anfitrion.alternar_voz, marcado=anfitrion.voz_on)
@@ -21,10 +21,10 @@ cada uno sepa qué hacer, todos hablan con un `Despachador`:
   atajos: las funciones de cortes siguientes aparecen solas cuando su
   controlador registra el handler.
 - Visibilidad por estado (reglas de Mate-Engine): sin ajustes ni chat en
-  pantalla grande; «bajar» solo sentada y «sentarse» solo de pie (con la mascota a
-  la vista); «dormir» pasa a «Despertar»; tamaño y encuadre solo con la mascota 3D;
+  pantalla grande; «bajar» solo sentada y «sentarse» solo de pie (con la asistente a
+  la vista); «dormir» pasa a «Despertar»; tamaño y encuadre solo con la asistente 3D;
   «llamada» solo en la piel web; expresiones, bailar y comer (batido, pastel) también
-  con Lune en la barra lateral de la web (`Contexto.mascota_barra`); «guardar la
+  con Lune en la barra lateral de la web (`Contexto.asistente_barra`); «guardar la
   comida» solo con comida en la mano (`comiendo`) y «Comida» pasa a «Guardar la
   comida»; Discord también en patata (/menu); «Pausar el baile» solo bailando (también
   el reproductor MMD, `bailando == "mmd"`) y pasa a «Seguir el baile» si su handler
@@ -34,6 +34,11 @@ cada uno sepa qué hacer, todos hablan con un `Despachador`:
   bandeja (datos puros; los widgets están en ui/menu_radial.py y ui/bandeja.py).
 
 Sin Qt: lo usan también patata y los tests.
+
+Un id de antes de la 11 (el nombre viejo del modo asistente en escritorio) que siga en
+config.json se entiende como el de ahora al leerlo (`validar_lista`, `en_modo`,
+`Despachador.tiene/ejecutar/marcado`, con nucleo/nombres_antiguos.accion): la
+migración de config.json lo cambia una vez, y esto cubre lo que llegue después.
 
 Contexto de la interfaz
 -----------------------
@@ -47,6 +52,8 @@ import inspect
 import logging
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Iterable, List, NamedTuple, Optional, Sequence, Tuple
+
+from nucleo import nombres_antiguos
 
 _log = logging.getLogger("lune.acciones_ui")
 
@@ -85,8 +92,8 @@ class Accion:
 class Contexto(NamedTuple):
     """Lo que la interfaz sabe y el BusEstado no (se rehace al abrir cada menú)."""
     modo: str = "normal"                  # "normal" (web) · "br" (nativa) · "patata"
-    render: str = ""                      # vrm · animado · sprites · "" (sin mascota)
-    mascota_visible: bool = False
+    render: str = ""                      # vrm · animado · sprites · "" (sin asistente)
+    asistente_visible: bool = False
     voz_on: bool = False
     llamada_on: bool = False
     fantasma_on: bool = False
@@ -103,8 +110,8 @@ class Contexto(NamedTuple):
     tamano: str = ""                      # avatar.vrm_tamano actual
     encuadre: str = ""                    # avatar.vrm_encuadre actual
     # Piel web con la flotante guardada: Lune se ve en la barra lateral de la ventana
-    # (el radial SVG se abre sobre ella). Cuenta como mascota para expresiones y baile.
-    mascota_barra: bool = False
+    # (el radial SVG se abre sobre ella). Cuenta como asistente para expresiones y baile.
+    asistente_barra: bool = False
 
 
 @dataclass(frozen=True)
@@ -149,23 +156,24 @@ ACCIONES: Dict[str, Accion] = {a.id: a for a in (
     _a("ajustes", "Ajustes", "gear", "lune"),
     _a("menu_radial", "Menú radial", "radial", "lune", usos={_T}),
     _a("salir", "Salir", "log_out", "lune", MODOS_TODOS, usos={_R, _B}),
-    # ── Mascota ──
-    _a("mascota", "Sacar a la mascota", "user", "mascota", etiqueta_on="Guardar a la mascota"),
-    _a("chat", "Escribirle", "message", "mascota"),
-    _a("comentar", "Comentar la pantalla", "eye", "mascota"),
-    _a("expresiones", "Expresiones", "smile", "mascota", usos={_R}),
-    _a("expresion", "Expresión", "smile", "mascota", usos=()),
-    _a("dormir", "Dormir", "moon", "mascota", etiqueta_on="Despertar", icono_on="sun"),
-    _a("fantasma", "Modo fantasma", "ghost", "mascota", interruptor=True),
-    _a("comentarios_auto", "Comentarios automáticos", "message_dots", "mascota", interruptor=True),
-    _a("siempre_encima", "Siempre encima", "pin", "mascota", interruptor=True, usos={_R, _B}),
-    _a("tamano", "Tamaño", "maximize", "mascota", usos={_R, _B}),
-    _a("encuadre", "Encuadre", "frame", "mascota", usos={_R, _B}),
-    _a("esquina", "Llevar a la esquina", "corner", "mascota"),
-    _a("cerrar_mascota", "Cerrar mascota", "close", "mascota", usos={_R, _B}),
-    _a("sentarse", "Sentarse en la barra", "taskbar", "mascota", usos={_R, _B}),  # corte 7
-    _a("bajar", "Bajar", "arrow_down", "mascota"),                               # corte 7
-    _a("pantalla_grande", "Pantalla grande", "monitor", "mascota",
+    # ── Asistente en escritorio ──
+    _a("asistente", "Sacar a la asistente al escritorio", "user", "asistente",
+       etiqueta_on="Guardar a la asistente"),
+    _a("chat", "Escribirle", "message", "asistente"),
+    _a("comentar", "Comentar la pantalla", "eye", "asistente"),
+    _a("expresiones", "Expresiones", "smile", "asistente", usos={_R}),
+    _a("expresion", "Expresión", "smile", "asistente", usos=()),
+    _a("dormir", "Dormir", "moon", "asistente", etiqueta_on="Despertar", icono_on="sun"),
+    _a("fantasma", "Modo fantasma", "ghost", "asistente", interruptor=True),
+    _a("comentarios_auto", "Comentarios automáticos", "message_dots", "asistente", interruptor=True),
+    _a("siempre_encima", "Siempre encima", "pin", "asistente", interruptor=True, usos={_R, _B}),
+    _a("tamano", "Tamaño", "maximize", "asistente", usos={_R, _B}),
+    _a("encuadre", "Encuadre", "frame", "asistente", usos={_R, _B}),
+    _a("esquina", "Llevar a la esquina", "corner", "asistente"),
+    _a("cerrar_asistente", "Cerrar la asistente en escritorio", "close", "asistente", usos={_R, _B}),
+    _a("sentarse", "Sentarse en la barra", "taskbar", "asistente", usos={_R, _B}),  # corte 7
+    _a("bajar", "Bajar", "arrow_down", "asistente"),                               # corte 7
+    _a("pantalla_grande", "Pantalla grande", "monitor", "asistente",
        etiqueta_on="Salir de pantalla grande"),                                    # corte 5
     # ── Voz ──
     _a("voz", "Voz", "volume", "voz", MODOS_TODOS, interruptor=True, icono_on="volume"),
@@ -197,6 +205,9 @@ ACCIONES: Dict[str, Accion] = {a.id: a for a in (
     _a("minecraft_bot", "Bot de Minecraft", "box", "integraciones", MODOS_TODOS, interruptor=True, usos={_B, _R}),
 )}
 
+# Submenú de la bandeja con lo de la asistente en escritorio (el modo, no Lune en general).
+TITULO_ASISTENTE = "Asistente en escritorio"
+
 # Segundo radial de «expresiones»: (arg para set_estado, etiqueta, icono).
 EXPRESIONES: Tuple[Tuple[str, str, str], ...] = (
     ("happy", "Contenta", "smile"),
@@ -219,10 +230,10 @@ MOTIVOS_JUEGO: Dict[str, str] = {
     "forzado": "forzado",
 }
 
-# Acciones que solo tienen sentido con la mascota a la vista (se ocultan si no).
-_NECESITAN_MASCOTA = frozenset({"dormir", "esquina", "cerrar_mascota", "expresiones", "expresion",
-                                "tamano", "encuadre", "sentarse", "bajar", "bailar", "baile_pausa",
-                                "comer_batido", "comer_pastel"})
+# Acciones que solo tienen sentido con la asistente en escritorio a la vista (se ocultan si no).
+_NECESITAN_ASISTENTE = frozenset({"dormir", "esquina", "cerrar_asistente", "expresiones", "expresion",
+                                  "tamano", "encuadre", "sentarse", "bajar", "bailar", "baile_pausa",
+                                  "comer_batido", "comer_pastel"})
 # Las que también hace Lune en la barra lateral de la web (sin la flotante a la vista):
 # la barra pone la expresión y baila con el estado del baile; la comida sigue al ratón
 # dentro de la ventana (ComidaWeb de extra/vida.jsx) y se come sobre la de la barra.
@@ -230,7 +241,7 @@ _NECESITAN_MASCOTA = frozenset({"dormir", "esquina", "cerrar_mascota", "expresio
 # despertar. Sentarse tampoco: se sienta la flotante.
 _VALEN_CON_BARRA = frozenset({"expresiones", "expresion", "bailar", "baile_pausa",
                               "comer_batido", "comer_pastel"})
-# Solo la mascota con página (animada o 3D) comenta la pantalla.
+# Solo la asistente con página (animada o 3D) comenta la pantalla.
 _SIN_SPRITES = frozenset({"comentar", "comentarios_auto"})
 
 
@@ -238,18 +249,18 @@ _SIN_SPRITES = frozenset({"comentar", "comentarios_auto"})
 
 def en_modo(id_: str, modo: str) -> bool:
     """¿Existe la acción `id_` en el modo de interfaz `modo`?"""
-    a = ACCIONES.get(id_)
+    a = ACCIONES.get(nombres_antiguos.accion(id_))
     return a is not None and modo in a.modos
 
 
-def hay_mascota(id_: str, ctx: Contexto) -> bool:
+def hay_asistente(id_: str, ctx: Contexto) -> bool:
     """¿Hay a quién hacerle `id_`? La flotante a la vista, o (expresiones y baile) Lune
     en la barra lateral de la web."""
-    return bool(ctx.mascota_visible or (ctx.mascota_barra and id_ in _VALEN_CON_BARRA))
+    return bool(ctx.asistente_visible or (ctx.asistente_barra and id_ in _VALEN_CON_BARRA))
 
 
 def visible(id_: str, estado: Any, ctx: Contexto) -> bool:
-    """¿Se enseña `id_` con este estado de la mascota y este contexto?
+    """¿Se enseña `id_` con este estado de la asistente y este contexto?
 
     No mira si hay handler (eso es `Despachador.disponibles`)."""
     a = ACCIONES.get(id_)
@@ -266,7 +277,7 @@ def visible(id_: str, estado: Any, ctx: Contexto) -> bool:
         return False                                   # sin comida en la mano no hay qué guardar
     if id_ in ("tamano", "encuadre") and ctx.render != "vrm":
         return False
-    if id_ in _NECESITAN_MASCOTA and not hay_mascota(id_, ctx):
+    if id_ in _NECESITAN_ASISTENTE and not hay_asistente(id_, ctx):
         return False
     if id_ in _SIN_SPRITES and ctx.render == "sprites":
         return False
@@ -281,7 +292,7 @@ def marcado_por_defecto(id_: str, estado: Any, ctx: Contexto) -> Optional[bool]:
         "voz": ctx.voz_on, "llamada": ctx.llamada_on, "fantasma": ctx.fantasma_on,
         "comentarios_auto": ctx.comentarios_auto_on, "siempre_encima": ctx.siempre_encima,
         "modo_juego_forzar": ctx.juego_activo, "autoinicio": ctx.autoinicio_on,
-        "en_barra_tareas": ctx.en_barra_on, "mascota": ctx.mascota_visible,
+        "en_barra_tareas": ctx.en_barra_on, "asistente": ctx.asistente_visible,
     }
     if id_ in m:
         return bool(m[id_])
@@ -322,11 +333,13 @@ def texto_motivo_juego(motivo: str) -> str:
 def validar_lista(ids: Any, *, maximo: Optional[int] = None, uso: Optional[str] = None) -> List[str]:
     """Lista limpia de ids: solo textos del catálogo, sin duplicados (se queda el
     primero), en su orden y como mucho `maximo`. Con `uso` ("radial", "bandeja",
-    "atajo") descarta las que no pueden ponerse ahí. Lo que no es una lista → []."""
+    "atajo") descarta las que no pueden ponerse ahí. Lo que no es una lista → [].
+    Un id de antes de la 11 sale con su nombre de ahora (nucleo/nombres_antiguos)."""
     if not isinstance(ids, (list, tuple)):
         return []
     vistos: List[str] = []
     for x in ids:
+        x = nombres_antiguos.accion(x)
         if not isinstance(x, str) or x in vistos:
             continue
         a = ACCIONES.get(x)
@@ -386,7 +399,7 @@ class Despachador:
         return self._fns.pop(id_, None) is not None
 
     def tiene(self, id_: str) -> bool:
-        return id_ in self._fns
+        return nombres_antiguos.accion(id_) in self._fns
 
     def ids(self) -> List[str]:
         return [i for i in ACCIONES if i in self._fns]
@@ -394,6 +407,7 @@ class Despachador:
     def ejecutar(self, id_: str, arg: str = "", **kw) -> bool:
         """Ejecuta la acción. True si tenía handler y no falló (lo que devuelva el
         handler da igual: «alternar» puede devolver False y haberse hecho)."""
+        id_ = nombres_antiguos.accion(id_)
         fn = self._fns.get(id_)
         if fn is None:
             return False
@@ -410,7 +424,7 @@ class Despachador:
         return True
 
     def marcado(self, id_: str) -> Optional[bool]:
-        f = self._marcados.get(id_)
+        f = self._marcados.get(nombres_antiguos.accion(id_))
         if f is None:
             return None
         try:
@@ -492,7 +506,7 @@ def menu_bandeja(desp: Despachador, estado: Any, ctx: Contexto, rapidas: Any,
                  presets: Iterable[Any]) -> List[ItemMenu]:
     """El menú de la bandeja (se reconstruye cada vez que se abre).
 
-    Abrir Lune (negrita) · Mascota ▸ (con «Sentarse en la barra» / «Bajar» según esté
+    Abrir Lune (negrita) · Asistente en escritorio ▸ (con «Sentarse en la barra» / «Bajar» según esté
     sentada) · Lune ▸ (rápidas de bandeja.acciones) ·
     Modo juego ✔ · Tema ▸ · Arrancar con Windows ✔ · Liberar memoria · Mostrar en
     la barra de tareas ✔ · Salir. `presets`: nombres de tema o pares (id, texto).
@@ -502,16 +516,16 @@ def menu_bandeja(desp: Despachador, estado: Any, ctx: Contexto, rapidas: Any,
 
     items: List[Optional[ItemMenu]] = [it("mostrar_lune", negrita=True), _SEP]
 
-    # Mascota ▸
-    mascota = [it("mascota"), it("chat", etiqueta="Escribirle…"), it("comentar"), it("dormir"),
-               it("sentarse"), it("bajar"), _SEP,
-               it("fantasma"), it("comentarios_auto"), it("siempre_encima"), _SEP,
-               _submenu_opciones(desp, estado, ctx, "tamano", "Tamaño", TAMANOS, ctx.tamano),
-               _submenu_opciones(desp, estado, ctx, "encuadre", "Encuadre", ENCUADRES, ctx.encuadre),
-               it("esquina"), _SEP, it("cerrar_mascota")]
-    hijos = tuple(_limpiar([x for x in mascota if x is not None]))
+    # Asistente en escritorio ▸
+    asistente = [it("asistente"), it("chat", etiqueta="Escribirle…"), it("comentar"), it("dormir"),
+                 it("sentarse"), it("bajar"), _SEP,
+                 it("fantasma"), it("comentarios_auto"), it("siempre_encima"), _SEP,
+                 _submenu_opciones(desp, estado, ctx, "tamano", "Tamaño", TAMANOS, ctx.tamano),
+                 _submenu_opciones(desp, estado, ctx, "encuadre", "Encuadre", ENCUADRES, ctx.encuadre),
+                 it("esquina"), _SEP, it("cerrar_asistente")]
+    hijos = tuple(_limpiar([x for x in asistente if x is not None]))
     if hijos:
-        items.append(ItemMenu("", "Mascota", hijos=hijos))
+        items.append(ItemMenu("", TITULO_ASISTENTE, hijos=hijos))
 
     # Lune ▸ (acciones rápidas configurables)
     rap = tuple(x for x in (it(i) for i in validar_lista(rapidas, uso=USO_BANDEJA)) if x is not None)

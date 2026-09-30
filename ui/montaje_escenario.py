@@ -52,7 +52,7 @@ from PyQt6.QtCore import QObject
 
 _log = logging.getLogger("lune.montaje_escenario")
 
-# Controlador → actividades de nucleo/estado_mascota.PRIORIDAD que hace físicamente.
+# Controlador → actividades de nucleo/estado_asistente.PRIORIDAD que hace físicamente.
 ACTIVIDADES: Dict[str, Tuple[str, ...]] = {
     "mmd": ("mmd",),
     "minecraft": (),

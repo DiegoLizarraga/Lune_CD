@@ -2,7 +2,7 @@
 Integración de los cortes 9 y 10 (reproductor de bailes MMD/VRMA y Minecraft): las clases
 DE VERDAD cumplen lo que las otras les llaman.
 
-- Mascotas (ui/companion.CompanionFlotante, ui/avatar_overlay.AvatarOverlay): lo que les
+- Asistentes (ui/companion.CompanionFlotante, ui/avatar_overlay.AvatarOverlay): lo que les
   piden ControlMMD (mmd, bailar, pulso, despertar) y ControlMinecraft (decir_reaccion). Los
   sprites NO tienen `mmd` (su camino es la canción por el Mezclador + bailar/pulso).
 - ControlMMD y ControlMinecraft: lo que llaman ui/montaje_escenario, ui/puente_escenario (y a
@@ -14,7 +14,7 @@ DE VERDAD cumplen lo que las otras les llaman.
   ToolManager, «conecta el bot de Minecraft» → Llamada → Ejecutor (pide permiso) → el bot
   arranca; desmontar lo quita todo y para el bot.
 - `pensando` con varias fuentes (BusEstado.pensar): el chat de la ventana pausa el modelo del
-  bot y la mascota que acaba de comentar no se lo quita.
+  bot y la asistente que acaba de comentar no se lo quita.
 - Catálogo, config, .gitignore, la plantilla de datos, la CSP de las páginas y la detección
   de pedidos: imperativos claros sí; preguntas, negaciones, pasado y frases sobre el tema, no.
 Offscreen; nada de node, red, registro de Windows ni audio.
@@ -85,7 +85,7 @@ class ConfigFalsa:
         return d
 
 
-# ═══ Mascotas ═══════════════════════════════════════════════════════════════════
+# ═══ Asistentes ═══════════════════════════════════════════════════════════════════
 
 def test_companion_cumple_lo_que_le_piden_el_reproductor_y_minecraft():
     C = pytest.importorskip("ui.companion").CompanionFlotante
@@ -117,8 +117,8 @@ def test_control_mmd_cumple_lo_que_llaman_montaje_puente_panel_ocio_y_herramient
     from ui.mmd_qt import ControlMMD as M
     # Fábrica por defecto de ui/montaje_escenario y el contrato de ServiciosEscritorio.
     assert admite(M.__init__, None, None, None, anfitrion=None, en_ui=None, parent=None)
-    for n, a in (("iniciar", ()), ("detener", ()), ("set_mascota", (None,)), ("ceder", (None,)),
-                 ("reanudar", (None,)), ("evento_mascota", ("mmd", {})), ("recargar_config", ())):
+    for n, a in (("iniciar", ()), ("detener", ()), ("set_asistente", (None,)), ("ceder", (None,)),
+                 ("reanudar", (None,)), ("evento_asistente", ("mmd", {})), ("recargar_config", ())):
         assert admite(_metodo(M, n), None, *a), f"ControlMMD.{n}"
     # Lo que llaman el puente y el panel (por nombre en su código) existe.
     nombres = (_llamados(RAIZ / "ui" / "puente_escenario.py", r'llamar\(self\._mmd, "([a-z_]+)"')
@@ -142,7 +142,7 @@ def test_control_mmd_cumple_lo_que_llaman_montaje_puente_panel_ocio_y_herramient
 def test_control_minecraft_cumple_lo_que_llaman_montaje_puente_panel_y_herramientas():
     from ui.minecraft_qt import ControlMinecraft as C
     assert admite(C.__init__, None, None, None, anfitrion=None, voice=None, en_ui=None, parent=None)
-    for n, a in (("iniciar", ()), ("detener", ()), ("set_mascota", (None,)), ("recargar_config", ())):
+    for n, a in (("iniciar", ()), ("detener", ()), ("set_asistente", (None,)), ("recargar_config", ())):
         assert admite(_metodo(C, n), None, *a), f"ControlMinecraft.{n}"
     nombres = (_llamados(RAIZ / "ui" / "puente_escenario.py", r'llamar\(self\._mc, "([a-z_]+)"')
                | _llamados(RAIZ / "ui" / "panel_escenario_nativo.py", r'_llamar\(self\.minecraft, "([a-z_]+)"'))
@@ -335,7 +335,7 @@ def _esperar(cond, t=3.0):
     return cond()
 
 
-class MascotaVRM:
+class AsistenteVRM:
     render = "vrm"
 
     def __init__(self):
@@ -356,20 +356,20 @@ def test_ponme_el_baile_de_alfa_llega_al_reproductor_de_verdad(montaje):
     from nucleo import baile as nb
     s = montaje
     ll = s.tm.detectar_llamadas("ponme el baile de Alfa")
-    assert [(x.herramienta, x.args) for x in ll] == [("mascota_bailar", {"segundos": 30, "cancion": "Alfa"})]
-    m = MascotaVRM()
-    s.esc.set_mascota(m)
+    assert [(x.herramienta, x.args) for x in ll] == [("asistente_bailar", {"segundos": 30, "cancion": "Alfa"})]
+    m = AsistenteVRM()
+    s.esc.set_asistente(m)
     r = nb.herramienta_bailar(ll[0].args, {"mmd": s.escenario.mmd, "baile": None})
     assert isinstance(r, str) and "Alfa" in r
     cargas = [d for o, d in m.ordenes if o == "cargar"]
     assert len(cargas) == 1 and cargas[0]["titulo"] == "Alfa" and cargas[0]["tipo"] == "vmd"
     assert s.esc.estado.actual().bailando == "mmd"
     s.escenario.mmd.parar()
-    s.esc.set_mascota(None)
+    s.esc.set_asistente(None)
 
 
-def test_pensando_del_chat_pausa_el_modelo_del_bot_y_no_lo_pisa_la_mascota(montaje):
-    from nucleo.estado_mascota import PENSANDO_CHAT
+def test_pensando_del_chat_pausa_el_modelo_del_bot_y_no_lo_pisa_la_asistente(montaje):
+    from nucleo.estado_asistente import PENSANDO_CHAT
     s, reg = montaje, montaje.reg
     ok, _ = s.escenario.minecraft.conectar_bot()
     p = reg.procesos[-1]
@@ -377,7 +377,7 @@ def test_pensando_del_chat_pausa_el_modelo_del_bot_y_no_lo_pisa_la_mascota(monta
     bus = s.esc.estado
     bus.pensar(PENSANDO_CHAT, True)                                            # la ventana espera al modelo
     assert _esperar(lambda: ("llm", True) in p.pausas)
-    bus.actualizar(pensando=True)                                              # la mascota comenta la pantalla
+    bus.actualizar(pensando=True)                                              # la asistente comenta la pantalla
     bus.actualizar(pensando=False)                                             # …y acaba
     assert bus.actual().pensando is True and p.pausas.count(("llm", False)) == 0
     bus.pensar(PENSANDO_CHAT, False)
@@ -388,30 +388,30 @@ def test_pensando_del_chat_pausa_el_modelo_del_bot_y_no_lo_pisa_la_mascota(monta
 # ═══ Bus, cambio de interfaz y el bot ════════════════════════════════════════════
 
 def test_bus_pensar_con_varias_fuentes():
-    from nucleo.estado_mascota import PENSANDO_CHAT, BusEstado, EstadoMascota
+    from nucleo.estado_asistente import PENSANDO_CHAT, BusEstado, EstadoAsistente
     bus = BusEstado()
     vistos = []
     bus.suscribir(lambda est, cambios: vistos.append(cambios.get("pensando")))
     assert bus.pensar(PENSANDO_CHAT, True) is True and bus.actual().pensando
     assert bus.actualizar(pensando=True) is False                              # ya pensaba: sin aviso
-    assert bus.pensar(PENSANDO_CHAT, False) is False and bus.actual().pensando  # la mascota sigue
+    assert bus.pensar(PENSANDO_CHAT, False) is False and bus.actual().pensando  # la asistente sigue
     assert bus.actualizar(pensando=False) is True and not bus.actual().pensando
     assert vistos == [(False, True), (True, False)]
-    assert BusEstado(EstadoMascota(pensando=True)).actualizar(pensando=False) is True
+    assert BusEstado(EstadoAsistente(pensando=True)).actualizar(pensando=False) is True
 
 
-def test_quitar_la_mascota_apaga_solo_su_pensando(qapp):
-    from nucleo.estado_mascota import PENSANDO_CHAT
+def test_quitar_la_asistente_apaga_solo_su_pensando(qapp):
+    from nucleo.estado_asistente import PENSANDO_CHAT
     from ui.escritorio import ServiciosEscritorio
     esc = ServiciosEscritorio(ConfigFalsa())
-    m = MascotaVRM()
-    esc.set_mascota(m)
+    m = AsistenteVRM()
+    esc.set_asistente(m)
     esc.estado.actualizar(pensando=True)                                       # comentando la pantalla
-    esc.set_mascota(None)                                                      # se cierra a medias
+    esc.set_asistente(None)                                                      # se cierra a medias
     assert esc.estado.actual().pensando is False
     esc.estado.pensar(PENSANDO_CHAT, True)
-    esc.set_mascota(m)
-    esc.set_mascota(None)
+    esc.set_asistente(m)
+    esc.set_asistente(None)
     assert esc.estado.actual().pensando is True                                # el chat sigue
     esc.cerrar()
 
@@ -454,11 +454,11 @@ def test_catalogo_de_los_cortes_9_y_10():
     lb = C.CATALOGO["listar_bailes"]
     assert lb.modos == C.TODOS and lb.riesgo.name == "LECTURA" and not lb.requiere_aprobacion
     assert set(lb.args) == {"texto"} and lb.args["texto"].maxlen == 60 and lb.args["texto"].recortar
-    for n in ("mascota_bailar", "parar_baile"):
+    for n in ("asistente_bailar", "parar_baile"):
         assert C.CATALOGO[n].disponible_en("patata"), n
         assert C.CATALOGO[n].disponible_en("normal") and C.CATALOGO[n].disponible_en("vrm"), n
-    assert "cancion" in C.CATALOGO["mascota_bailar"].args
-    for nombre in ("listar_bailes", "mascota_bailar", "parar_baile", "minecraft_estado", "minecraft_orden",
+    assert "cancion" in C.CATALOGO["asistente_bailar"].args
+    for nombre in ("listar_bailes", "asistente_bailar", "parar_baile", "minecraft_estado", "minecraft_orden",
                    "minecraft_bot"):
         mod, fn = C.CATALOGO[nombre].handler.rsplit(".", 1)
         assert callable(getattr(importlib.import_module(mod), fn)), nombre
@@ -513,17 +513,17 @@ def test_la_csp_de_las_paginas_solo_limita_las_conexiones(pagina):
     ("Lune, desconecta el bot de minecraft porfa", ("minecraft_bot", {"accion": "desconectar"})),
     ("¡Conecta tu bot de Minecraft!", ("minecraft_bot", {"accion": "conectar"})),
     ("oye, desconecta el bot del minecraft", ("minecraft_bot", {"accion": "desconectar"})),
-    ("ponme el baile de Senbonzakura", ("mascota_bailar", {"segundos": 30, "cancion": "Senbonzakura"})),
-    ("Lune, pon el baile de Caramelldansen porfa", ("mascota_bailar", {"segundos": 30, "cancion": "Caramelldansen"})),
-    ("baila «Senbonzakura»", ("mascota_bailar", {"segundos": 30, "cancion": "Senbonzakura"})),
-    ('baila "Mr. Taxi"', ("mascota_bailar", {"segundos": 30, "cancion": "Mr. Taxi"})),
-    ("pon la canción «Gangnam Style»", ("mascota_bailar", {"segundos": 30, "cancion": "Gangnam Style"})),
+    ("ponme el baile de Senbonzakura", ("asistente_bailar", {"segundos": 30, "cancion": "Senbonzakura"})),
+    ("Lune, pon el baile de Caramelldansen porfa", ("asistente_bailar", {"segundos": 30, "cancion": "Caramelldansen"})),
+    ("baila «Senbonzakura»", ("asistente_bailar", {"segundos": 30, "cancion": "Senbonzakura"})),
+    ('baila "Mr. Taxi"', ("asistente_bailar", {"segundos": 30, "cancion": "Mr. Taxi"})),
+    ("pon la canción «Gangnam Style»", ("asistente_bailar", {"segundos": 30, "cancion": "Gangnam Style"})),
     # sin comillas, «pon la canción X» solo si X es un baile de la biblioteca (BM5; tests/test_tools.py)
-    ("oye, ponme la canción «Senbonzakura»!", ("mascota_bailar", {"segundos": 30, "cancion": "Senbonzakura"})),
-    ("Ponme el baile de Canción Rosa.", ("mascota_bailar", {"segundos": 30, "cancion": "Canción Rosa"})),
+    ("oye, ponme la canción «Senbonzakura»!", ("asistente_bailar", {"segundos": 30, "cancion": "Senbonzakura"})),
+    ("Ponme el baile de Canción Rosa.", ("asistente_bailar", {"segundos": 30, "cancion": "Canción Rosa"})),
     ("para el baile", ("parar_baile", {})),
     ("ya quita el baile, Lune", ("parar_baile", {})),
-    ("baila", ("mascota_bailar", {"segundos": 30})),                     # lo de antes sigue igual
+    ("baila", ("asistente_bailar", {"segundos": 30})),                     # lo de antes sigue igual
 ])
 def test_detectar_ordenes_de_bailes_y_minecraft(texto, esperado):
     from lune_core.acciones import USUARIO

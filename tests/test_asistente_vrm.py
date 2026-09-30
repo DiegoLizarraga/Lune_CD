@@ -1,5 +1,5 @@
 """
-Tests de la mascota 3D (VRM): nucleo/vrm.py, ui/servidor_web.py, ui/companion.py
+Tests de la asistente 3D (VRM): nucleo/vrm.py, ui/servidor_web.py, ui/companion.py
 y la página ui_web/companion_vrm.html + ui_web/vrm/lune_vrm.js.
 
 Lo visual (el render 3D, el balanceo, la mirada) no se puede probar sin pantalla.
@@ -84,7 +84,7 @@ def test_validar_rechaza_archivos_malos(tmp_path, contenido, pista):
 @pytest.mark.parametrize("doc", [[], "hola", 5, None, {"extensions": [1, 2]}, {"extensions": {"VRM": "x"}},
                                  {"extensionsUsed": "VRMC_vrm", "extensions": {"VRMC_vrm": {"meta": {"authors": "yo"}}}}])
 def test_validar_no_revienta_con_json_raro(tmp_path, doc):
-    """Un .vrm corrupto en modelo_vrm/ no puede tumbar Ajustes ni la mascota."""
+    """Un .vrm corrupto en modelo_vrm/ no puede tumbar Ajustes ni la asistente."""
     from nucleo import vrm
     p = tmp_path / "raro.vrm"; p.write_bytes(glb(doc))
     ok, motivo, meta = vrm.validar(p)
@@ -206,7 +206,7 @@ def test_servidor_publica_rutas_extra(tmp_path):
         srv.publicar("/vrm/actual.vrm", otro)
         with urllib.request.urlopen(srv.url("vrm/actual.vrm")) as r:
             assert r.read() == otro.read_bytes()
-        # HTTP Range (los <video> de la mascota animada lo necesitan)
+        # HTTP Range (los <video> de la asistente animada lo necesitan)
         req = urllib.request.Request(srv.url("vrm/actual.vrm"), headers={"Range": "bytes=0-3"})
         with urllib.request.urlopen(req) as r:
             assert r.status == 206 and r.read() == b"glTF"
@@ -263,10 +263,10 @@ def test_el_motor_cubre_todos_los_estados_que_python_manda():
     bloque = motor[motor.index("const EXPRESIONES = {"):motor.index("const ALIAS")]
     definidos = set(re.findall(r"^\s+(\w+):\s*\{", bloque, re.M))
     from ui.companion import EMOCION_A_ESTADO
-    from ui.web_bridge import EMOCION_A_MASCOTA, LuneBridge
+    from ui.web_bridge import EMOCION_A_ASISTENTE, LuneBridge
     from lune_core.marcadores import EMOCIONES
-    esperados = set(EMOCION_A_ESTADO.values()) | set(EMOCION_A_MASCOTA.values())
-    esperados |= set(LuneBridge._LLAMADA_A_MASCOTA.values())
+    esperados = set(EMOCION_A_ESTADO.values()) | set(EMOCION_A_ASISTENTE.values())
+    esperados |= set(LuneBridge._LLAMADA_A_ASISTENTE.values())
     esperados |= {"bored", "typing", "error", "normal", "thinking", "talking", "listening"}
     faltan = esperados - definidos
     assert not faltan, f"estados sin expresión en lune_vrm.js: {faltan}"
@@ -277,22 +277,22 @@ def test_el_motor_cubre_todos_los_estados_que_python_manda():
 
 def test_el_puente_tiene_los_slots_nuevos():
     from ui.web_bridge import LuneBridge
-    for slot in ("mascota_visible", "vrm_modelos", "vrm_importar", "personaje_vrm", "personajes_lista"):
+    for slot in ("asistente_visible", "vrm_modelos", "vrm_importar", "personaje_vrm", "personajes_lista"):
         assert callable(getattr(LuneBridge, slot))
     src = (RAIZ / "ui" / "web_bridge.py").read_text("utf-8")
-    # la mascota de escritorio recibe las emociones del chat (antes solo la de la barra lateral)
-    assert "_mascota_estado(mascota" in src and "_mascota_estado(\"thinking\")" in src
+    # la asistente en escritorio recibe las emociones del chat (antes solo la de la barra lateral)
+    assert "_asistente_estado(asistente" in src and "_asistente_estado(\"thinking\")" in src
 
 
 def test_la_barra_lateral_se_apaga_cuando_lune_esta_fuera():
     app = (RAIZ / "ui_web" / "ui_kits" / "lune-desktop" / "app.jsx").read_text("utf-8")
     side = (RAIZ / "ui_web" / "ui_kits" / "lune-desktop" / "sidebar.jsx").read_text("utf-8")
-    assert "mascota_estado.connect" in app and "mascotaFuera" in app
-    assert "MascotFuera" in side and "mascotaFuera ?" in side
+    assert "asistente_estado.connect" in app and "asistenteFuera" in app
+    assert "AsistenteFuera" in side and "asistenteFuera ?" in side
     ajustes = (RAIZ / "ui_web" / "ui_kits" / "lune-desktop" / "settings.jsx").read_text("utf-8")
-    assert "próximamente" not in ajustes.split("Mascota")[1][:1200]
+    assert "próximamente" not in ajustes.split("Asistente")[1][:1200]
     main_py = (RAIZ / "main.py").read_text("utf-8")
-    assert "_on_mascota_visible" in main_py and "lune_face.setVisible(not fuera)" in main_py
+    assert "_on_asistente_visible" in main_py and "lune_face.setVisible(not fuera)" in main_py
 
 
 # ── La ventana (sin pantalla) ──────────────────────────────────────────────────
@@ -300,7 +300,7 @@ def test_la_barra_lateral_se_apaga_cuando_lune_esta_fuera():
 # que se sustituye por un widget falso que anota lo que Python le manda por JS.
 # Lo que se prueba es la lógica de la ventana, no el render.
 
-pytest.importorskip("PyQt6.QtWebEngineWidgets", reason="la mascota 3D necesita PyQt6-WebEngine")
+pytest.importorskip("PyQt6.QtWebEngineWidgets", reason="la asistente 3D necesita PyQt6-WebEngine")
 
 
 @pytest.fixture
@@ -678,7 +678,7 @@ def test_main_nativo_conecta_la_voz_con_la_boca(qapp, monkeypatch, tmp_path):
     main.soltar_avisos_voz(ventana)
     assert voz.al_hablar is None and voz.on_error is otro
     src = (RAIZ / "main.py").read_text("utf-8")
-    assert "def _on_hablando" in src and "ov.recrear.connect(self._mascota_recrear)" in src
+    assert "def _on_hablando" in src and "ov.recrear.connect(self._asistente_recrear)" in src
 
 
 def test_letra_de_unidad_de_red_no_se_toca(carpeta, monkeypatch):

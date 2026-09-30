@@ -7,24 +7,24 @@ salvapantallas (se pausa y sigue al acabar) y le quita el sitio a la sentada, la
 comida y el baile automático (que vuelven solos al acabar si procede).
 
 La biblioteca es nucleo/bailes.Biblioteca y el orden, nucleo/bailes.Cola. El
-camino depende de la mascota (`mascota.render`):
+camino depende de la asistente (`asistente.render`):
 
-- `vrm` (con `mascota.mmd`): `mascota.mmd("cargar", {…tipo vmd|vrma…})`. La
+- `vrm` (con `asistente.mmd`): `asistente.mmd("cargar", {…tipo vmd|vrma…})`. La
   página hornea el VMD (o carga el .vrma), pone la canción en su `<audio>` y
   avisa con eventos `mmd` (cargando, listo, sonando, pausado, t, fin, parado,
-  error) que llegan aquí por `evento_mascota`.
-- `animado` (con `mascota.mmd`): D1, sin esqueleto. `mascota.mmd("cargar",
+  error) que llegan aquí por `evento_asistente`.
+- `animado` (con `asistente.mmd`): D1, sin esqueleto. `asistente.mmd("cargar",
   {tipo:"audio", audio, bpm, fase0, …})`: la página pone la canción y baila el
   baile procedural al pulso analizado (Biblioteca.analizar_pulso, en un hilo).
-- `sprites` (o cualquier mascota sin `mmd`): D1 en Python. La canción suena por
-  el Mezclador (servicios/cancion_python.ReproductorCancion) y la mascota hace
+- `sprites` (o cualquier asistente sin `mmd`): D1 en Python. La canción suena por
+  el Mezclador (servicios/cancion_python.ReproductorCancion) y la asistente hace
   `bailar(True, {estilo…})` + `pulso(bpm, fase, 0.7)` a 2 Hz con la posición de
   la canción.
-- Sin mascota: `despachador.ejecutar("mascota")` y el baile queda pendiente
-  hasta el siguiente `set_mascota(v)` (12 s como mucho).
-- Mascota ESCONDIDA (no cerrada): al pedir un baile (▶, el modelo, «siguiente» sin
-  nada puesto) se saca como la acción «mascota»; si no se puede, se avisa. Oculta no
-  lee su cola de eventos: el vigía («la mascota no respondió») no cuenta hasta que se
+- Sin asistente: `despachador.ejecutar("asistente")` y el baile queda pendiente
+  hasta el siguiente `set_asistente(v)` (12 s como mucho).
+- Asistente ESCONDIDA (no cerrada): al pedir un baile (▶, el modelo, «siguiente» sin
+  nada puesto) se saca como la acción «asistente»; si no se puede, se avisa. Oculta no
+  lee su cola de eventos: el vigía («la asistente no respondió») no cuenta hasta que se
   la vea, y un «siguiente» a mitad espera a que vuelva (la página lo aplaza). Los
   sprites ocultos o cerrados pausan la canción (y el pulso) y al volver sigue.
 
@@ -37,14 +37,14 @@ La biblioteca: la lista, buscar, ▶, favoritos… miran la FOTO de la bibliotec
 (nunca escanean en el hilo de Qt ni esperan a un escaneo o a un importar); el
 escaneo va en un hilo (`refrescar`, al iniciar y al importar).
 
-Órdenes a la mascota (contrato con ui/companion.py `mmd(orden, datos)`):
+Órdenes a la asistente (contrato con ui/companion.py `mmd(orden, datos)`):
     cargar  {id, tipo, motion:[url], cara:[url], audio, offsetMs, enSitio, brazoGrados,
              volumen, bucle, autoplay, titulo}  (tipo "audio": audio, bpm, fase0 en vez de motion/cara)
     pausa {on}   parar None   volumen {volumen}   offset {offsetMs}   en_sitio {enSitio}   bucle {bucle}
 
 Señales (JSON en texto, para el puente web):
     estado_cambio(str)      {fase, id, titulo, autor, autor_mmd, t, total, modo, al_terminar, volumen,
-                             en_el_sitio, error, analizando, pausado, cedida, pendiente, modo_mascota,
+                             en_el_sitio, error, analizando, pausado, cedida, pendiente, modo_asistente,
                              sin_esqueleto, importando}
     biblioteca_cambio(str)  [{id, titulo, autor_cancion, autor_mmd, tipo, duracion, audio, favorito,
                               desactivado, problema, …}]
@@ -67,14 +67,14 @@ from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 
 from nucleo import baile as nb
 from nucleo import bailes as nbl
-from nucleo import estado_mascota as em
-from nucleo.estado_mascota import BAILE_MMD
+from nucleo import estado_asistente as em
+from nucleo.estado_asistente import BAILE_MMD
 
 _log = logging.getLogger("lune.mmd")
 
 FASES = ("parado", "cargando", "listo", "sonando", "pausado", "saliendo", "error")
-PULSO_MS = 500                  # ≤ 2 Hz hacia la mascota (sprites)
-ESPERA_MASCOTA_MS = 12_000      # sin mascota: lo que se espera a que salga
+PULSO_MS = 500                  # ≤ 2 Hz hacia la asistente (sprites)
+ESPERA_ASISTENTE_MS = 12_000      # sin asistente: lo que se espera a que salga
 VIGIA_PRIMERA_MS = 10_000       # tras «cargar», la página tiene que decir algo
 VIGIA_CARGA_MS = 60_000         # y, cargando, acabar de cargar
 ENERGIA_D1 = 0.7
@@ -85,7 +85,7 @@ FILTRO_DIALOGO = ("Bailes (*.vmd *.vrma *.mp3 *.ogg *.oga *.opus *.wav *.flac *.
 MOTIVOS_SIN_BAILE = ("no_encontrado", "sin_bailes", "problema")
 
 
-AVISO_ESCONDIDA = "La mascota está escondida: bailaré cuando la saques."
+AVISO_ESCONDIDA = "Estoy escondida: bailaré cuando me saques al escritorio."
 AVISO_MIRANDO = "Aún estoy mirando tus bailes: prueba en un momento."
 
 
@@ -97,7 +97,7 @@ def _num(v: Any) -> Optional[float]:
 
 
 def _vivo(obj: Any) -> bool:
-    """¿Existe aún (un QObject borrado —la mascota que se cierra— no se toca)?"""
+    """¿Existe aún (un QObject borrado —la asistente que se cierra— no se toca)?"""
     if obj is None:
         return False
     try:
@@ -157,7 +157,7 @@ class ControlMMD(QObject):
         self._hilo = bool(hilo)
         self._dialogo = dialogo
         self._abrir = abrir
-        self._mascota: Any = None
+        self._asistente: Any = None
         self._iniciado = False
         self._bus_conectado = False
         # El baile en curso
@@ -170,7 +170,7 @@ class ControlMMD(QObject):
         self._error = ""
         self._id_error = ""
         self._analizando = False
-        self._pendiente = False               # esperando a que salga la mascota
+        self._pendiente = False               # esperando a que salga la asistente
         self._pausa_usuario = False
         self._cedida = False
         self._pausa_enviada = False
@@ -181,8 +181,8 @@ class ControlMMD(QObject):
         self._sprites_empezado = False
         self._ultimo_seg = -1
         self._importando = False
-        self._oculta = False                  # sprites: la mascota no se ve → canción en pausa
-        self._vigia_ms = 0                    # vigía pedido (con la mascota escondida, espera a verla)
+        self._oculta = False                  # sprites: la asistente no se ve → canción en pausa
+        self._vigia_ms = 0                    # vigía pedido (con la asistente escondida, espera a verla)
         self._recien_sacada = False           # se sacó (o creó) para este baile: su página puede tardar
         self._gen = 0
         self._ultimo_estado = ""
@@ -193,9 +193,9 @@ class ControlMMD(QObject):
         self._t_vigia = QTimer(self)
         self._t_vigia.setSingleShot(True)
         self._t_vigia.timeout.connect(self._vigia_vencido)
-        self._t_mascota = QTimer(self)
-        self._t_mascota.setSingleShot(True)
-        self._t_mascota.timeout.connect(self._mascota_no_llego)
+        self._t_asistente = QTimer(self)
+        self._t_asistente.setSingleShot(True)
+        self._t_asistente.timeout.connect(self._asistente_no_llego)
         self._hecho_hilo.connect(self._on_hecho)
 
     # ── Acceso a lo compartido ───────────────────────────────────────────────────
@@ -266,7 +266,7 @@ class ControlMMD(QObject):
 
     @property
     def activo(self) -> bool:
-        """Hay un baile elegido (cargando, sonando, en pausa o esperando a la mascota)."""
+        """Hay un baile elegido (cargando, sonando, en pausa o esperando a la asistente)."""
         return self._actual is not None
 
     @property
@@ -305,7 +305,7 @@ class ControlMMD(QObject):
         if self._actual is not None:
             self._terminar(enviar=True)
         self._gen += 1
-        for t in (self._t_pulso, self._t_vigia, self._t_mascota):
+        for t in (self._t_pulso, self._t_vigia, self._t_asistente):
             t.stop()
         self._vigia_ms = 0
         nbl.matar_procesos()                  # ningún ffmpeg (convertir, pulso, canción) sigue solo
@@ -322,17 +322,17 @@ class ControlMMD(QObject):
                 pass
         self._iniciado = False
 
-    def set_mascota(self, v: Any) -> None:
+    def set_asistente(self, v: Any) -> None:
         if not _vivo(self):
             return                                     # (al salir: el reproductor ya se borró)
-        anterior = self._mascota
+        anterior = self._asistente
         if self._actual is not None and not self._pendiente and v is not anterior:
-            self._terminar(enviar=False)              # otra mascota (o ninguna): el baile acaba
-        self._mascota = v
+            self._terminar(enviar=False)              # otra asistente (o ninguna): el baile acaba
+        self._asistente = v
         if v is not None and self._actual is not None and self._pendiente:
             self._pendiente = False
             self._recien_sacada = True
-            self._t_mascota.stop()
+            self._t_asistente.stop()
             self._despertar()
             self._arrancar()
             return
@@ -372,7 +372,7 @@ class ControlMMD(QObject):
                 self._cancion.volumen(self._vol_efectivo())
         self._emitir_estado()
 
-    def evento_mascota(self, tipo: str, datos: Any) -> None:
+    def evento_asistente(self, tipo: str, datos: Any) -> None:
         """Eventos `mmd` de la página: {fase, id, t, total, mensaje}."""
         if tipo != "mmd" or not isinstance(datos, dict) or self._actual is None:
             return
@@ -421,7 +421,7 @@ class ControlMMD(QObject):
     # ── Órdenes ──────────────────────────────────────────────────────────────────
     def reproducir(self, id_: Optional[str] = None, *, origen: str = "usuario") -> Tuple[bool, str]:
         """Pone un baile (sin id: sigue si estaba en pausa, o el último, o el primero). Con la
-        mascota escondida, la saca."""
+        asistente escondida, la saca."""
         if id_ is None or id_ == "":
             if self._actual is not None:
                 self._sacar_si_escondida()
@@ -478,7 +478,7 @@ class ControlMMD(QObject):
         return True
 
     def siguiente(self) -> Tuple[bool, str]:
-        """El siguiente. A mitad de un baile con la mascota escondida, espera a que se la vea
+        """El siguiente. A mitad de un baile con la asistente escondida, espera a que se la vea
         (no la saca); sin nada puesto es como ▶ (sí la saca)."""
         modo = "aleatorio" if self._al_terminar() == "aleatorio" else "siguiente"
         ref = self._actual.id if self._actual is not None else self._ultimo_id
@@ -662,7 +662,7 @@ class ControlMMD(QObject):
     # ── Consultas ────────────────────────────────────────────────────────────────
     def estado(self) -> dict:
         b = self._actual
-        modo_m = self._modo_de(self._mascota) if self._mascota is not None else ""
+        modo_m = self._modo_de(self._asistente) if self._asistente is not None else ""
         return {
             "fase": self._fase,
             "id": b.id if b is not None else self._id_error,
@@ -680,7 +680,7 @@ class ControlMMD(QObject):
             "pausado": bool(b is not None and self._pausada()),
             "cedida": bool(b is not None and self._cedida),
             "pendiente": self._pendiente,
-            "modo_mascota": modo_m,
+            "modo_asistente": modo_m,
             "sin_esqueleto": modo_m in ("animado", "sprites"),
             "importando": self._importando,
         }
@@ -694,14 +694,14 @@ class ControlMMD(QObject):
         return base
 
     def herramientas(self) -> dict:
-        """{"listar_bailes": fn(args, ctx)} (mascota_bailar y parar_baile son de ControlBaile,
+        """{"listar_bailes": fn(args, ctx)} (asistente_bailar y parar_baile son de ControlBaile,
         que ya mira ctx["mmd"])."""
         return {"listar_bailes": lambda args=None, ctx=None: nbl.herramienta_listar(args, self._ctx(ctx))}
 
     # ── Internos: empezar ────────────────────────────────────────────────────────
     def _admite(self) -> Optional[Callable[[nbl.Baile], bool]]:
         """Sin esqueleto (animada, sprites) solo sirven los que traen canción."""
-        modo = self._modo_de(self._mascota) if self._mascota is not None else ""
+        modo = self._modo_de(self._asistente) if self._asistente is not None else ""
         if modo in ("animado", "sprites"):
             return lambda b: b.audio is not None
         return None
@@ -716,7 +716,7 @@ class ControlMMD(QObject):
         return ""
 
     def _reproducir(self, b: nbl.Baile, *, origen: str, reiniciar: bool, sacar: bool = True) -> Tuple[bool, str]:
-        """`sacar`: con la mascota escondida, sacarla (▶, el modelo); «siguiente» a mitad de un
+        """`sacar`: con la asistente escondida, sacarla (▶, el modelo); «siguiente» a mitad de un
         baile y el fin de la canción no la sacan: el baile espera a que se la vea."""
         titulo = nbl.titulo_seguro(b.titulo)
         if not b.jugable:
@@ -749,15 +749,15 @@ class ControlMMD(QObject):
             return False, self._error or f"No pude bailar «{titulo}»."
         texto = f"¡A bailar «{titulo}»!"
         if self._modo in ("animado", "sprites") or (self._pendiente and self._admite() is not None):
-            texto += " Esta mascota no tiene esqueleto: baila a su manera."
+            texto += " En 2D mi figura no tiene esqueleto: bailo a mi manera."
         return True, texto
 
     def _empezar(self, b: nbl.Baile, *, sacar: bool = True) -> None:
-        """Deja listo el estado para `b` y lo arranca (o espera a la mascota)."""
+        """Deja listo el estado para `b` y lo arranca (o espera a la asistente)."""
         self._gen += 1
         self._t_pulso.stop()
         self._parar_vigia()
-        self._t_mascota.stop()
+        self._t_asistente.stop()
         if self._modo == "sprites":
             self._parar_sprites()
         self._actual = b
@@ -776,24 +776,24 @@ class ControlMMD(QObject):
         self._oculta = False
         self._recien_sacada = False
         self._ultimo_seg = -1
-        m = self._mascota
+        m = self._asistente
         if m is None or not _vivo(m) or getattr(m, "cerrado", False) is True:
             self._pendiente = True
             self._emitir_estado()
-            self._sacar_mascota()
+            self._sacar_asistente()
             if self._pendiente and self._actual is b:
-                self._t_mascota.start(ESPERA_MASCOTA_MS)
+                self._t_asistente.start(ESPERA_ASISTENTE_MS)
             return
         self._pendiente = False
-        if sacar and not self._mascota_visible():
-            # Escondida (no cerrada): se saca como la acción «mascota». Mientras, pendiente: si
-            # en vez de enseñarla llega otra (set_mascota), arranca con esa.
+        if sacar and not self._asistente_visible():
+            # Escondida (no cerrada): se saca como la acción «asistente». Mientras, pendiente: si
+            # en vez de enseñarla llega otra (set_asistente), arranca con esa.
             self._pendiente = True
-            self._sacar_mascota()
+            self._sacar_asistente()
             if not self._pendiente or self._actual is not b:
                 return
             self._pendiente = False
-            if self._mascota_visible():
+            if self._asistente_visible():
                 self._recien_sacada = True
             else:
                 self._avisar(AVISO_ESCONDIDA)
@@ -804,16 +804,16 @@ class ControlMMD(QObject):
         b = self._actual
         if b is None:
             return
-        modo = self._modo_de(self._mascota)
+        modo = self._modo_de(self._asistente)
         if not modo:
-            self._fallar("Esta mascota no sabe bailar.")
+            self._fallar("Con esta figura no sé bailar.")
             return
         self._modo = modo
         self._fase = "cargando"
-        self._oculta = modo == "sprites" and not self._mascota_visible()     # sonará al verla
+        self._oculta = modo == "sprites" and not self._asistente_visible()     # sonará al verla
         necesita_hilo = modo in ("animado", "sprites") or (b.audio is not None and b.audio_web is None)
         if modo in ("animado", "sprites") and b.audio is None:
-            self._fallar("Este baile no trae canción y esta mascota no tiene esqueleto: sin canción no "
+            self._fallar("Este baile no trae canción y en 2D mi figura no tiene esqueleto: sin canción no "
                          "puedo bailarlo.")
             return
         if not necesita_hilo:
@@ -871,7 +871,7 @@ class ControlMMD(QObject):
             return
         self._pausa_enviada = False
         if not self._enviar("cargar", payload):
-            self._fallar("La mascota no aceptó el baile.")
+            self._fallar("Mi figura no aceptó el baile.")
             return
         if self._pausada():
             self._enviar("pausa", {"on": True})
@@ -932,22 +932,22 @@ class ControlMMD(QObject):
         self._fase = "sonando"
         self._t = 0.0
         self._opciones = nb.opciones_pagina(self.config)
-        self._mascota_bailar(True)
+        self._asistente_bailar(True)
         self._t_pulso.start()
         self._tic_pulso()
         self._emitir_estado()
 
-    def _parar_sprites(self, avisar_mascota: bool = True) -> None:
-        """Fuera la canción y el pulso. `avisar_mascota` False: la mascota se cambió o se está
-        borrando (set_mascota): no se le habla."""
+    def _parar_sprites(self, avisar_asistente: bool = True) -> None:
+        """Fuera la canción y el pulso. `avisar_asistente` False: la asistente se cambió o se está
+        borrando (set_asistente): no se le habla."""
         self._t_pulso.stop()
         if self._cancion is not None:
             try:
                 self._cancion.liberar()
             except Exception:
                 _log.debug("mmd: no pude soltar la canción", exc_info=True)
-        if self._sprites_empezado and avisar_mascota:
-            self._mascota_bailar(False)
+        if self._sprites_empezado and avisar_asistente:
+            self._asistente_bailar(False)
         self._sprites_listo = False
         self._sprites_empezado = False
 
@@ -966,13 +966,13 @@ class ControlMMD(QObject):
         off = float(self._actual.meta.get("offset_ms") or 0) / 1000.0
         bpm = self._pulso["bpm"]
         fase = nbl.fase_en(self._t + off, bpm, self._pulso["fase0"])
-        m = self._mascota
+        m = self._asistente
         f = getattr(m, "pulso", None) if _vivo(m) else None
         if callable(f):
             try:
                 f(float(bpm), float(fase), ENERGIA_D1)
             except Exception:
-                _log.debug("mmd: la mascota no aceptó el pulso", exc_info=True)
+                _log.debug("mmd: la asistente no aceptó el pulso", exc_info=True)
         seg = int(self._t)
         if seg != self._ultimo_seg:
             self._ultimo_seg = seg
@@ -994,14 +994,14 @@ class ControlMMD(QObject):
             if ef:
                 if self._sprites_empezado:
                     c.pausar(True)
-                    self._mascota_bailar(False)
+                    self._asistente_bailar(False)
                 self._t_pulso.stop()
                 if self._fase in ("sonando", "listo"):
                     self._fase = "pausado"
             elif self._sprites_empezado:
                 c.pausar(False)
                 c.volumen(self._vol_efectivo())
-                self._mascota_bailar(True)
+                self._asistente_bailar(True)
                 self._t_pulso.start()
                 self._fase = "sonando"
                 self._tic_pulso()
@@ -1040,7 +1040,7 @@ class ControlMMD(QObject):
             self._terminar(enviar=True)
             return
         titulo = nbl.titulo_seguro(self._actual.titulo) if self._actual is not None else ""
-        self._fallar(f"No pude bailar «{titulo}»: {mensaje or 'error en la mascota'}")
+        self._fallar(f"No pude bailar «{titulo}»: {mensaje or 'algo falló en el escritorio'}")
 
     def _fallar(self, texto: str) -> None:
         texto = nbl.texto_limpio(texto, 300)
@@ -1051,23 +1051,23 @@ class ControlMMD(QObject):
         if self._actual is None or self._fase != "cargando" or self._modo not in ("vrm", "animado"):
             self._vigia_ms = 0
             return
-        if not self._mascota_visible():
+        if not self._asistente_visible():
             # Escondida no lee su cola de eventos: no cuenta. Vuelve a armarse entero al verla
             # (_on_visible); por si no llega ese aviso, se mira otra vez más tarde.
             self._t_vigia.start(max(1, self._vigia_ms or VIGIA_PRIMERA_MS))
             return
         self._vigia_ms = 0
-        self._fallar("La mascota no respondió al baile.")
+        self._fallar("Mi figura no respondió al baile.")
 
-    def _mascota_no_llego(self) -> None:
+    def _asistente_no_llego(self) -> None:
         if self._actual is not None and self._pendiente:
-            self._fallar("No pude sacar a la mascota para bailar.")
+            self._fallar("No pude salir al escritorio para bailar.")
 
     def _armar_vigia(self, ms: int) -> None:
-        """La página tiene `ms` para decir algo; con la mascota escondida no cuenta (se arma al
+        """La página tiene `ms` para decir algo; con la asistente escondida no cuenta (se arma al
         verla: _on_visible)."""
         self._vigia_ms = int(ms)
-        if self._mascota_visible():
+        if self._asistente_visible():
             self._t_vigia.start(int(ms))
         else:
             self._t_vigia.stop()
@@ -1077,16 +1077,16 @@ class ControlMMD(QObject):
         self._t_vigia.stop()
 
     def _terminar(self, *, enviar: bool, error: str = "") -> None:
-        """Deja de bailar: la mascota al reposo, la canción fuera, la actividad suelta."""
+        """Deja de bailar: la asistente al reposo, la canción fuera, la actividad suelta."""
         b = self._actual
         self._gen += 1
-        for t in (self._t_pulso, self._t_vigia, self._t_mascota):
+        for t in (self._t_pulso, self._t_vigia, self._t_asistente):
             t.stop()
         self._vigia_ms = 0
         if self._modo in ("vrm", "animado") and enviar and not self._pendiente:
             self._enviar("parar", None)
         if self._modo == "sprites":
-            self._parar_sprites(avisar_mascota=enviar)
+            self._parar_sprites(avisar_asistente=enviar)
         elif self._cancion is not None:
             try:
                 self._cancion.liberar()
@@ -1124,7 +1124,7 @@ class ControlMMD(QObject):
         except Exception:
             _log.exception("mmd: no pude terminar la actividad")
 
-    # ── Internos: mascota ────────────────────────────────────────────────────────
+    # ── Internos: asistente ────────────────────────────────────────────────────────
     @staticmethod
     def _modo_de(m: Any) -> str:
         if not _vivo(m):
@@ -1142,9 +1142,9 @@ class ControlMMD(QObject):
             pass
         return ""
 
-    def _mascota_visible(self) -> bool:
-        """¿Se ve la mascota? (cerrada o borrada, no; una sin isVisible —los dobles— sí)."""
-        m = self._mascota
+    def _asistente_visible(self) -> bool:
+        """¿Se ve la asistente? (cerrada o borrada, no; una sin isVisible —los dobles— sí)."""
+        m = self._asistente
         if not _vivo(m) or getattr(m, "cerrado", False) is True:
             return False
         f = getattr(m, "isVisible", None)
@@ -1156,27 +1156,27 @@ class ControlMMD(QObject):
             return False
 
     def _sacar_si_escondida(self) -> None:
-        """▶ con un baile puesto y la mascota escondida: se saca (como la acción «mascota»). Cedido
+        """▶ con un baile puesto y la asistente escondida: se saca (como la acción «asistente»). Cedido
         (juego, alarma, pantalla grande…), no: la escondió o la tapa lo que manda ahora."""
-        if self._mascota is None or self._pendiente or self._cedida or self._mascota_visible():
+        if self._asistente is None or self._pendiente or self._cedida or self._asistente_visible():
             return
-        self._sacar_mascota()
-        if not self._mascota_visible():
+        self._sacar_asistente()
+        if not self._asistente_visible():
             self._avisar(AVISO_ESCONDIDA)
 
     def _enviar(self, orden: str, datos: Optional[Dict[str, Any]]) -> bool:
-        m = self._mascota
+        m = self._asistente
         f = getattr(m, "mmd", None) if _vivo(m) else None
         if not callable(f):
             return False
         try:
             return f(orden, datos) is not False
         except Exception:
-            _log.exception("mmd: la mascota no aceptó «%s»", orden)
+            _log.exception("mmd: la asistente no aceptó «%s»", orden)
             return False
 
-    def _mascota_bailar(self, on: bool) -> None:
-        m = self._mascota
+    def _asistente_bailar(self, on: bool) -> None:
+        m = self._asistente
         f = getattr(m, "bailar", None) if _vivo(m) else None
         if not callable(f):
             return
@@ -1186,10 +1186,10 @@ class ControlMMD(QObject):
             else:
                 f(False)
         except Exception:
-            _log.debug("mmd: la mascota no pudo %s", "bailar" if on else "parar", exc_info=True)
+            _log.debug("mmd: la asistente no pudo %s", "bailar" if on else "parar", exc_info=True)
 
     def _despertar(self) -> None:
-        m = self._mascota
+        m = self._asistente
         f = getattr(m, "despertar", None) if _vivo(m) else None
         if callable(f):
             try:
@@ -1197,7 +1197,7 @@ class ControlMMD(QObject):
             except Exception:
                 pass
 
-    def _sacar_mascota(self) -> None:
+    def _sacar_asistente(self) -> None:
         desp = None
         obtener = getattr(self.escritorio, "obtener", None)
         if callable(obtener):
@@ -1206,15 +1206,15 @@ class ControlMMD(QObject):
             except Exception:
                 desp = None
         try:
-            if desp is not None and callable(getattr(desp, "tiene", None)) and desp.tiene("mascota"):
-                desp.ejecutar("mascota")
+            if desp is not None and callable(getattr(desp, "tiene", None)) and desp.tiene("asistente"):
+                desp.ejecutar("asistente")
                 return
         except Exception:
-            _log.exception("mmd: no pude sacar la mascota con el despachador")
-        self._llamar_anfitrion("alternar_mascota")
+            _log.exception("mmd: no pude sacar a la asistente con el despachador")
+        self._llamar_anfitrion("alternar_asistente")
 
     def _on_bus(self, estado: Any = None, cambios: Any = None) -> None:
-        """Del bus: `visible` (la mascota se esconde o vuelve) y `hablando` (la voz de Lune baja
+        """Del bus: `visible` (la asistente se esconde o vuelve) y `hablando` (la voz de Lune baja
         la canción en los sprites; la página ya lo hace sola)."""
         if not isinstance(cambios, dict):
             return
@@ -1228,7 +1228,7 @@ class ControlMMD(QObject):
                 pass
 
     def _on_visible(self) -> None:
-        """La mascota se escondió (o se cerró) o volvió a verse, con un baile puesto.
+        """La asistente se escondió (o se cerró) o volvió a verse, con un baile puesto.
 
         Sprites: escondidos no bailan → canción en pausa y sin pulso; al volver, sigue (si no
         la pausó la persona ni la cedió un juego). VRM/animada: se pausan solas en su página
@@ -1236,7 +1236,7 @@ class ControlMMD(QObject):
         de nuevo, entero, al verla."""
         if self._actual is None or self._pendiente:
             return
-        vis = self._mascota_visible()
+        vis = self._asistente_visible()
         if self._modo == "sprites":
             if self._oculta == vis:
                 self._oculta = not vis

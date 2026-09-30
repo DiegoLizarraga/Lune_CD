@@ -1,7 +1,7 @@
 /*
  * ui_web/vrm/lune_params.js — Lista blanca y rangos de window.luneParams (P14, «Custom VRM»).
  *
- * Python manda a la mascota 3D la calibración del modelo (modelo_vrm/<modelo>.lune.json,
+ * Python manda a la asistente 3D la calibración del modelo (modelo_vrm/<modelo>.lune.json,
  * ver nucleo/vrm.py → params_modelo) y los pesos de seguimiento. Aquí se decide qué
  * claves de PARAMS se pueden tocar desde fuera y en qué rango: todo lo demás se ignora
  * (ni claves nuevas, ni __proto__, ni NaN/Infinity, ni textos raros).
@@ -139,7 +139,7 @@ export function aplicarParams(PARAMS, json) {
 }
 
 /**
- * La función de window.luneParams: `window.luneParams = crearLuneParams(mascota.PARAMS,
+ * La función de window.luneParams: `window.luneParams = crearLuneParams(asistente.PARAMS,
  * (cambiadas) => …)`. Devuelve JSON de lo aplicado (lo que Python puede leer en el callback
  * de runJavaScript). Un alCambiar que lanza no rompe la llamada.
  */

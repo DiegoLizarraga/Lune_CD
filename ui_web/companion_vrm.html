@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<!-- Corte 9: fetch/XHR solo al servidor local de la mascota (y blob:/data:), aunque un
+<!-- Corte 9: fetch/XHR solo al servidor local de la asistente (y blob:/data:), aunque un
      .vrma o un script lo intenten (crítica d). Si rompiera algo en pantalla, se quita. -->
 <meta http-equiv="Content-Security-Policy" content="connect-src 'self' blob: data:" />
 <title>Lune VRM</title>
@@ -173,7 +173,7 @@
 }
 </script>
 <script type="module">
-import { crearMascota } from './vrm/lune_vrm.js';
+import { crearAsistente } from './vrm/lune_vrm.js';
 
 const params = new URLSearchParams(location.search);
 const SRC = params.get('src') || '/vrm/actual.vrm';
@@ -204,10 +204,10 @@ window.addEventListener('error', (e) => {
   mostrarAviso('No se pudo cargar el visor 3D.', String(e.message || e.error || '').slice(0, 200));
 });
 
-// Los comentarios de la mascota (arrastre, soltar, caricia, dormir, despertar, mareo)
-// los decide Python (lune_core/frases_mascota.py) con los eventos de window.luneEventos:
+// Los comentarios de la asistente (arrastre, soltar, caricia, dormir, despertar, mareo)
+// los decide Python (lune_core/frases_asistente.py) con los eventos de window.luneEventos:
 // aquí solo lo visual.
-const mascota = crearMascota({
+const asistente = crearAsistente({
   canvas: document.getElementById('c'), src: SRC + (SRC.includes('?') ? '&' : '?') + 'v=' + (params.get('v') || '0'),
   encuadre: ENC,
   onEvento: (tipo, dato) => {
@@ -224,27 +224,27 @@ const mascota = crearMascota({
 
 // ── API para Python (QWebEngineView.page().runJavaScript) ─────────────────────
 window.luneReady = false;
-window.setEmocion = (s) => mascota.setEstado(s);                 // mismo nombre que companion.html
-window.luneSetEmotion = (s) => mascota.setEstado(s);             // compat con el visor anterior
+window.setEmocion = (s) => asistente.setEstado(s);                 // mismo nombre que companion.html
+window.luneSetEmotion = (s) => asistente.setEstado(s);             // compat con el visor anterior
 // La voz manda sobre la boca; mientras suena, la máquina de escribir no la toca.
-window.luneSpeak = (on) => { mascota.setHablando(!!on); if (window.luneBurbuja) window.luneBurbuja.setVoz(!!on); };
-window.luneCursor = (nx, ny, px, py, dentro) => mascota.cursor(nx, ny, px, py, dentro);   // → bool
-window.luneDrag = (on, vx, vy) => mascota.drag(!!on, vx, vy);
-window.luneSleep = (on) => mascota.dormir(!!on);
-window.luneTouch = () => mascota.tocar();
-window.luneEncuadre = (m) => mascota.encuadrar(m);
-window.luneCargarModelo = (url) => { window.luneReady = false; document.title = 'Lune VRM'; mascota.cargar(url); };
-window.luneSetFPS = (n) => mascota.setFPS(n);
-window.luneMeta = () => JSON.stringify(mascota.meta());
+window.luneSpeak = (on) => { asistente.setHablando(!!on); if (window.luneBurbuja) window.luneBurbuja.setVoz(!!on); };
+window.luneCursor = (nx, ny, px, py, dentro) => asistente.cursor(nx, ny, px, py, dentro);   // → bool
+window.luneDrag = (on, vx, vy) => asistente.drag(!!on, vx, vy);
+window.luneSleep = (on) => asistente.dormir(!!on);
+window.luneTouch = () => asistente.tocar();
+window.luneEncuadre = (m) => asistente.encuadrar(m);
+window.luneCargarModelo = (url) => { window.luneReady = false; document.title = 'Lune VRM'; asistente.cargar(url); };
+window.luneSetFPS = (n) => asistente.setFPS(n);
+window.luneMeta = () => JSON.stringify(asistente.meta());
 // Calibración del modelo (lista blanca de ui_web/vrm/lune_params.js) → JSON de lo aplicado.
 // Si Python la llamó antes de que cargara este módulo, se aplica ahora la última.
 const paramsPendientes = window.__luneParamsPendiente;
 window.__luneParamsPendiente = null;
-window.luneParams = (j) => mascota.luneParams(j);
-if (paramsPendientes != null) mascota.luneParams(paramsPendientes);
+window.luneParams = (j) => asistente.luneParams(j);
+if (paramsPendientes != null) asistente.luneParams(paramsPendientes);
 // Bus de módulos del avatar (ui_web/vrm/lune_modulos.js): luneMod('baileProc', 'play', …).
-window.luneMod = (nombre, metodo, ...args) => mascota.mod(nombre, metodo, ...args);
-window.luneMascota = mascota;                                    // para registrar módulos: luneMascota.registrar(instalar)
+window.luneMod = (nombre, metodo, ...args) => asistente.mod(nombre, metodo, ...args);
+window.luneAsistente = asistente;                                    // para registrar módulos: luneAsistente.registrar(instalar)
 
 // Cola de eventos hacia Python (lune_eventos.js; companion.py la vacía a 12 Hz). Si
 // ese script no cargó, una cola vacía para que el sondeo no falle.
@@ -261,8 +261,8 @@ if (typeof window.luneTema !== 'function') window.luneTema = () => 0;
 // hueso| (0.1732 m con escala 1) medido sobre el eje derecho de la cámara.
 window.luneCabeza = (offsetY = 0.1) => {
   try {
-    const ctx = mascota.ctx, T = ctx && ctx.THREE, cab = ctx && ctx.huesos && ctx.huesos.head;
-    if (!mascota.listo || !T || !cab || !ctx.camera || typeof ctx.proyectar !== 'function') return 'null';
+    const ctx = asistente.ctx, T = ctx && ctx.THREE, cab = ctx && ctx.huesos && ctx.huesos.head;
+    if (!asistente.listo || !T || !cab || !ctx.camera || typeof ctx.proyectar !== 'function') return 'null';
     let oy = Number(offsetY);
     if (!Number.isFinite(oy)) oy = 0.1;
     cab.updateWorldMatrix(true, false);
@@ -284,7 +284,7 @@ window.luneCabeza = (offsetY = 0.1) => {
 // Burbuja: la de lune_burbuja.js (temporizador compartido con comentarTipeado y el
 // streaming). Mismo comportamiento que antes: comentar(t, ms = 14 s), pensando() '…'.
 const burbuja = window.luneBurbuja;
-if (burbuja) burbuja.onBoca = (on) => mascota.setHablando(!!on);   // la boca se mueve al teclear
+if (burbuja) burbuja.onBoca = (on) => asistente.setHablando(!!on);   // la boca se mueve al teclear
 window.comentar = (t, ms) => burbuja && burbuja.comentar(t, ms);
 window.pensando = () => burbuja && burbuja.pensando();
 window.ocultarBurbuja = () => burbuja && burbuja.ocultar();
@@ -311,7 +311,7 @@ const notas = window.LuneNotas ? window.LuneNotas.crear({ doc: document }) : nul
 let modG = null, modB = null;
 function moduloGrande() {
   if (!modG && modGrande && typeof modGrande.instalar === 'function') {
-    modG = mascota.registrar((ctx) => modGrande.instalar(ctx, {
+    modG = asistente.registrar((ctx) => modGrande.instalar(ctx, {
       VRMSpringBoneCollider: VRMLib && VRMLib.VRMSpringBoneCollider,
       VRMSpringBoneColliderShapeSphere: VRMLib && VRMLib.VRMSpringBoneColliderShapeSphere,
     }));
@@ -320,7 +320,7 @@ function moduloGrande() {
 }
 function moduloBaile() {
   if (!modB && modBaile && typeof modBaile.instalar === 'function') {
-    modB = mascota.registrar((ctx) => modBaile.instalar(ctx, { alGolpe: (e) => { if (notas) notas.golpe(e); } }));
+    modB = asistente.registrar((ctx) => modBaile.instalar(ctx, { alGolpe: (e) => { if (notas) notas.golpe(e); } }));
   }
   return modB;
 }
@@ -350,11 +350,11 @@ if (ocioPendiente.pulso) window.lunePulso(...ocioPendiente.pulso);
 // sin registrar el módulo (medirAsiento con la pose que tenga).
 let modS = null, modC = null;
 function moduloSentarse() {
-  if (!modS && modSentarse && typeof modSentarse.instalar === 'function') modS = mascota.registrar(modSentarse.instalar);
+  if (!modS && modSentarse && typeof modSentarse.instalar === 'function') modS = asistente.registrar(modSentarse.instalar);
   return modS;
 }
 function moduloComida() {
-  if (!modC && modComida && typeof modComida.instalar === 'function') modC = mascota.registrar(modComida.instalar);
+  if (!modC && modComida && typeof modComida.instalar === 'function') modC = asistente.registrar(modComida.instalar);
   return modC;
 }
 const jsonPunto = (p) => (p ? JSON.stringify(p) : 'null');
@@ -370,7 +370,7 @@ window.luneSentar = (modo, variante) => {
 window.luneSeatPx = () => {
   try {
     if (modS) return jsonPunto(modS.api.puntos());
-    return modSentarse && typeof modSentarse.medirAsiento === 'function' ? jsonPunto(modSentarse.medirAsiento(mascota.ctx)) : 'null';
+    return modSentarse && typeof modSentarse.medirAsiento === 'function' ? jsonPunto(modSentarse.medirAsiento(asistente.ctx)) : 'null';
   } catch (e) { return 'null'; }
 };
 window.luneComer = (tipo, ms) => { const m = moduloComida(); return m ? !!m.api.comer(tipo, ms) : false; };
@@ -384,7 +384,7 @@ if (vidaPendiente.comer) window.luneComer(...vidaPendiente.comer);
 // ── Corte 9: reproductor de bailes MMD/VRMA (vrm/lune_mmd.js; lo pide ui/mmd_qt.ControlMMD) ──
 // Se importa y se registra al pedir el primer baile (sin bailes no cuesta nada): lune_mmd.js,
 // el parser VMD (lune_vmd.js), @pixiv/three-vrm-animation y el GLTFLoader, todos con import()
-// tolerante (si falta uno, ese baile da error y la mascota sigue). La canción suena en esta
+// tolerante (si falta uno, ese baile da error y la asistente sigue). La canción suena en esta
 // página (lune_mmd_audio.js) y el módulo avisa con eventos 'mmd' por luneEventos. Mientras
 // se importa, lo pedido se guarda (el último «cargar» y sus banderas) y se repite.
 // Cuándo suena lo decide esta capa: el «cargar» va siempre sin autoplay y empieza al acabar
@@ -436,7 +436,7 @@ function importarMMD() {
     ]).then(([m, vmd, vrma, gltf]) => {
       if (!m || typeof m.instalar !== 'function') return null;
       const V = vrma || {};
-      modM = mascota.registrar((ctx) => m.instalar(ctx, {
+      modM = asistente.registrar((ctx) => m.instalar(ctx, {
         GLTFLoader: gltf && gltf.GLTFLoader, VRMAnimationLoaderPlugin: V.VRMAnimationLoaderPlugin,
         createVRMAnimationClip: V.createVRMAnimationClip, VRMAnimation: V.VRMAnimation,
         VRMLookAtQuaternionProxy: V.VRMLookAtQuaternionProxy, vmd: vmd || null, audio: window.LuneMMDAudio || null,

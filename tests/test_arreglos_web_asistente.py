@@ -1,5 +1,5 @@
 """
-Arreglos de la revisión de los cortes 2+3 en la piel web y las mascotas
+Arreglos de la revisión de los cortes 2+3 en la piel web y las asistentes
 (ui/web_bridge.py, ui/companion.py, ui/avatar_overlay.py, ui/lune_face.py).
 
   · Seguridad: get_config no da las claves en claro (máscara + «configurada»);
@@ -7,7 +7,7 @@ Arreglos de la revisión de los cortes 2+3 en la piel web y las mascotas
     solo con su URL); resolver_aprobacion solo contesta lo que se preguntó a la
     página; personaje_vrm y vrm_archivo solo aceptan modelos de modelo_vrm/; lo que
     pides con tus palabras («abre youtube», «lanza calc») pasa por el Ejecutor.
-  · Funcional: voz y caras con la mascota oculta, resultado de acciones en la
+  · Funcional: voz y caras con la asistente oculta, resultado de acciones en la
     burbuja, «duérmete» con tramos de voz largos, borrar el último modelo 3D,
     Detener, esperas sin anidar, eventos de estado viejos, VRM oculta liberada.
   · Arranque: guardar Ajustes no pisa la voz global ni recorta el contexto; un
@@ -116,7 +116,7 @@ class WorkerFalso(QObject):
         return self.corriendo
 
 
-class MascotaFalsa:
+class AsistenteFalsa:
     def __init__(self, visible=True):
         self.cerrado = False
         self.visible = visible
@@ -195,9 +195,9 @@ def puente(qapp, tmp_path, monkeypatch, datos_tmp):
     b.deleteLater()
 
 
-def _turno(b, mascota=False):
+def _turno(b, asistente=False):
     from servicios.tools import ctx_acciones
-    b._turno = {"origen": "usuario", "ctx": ctx_acciones(b.ai, "ollama", "normal"), "mascota": mascota}
+    b._turno = {"origen": "usuario", "ctx": ctx_acciones(b.ai, "ollama", "normal"), "asistente": asistente}
 
 
 # ── S2: claves, aprobaciones y rutas ───────────────────────────────────────────
@@ -280,7 +280,7 @@ def test_resolver_aprobacion_solo_lo_que_se_pregunto_a_la_pagina(puente, monkeyp
 
     monkeypatch.setattr(aq, "DialogoAprobacion", Dialogo)
     b = puente
-    b._ventana_a_la_vista = lambda: False                  # pregunta junto a la mascota
+    b._ventana_a_la_vista = lambda: False                  # pregunta junto a la asistente
     _turno(b)
     b._on_done('<|CALL ["lanzar_app", {"app": "calc"}]|>')
     assert len(dialogos) == 1 and b.senales["aprobacion_pedida"] == []
@@ -333,45 +333,45 @@ def test_abre_youtube_por_el_ejecutor_y_lanza_pide_permiso(puente):
     assert b.resolver_aprobacion(p["id"], True) is True and b.lanzadas == ["calc"]
 
 
-# ── Funcional: mascota oculta, burbuja, Detener, esperas ───────────────────────
+# ── Funcional: asistente oculta, burbuja, Detener, esperas ───────────────────────
 
-def test_la_voz_llega_a_la_mascota_aunque_este_oculta(puente):
+def test_la_voz_llega_a_la_asistente_aunque_este_oculta(puente):
     b = puente
-    ov = MascotaFalsa(visible=False)
+    ov = AsistenteFalsa(visible=False)
     b._overlay = ov
     b._on_hablando(True)
     b._on_hablando(False)
     assert ov.hablando == [True, False]
 
 
-def test_el_eco_no_sale_con_la_mascota_oculta(puente):
+def test_el_eco_no_sale_con_la_asistente_oculta(puente):
     b = puente
-    ov = MascotaFalsa(visible=False)
+    ov = AsistenteFalsa(visible=False)
     b._overlay = ov
-    _turno(b, mascota=True)
-    b._eco_mascota("hola", fin=True)
+    _turno(b, asistente=True)
+    b._eco_asistente("hola", fin=True)
     assert ov.textos == [] and ov.fines == []
     ov.visible = True
-    b._eco_mascota("hola", fin=True)
+    b._eco_asistente("hola", fin=True)
     assert ov.textos == ["hola"]
 
 
-def test_el_resultado_de_una_accion_sale_en_la_burbuja_de_la_mascota(puente):
+def test_el_resultado_de_una_accion_sale_en_la_burbuja_de_la_asistente(puente):
     b = puente
-    ov = MascotaFalsa()
+    ov = AsistenteFalsa()
     b._overlay = ov
-    _turno(b, mascota=True)
+    _turno(b, asistente=True)
     b._on_done('Te lo abro. <|CALL ["abrir_url", {"url": "https://www.youtube.com"}]|>')
     assert ov.textos[-1].startswith("Te lo abro.") and "\n✓ " in ov.textos[-1]
     # rechazada: ✕ debajo
     b._on_done('Va. <|CALL ["lanzar_app", {"app": "calc"}]|>')
     p = json.loads(b.senales["aprobacion_pedida"][-1])
-    b._turno["mascota"] = True
+    b._turno["asistente"] = True
     b.resolver_aprobacion(p["id"], False)
     assert "\n✕ " in ov.textos[-1] and ov.textos[-1].startswith("Va.")
     # turno de la ventana: nada en la burbuja
     n = len(ov.textos)
-    _turno(b, mascota=False)
+    _turno(b, asistente=False)
     b._on_done('<|CALL ["abrir_url", {"url": "https://www.google.com"}]|>')
     assert len(ov.textos) == n
 
@@ -536,12 +536,12 @@ def test_vrm_archivo_obsoleto_no_avisa_en_cada_guardado(puente):
     assert any("No encuentro el modelo" in a for a in b.senales["aviso"])
 
 
-# ── Mascota web (companion.py) ─────────────────────────────────────────────────
+# ── Asistente web (companion.py) ─────────────────────────────────────────────────
 
 @pytest.fixture
 def web_falso(monkeypatch):
     if not HAY_WEBENGINE:
-        pytest.skip("la mascota web necesita PyQt6-WebEngine")
+        pytest.skip("la asistente web necesita PyQt6-WebEngine")
     from PyQt6.QtCore import QUrl
     from PyQt6.QtWidgets import QWidget
     import ui.companion as comp
@@ -659,7 +659,7 @@ def test_companion_duermete_no_caduca_con_un_tramo_de_voz_largo(qapp, tmp_path, 
         destruir(c)
 
 
-def test_companion_borrar_el_ultimo_modelo_recrea_la_mascota(qapp, tmp_path, web_falso, lune_activa,
+def test_companion_borrar_el_ultimo_modelo_recrea_la_asistente(qapp, tmp_path, web_falso, lune_activa,
                                                             monkeypatch):
     from nucleo import vrm
     carpeta = tmp_path / "modelo_vrm"
@@ -679,7 +679,7 @@ def test_companion_borrar_el_ultimo_modelo_recrea_la_mascota(qapp, tmp_path, web
 
 
 def test_companion_estado_viejo_de_la_pagina_no_pisa_una_emocion_nueva(qapp, tmp_path, web_falso, lune_activa):
-    from nucleo.estado_mascota import BusEstado
+    from nucleo.estado_asistente import BusEstado
     c = _companion(tmp_path)
     try:
         bus = BusEstado()
@@ -717,7 +717,7 @@ def test_companion_vrm_oculta_un_rato_libera_la_pagina(qapp, tmp_path, web_falso
         destruir(c)
 
 
-# ── Mascota de sprites (avatar_overlay.py / lune_face.py) ──────────────────────
+# ── Asistente de sprites (avatar_overlay.py / lune_face.py) ──────────────────────
 
 @pytest.fixture
 def sprites(qapp, lune_activa):
@@ -730,7 +730,7 @@ def sprites(qapp, lune_activa):
     destruir(ov)
 
 
-def test_sprites_voz_y_typing_con_la_mascota_oculta(sprites):
+def test_sprites_voz_y_typing_con_la_asistente_oculta(sprites):
     ov = sprites
     ov.set_hablando(True)
     ov.set_estado("typing")

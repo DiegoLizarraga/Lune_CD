@@ -1,5 +1,5 @@
 """
-Tests del contrato de la mascota de los cortes 5 y 6 en ui/companion.py (animada y VRM):
+Tests del contrato de la asistente de los cortes 5 y 6 en ui/companion.py (animada y VRM):
 
 - soporta_grande, geometria()/set_geometria() (sin guardar la posición ni devolverla
   a la pantalla) y grande_fase(fase, opciones) → la llamada JS luneGrande correcta;
@@ -12,7 +12,7 @@ Tests del contrato de la mascota de los cortes 5 y 6 en ui/companion.py (animada
 - al recargar la página se repite lo que estaba a la vista; al cerrar en grande se
   guarda la posición de antes.
 
-Qt offscreen, sin Chromium (vista web falsa que anota el JS), como test_mascota_corte4.py.
+Qt offscreen, sin Chromium (vista web falsa que anota el JS), como test_asistente_corte4.py.
 """
 import json
 import sys
@@ -74,9 +74,9 @@ def config(tmp_path):
 
 @pytest.fixture
 def web_falso(monkeypatch):
-    """QWebEngineView falso que anota el JS (como en test_mascota_corte4.py)."""
+    """QWebEngineView falso que anota el JS (como en test_asistente_corte4.py)."""
     if not HAY_WEBENGINE:
-        pytest.skip("la mascota web necesita PyQt6-WebEngine")
+        pytest.skip("la asistente web necesita PyQt6-WebEngine")
     from PyQt6.QtCore import QUrl
     from PyQt6.QtWidgets import QWidget
     import ui.companion as comp
@@ -111,7 +111,7 @@ def web_falso(monkeypatch):
 
 
 @pytest.fixture
-def mascota(qapp, web_falso, config, lune_activa):
+def asistente(qapp, web_falso, config, lune_activa):
     from ui.companion import CompanionFlotante
     c = CompanionFlotante(config, ai_manager=object(), bandeja=False)
     c._aparecer_pendiente = False
@@ -157,8 +157,8 @@ def test_soporta_grande_y_geometria(qapp, web_falso, config, lune_activa):
     assert c.soporta_grande is False, "cerrada no"
 
 
-def test_set_geometria_no_guarda_la_posicion(mascota, config):
-    c = mascota
+def test_set_geometria_no_guarda_la_posicion(asistente, config):
+    c = asistente
     x0, y0 = config.get("avatar", "companion_x"), config.get("avatar", "companion_y")
     c.set_geometria(QRect(3, 4, 1280, 720))
     assert c.geometry() == QRect(3, 4, 1280, 720), "tal cual, sin devolverla a la pantalla"
@@ -168,8 +168,8 @@ def test_set_geometria_no_guarda_la_posicion(mascota, config):
     assert c.geometry() == QRect(3, 4, 1280, 720)
 
 
-def test_grande_fase_llama_a_la_pagina(mascota):
-    c = mascota
+def test_grande_fase_llama_a_la_pagina(asistente):
+    c = asistente
     c.grande_fase("glide", {"ms": 400, "motivo": "manual", "lista": [1], "nan": float("nan"), "mal clave": 1})
     assert js(c)[-1] == 'window.luneGrande && window.luneGrande("glide", {"motivo": "manual", "ms": 400})'
     assert c.en_grande
@@ -185,8 +185,8 @@ def test_grande_fase_llama_a_la_pagina(mascota):
     assert not c.en_grande
 
 
-def test_en_grande_30_fps_y_fin_vuelve_a_fps_max(mascota, config):
-    c = mascota
+def test_en_grande_30_fps_y_fin_vuelve_a_fps_max(asistente, config):
+    c = asistente
     config.set("avatar", "fps_max", 90)
     c.aplicar_opciones()
     assert js(c)[-1] == "window.luneSetFPS && window.luneSetFPS(90)"
@@ -199,8 +199,8 @@ def test_en_grande_30_fps_y_fin_vuelve_a_fps_max(mascota, config):
     assert js(c)[fin + 1] == "window.luneSetFPS && window.luneSetFPS(120)", "el fin de la página, y luego fps_max"
 
 
-def test_en_grande_sin_rueda_arrastre_comentario_ni_chat(mascota, config, monkeypatch):
-    c = mascota
+def test_en_grande_sin_rueda_arrastre_comentario_ni_chat(asistente, config, monkeypatch):
+    c = asistente
     comentarios = []
     monkeypatch.setattr(c, "comentar_pantalla", lambda: comentarios.append(1))
     chats = []
@@ -243,8 +243,8 @@ def test_en_grande_sin_rueda_arrastre_comentario_ni_chat(mascota, config, monkey
     c._clic.cancelar()
 
 
-def test_hold_se_suelta_al_salir_de_grande_y_al_ocultarse(mascota):
-    c = mascota
+def test_hold_se_suelta_al_salir_de_grande_y_al_ocultarse(asistente):
+    c = asistente
     a_grande(c)
     x, y = centro(c)
     c.eventFilter(c.web, raton(PRESS, IZQ, x, y))
@@ -258,9 +258,9 @@ def test_hold_se_suelta_al_salir_de_grande_y_al_ocultarse(mascota):
     assert "window.luneHold && window.luneHold(false, 0, 0)" in js(c)
 
 
-def test_en_grande_cursor_al_50_y_sin_fantasma_automatico(mascota, monkeypatch):
+def test_en_grande_cursor_al_50_y_sin_fantasma_automatico(asistente, monkeypatch):
     import ui.companion as comp
-    c = mascota
+    c = asistente
     a_grande(c, QRect(0, 0, 1000, 800))
     g = c.geometry()
     punto = QPoint(g.center().x(), g.top() + int(g.height() * 0.5))
@@ -279,8 +279,8 @@ def test_en_grande_cursor_al_50_y_sin_fantasma_automatico(mascota, monkeypatch):
     assert transparentes == [True]
 
 
-def test_en_grande_sin_sueno_ni_comentarios_automaticos(mascota, config):
-    c = mascota
+def test_en_grande_sin_sueno_ni_comentarios_automaticos(asistente, config):
+    c = asistente
     config.set("avatar", "dormir_min", 5)
     c.set_comentarios_auto(True)
     c._rearmar_sueno()
@@ -314,8 +314,8 @@ def test_en_grande_cerrar_guarda_la_posicion_de_antes(qapp, web_falso, config, l
 
 # ── Salvapantallas ─────────────────────────────────────────────────────────────
 
-def test_salvapantallas_la_duerme_y_la_despierta(mascota):
-    c = mascota
+def test_salvapantallas_la_duerme_y_la_despierta(asistente):
+    c = asistente
     a_grande(c)
     js(c).clear()
     c.set_salvapantallas(True, fondo_oscuro=True, reloj=False)
@@ -330,8 +330,8 @@ def test_salvapantallas_la_duerme_y_la_despierta(mascota):
 
 # ── Alarma ─────────────────────────────────────────────────────────────────────
 
-def test_alarma_con_retraso_texto_seguro_y_clic_sin_comentario(mascota, monkeypatch):
-    c = mascota
+def test_alarma_con_retraso_texto_seguro_y_clic_sin_comentario(asistente, monkeypatch):
+    c = asistente
     comentarios = []
     monkeypatch.setattr(c, "comentar_pantalla", lambda: comentarios.append(1))
     c._dormir()
@@ -359,8 +359,8 @@ def test_alarma_con_retraso_texto_seguro_y_clic_sin_comentario(mascota, monkeypa
 
 # ── Baile ──────────────────────────────────────────────────────────────────────
 
-def test_bailar_y_pulso(mascota, config):
-    c = mascota
+def test_bailar_y_pulso(asistente, config):
+    c = asistente
     config.set("avatar", "dormir_min", 5)
     c.bailar(True, {"estilo": "palmas", "cambiar": True, "cambiarS": 20, "particulas": False,
                     "raro": {"x": 1}, "__proto__": 1})
@@ -387,9 +387,9 @@ def test_bailar_y_pulso(mascota, config):
     assert not c.bailando and c._timer_sueno.isActive()
 
 
-def test_la_animada_no_cambia_de_cara_al_bailar(mascota):
+def test_la_animada_no_cambia_de_cara_al_bailar(asistente):
     """El clip happy lo pone la página (capa 'baile'); Python no pisa la emoción base."""
-    c = mascota
+    c = asistente
     c.set_estado("sad")
     js(c).clear()
     c.bailar(True, {})
@@ -400,8 +400,8 @@ def test_la_animada_no_cambia_de_cara_al_bailar(mascota):
 
 # ── Recarga de la página ───────────────────────────────────────────────────────
 
-def test_al_recargar_repite_lo_que_estaba_a_la_vista(mascota):
-    c = mascota
+def test_al_recargar_repite_lo_que_estaba_a_la_vista(asistente):
+    c = asistente
     a_grande(c)
     c.mostrar_alarma("Pan")                           # (la alarma despierta: antes del salvapantallas)
     c.set_salvapantallas(True, reloj=False)
@@ -416,9 +416,9 @@ def test_al_recargar_repite_lo_que_estaba_a_la_vista(mascota):
     assert "window.luneSetFPS && window.luneSetFPS(30)" in js(c)
 
 
-def test_eventos_de_la_pagina_solo_al_log(mascota, monkeypatch):
+def test_eventos_de_la_pagina_solo_al_log(asistente, monkeypatch):
     import ui.companion as comp
-    c = mascota
+    c = asistente
     log = []
     monkeypatch.setattr(comp, "_log", log.append)
     c._on_eventos_js(json.dumps([{"t": "grande_fase", "d": {"fase": "entrar"}},

@@ -1,29 +1,29 @@
 """
-ui/chat_mascota.py — Hablarle a Lune desde la mascota flotante (el «AI Chat» de
+ui/chat_asistente.py — Hablarle a Lune desde la asistente flotante (el «AI Chat» de
 Mate-Engine): doble clic → cajita de texto; la respuesta sale en su burbuja.
 
-Lo comparten las dos mascotas, la web (ui/companion.py: animada o VRM) y la de
+Lo comparten las dos asistentes, la web (ui/companion.py: animada o VRM) y la de
 sprites (ui/avatar_overlay.py), para que se comporten igual:
 
 `DesambiguadorClic`
-    Un clic limpio sobre la mascota ya hace algo (la animada comenta la
+    Un clic limpio sobre la asistente ya hace algo (la animada comenta la
     pantalla, con captura y llamada a la IA). Para que el doble clic abra la
     cajita SIN disparar antes ese comentario, el clic simple se retrasa
     `QApplication.doubleClickInterval()` ms y se cancela si llega el segundo clic
     (crítica c.10). El temporizador se puede inyectar (tests).
 
-`ChatMascota`
-    La cajita (ui/entrada_chat.EntradaChat) anclada bajo la mascota. Lo que
+`ChatAsistente`
+    La cajita (ui/entrada_chat.EntradaChat) anclada bajo la asistente. Lo que
     escribes va a `dueno.on_chat(texto) -> bool`, que ponen quien lleva la app
-    (main.py `_chat_desde_mascota`, ui/web_bridge.py `enviar_desde_mascota`) para
+    (main.py `_chat_desde_asistente`, ui/web_bridge.py `enviar_desde_asistente`) para
     que entre por el flujo normal del chat: mismo historial, misma memoria,
-    mismas acciones con aprobación. La respuesta la pinta la mascota con
+    mismas acciones con aprobación. La respuesta la pinta la asistente con
     `burbuja_texto(texto)` / `burbuja_fin(ms)`. Si `dueno.proveedor_chat()` dice
     'ollama', al abrir precalienta el modelo («Despertando a Lune…»).
 
 `BurbujaQt`
-    Burbuja de texto flotante hecha con Qt para la mascota de sprites (sin
-    Chromium): encima de la mascota, sin foco, deja pasar los clics y el texto
+    Burbuja de texto flotante hecha con Qt para la asistente de sprites (sin
+    Chromium): encima de la asistente, sin foco, deja pasar los clics y el texto
     va SIEMPRE como texto plano (nada del modelo se interpreta como HTML).
 """
 from __future__ import annotations
@@ -35,7 +35,7 @@ from PyQt6.QtCore import QObject, Qt, QTimer
 from PyQt6.QtGui import QGuiApplication
 from PyQt6.QtWidgets import QApplication, QLabel, QWidget
 
-log = logging.getLogger("lune.chat_mascota")
+log = logging.getLogger("lune.chat_asistente")
 
 INTERVALO_DOBLE_CLIC_MS = 400          # respaldo si Qt no lo sabe
 AVISO_SIN_CHAT = "Para charlar conmigo, abre Lune (la ventana principal)."
@@ -114,13 +114,13 @@ class DesambiguadorClic(QObject):
         try:
             fn()
         except Exception:  # noqa: BLE001 — un fallo de la acción no rompe el ratón
-            log.exception("chat_mascota: fallo en la acción del clic")
+            log.exception("chat_asistente: fallo en la acción del clic")
 
 
-# ── La cajita de chat de la mascota ───────────────────────────────────────────
+# ── La cajita de chat de la asistente ───────────────────────────────────────────
 
-class ChatMascota(QObject):
-    """EntradaChat de una mascota (`dueno`). Se crea al abrirla por primera vez."""
+class ChatAsistente(QObject):
+    """EntradaChat de una asistente (`dueno`). Se crea al abrirla por primera vez."""
 
     def __init__(self, dueno: QWidget, *, crear_entrada: Optional[Callable[[], Any]] = None):
         super().__init__(dueno)
@@ -145,7 +145,7 @@ class ChatMascota(QObject):
             return False
 
     def abrir(self) -> None:
-        """Abre la cajita bajo la mascota y le da el foco (llamar tras el clic)."""
+        """Abre la cajita bajo la asistente y le da el foco (llamar tras el clic)."""
         entrada = self._entrada()
         rect = None
         try:
@@ -165,7 +165,7 @@ class ChatMascota(QObject):
             from nucleo import datos
             entrada.precalentar(datos.ollama_url(), datos.ollama_model())
         except Exception:  # noqa: BLE001 — precalentar es opcional
-            log.info("chat_mascota: no pude precalentar el modelo", exc_info=True)
+            log.info("chat_asistente: no pude precalentar el modelo", exc_info=True)
 
     def cerrar(self) -> None:
         if self.entrada is not None:
@@ -175,7 +175,7 @@ class ChatMascota(QObject):
                 pass
 
     def destruir(self) -> None:
-        """Al cerrar la mascota: la cajita se va con ella."""
+        """Al cerrar la asistente: la cajita se va con ella."""
         e, self.entrada = self.entrada, None
         if e is not None:
             try:
@@ -195,7 +195,7 @@ class ChatMascota(QObject):
         try:
             cb(texto)
         except Exception:  # noqa: BLE001
-            log.exception("chat_mascota: on_chat falló")
+            log.exception("chat_asistente: on_chat falló")
             self._decir("Uf, no pude mandar eso.")
 
     def _decir(self, texto: str) -> None:
@@ -208,10 +208,10 @@ class ChatMascota(QObject):
                     pass
 
 
-# ── Burbuja Qt (mascota de sprites) ───────────────────────────────────────────
+# ── Burbuja Qt (asistente de sprites) ───────────────────────────────────────────
 
 class BurbujaQt(QLabel):
-    """Burbuja de texto sobre la mascota de sprites. `texto(t)` y `fin(ms)`."""
+    """Burbuja de texto sobre la asistente de sprites. `texto(t)` y `fin(ms)`."""
 
     ANCHO_MAX = 320
     MAX_CARACTERES = 600

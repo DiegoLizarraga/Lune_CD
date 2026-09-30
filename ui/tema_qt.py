@@ -10,7 +10,7 @@ ServiciosEscritorio como «tema»). Lleva dos estados:
 
 Cada vez que cambia el visible emite `cambio(css_json)` (el mapa de variables
 para `window.luneTema`, o "null" con el cian de siempre) y se lo pasa a la
-mascota (`mascota.aplicar_tema(css_json)`). Quien monta los servicios conecta
+asistente (`asistente.aplicar_tema(css_json)`). Quien monta los servicios conecta
 `cambio` a la web (puente → luneTema), a la bandeja (`qss_menu()`) y al menú
 radial (`colores_radial()`).
 
@@ -20,7 +20,7 @@ seguidos (presets en la bandeja, soltar el deslizador) son UNA escritura. Al
 
     tema = ControlTema(config)
     tema.cambio.connect(lambda css: bandeja.aplicar_qss(tema.qss_menu()))
-    tema.set_mascota(companion)            # → companion.aplicar_tema(tema.css_json())
+    tema.set_asistente(companion)            # → companion.aplicar_tema(tema.css_json())
     tema.previsualizar({"hue": 200, "preset": "personalizado"})
     tema.guardar({"hue": 200, "preset": "personalizado"})
 """
@@ -108,7 +108,7 @@ class ControlTema(QObject):
         self._visible = dict(self._guardado)
         self._css = tema.css_json(self._visible)
         self._pendiente = False
-        self._mascota = None
+        self._asistente = None
         self._timer = QTimer(self)
         self._timer.setSingleShot(True)
         self._timer.setInterval(max(0, int(retardo_ms)))
@@ -169,7 +169,7 @@ class ControlTema(QObject):
         if css == self._css:
             return
         self._css = css
-        self._a_mascota()
+        self._a_asistente()
         self.cambio.emit(css)
 
     def previsualizar(self, cfg: Any) -> Dict[str, Any]:
@@ -228,29 +228,29 @@ class ControlTema(QObject):
         self._pendiente = False
         return escribir_config(self.config, "tema", self._guardado)
 
-    # ── Mascota y ciclo de vida (contrato de controlador de ui/escritorio.py) ─────
-    def set_mascota(self, v: Any) -> None:
-        self._mascota = v
-        self._a_mascota()
+    # ── Asistente y ciclo de vida (contrato de controlador de ui/escritorio.py) ─────
+    def set_asistente(self, v: Any) -> None:
+        self._asistente = v
+        self._a_asistente()
 
-    def _a_mascota(self) -> None:
-        v = self._mascota
+    def _a_asistente(self) -> None:
+        v = self._asistente
         f = getattr(v, "aplicar_tema", None) if v is not None else None
         if not callable(f):
             return
         try:
             f(self._css)
         except RuntimeError:                       # ventana ya destruida por Qt
-            self._mascota = None
+            self._asistente = None
         except Exception:
-            _log.exception("la mascota no aceptó el tema")
+            _log.exception("la asistente no aceptó el tema")
 
     def iniciar(self) -> None:
-        """Nada que arrancar: el tema se aplica al crearse y con set_mascota."""
+        """Nada que arrancar: el tema se aplica al crearse y con set_asistente."""
 
     def detener(self) -> None:
         self.guardar_ya()
-        self._mascota = None
+        self._asistente = None
 
 
 __all__ = ("ControlTema", "escribir_claves", "escribir_config", "RETARDO_GUARDADO_MS")

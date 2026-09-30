@@ -12,10 +12,10 @@ a los tokens de color de Lune (ui_web/tokens/colors.css):
   turquesa, así que por defecto se queda como está);
 - fondo (tinta): solo con `tenir_fondo`.
 
-No se usa `filter: hue-rotate` en la web: recolorearía también a la mascota y
+No se usa `filter: hue-rotate` en la web: recolorearía también a la asistente y
 cuesta GPU. La paleta calculada llega a cada sitio en su formato:
 
-- web y páginas de la mascota: `css_json(cfg)` → mapa de variables CSS
+- web y páginas de la asistente: `css_json(cfg)` → mapa de variables CSS
   `{"--cyan-500": "#…", "--cyan-500-rgb": "r g b", …}` para `window.luneTema`
   (ui_web/tema.js); "null" si el tema es la identidad (no se toca nada);
 - menús Qt (bandeja y radial): ui/tema_qss.py a partir de `paleta(cfg)`;

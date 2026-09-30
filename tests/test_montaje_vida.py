@@ -19,7 +19,7 @@ from PyQt6.QtCore import QObject, pyqtSignal  # noqa: E402
 
 from nucleo.acciones_ui import Contexto, Despachador, items_radial  # noqa: E402
 from nucleo.config import Config  # noqa: E402
-from nucleo.estado_mascota import EstadoMascota  # noqa: E402
+from nucleo.estado_asistente import EstadoAsistente  # noqa: E402
 from ui.escritorio import ServiciosEscritorio  # noqa: E402
 from ui.montaje_ocio import EnHiloQt  # noqa: E402
 from ui.montaje_vida import ServiciosVida, hwnd_principal_de, montar_vida  # noqa: E402
@@ -50,8 +50,8 @@ class Controlador(QObject):
     def detener(self):
         self.diario.append((self.nombre, "detener"))
 
-    def set_mascota(self, v):
-        self.diario.append((self.nombre, "mascota", v is not None))
+    def set_asistente(self, v):
+        self.diario.append((self.nombre, "asistente", v is not None))
 
     def deleteLater(self):
         self.borrado = True
@@ -68,7 +68,7 @@ class AsientoFalso(Controlador):
     def sentar(self, sitio):
         self.diario.append(("asiento", "sentar", sitio))
         if sitio == "ventana":
-            return False, "Sentarme en ventanas está desactivado (Ajustes → Mascota)."
+            return False, "Sentarme en ventanas está desactivado (Ajustes → Sentarse)."
         self.sentada_en = sitio
         return True, "Me senté en la barra de tareas."
 
@@ -78,7 +78,7 @@ class AsientoFalso(Controlador):
         return estaba
 
     def herramientas(self):
-        return {"mascota_sentarse": lambda args=None, ctx=None: "ok"}
+        return {"asistente_sentarse": lambda args=None, ctx=None: "ok"}
 
 
 class ComidaFalsa(Controlador):
@@ -140,7 +140,7 @@ class ToolsFalsas:
         self.h.pop(n, None)
 
 
-class MascotaFalsa:
+class AsistenteFalsa:
     def __init__(self, visible=True):
         self.visible = visible
 
@@ -149,12 +149,12 @@ class MascotaFalsa:
 
 
 class AnfitrionFalso:
-    def __init__(self, modo="normal", hwnd=4242, ventana_visible=True, mascota=None):
+    def __init__(self, modo="normal", hwnd=4242, ventana_visible=True, asistente=None):
         self.modo = modo
         self.diario = []
         self._hwnd = hwnd
         self._ventana_visible = ventana_visible
-        self._mascota = mascota
+        self._asistente = asistente
 
     def hwnd_principal(self):
         return self._hwnd
@@ -166,10 +166,10 @@ class AnfitrionFalso:
     def ventana_visible(self):
         return self._ventana_visible
 
-    def mascota(self):
-        return self._mascota
+    def asistente(self):
+        return self._asistente
 
-    def alternar_mascota(self):
+    def alternar_asistente(self):
         return False
 
     def aviso(self, texto):
@@ -202,7 +202,7 @@ def montar(qapp, *, anfitrion=None, iniciado=True, fab=None, diario=None):
 
 
 IDS = ("sentarse", "bajar", "comer_batido", "comer_pastel", "guardar_comida", "comida", "discord")
-HERRAMIENTAS = ("mascota_sentarse", "dar_de_comer")
+HERRAMIENTAS = ("asistente_sentarse", "dar_de_comer")
 
 
 def test_controladores_y_actividades_registrados(qapp):
@@ -288,8 +288,8 @@ def test_ids_del_despachador_con_handler(qapp):
 def test_etiquetas_en_el_radial_con_los_handlers(qapp):
     h = montar(qapp)
     desp = h.s4.despachador
-    est = EstadoMascota(render="vrm", visible=True)
-    ctx = Contexto(modo="normal", render="vrm", mascota_visible=True)
+    est = EstadoAsistente(render="vrm", visible=True)
+    ctx = Contexto(modo="normal", render="vrm", asistente_visible=True)
     items = items_radial(desp, est, ctx, ["sentarse", "comida", "discord", "bajar"])
     assert [(i.id, i.etiqueta) for i in items] == [("sentarse", "Sentarse en la barra"), ("comida", "Comida"),
                                                    ("discord", "Discord")]
@@ -305,11 +305,11 @@ def test_comida_en_la_web_con_la_ventana_oculta_la_ensena_antes(qapp):
     assert oculta.diario == ["mostrar"]
     h.s4.despachador.ejecutar("comer_batido")               # guardarla no enseña nada
     assert oculta.diario == ["mostrar"]
-    # con la mascota flotante a la vista, la comida va al escritorio: no hace falta la ventana
-    con_mascota = AnfitrionFalso(modo="normal", ventana_visible=False, mascota=MascotaFalsa(True))
-    h2 = montar(qapp, anfitrion=con_mascota)
+    # con la asistente flotante a la vista, la comida va al escritorio: no hace falta la ventana
+    con_asistente = AnfitrionFalso(modo="normal", ventana_visible=False, asistente=AsistenteFalsa(True))
+    h2 = montar(qapp, anfitrion=con_asistente)
     h2.s4.despachador.ejecutar("comer_pastel")
-    assert con_mascota.diario == []
+    assert con_asistente.diario == []
     # en la nativa la saca ControlComida (no la ventana)
     nativa = AnfitrionFalso(modo="br", ventana_visible=False)
     h3 = montar(qapp, anfitrion=nativa)
@@ -421,7 +421,7 @@ def test_una_pieza_que_falla_no_tumba_las_demas(qapp):
     desp = h.s4.despachador
     assert not desp.tiene("sentarse") and not desp.tiene("bajar")
     assert desp.tiene("comer_batido") and desp.tiene("discord")
-    assert "mascota_sentarse" not in h.esc._herramientas and "dar_de_comer" in h.esc._herramientas
+    assert "asistente_sentarse" not in h.esc._herramientas and "dar_de_comer" in h.esc._herramientas
     h.vida.desmontar()
 
 
@@ -435,7 +435,7 @@ def test_sin_despachador_ni_escritorio(qapp):
 
 
 def test_con_las_clases_de_verdad(qapp):
-    """Las fábricas por defecto casan con las firmas de A, C y D (sin mascota: nada se mueve)."""
+    """Las fábricas por defecto casan con las firmas de A, C y D (sin asistente: nada se mueve)."""
     from ui.asiento_qt import ControlAsiento
     from ui.comida_qt import ControlComida
     from ui.discord_qt import ControlDiscord
@@ -456,7 +456,7 @@ def test_con_las_clases_de_verdad(qapp):
         for id_ in IDS:
             assert s4.despachador.tiene(id_), id_
         assert set(HERRAMIENTAS) <= set(tools.h)
-        # sin la mascota a la vista, sentarse no hace nada y lo dice
+        # sin la asistente a la vista, sentarse no hace nada y lo dice
         s4.despachador.ejecutar("sentarse")
         assert avisos and "sácame primero" in avisos[-1]
         assert s4.despachador.marcado("comida") is False

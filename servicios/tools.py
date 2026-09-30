@@ -29,7 +29,7 @@ Herramientas de siempre:
   - buscar_web     Búsqueda en Google o YouTube
   - lanzar_app     Lanza aplicaciones del PC (con alias automáticos)
   - sistema_info   Muestra CPU y RAM
-Las demás (cambiar_voz, alarmas, mascota…) se enchufan con
+Las demás (cambiar_voz, alarmas, asistente…) se enchufan con
 `registrar_handler(nombre, fn)` desde el paquete de cada función.
 """
 
@@ -176,7 +176,7 @@ class ToolManager:
             "lanzar_app": self._h_lanzar_app,
         }
         # Ejecutores creados con crear_ejecutor(): reciben los handlers que se
-        # registren después (la mascota, las alarmas… llegan más tarde).
+        # registren después (la asistente, las alarmas… llegan más tarde).
         self._ejecutores: "weakref.WeakSet" = weakref.WeakSet()
 
     # Atajos de «abre X» que no necesitan IA.
@@ -198,7 +198,7 @@ class ToolManager:
         "spotify": "https://open.spotify.com",
     }
 
-    # «baila», «¡a bailar!», «para de bailar»: el baile de la mascota sin IA (cortes 5/6).
+    # «baila», «¡a bailar!», «para de bailar»: el baile de la asistente sin IA (cortes 5/6).
     # Solo la ORDEN sola (con relleno como «oye Lune» o «porfa»): nunca preguntas («¿baila?»,
     # «¿sabes bailar?»), negaciones («no bailes») ni frases sobre bailar («bailas muy bien»,
     # «mi hermana baila salsa»): eso lo decide el modelo con su herramienta.
@@ -231,8 +231,8 @@ class ToolManager:
     # texto sin tildes y con fullmatch; nunca preguntas, negaciones, pasado ni frases sobre el
     # tema; en la duda, None y lo decide el modelo):
     #   · «ponme el baile de X», «pon la canción X», «baila "X"» (título entre comillas) →
-    #     mascota_bailar {cancion: X}. «baila X» a secas NO: «baila fatal», «baila salsa» o
-    #     «baila bonito» no son títulos; el modelo tiene mascota_bailar{cancion} y listar_bailes.
+    #     asistente_bailar {cancion: X}. «baila X» a secas NO: «baila fatal», «baila salsa» o
+    #     «baila bonito» no son títulos; el modelo tiene asistente_bailar{cancion} y listar_bailes.
     #     Sin comillas, tampoco «pon la canción de nuevo» ni un X que siga la frase («… y dime
     #     algo», «… para mañana»): con comillas, el título va tal cual. «Pon la canción X» SIN
     #     comillas, solo si X es un baile de tu biblioteca (nucleo.bailes.coincide_con_biblioteca):
@@ -283,7 +283,7 @@ class ToolManager:
                 return None
             if not comillas and "cancion" in plano[:m.start(1)] and not cls._es_baile_conocido(cancion):
                 return None                    # «pon la canción X» que no es un baile tuyo: el modelo
-            return "mascota_bailar", {"cancion": cancion}
+            return "asistente_bailar", {"cancion": cancion}
         return None
 
     @staticmethod
@@ -300,11 +300,11 @@ class ToolManager:
         """Cortes 7/8: sentarse, bajarse y darle de comer (ver arriba) o None."""
         plano = cls._sin_tildes(texto_lower)
         if cls._SIENTATE_VENTANA.fullmatch(plano):
-            return "mascota_sentarse", {"sitio": "ventana"}
+            return "asistente_sentarse", {"sitio": "ventana"}
         if cls._SIENTATE_BARRA.fullmatch(plano):
-            return "mascota_sentarse", {"sitio": "barra"}
+            return "asistente_sentarse", {"sitio": "barra"}
         if cls._BAJATE.fullmatch(plano):
-            return "mascota_sentarse", {"sitio": "bajar"}
+            return "asistente_sentarse", {"sitio": "bajar"}
         m = cls._TOMA_COMIDA.fullmatch(plano)
         if m:
             return "dar_de_comer", {"comida": "batido" if m.group(1).startswith("batid") else "pastel"}
@@ -328,9 +328,9 @@ class ToolManager:
             p = None
         if p:
             return p
-        # 0b. Baile de la mascota.
+        # 0b. Baile de la asistente.
         if cls._BAILA.fullmatch(texto_lower):
-            return "mascota_bailar", {}
+            return "asistente_bailar", {}
         if cls._PARA_BAILE.fullmatch(texto_lower):
             return "parar_baile", {}
         # 0c. Sentarse, bajarse y darle de comer (cortes 7/8), igual de estrictos.

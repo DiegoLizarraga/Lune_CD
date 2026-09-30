@@ -1,14 +1,14 @@
 """
-ui/entrada_chat.py — Cajita para escribirle a Lune desde la mascota flotante
+ui/entrada_chat.py — Cajita para escribirle a Lune desde la asistente flotante
 (el «AI Chat» de Mate-Engine, versión Lune).
 
 PARA QUÉ SIRVE
 --------------
-La mascota (VRM, animada o sprites) es una ventana `WindowDoesNotAcceptFocus`:
+La asistente (VRM, animada o sprites) es una ventana `WindowDoesNotAcceptFocus`:
 nunca roba el foco a lo que estás usando, así que no puede recibir texto. Para
 hablarle sin abrir la ventana principal, un doble clic (o la bandeja, o un
-atajo) abre esta cajita anclada bajo la mascota. Lo que escribes sale por la
-señal `enviado(str)`; la respuesta la pinta la burbuja de la mascota
+atajo) abre esta cajita anclada bajo la asistente. Lo que escribes sale por la
+señal `enviado(str)`; la respuesta la pinta la burbuja de la asistente
 (`burbujaTexto`/`burbujaFin`), no esta ventana.
 
 `EntradaChat` es la ÚNICA ventana de Lune que acepta foco, y solo porque la abre
@@ -31,7 +31,7 @@ hilo `POST {url}/api/generate {"model", "keep_alive": "30m"}` (sin prompt:
 Ollama solo carga el modelo) mientras la cajita muestra «Despertando a Lune…».
 No repite si ya lo hizo hace menos de `PRECALENTAR_VALIDO_S`.
 
-Uso (integración en la mascota):
+Uso (integración en la asistente):
 
     self.entrada = EntradaChat()
     self.entrada.enviado.connect(self._chat_enviado)
@@ -40,7 +40,7 @@ Uso (integración en la mascota):
     self.entrada.precalentar(datos.ollama_url(), modelo)
 
 Coordenadas: `mostrar_junto_a` recibe el rectángulo GLOBAL de Qt (lógico) de
-la mascota; se coloca debajo, o encima si no cabe, siempre dentro de la
+la asistente; se coloca debajo, o encima si no cabe, siempre dentro de la
 pantalla disponible de ese punto. Al menos `ANCHO_MIN` (280 px) de ancho.
 """
 from __future__ import annotations
@@ -210,7 +210,7 @@ def _post_json(url: str, cuerpo: dict, timeout: float) -> int:
 # ── Ventana ───────────────────────────────────────────────────────────────────
 
 class EntradaChat(QWidget):
-    """Cajita de texto flotante bajo la mascota. Señal `enviado(str)` con el texto."""
+    """Cajita de texto flotante bajo la asistente. Señal `enviado(str)` con el texto."""
 
     enviado = pyqtSignal(str)
     cerrado = pyqtSignal()
@@ -323,9 +323,9 @@ class EntradaChat(QWidget):
 
     # ── Mostrar, activar, cerrar ─────────────────────────────────────────────
     def mostrar_junto_a(self, rect_global: Optional[Rect] = None, *, texto: Optional[str] = None):
-        """Abre (o recoloca) la cajita junto a la mascota y le da el foco.
+        """Abre (o recoloca) la cajita junto a la asistente y le da el foco.
 
-        `rect_global`: rectángulo global de Qt de la mascota (frameGeometry()) o
+        `rect_global`: rectángulo global de Qt de la asistente (frameGeometry()) o
         (x, y, ancho, alto). Sin él, en la esquina inferior derecha de la pantalla
         del cursor. `texto` sustituye el borrador (p. ej. «/» desde un atajo).
         """

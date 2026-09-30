@@ -268,9 +268,9 @@ test('companion_vrm.html: las funciones nuevas, lo pedido antes de cargar se rep
   globalThis.luneSalvapantallas(false);
   frames.length = 0;
   await import(aDataURL(reescribirImports(scripts[1].codigo, new URL('companion_vrm.html', UI), { './vrm/lune_vrm.js': DATA_MOTOR })));
-  const mascota = globalThis.luneMascota;
+  const asistente = globalThis.luneAsistente;
   try {
-    assert.deepEqual(mascota.bus.lista(), ['idles', 'movimiento', 'baileProc', 'grande'], 'registrados al repetir lo pendiente');
+    assert.deepEqual(asistente.bus.lista(), ['idles', 'movimiento', 'baileProc', 'grande'], 'registrados al repetir lo pendiente');
     assert.equal(globalThis.__luneOcioPendiente, null);
     assert.equal(globalThis.luneMod('baileProc', 'estado').estilo, 'palmas');
     assert.equal(globalThis.luneMod('grande', 'estado').fase, 'glide');
@@ -296,6 +296,6 @@ test('companion_vrm.html: las funciones nuevas, lo pedido antes de cargar se rep
     assert.ok(ev.includes('grande_fase') && ev.includes('baile'), JSON.stringify(ev));
     assert.ok(html.includes("import('./vrm/lune_grande.js').catch("), 'módulo opcional');
   } finally {
-    try { mascota.destruir(); } catch (_) { /* sigue */ }
+    try { asistente.destruir(); } catch (_) { /* sigue */ }
   }
 });

@@ -166,7 +166,7 @@ def test_sin_servicios_estado_por_defecto(cfg):
     p = puente(cfg)
     a = json.loads(p.asiento_estado())
     assert a == {"sentada": "", "variante": 0, "ventanas": False, "barra": True, "offset": 0, "servicio": False,
-                 "mascota": False, "juego": False, "arrastrando": False, "cedida": False}
+                 "asistente": False, "juego": False, "arrastrando": False, "cedida": False}
     c = json.loads(p.comida_estado())
     assert c["activa"] is False and c["disponible"] is True and c["servicio"] is False and c["vista"] == ""
     assert [x["id"] for x in c["catalogo"]] == ["batido", "pastel"]
@@ -235,7 +235,7 @@ def test_asiento_sentar_y_bajar(cfg):
     assert r["ok"] is True and r["texto"] == "Me senté en la barra de tareas."            # sin el \x07
     assert r["estado"]["sentada"] == "barra" and r["estado"]["variante"] == 2
     # lo que da el controlador se normaliza (ventanas y offset, de la config)
-    assert r["estado"]["ventanas"] is False and r["estado"]["offset"] == 0 and r["estado"]["mascota"] is True
+    assert r["estado"]["ventanas"] is False and r["estado"]["offset"] == 0 and r["estado"]["asistente"] is True
     assert p.asiento_bajar() is True and p.asiento_bajar() is False
 
 
@@ -334,10 +334,10 @@ def test_discord_privacidad_solo_textos_fijos(cfg):
     d = s.vida.discord
     d.e = {"conectado": True, "usuario": "diego\x1b[31m", "error": "",
            "publicando": {"details": "Lune CD · Ventana", "state": "YouTube - Google Chrome"},
-           "vista_previa": {"details": "Lune CD · Mascota 3D", "state": "Bailando ♪", "large_text": "C:\\secreto"}}
+           "vista_previa": {"details": "Lune CD · Escritorio · 3D", "state": "Bailando ♪", "large_text": "C:\\secreto"}}
     e = json.loads(p.discord_estado())
     assert e["publicando"] is None, "un título de ventana nunca llega a la tarjeta"
-    assert e["vista_previa"] == {"details": "Lune CD · Mascota 3D", "state": "Bailando ♪"}
+    assert e["vista_previa"] == {"details": "Lune CD · Escritorio · 3D", "state": "Bailando ♪"}
     assert e["usuario"] == "diego[31m"
     for malo in ({"details": "Spotify · Lune CD", "state": "Charlando"}, {"details": "Lune CD · Ventana"},
                  {"details": "Lune CD · Ventana", "state": "Charlando con Ana"}, "Lune CD · Ventana", None):
@@ -416,9 +416,9 @@ def test_autoinicio_opciones_rechaza(cfg, malo):
 def test_autoinicio_opciones_guarda(cfg):
     p = puente(cfg)
     visto = cap(p.autoinicio_cambio)
-    r = json.loads(p.autoinicio_opciones(json.dumps({"como": "mascota", "retraso_s": 120})))
-    assert r["ok"] and r["estado"]["como"] == "mascota" and r["estado"]["retraso_s"] == 120
-    assert Config(cfg.config_path).get("sistema", "autoinicio_como") == "mascota"
+    r = json.loads(p.autoinicio_opciones(json.dumps({"como": "asistente", "retraso_s": 120})))
+    assert r["ok"] and r["estado"]["como"] == "asistente" and r["estado"]["retraso_s"] == 120
+    assert Config(cfg.config_path).get("sistema", "autoinicio_como") == "asistente"
     assert json.loads(visto[-1])["retraso_s"] == 120
     assert json.loads(p.autoinicio_opciones('{"retraso_s": 0}'))["estado"]["retraso_s"] == 0
 

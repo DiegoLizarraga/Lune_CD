@@ -298,7 +298,7 @@ def test_bailes_con_su_controlador(qapp):
     assert m.diario[-1] == "carpeta"
     # estado en vivo y el aviso sin esqueleto
     m.e = {"fase": "sonando", "id": ID, "titulo": "Senbonzakura", "t": 61, "total": 245, "modo": "animado",
-           "modo_mascota": "animado", "sin_esqueleto": True}
+           "modo_asistente": "animado", "sin_esqueleto": True}
     m.estado_cambio.emit("{}")
     assert p.estado_mmd.text() == "Bailando «Senbonzakura» · 1:01 / 4:05"
     assert not p.aviso_esqueleto.isHidden() and p.btn_parar.isEnabled()

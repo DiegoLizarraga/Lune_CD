@@ -23,7 +23,7 @@ from PyQt6.QtCore import QObject, pyqtSignal  # noqa: E402
 
 from nucleo.acciones_ui import Contexto, Despachador, items_radial  # noqa: E402
 from nucleo.config import Config  # noqa: E402
-from nucleo.estado_mascota import EstadoMascota  # noqa: E402
+from nucleo.estado_asistente import EstadoAsistente  # noqa: E402
 from ui import montaje_escenario as me  # noqa: E402
 from ui.escritorio import ServiciosEscritorio  # noqa: E402
 from ui.montaje_escenario import ServiciosEscenario, montar_escenario  # noqa: E402
@@ -55,8 +55,8 @@ class Controlador(QObject):
     def detener(self):
         self.diario.append((self.nombre, "detener"))
 
-    def set_mascota(self, v):
-        self.diario.append((self.nombre, "mascota", v is not None))
+    def set_asistente(self, v):
+        self.diario.append((self.nombre, "asistente", v is not None))
 
     def deleteLater(self):
         self.borrado = True
@@ -269,13 +269,13 @@ def test_bot_de_minecraft_conecta_desconecta_y_nunca_instala(qapp):
 def test_etiquetas_en_el_radial_con_los_handlers(qapp):
     h = montar(qapp)
     d = h.s4.despachador
-    est = EstadoMascota(render="vrm", visible=True)
-    ctx = Contexto(modo="normal", render="vrm", mascota_visible=True)
+    est = EstadoAsistente(render="vrm", visible=True)
+    ctx = Contexto(modo="normal", render="vrm", asistente_visible=True)
     items = items_radial(d, est, ctx, ["bailes", "minecraft", "minecraft_bot"])
     assert [(i.id, i.etiqueta, i.marcado) for i in items] == [
         ("bailes", "Mis bailes", None), ("minecraft", "Reacciones a Minecraft", False), ("minecraft_bot", "Bot de Minecraft", False)]
     # en pantalla grande no se abre la biblioteca
-    grande = EstadoMascota(render="vrm", visible=True, grande=True)
+    grande = EstadoAsistente(render="vrm", visible=True, grande=True)
     assert "bailes" not in [i.id for i in items_radial(d, grande, ctx, ["bailes"])]
 
 
@@ -406,8 +406,8 @@ def test_bailar_y_pausar_van_al_reproductor_mmd_si_suena(qapp):
     assert desp.marcado("bailar") is True
     desp.ejecutar("baile_pausa")
     assert diario[-1] == ("mmd", "pausa", None) and m.pausado and desp.marcado("baile_pausa") is True
-    est = EstadoMascota(render="vrm", visible=True, bailando="mmd")
-    ctx = Contexto(modo="normal", render="vrm", mascota_visible=True)
+    est = EstadoAsistente(render="vrm", visible=True, bailando="mmd")
+    ctx = Contexto(modo="normal", render="vrm", asistente_visible=True)
     [it] = items_radial(desp, est, ctx, ["baile_pausa"])
     assert it.etiqueta == "Seguir el baile"
     desp.ejecutar("baile_pausa")
@@ -472,11 +472,11 @@ def test_las_fabricas_por_defecto_casan_con_las_firmas_de_c_y_d():
     inspect.signature(ControlMMD).bind("esc", "cfg", anfitrion=None, en_ui=None, parent=None)
     inspect.signature(ControlMinecraft).bind("esc", "cfg", anfitrion=None, voice=None, en_ui=None, parent=None)
     assert me.FABRICAS_DEFECTO == {"mmd": me._mmd_defecto, "minecraft": me._minecraft_defecto}
-    for nombre in ("iniciar", "detener", "set_mascota", "ceder", "reanudar", "evento_mascota", "pedir_vista",
+    for nombre in ("iniciar", "detener", "set_asistente", "ceder", "reanudar", "evento_asistente", "pedir_vista",
                    "herramientas", "parar", "pausa", "estado"):
         assert callable(getattr(ControlMMD, nombre, None)), nombre
     assert isinstance(ControlMMD.activo, property)
-    for nombre in ("iniciar", "detener", "set_mascota", "alternar_reacciones", "conectar_bot", "desconectar_bot",
+    for nombre in ("iniciar", "detener", "set_asistente", "alternar_reacciones", "conectar_bot", "desconectar_bot",
                    "herramientas", "estado", "instalar_bot"):
         assert callable(getattr(ControlMinecraft, nombre, None)), nombre
     assert isinstance(ControlMinecraft.reaccionando, property) and isinstance(ControlMinecraft.bot_conectado, property)

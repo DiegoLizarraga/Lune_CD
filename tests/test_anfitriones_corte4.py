@@ -4,7 +4,7 @@ Integración final del corte 4: el montaje de verdad en las dos ventanas.
 Web: `VentanaWeb.__init__` DE VERDAD con Chromium sustituido (vista y página falsas,
 servidor http falso) y el QWebChannel real → el puente `escritorio` está registrado
 antes de setUrl, la bandeja es UNA, los atajos no chocan en un cambio en caliente, salir
-desmonta una vez, la mascota nace sin icono, la última conversación vuelve al arrancar.
+desmonta una vez, la asistente nace sin icono, la última conversación vuelve al arrancar.
 Nativa: `LuneCDWindow` con sus métodos de verdad sobre un QMainWindow sin construir la
 interfaz (y un __init__ de verdad con dobles para comprobar que el tema va antes de
 _init_ui). Las piezas pesadas del montaje (tema, modo juego, bandeja del sistema,
@@ -171,7 +171,7 @@ class TemaFalso(QObject):
         self.diario.append("recargar")
         return self.actual()
 
-    def set_mascota(self, v):
+    def set_asistente(self, v):
         pass
 
     def iniciar(self):
@@ -207,7 +207,7 @@ class JuegoFalso(QObject):
     def recargar_config(self):
         self.diario.append("recargar_config")
 
-    def set_mascota(self, v):
+    def set_asistente(self, v):
         pass
 
 
@@ -243,8 +243,8 @@ def fabricas():
     }
 
 
-class MascotaFalsa(QObject):
-    """La mascota flotante (CompanionFlotante / AvatarOverlay) de mentira."""
+class AsistenteFalsa(QObject):
+    """La asistente flotante (CompanionFlotante / AvatarOverlay) de mentira."""
     visibilidad = pyqtSignal(bool)
     recrear = pyqtSignal()
     menu_pedido = pyqtSignal(str, object)
@@ -254,7 +254,7 @@ class MascotaFalsa(QObject):
         super().__init__()
         self.bandeja, self.render = bandeja, render or "animado"
         self.cerrado, self.visible, self.diario = False, False, []
-        MascotaFalsa.creadas.append(self)
+        AsistenteFalsa.creadas.append(self)
 
     def isVisible(self):
         return self.visible
@@ -283,7 +283,7 @@ class MascotaFalsa(QObject):
         self.diario.append("comentar")
 
 
-class SpritesFalsa(MascotaFalsa):
+class SpritesFalsa(AsistenteFalsa):
     def __init__(self, config=None, parent=None, bandeja=True):
         super().__init__(config, render="sprites", bandeja=bandeja)
 
@@ -425,7 +425,7 @@ def _esperar(qapp, cond, t=3.0):
 @pytest.fixture
 def sistema():
     Sistema.reset()
-    MascotaFalsa.creadas = []
+    AsistenteFalsa.creadas = []
     yield Sistema
     Sistema.reset()
 
@@ -452,7 +452,7 @@ def entorno(qapp, monkeypatch, tmp_path, sistema):
     monkeypatch.setattr(ws, "QSystemTrayIcon", TrayGlobal)            # la bandeja de respaldo
     monkeypatch.setattr(main, "QSystemTrayIcon", TrayGlobal)
     monkeypatch.setattr(wb, "VoiceEngine", VozFalsa)
-    monkeypatch.setitem(sys.modules, "ui.companion", types.SimpleNamespace(CompanionFlotante=MascotaFalsa))
+    monkeypatch.setitem(sys.modules, "ui.companion", types.SimpleNamespace(CompanionFlotante=AsistenteFalsa))
     import ui.avatar_overlay as ao
     monkeypatch.setattr(ao, "AvatarOverlay", SpritesFalsa)
     monkeypatch.setattr(main, "AvatarOverlay", SpritesFalsa)
@@ -584,17 +584,17 @@ def test_web_registra_el_puente_antes_de_cargar_y_monta_un_solo_icono(entorno, s
     assert sistema.iconos[0].mensajes[-1][:2] == ("Lune CD", "hola")
 
 
-def test_web_mascota_sin_icono_propio(entorno, sistema):
+def test_web_asistente_sin_icono_propio(entorno, sistema):
     v = entorno.web()
-    assert v.bridge.mascota_toggle() is True
-    m = MascotaFalsa.creadas[-1]
+    assert v.bridge.asistente_toggle() is True
+    m = AsistenteFalsa.creadas[-1]
     assert m.bandeja is False                                          # sin bandeja propia
     assert "quitar_bandeja" in m.diario                                # y la red de seguridad
     assert len(sistema.iconos) == 1
     # sprites: AvatarOverlay también sin bandeja
     entorno.cfg.set("avatar", "render", "sprites")
-    v.bridge._mascota_recrear()
-    assert isinstance(MascotaFalsa.creadas[-1], SpritesFalsa) and MascotaFalsa.creadas[-1].bandeja is False
+    v.bridge._asistente_recrear()
+    assert isinstance(AsistenteFalsa.creadas[-1], SpritesFalsa) and AsistenteFalsa.creadas[-1].bandeja is False
 
 
 def test_web_cerrar_oculta_segun_minimizar_a_bandeja(entorno, sistema):
@@ -715,9 +715,9 @@ def test_nativa_monta_en_build_tray_un_icono_y_da_los_servicios_a_ajustes(entorn
     assert getattr(yo, "_tray_respaldo", None) is None
     # Mostrar en la barra de tareas, radial, bandeja: el anfitrión es el nativo.
     assert s.anfitrion.modo == "br" and not s.despachador.tiene("llamada")
-    # La mascota nace sin icono propio.
+    # La asistente nace sin icono propio.
     yo._toggle_overlay()
-    assert MascotaFalsa.creadas[-1].bandeja is False and len(sistema.iconos) == 1
+    assert AsistenteFalsa.creadas[-1].bandeja is False and len(sistema.iconos) == 1
     yo.iniciar_servicios({})                                           # una sola vez
     assert [e for e, _ in sistema.eventos].count("montar") == 1
 
@@ -831,9 +831,9 @@ def test_web_comentar_pantalla_avisa_en_modo_juego(entorno):
     b.aviso.connect(avisos.append)
     b.escritorio.estado.actualizar(juego=True)
     assert b.comentar_pantalla() is False
-    assert avisos and "modo juego" in avisos[-1] and b._overlay is None   # ni saca la mascota
+    assert avisos and "modo juego" in avisos[-1] and b._overlay is None   # ni saca a la asistente
     b.escritorio.estado.actualizar(juego=False)
-    assert b.comentar_pantalla() is True and "comentar" in MascotaFalsa.creadas[-1].diario
+    assert b.comentar_pantalla() is True and "comentar" in AsistenteFalsa.creadas[-1].diario
 
 
 # ═══ La web restaura la última conversación al arrancar ═══════════════════════
@@ -927,9 +927,9 @@ def _servicios_falsos():
     atajos = Registro()
     atajos.cambio = types.SimpleNamespace(connect=lambda f: None, disconnect=lambda f: None)
     atajos.estado = lambda: []
-    mascota = Registro()
+    asistente = Registro()
     return types.SimpleNamespace(tema=Registro(), juego=Registro(), atajos=atajos, anfitrion=Registro(),
-                                 escritorio=types.SimpleNamespace(mascota=mascota), desmontar=lambda: None)
+                                 escritorio=types.SimpleNamespace(asistente=asistente), desmontar=lambda: None)
 
 
 def test_aplicar_seccion_escritorio_solo_lo_que_cambio():
@@ -941,7 +941,7 @@ def test_aplicar_seccion_escritorio_solo_lo_que_cambio():
     s = _servicios_falsos()
     assert aplicar("rendimiento", None, cfg) == []
     assert aplicar("rendimiento", s, cfg, {("avatar", "fps_max")}) == ["set_fps_max"]
-    assert s.escritorio.mascota.llamadas == [("set_fps_max", 30)] and s.anfitrion.llamadas == []
+    assert s.escritorio.asistente.llamadas == [("set_fps_max", 30)] and s.anfitrion.llamadas == []
     assert aplicar("rendimiento", s, cfg, {("interfaz", "en_barra_tareas"), ("sistema", "recorte_ram_auto")}) \
         == ["recargar_config", "set_en_barra"]
     assert s.anfitrion.llamadas == [("set_en_barra", True)]
@@ -998,7 +998,7 @@ def test_settings_panel_propaga_cambiado_a_los_servicios(ajustes):
     panel._poner("rendimiento", "avatar", "fps_max", 30)
     assert panel.guardar_ya() == ["tema", "rendimiento"]
     assert s.tema.llamadas == [("recargar",)]
-    assert s.escritorio.mascota.llamadas == [("set_fps_max", 30)]
+    assert s.escritorio.asistente.llamadas == [("set_fps_max", 30)]
     assert s.anfitrion.llamadas == []                                  # en_barra no cambió: sin parpadeo
     assert vistos == ["tema", "rendimiento"]
     assert ajustes.cfg.get("tema", "preset") == "ambar"

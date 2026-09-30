@@ -2,7 +2,7 @@
 Integración de los cortes 7 y 8 (sentarse en ventanas y en la barra, comida, Discord y
 arranque con Windows): las clases DE VERDAD cumplen lo que las otras les llaman.
 
-- Mascotas (ui/companion.CompanionFlotante, ui/avatar_overlay.AvatarOverlay): lo que les
+- Asistentes (ui/companion.CompanionFlotante, ui/avatar_overlay.AvatarOverlay): lo que les
   piden ControlAsiento, ControlComida y el montaje (`antes_de_colocar`). Los sprites NO
   tienen delegado de arrastre (así ControlAsiento sabe que el arrastre es nativo).
 - Controladores: lo que llaman ui/montaje_vida, ui/puente_vida, ui/panel_vida_nativo y
@@ -12,8 +12,8 @@ arranque con Windows): las clases DE VERDAD cumplen lo que las otras les llaman.
 - El montaje de verdad (montar_escritorio → montar_vida) con los controladores de verdad y
   dobles del sistema (tests/vida_falsa_c78.py): acciones con handler, las 2 herramientas en
   el ToolManager, «te doy un batido» → Llamada → Ejecutor → reacción con su sonido,
-  «siéntate en la barra» → la mascota sentada; desmontar lo quita todo.
-- Con Lune sentada, «Llevar a la esquina» (el Despachador y el menú propio de la mascota)
+  «siéntate en la barra» → la asistente sentada; desmontar lo quita todo.
+- Con Lune sentada, «Llevar a la esquina» (el Despachador y el menú propio de la asistente)
   la baja antes (si no, ControlAsiento la volvería a clavar en el borde).
 - Catálogo, config y la detección de pedidos: imperativos claros sí; preguntas,
   negaciones, pasado y frases sobre el tema, no.
@@ -43,11 +43,11 @@ from PyQt6.QtCore import QMetaMethod  # noqa: E402
 from nucleo.config import Config  # noqa: E402
 from ocio_falso_c56 import admite  # noqa: E402
 import vida_falsa_c78 as vf  # noqa: E402
-from test_mascota_c78 import config, lune_activa, mascota, web_falso  # noqa: E402,F401  (fixtures)
+from test_asistente_c78 import config, lune_activa, asistente, web_falso  # noqa: E402,F401  (fixtures)
 
 JSX = RAIZ / "ui_web" / "ui_kits" / "lune-desktop" / "extra"
 ACCIONES_VIDA = ("sentarse", "bajar", "comer_batido", "comer_pastel", "guardar_comida", "comida", "discord")
-HERRAMIENTAS_VIDA = ("mascota_sentarse", "dar_de_comer")
+HERRAMIENTAS_VIDA = ("asistente_sentarse", "dar_de_comer")
 
 
 def _propiedad(cls, nombre) -> bool:
@@ -84,7 +84,7 @@ def _cb(*_a):
     pass
 
 
-# ═══ Mascotas ═══════════════════════════════════════════════════════════════════
+# ═══ Asistentes ═══════════════════════════════════════════════════════════════════
 
 # (método, args, kwargs) tal como los llaman ControlAsiento (ui/asiento_qt.py), ControlComida
 # (ui/comida_qt.py) y el montaje (ui/montaje_vida.py, «esquina»).
@@ -136,7 +136,7 @@ def test_controladores_cumplen_lo_que_llaman_montaje_puente_panel_y_herramientas
     assert admite(D.__init__, None, None, None, modo="normal", nombre_modelo=None, parent=None)
     # Contrato de controlador de ServiciosEscritorio (ui/escritorio.py).
     for cls in (S, C, D):
-        for n, a in (("iniciar", ()), ("detener", ()), ("set_mascota", (None,)), ("recargar_config", ())):
+        for n, a in (("iniciar", ()), ("detener", ()), ("set_asistente", (None,)), ("recargar_config", ())):
             assert admite(_metodo(cls, n), None, *a), f"{cls.__name__}.{n}"
     for cls in (S, C):                                   # tienen actividades: sentada, comida
         for n in ("ceder", "reanudar"):
@@ -227,10 +227,10 @@ def test_arranque_autoinicio_y_terminal_cumplen_lo_que_usan_main_patata_puente_y
     # main.py (_preparar_arranque, _reparar_autoinicio, _guardar_modo_interfaz), patata, panel y puente.
     assert admite(arranque.parsear_args, ["--autoinicio"]) and admite(arranque.plan_arranque, None, None)
     assert admite(arranque.como, None) and admite(arranque.retraso_s, None)
-    assert set(arranque.COMOS) == {"bandeja", "mascota", "ventana"}
-    plan = arranque.plan_arranque({"sistema": {"autoinicio_como": "mascota", "autoinicio_retraso_s": 7}},
+    assert set(arranque.COMOS) == {"bandeja", "asistente", "ventana"}
+    plan = arranque.plan_arranque({"sistema": {"autoinicio_como": "asistente", "autoinicio_retraso_s": 7}},
                                   arranque.parsear_args(["--autoinicio"]))
-    assert (plan.splash, plan.mostrar_ventana, plan.abrir_mascota, plan.retraso_s, plan.silencioso) == (
+    assert (plan.splash, plan.mostrar_ventana, plan.abrir_asistente, plan.retraso_s, plan.silencioso) == (
         False, False, True, 7, True)
     assert arranque.plan_arranque(None, arranque.parsear_args([])).splash is True
     for fn, a, k in ((autoinicio.reparar, (None, "patata"), {}), (autoinicio.reparar, (None,), {"modo": "web"}),
@@ -322,43 +322,43 @@ def test_te_doy_un_batido_llamada_por_el_ejecutor_a_la_comida_de_verdad(montaje)
     assert resultados and resultados[0].ok, resultados
     assert "glup" in resultados[0].mensaje.lower() and "batido" in resultados[0].mensaje
     assert s.reg.mez.reproducidos and all(canal == "sfx" for canal, _ in s.reg.mez.reproducidos)
-    # Sin la mascota a la vista, la reacción la pone el anfitrión.
+    # Sin la asistente a la vista, la reacción la pone el anfitrión.
     assert s.esc.estado.actual().comiendo is True
 
 
-def test_sientate_en_la_barra_llamada_por_el_ejecutor_a_la_mascota(montaje):
+def test_sientate_en_la_barra_llamada_por_el_ejecutor_a_la_asistente(montaje):
     from lune_core.acciones import USUARIO
     from servicios.tools import ctx_acciones
-    from test_asiento_qt import MascotaFalsa, PROPIA, RECT_M
+    from test_asiento_qt import AsistenteFalsa, PROPIA, RECT_M
     from servicios.win_pantalla import Rect
     s = montaje
     s.reg.win.rects[PROPIA] = Rect(*RECT_M)
-    m = MascotaFalsa()
-    s.esc.set_mascota(m)
+    m = AsistenteFalsa()
+    s.esc.set_asistente(m)
     llamadas = s.tm.detectar_llamadas("oye Lune, siéntate en la barra")
-    assert [(ll.herramienta, ll.args) for ll in llamadas] == [("mascota_sentarse", {"sitio": "barra"})]
+    assert [(ll.herramienta, ll.args) for ll in llamadas] == [("asistente_sentarse", {"sitio": "barra"})]
     ej = s.tm.crear_ejecutor(audit_path=None)
     resultados = []
-    # Sin la mascota a la vista (modo «normal»), no: el Ejecutor la rechaza sin tocar nada.
+    # Sin la asistente a la vista (modo «normal»), no: el Ejecutor la rechaza sin tocar nada.
     ej.ejecutar_llamadas(llamadas, USUARIO, ctx_acciones(None, "", "normal"), resultados.append)
     assert resultados[-1].ok is False and m.asientos == []
-    # Con ella (sprites o animada: modo «mascota»), se sienta.
-    ej.ejecutar_llamadas(llamadas, USUARIO, ctx_acciones(None, "", "mascota"), resultados.append)
+    # Con ella (sprites o animada: modo «asistente»), se sienta.
+    ej.ejecutar_llamadas(llamadas, USUARIO, ctx_acciones(None, "", "asistente"), resultados.append)
     assert resultados[-1].ok, resultados[-1]
     assert m.asientos[-1] == (True, "barra", 0) and s.vida.asiento.sentada_en == "barra"
     assert s.esc.estado.actual().sentada == "barra"
     # «bájate» por el mismo camino.
-    ej.ejecutar_llamadas(s.tm.detectar_llamadas("bájate"), USUARIO, ctx_acciones(None, "", "mascota"),
+    ej.ejecutar_llamadas(s.tm.detectar_llamadas("bájate"), USUARIO, ctx_acciones(None, "", "asistente"),
                          resultados.append)
     assert resultados[-1].ok and s.vida.asiento.sentada_en == "" and m.asientos[-1] == (False, "", 0)
-    s.esc.set_mascota(None)
+    s.esc.set_asistente(None)
 
 
 # ═══ «Llevar a la esquina» con Lune sentada ═════════════════════════════════════
 
 @pytest.fixture
 def sprites(montaje, monkeypatch):
-    """La mascota de sprites DE VERDAD (AvatarOverlay, offscreen) en el montaje."""
+    """La asistente de sprites DE VERDAD (AvatarOverlay, offscreen) en el montaje."""
     from nucleo import personajes
     from servicios.win_pantalla import Rect
     from ui.avatar_overlay import AvatarOverlay
@@ -367,14 +367,14 @@ def sprites(montaje, monkeypatch):
     ov.show()
     h = ov.hwnd()
     montaje.reg.win.rects[h] = Rect(100, 100, 100 + ov.width(), 100 + ov.height())
-    montaje.esc.set_mascota(ov)
+    montaje.esc.set_asistente(ov)
     montaje.ov = ov
     yield montaje
-    montaje.esc.set_mascota(None)
+    montaje.esc.set_asistente(None)
     ov.close()
 
 
-def test_el_menu_propio_de_la_mascota_la_baja_antes_de_llevarla_a_la_esquina(sprites):
+def test_el_menu_propio_de_la_asistente_la_baja_antes_de_llevarla_a_la_esquina(sprites):
     s, ov = sprites, sprites.ov
     a = s.vida.asiento
     assert a.sentar("barra")[0] is True
@@ -412,20 +412,20 @@ def test_llevarla_a_la_esquina_durante_una_cesion_ya_no_la_devuelve(sprites):
         assert ov.sentada == "" and a.sentada_en == "" and s.esc.estado.actual().sentada == ""
 
 
-def test_el_enganche_sigue_a_la_mascota_y_se_suelta_al_desmontar(sprites):
+def test_el_enganche_sigue_a_la_asistente_y_se_suelta_al_desmontar(sprites):
     s, ov = sprites, sprites.ov
     assert ov.receivers(ov.antes_de_colocar) == 1
-    s.esc.set_mascota(None)
+    s.esc.set_asistente(None)
     assert ov.receivers(ov.antes_de_colocar) == 0
-    s.esc.set_mascota(ov)
+    s.esc.set_asistente(ov)
     assert ov.receivers(ov.antes_de_colocar) == 1
     s.vida.desmontar()
     assert ov.receivers(ov.antes_de_colocar) == 0
 
 
-def test_la_companion_avisa_antes_de_moverse(mascota):
+def test_la_companion_avisa_antes_de_moverse(asistente):
     """CompanionFlotante: `antes_de_colocar` sale ANTES de moverla a la esquina."""
-    c = mascota
+    c = asistente
     c.move(300, 300)
     vistas = []
     c.antes_de_colocar.connect(lambda: vistas.append((c.x(), c.y())))
@@ -439,11 +439,11 @@ def test_la_companion_avisa_antes_de_moverse(mascota):
 def test_catalogo_de_vida_modos_y_handlers_importables():
     import importlib
     from lune_core import catalogo_herramientas as C
-    h = C.CATALOGO["mascota_sentarse"]
-    assert h.modos == frozenset({"mascota", "vrm"}) and "se apoyan en el borde" in h.descripcion
+    h = C.CATALOGO["asistente_sentarse"]
+    assert h.modos == frozenset({"asistente", "vrm"}) and "bajarte" in h.descripcion
     assert set(h.args["sitio"].enum) == {"barra", "ventana", "bajar"}
     d = C.CATALOGO["dar_de_comer"]
-    assert d.disponible_en("patata") and d.disponible_en("normal") and d.disponible_en("mascota")
+    assert d.disponible_en("patata") and d.disponible_en("normal") and d.disponible_en("asistente")
     for nombre in HERRAMIENTAS_VIDA:
         mod, fn = C.CATALOGO[nombre].handler.rsplit(".", 1)
         assert callable(getattr(importlib.import_module(mod), fn)), nombre
@@ -460,17 +460,17 @@ def test_config_por_defecto_de_los_cortes_7_y_8():
 
 
 @pytest.mark.parametrize("texto, esperado", [
-    ("siéntate", ("mascota_sentarse", {"sitio": "barra"})),
-    ("Siéntate en la barra", ("mascota_sentarse", {"sitio": "barra"})),
-    ("oye Lune, siéntate en la barra de tareas porfa", ("mascota_sentarse", {"sitio": "barra"})),
-    ("¡Siéntate, Lune!", ("mascota_sentarse", {"sitio": "barra"})),
-    ("ponte en la barra", ("mascota_sentarse", {"sitio": "barra"})),
-    ("siéntate en una ventana", ("mascota_sentarse", {"sitio": "ventana"})),
-    ("Lune, siéntate en esta ventana.", ("mascota_sentarse", {"sitio": "ventana"})),
-    ("bájate", ("mascota_sentarse", {"sitio": "bajar"})),
-    ("bájate de ahí", ("mascota_sentarse", {"sitio": "bajar"})),
-    ("baja de ahí, porfa", ("mascota_sentarse", {"sitio": "bajar"})),
-    ("ya bájate de la barra", ("mascota_sentarse", {"sitio": "bajar"})),
+    ("siéntate", ("asistente_sentarse", {"sitio": "barra"})),
+    ("Siéntate en la barra", ("asistente_sentarse", {"sitio": "barra"})),
+    ("oye Lune, siéntate en la barra de tareas porfa", ("asistente_sentarse", {"sitio": "barra"})),
+    ("¡Siéntate, Lune!", ("asistente_sentarse", {"sitio": "barra"})),
+    ("ponte en la barra", ("asistente_sentarse", {"sitio": "barra"})),
+    ("siéntate en una ventana", ("asistente_sentarse", {"sitio": "ventana"})),
+    ("Lune, siéntate en esta ventana.", ("asistente_sentarse", {"sitio": "ventana"})),
+    ("bájate", ("asistente_sentarse", {"sitio": "bajar"})),
+    ("bájate de ahí", ("asistente_sentarse", {"sitio": "bajar"})),
+    ("baja de ahí, porfa", ("asistente_sentarse", {"sitio": "bajar"})),
+    ("ya bájate de la barra", ("asistente_sentarse", {"sitio": "bajar"})),
     ("toma un batido", ("dar_de_comer", {"comida": "batido"})),
     ("Te doy un pastel", ("dar_de_comer", {"comida": "pastel"})),
     ("ten un pastelito", ("dar_de_comer", {"comida": "pastel"})),

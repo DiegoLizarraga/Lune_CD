@@ -1,5 +1,5 @@
 """
-Tests de nucleo/estado_mascota: el bus de estado compartido y la tabla de
+Tests de nucleo/estado_asistente: el bus de estado compartido y la tabla de
 prioridades (juego > alarma > grande/salvapantallas > mmd > sentada > comida >
 baile > idle), incluida la memoria de «volver a sentarla».
 """
@@ -11,17 +11,17 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from nucleo import estado_mascota as E  # noqa: E402
-from nucleo.estado_mascota import BusEstado, EstadoMascota  # noqa: E402
+from nucleo import estado_asistente as E  # noqa: E402
+from nucleo.estado_asistente import BusEstado, EstadoAsistente  # noqa: E402
 
 
-def estado(**kw) -> EstadoMascota:
-    return EstadoMascota(**kw)
+def estado(**kw) -> EstadoAsistente:
+    return EstadoAsistente(**kw)
 
 
-# ── EstadoMascota y BusEstado ────────────────────────────────────────────────────
+# ── EstadoAsistente y BusEstado ────────────────────────────────────────────────────
 def test_estado_por_defecto_tiene_todos_los_campos():
-    e = EstadoMascota()
+    e = EstadoAsistente()
     for campo in ("render", "visible", "arrastrando", "durmiendo", "pensando", "hablando",
                   "llamada", "bailando", "sentada", "grande", "salvapantallas", "alarma",
                   "comiendo", "menu_abierto", "juego", "emocion"):
@@ -31,7 +31,7 @@ def test_estado_por_defecto_tiene_todos_los_campos():
 
 def test_estado_es_inmutable():
     with pytest.raises(Exception):
-        EstadoMascota().visible = True
+        EstadoAsistente().visible = True
 
 
 def test_actualizar_solo_notifica_si_cambia():
@@ -72,7 +72,7 @@ def test_campo_desconocido_es_error():
 
 
 def test_campos_de_texto_normalizan_none_y_false():
-    bus = BusEstado(EstadoMascota(sentada="barra", bailando="musica"))
+    bus = BusEstado(EstadoAsistente(sentada="barra", bailando="musica"))
     bus.actualizar(sentada=False, bailando=None)
     assert bus.actual().sentada == "" and bus.actual().bailando == ""
     with pytest.raises(TypeError):
@@ -143,7 +143,7 @@ def test_actividades_activas():
     e = estado(juego=True, sentada="barra", bailando="mmd", comiendo=True)
     assert E.actividades_activas(e) == ["juego", "mmd", "sentada", "comida"]
     assert E.actividades_activas(estado(bailando="musica")) == ["baile"]
-    assert E.actividades_activas(EstadoMascota()) == []
+    assert E.actividades_activas(EstadoAsistente()) == []
 
 
 def test_juego_bloquea_todo_lo_demas():
@@ -177,7 +177,7 @@ def test_pares_que_coexisten():
 def test_bloqueos_del_salvapantallas():
     for campo in ("arrastrando", "menu_abierto", "hablando", "llamada"):
         assert not E.puede("salvapantallas", estado(**{campo: True})), campo
-    assert E.puede("salvapantallas", EstadoMascota())
+    assert E.puede("salvapantallas", EstadoAsistente())
 
 
 def test_que_ceder_ordena_de_mayor_a_menor():
@@ -193,7 +193,7 @@ def test_que_ceder_vacio_si_no_puede():
 
 def test_actividad_desconocida():
     with pytest.raises(ValueError):
-        E.puede("volar", EstadoMascota())
+        E.puede("volar", EstadoAsistente())
 
 
 # ── BusEstado: iniciar / terminar y reanudar ─────────────────────────────────────
@@ -217,7 +217,7 @@ def test_pantalla_grande_levanta_a_la_sentada_y_luego_la_vuelve_a_sentar():
 
 
 def test_no_permitido_no_toca_nada():
-    bus = BusEstado(EstadoMascota(juego=True, sentada="barra"))
+    bus = BusEstado(EstadoAsistente(juego=True, sentada="barra"))
     r = bus.iniciar_actividad("grande")
     assert not r and r.motivo == "juego"
     assert bus.actual().grande is False and bus.actual().sentada == "barra"
@@ -225,7 +225,7 @@ def test_no_permitido_no_toca_nada():
 
 
 def test_bloqueo_por_condicion_da_el_motivo():
-    bus = BusEstado(EstadoMascota(arrastrando=True))
+    bus = BusEstado(EstadoAsistente(arrastrando=True))
     r = bus.iniciar_actividad("salvapantallas")
     assert not r and r.motivo == "arrastrando"
 

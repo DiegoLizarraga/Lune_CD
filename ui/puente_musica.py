@@ -2,7 +2,7 @@
 ui/puente_musica.py — objeto `musica` del QWebChannel (window.luneMusica), cortes 5 y 6.
 
 Lo usa la piel web normal: extra/baile.jsx (BaileCard y `LuneBaileWeb.useBaile()`, que
-sidebar.jsx usa para que baile la mascota de la barra) para hablar con ControlBaile
+sidebar.jsx usa para que baile la asistente de la barra) para hablar con ControlBaile
 (ui/baile_qt.py). El controlador llega tarde con `enlazar(baile=…)` (ui/puentes_ocio.py);
 sin él, las ranuras devuelven un estado por defecto y la config (config_baile*, apps) se
 lee y se guarda igual.

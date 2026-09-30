@@ -12,7 +12,7 @@ const ICONOS = ['IconCloud', 'IconCpu', 'IconTelegram', 'IconBrain', 'IconMic', 
 const FOTO = {
   openrouter_key: '', openrouter_model: 'openrouter/auto', ollama_url: 'http://localhost:11434', ollama_model: 'm',
   telegram_token: '', telegram_admin_id: '', telegram_ordenes_pc: false, nombre: 'Lune', system_prompt: 'x',
-  voz: false, memoria: true, acciones_ia: true, mascota_render: 'animado', interfaz_modo: 'web',
+  voz: false, memoria: true, acciones_ia: true, asistente_render: 'animado', interfaz_modo: 'web',
   vrm_webengine: false, vrm_modelos: [], autoinicio: false, aburrimiento_min: 10,
 };
 

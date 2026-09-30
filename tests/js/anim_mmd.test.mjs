@@ -1,4 +1,4 @@
-// tests/js/anim_mmd.test.mjs — los bailes de la biblioteca en la mascota ANIMADA
+// tests/js/anim_mmd.test.mjs — los bailes de la biblioteca en la asistente ANIMADA
 // (ui_web/anim/lune_anim_mmd.js, corte 9, D1): la canción suena en la página con el
 // LuneMMDAudio de verdad (lune_mmd_audio.js; el <audio> es falso) y Lune baila el baile
 // procedural (luneBailar/lunePulso) al pulso ANALIZADO: lunePulso ≤ 2 Hz con la fase de

@@ -372,7 +372,7 @@ test('barra lateral: «Tareas» siempre a la vista con las pendientes de hoy; se
   const B = backend(DEMO);
   const S = cargarBarra({ luneTareas: B.P.obj });
   const abiertas = [];
-  const props = { provider: 'local', onProvider() {}, mascotState: 'normal', mascotaFuera: true, onTraer() {}, vista: 'chat',
+  const props = { provider: 'local', onProvider() {}, asistenteState: 'normal', asistenteFuera: true, onTraer() {}, vista: 'chat',
     onTareas: () => abiertas.push(1) };
   let a = S.render(S.h(S.sb.Sidebar, props));
   let b = acceso(a);
@@ -402,7 +402,7 @@ test('barra lateral sin puente: acceso sin número; sin onTareas pide la vista c
   const S = cargarBarra();
   const vistas = [];
   S.sb.addEventListener('lune-vista', (e) => vistas.push(e.detail));
-  const a = S.render(S.h(S.sb.Sidebar, { provider: 'local', onProvider() {}, mascotState: 'normal', mascotaFuera: true }));
+  const a = S.render(S.h(S.sb.Sidebar, { provider: 'local', onProvider() {}, asistenteState: 'normal', asistenteFuera: true }));
   const b = acceso(a);
   assert.match(texto(b), /TareasMi día/);
   assert.equal(conClase(b.hijos, 'ln-tareas-acc-num').length, 0);
@@ -414,7 +414,7 @@ test('barra lateral sin puente: acceso sin número; sin onTareas pide la vista c
 function cargarApp(tareas) {
   const props = {};
   const stub = (n) => function (p) { props[n] = p; return null; };
-  const base = { mascota_visible(cb) { cb(false); }, proveedores(cb) { cb('{}'); }, proveedor_elegido() {} };
+  const base = { asistente_visible(cb) { cb(false); }, proveedores(cb) { cb('{}'); }, proveedor_elegido() {} };
   const lune = new Proxy(base, { get(t, k) { if (!(k in t) && typeof k === 'string') t[k] = senal(); return t[k]; } });
   const S = crearSandbox({
     archivos: [path.join(KIT, 'icons.jsx'), path.join(KIT, 'sidebar.jsx'), TAREAS, path.join(KIT, 'app.jsx')],

@@ -3,7 +3,8 @@ servicios/discord_presencia.py — Qué publica Lune en Discord y cuándo (Rich 
 
 QUÉ SE PUBLICA (y nada más)
 ---------------------------
-- `details`: «Lune CD · Mascota 3D | Mascota animada | Mascota ligera | Ventana | Terminal».
+- `details`: «Lune CD · Escritorio · 3D | Escritorio · animación | Escritorio · sprites |
+  Ventana | Terminal».
 - `state`: un texto FIJO de `ESTADOS`, el primero que se cumple por prioridad
   (alarma, pantalla grande, salvapantallas, llamada, arrastrando, bailando,
   comiendo, siesta sentada, durmiendo, sentada en la barra / en una ventana,
@@ -44,7 +45,7 @@ Todo pasa en el hilo «LuneDiscordRPC» (nunca en el de Qt):
     p.on_estado = lambda e: ...           # {activo, conectado, usuario, error, publicando, sin_id}
     p.habilitar(True); p.actualizar(); p.cerrar()
 
-`estado_fn()` devuelve un dict con los campos de nucleo.estado_mascota.EstadoMascota
+`estado_fn()` devuelve un dict con los campos de nucleo.estado_asistente.EstadoAsistente
 (juego, alarma, grande, sentada…) más `modo` ("normal" web · "br" nativa ·
 "patata") y, opcional, `modelo` (nombre del VRM; solo se usa con mostrar_modelo).
 """
@@ -102,12 +103,13 @@ ESTADOS: Tuple[Tuple[str, str], ...] = (
 )
 _TEXTOS: Dict[str, str] = dict(ESTADOS)
 
-# Mascotas flotantes (render del BusEstado) → (texto de `details`, imagen pequeña).
-_MASCOTAS: Dict[str, Tuple[str, str]] = {
-    "vrm": ("Mascota 3D", "vrm"),
-    "animado": ("Mascota animada", "animado"),
-    "sprites": ("Mascota ligera", "sprites"),
-    "carita": ("Mascota ligera", "sprites"),
+# Formas de la asistente en escritorio (render del BusEstado) → (texto de `details`,
+# imagen pequeña). Dice dónde está Lune (como «Ventana» y «Terminal») y con qué forma.
+_ASISTENTES: Dict[str, Tuple[str, str]] = {
+    "vrm": ("Escritorio · 3D", "vrm"),
+    "animado": ("Escritorio · animación", "animado"),
+    "sprites": ("Escritorio · sprites", "sprites"),
+    "carita": ("Escritorio · sprites", "sprites"),
 }
 _PATATA = frozenset({"patata", "terminal"})
 _NATIVA = frozenset({"br", "nativo", "nativa"})
@@ -124,9 +126,9 @@ def es_patata(modo: str) -> bool:
 
 
 def render_visible(est: Any) -> str:
-    """El render de la mascota flotante si está A LA VISTA ("" si no hay)."""
+    """El render de la asistente en escritorio si está A LA VISTA ("" si no hay)."""
     r = str(_campo(est, "render", "") or "").strip().lower()
-    if r not in _MASCOTAS:
+    if r not in _ASISTENTES:
         return ""
     return r if _campo(est, "visible", True) else ""
 
@@ -134,7 +136,7 @@ def render_visible(est: Any) -> str:
 def clave_estado(est: Any, *, modo: str, render: str) -> Optional[str]:
     """La clave de `ESTADOS` que toca (o None = actividad null, con un juego delante).
 
-    `render`: el de la mascota flotante a la vista ("" = no hay mascota fuera).
+    `render`: el de la asistente en escritorio a la vista ("" = no está fuera).
     """
     if _campo(est, "juego"):
         return None
@@ -156,7 +158,7 @@ def clave_estado(est: Any, *, modo: str, render: str) -> Optional[str]:
         return "hablando"
     if es_patata(modo):
         return "terminal"
-    if str(render or "").strip().lower() in _MASCOTAS:
+    if str(render or "").strip().lower() in _ASISTENTES:
         return "escritorio"
     return "charlando"
 
@@ -224,8 +226,8 @@ def detalle(modo: str, render: str) -> Tuple[str, str]:
     r = str(render or "").strip().lower()
     if es_patata(modo):
         return "Terminal", "patata"
-    if r in _MASCOTAS:
-        return _MASCOTAS[r]
+    if r in _ASISTENTES:
+        return _ASISTENTES[r]
     return "Ventana", ("nativo" if str(modo or "").strip().lower() in _NATIVA else "web")
 
 

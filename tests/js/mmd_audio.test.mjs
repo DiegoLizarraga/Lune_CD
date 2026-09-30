@@ -1,6 +1,6 @@
 // tests/js/mmd_audio.test.mjs — ui_web/lune_mmd_audio.js (corte 9): la canción del baile MMD
-// en la página de la mascota (script clásico → globalThis.LuneMMDAudio), su reloj con
-// corrección de deriva, el duck mientras habla Lune y el pulso para la mascota animada.
+// en la página de la asistente (script clásico → globalThis.LuneMMDAudio), su reloj con
+// corrección de deriva, el duck mientras habla Lune y el pulso para la asistente animada.
 // Con un <audio> falso (sin decodificar nada) y temporizadores virtuales.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

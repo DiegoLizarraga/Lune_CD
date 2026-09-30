@@ -1,9 +1,9 @@
 """
 Tests de servicios/ventanas_ajenas.py (corte 7, sentarse en ventanas) con una API
 falsa: los filtros de candidatas de Mate-Engine (IsSitEligibleWindow,
-IsEffectivelyTransparentWindow, IsLikelyUniWindowMascot), la barra marcada, el
+IsEffectivelyTransparentWindow, IsLikelyUniWindow…), la barra marcada, el
 tope de 128, la oclusión subiendo por GW_HWNDPREV, el estado de la ventana, el
-orden Z, la barra de abajo del monitor de la mascota (auto-oculta = borde del
+orden Z, la barra de abajo del monitor de la asistente (auto-oculta = borde del
 monitor) y el marshalling de la API real con DLLs falsas. Sin Win32 real.
 """
 import ctypes
@@ -68,13 +68,13 @@ def test_filtros_de_candidatas_como_mate_engine():
     assert not any(c.es_barra for c in cands[1:])
 
 
-def test_la_parece_mascota_sin_titulo_y_en_capas():
+def test_la_parece_asistente_sin_titulo_y_en_capas():
     api = ApiVentanasFalsa({
         1: V(BLOC, ex=WS_EX_LAYERED | WS_EX_NOACTIVATE, estilo=0, titulo=0),
         2: V(BLOC, ex=WS_EX_LAYERED, capas=(250, LWA_ALPHA), estilo=0, titulo=1),
         3: V(BLOC, ex=WS_EX_LAYERED, capas=(250, LWA_ALPHA), titulo=12),        # con título y marco: vale
     })
-    assert va.parece_mascota(api, 2, "Otra") is True
+    assert va.parece_asistente(api, 2, "Otra") is True
     assert va.es_transparente(api, 1, "Otra") is True
     assert _ids(va.listar_candidatas(api, excluir_pid=PID_LUNE)) == [3]
 
@@ -118,7 +118,7 @@ def test_ocluida_por_una_ventana_de_arriba_que_tapa_el_punto():
 
 
 @pytest.mark.parametrize("encima", [
-    V((0, 0, 1920, 1080), pid=PID_LUNE),                                    # propia (la mascota)
+    V((0, 0, 1920, 1080), pid=PID_LUNE),                                    # propia (la asistente)
     V((0, 0, 1920, 1080), visible=False),
     V((0, 0, 1920, 1080), cloaked=True),
     V((0, 0, 1920, 1080), minimizada=True),
@@ -173,7 +173,7 @@ def test_estado_de_una_que_no_existe():
 
 # ── Barra donde sentarse ───────────────────────────────────────────────────────
 
-def test_barra_de_abajo_del_monitor_de_la_mascota():
+def test_barra_de_abajo_del_monitor_de_la_asistente():
     p = PantallaFalsa()
     b = va.barra_asiento(Rect(200, 500, 500, 1000), p)
     assert b == va.Candidata(0x100, Rect(0, 1032, 1920, 1080), True, True)

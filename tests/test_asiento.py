@@ -5,7 +5,7 @@ mano, px físicos, sin Qt ni Win32): agarre y arrastre mínimos, radio y lados,
 oclusión, guardia, enfriamiento, bloqueo vertical, bloqueo de 0.43 s y banda del
 cursor, deslizamiento, SmoothDamp que converge y queda rígido, anti-hundimiento
 solo arrastrando, estados → Desnap, la zona rosa de la barra con histéresis,
-radios × dpr, variantes con semilla y la herramienta `mascota_sentarse`.
+radios × dpr, variantes con semilla y la herramienta `asistente_sentarse`.
 """
 import random
 import sys

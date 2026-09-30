@@ -1,4 +1,4 @@
-// tests/js/anim_comida.test.mjs — la reacción de la mascota ANIMADA al comer
+// tests/js/anim_comida.test.mjs — la reacción de la asistente ANIMADA al comer
 // (ui_web/anim/lune_anim_comida.js, corte 8): capa de emoción 'comida' = happy con
 // prioridad 60 (sobre dormir, bajo arrastre y mareo) durante ms, un rebote de escala
 // ≤ ×1.04 por el registro (el módulo no escribe style), est.comiendo y la página.

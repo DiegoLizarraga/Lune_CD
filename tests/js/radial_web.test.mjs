@@ -85,6 +85,42 @@ test('normalizarItems: ids válidos, etiquetas recortadas, máximo 10', () => {
   assert.equal(R.normalizarItems('basura').length, 0);
 });
 
+test('lineasCentro: corto en una línea; largo partido por palabras sin cortar a media palabra', () => {
+  const R = cargar().sb.LuneRadial;
+  const norm = (a) => Array.from(a, String);
+  assert.deepEqual(norm(R.lineasCentro('Ajustes')), ['Ajustes']);
+  assert.deepEqual(norm(R.lineasCentro('Sentarse en la barra')), ['Sentarse en la', 'barra']);
+  assert.deepEqual(norm(R.lineasCentro('Llevar a la esquina')), ['Llevar a la', 'esquina']);
+  assert.deepEqual(norm(R.lineasCentro('123456789012345678')), ['123456789012345678'], '18 cabe en una');
+  // Los nombres de la 11 (nucleo/acciones_ui.py): enteros, nada de «Sacar la asistent…».
+  assert.deepEqual(norm(R.lineasCentro('Sacar a la asistente al escritorio')), ['Sacar a la', 'asistente al', 'escritorio']);
+  assert.deepEqual(norm(R.lineasCentro('Guardar a la asistente')), ['Guardar a la', 'asistente']);
+  assert.deepEqual(norm(R.lineasCentro('Cerrar la asistente en escritorio')), ['Cerrar la', 'asistente en', 'escritorio']);
+  assert.deepEqual(norm(R.lineasCentro('Salir de pantalla grande')), ['Salir de', 'pantalla grande']);
+  for (const t of ['Sacar a la asistente al escritorio', 'Comentarios automáticos', 'x'.repeat(40), 'uno dos tres cuatro cinco seis siete ocho nueve diez']) {
+    const l = norm(R.lineasCentro(t));
+    assert.ok(l.length >= 1 && l.length <= 3, t);
+    assert.ok(l.every((x) => x.length <= 15), `${t} → ${JSON.stringify(l)}`);
+  }
+  const mucho = norm(R.lineasCentro('uno dos tres cuatro cinco seis siete ocho nueve diez'));
+  assert.ok(mucho[2].endsWith('…'), 'lo que no cabe en 3 líneas acaba en «…»');
+  assert.deepEqual(norm(R.lineasCentro(null)), ['']);
+});
+
+test('RadialMenu: una etiqueta larga sale en varias líneas (tspan) en el centro', () => {
+  const S = cargar();
+  const largos = [{ id: 'asistente', etiqueta: 'Sacar a la asistente al escritorio', icono: 'user' }, ...items3.slice(1)];
+  const el = S.h(S.sb.RadialMenu, { x: 640, y: 400, items: largos });
+  let a = S.render(el);
+  S.avanzar(1);
+  a = S.render(el);
+  conClase(a, 'ln-radial-capa')[0].props.onPointerMove({ clientX: 640 + 100, clientY: 400 - 60, button: 0, preventDefault() {} });
+  a = S.render(el);
+  const centro = conClase(a, 'ln-radial-txt')[0];
+  const lineas = buscar([centro], (n) => n.type === 'tspan').map((n) => texto(n));
+  assert.deepEqual(lineas, ['Sacar a la', 'asistente al', 'escritorio']);
+});
+
 test('colocar: el lienzo cabe entero en la ventana', () => {
   const R = cargar().sb.LuneRadial;
   assert.deepEqual({ ...R.colocar(10, 10) }, { cx: 184, cy: 184, left: 0, top: 0 });
@@ -195,7 +231,7 @@ test('RadialHost: pide los botones al puente y ejecuta con accion_menu', () => {
   });
   const sfx = sfxFalso();
   const S = cargar({ escritorio: E.obj, globales: { luneSfx: sfx.obj } });
-  const H = host(S, { mascotaFuera: true });
+  const H = host(S, { asistenteFuera: true });
   assert.equal(H.pintar().length, 0, 'cerrado: nada');
   abrir(S, { x: 300, y: 300, tipo: 'principal' });
   let a = H.pintar();
@@ -218,7 +254,7 @@ test('RadialHost: pide los botones al puente y ejecuta con accion_menu', () => {
   capa(a).props.onPointerUp(puntero(300 - 100, 300 - 20));        // botón 3 (270°–360°): chat
   assert.deepEqual(H.vistas, ['settings', 'chat']);
   assert.deepEqual(E.de('accion_menu'), [['voz', '']]);
-  // «expresiones» → segundo radial; con la mascota fuera, la expresión la pone el backend
+  // «expresiones» → segundo radial; con la asistente fuera, la expresión la pone el backend
   abrir(S, { x: 300, y: 300 });
   a = H.pintar();
   capa(a).props.onPointerUp(puntero(300 - 60, 300 + 100));        // botón 2: expresiones
@@ -246,7 +282,7 @@ test('RadialHost: con Lune en la barra la expresión la pone la barra; sin sonid
   });
   const sfx = sfxFalso();
   const S = cargar({ escritorio: E.obj, globales: { luneSfx: sfx.obj } });
-  const H = host(S, { mascotaFuera: false });
+  const H = host(S, { asistenteFuera: false });
   H.pintar();
   abrir(S, { x: 500, y: 500 });
   let a = H.pintar();

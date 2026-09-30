@@ -1,7 +1,7 @@
 """
 Integridad del código de terceros de ui_web/vendor/three (corte 9: reproductor MMD/VRMA).
 
-La mascota VRM no usa CDN en tiempo de ejecución: three.js r160, GLTFLoader,
+La asistente VRM no usa CDN en tiempo de ejecución: three.js r160, GLTFLoader,
 BufferGeometryUtils, @pixiv/three-vrm y @pixiv/three-vrm-animation van copiados en
 ui_web/vendor/three. El manifiesto VENDOR.json dice de dónde sale cada archivo (tarball
 del registro npm, con su integridad sha512 comprobada al empaquetar), su versión, su

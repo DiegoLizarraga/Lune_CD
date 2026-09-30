@@ -22,7 +22,7 @@ Qué hace, en este orden:
     tema.cambio → QSS de la bandeja y colores del radial; estado_cambio → tooltip;
  4. los registra en ServiciosEscritorio (despachador, tema, atajos, juego,
     radial, bandeja): arrancan ya si el escritorio estaba iniciado y reciben la
-    mascota con set_mascota.
+    asistente con set_asistente.
 
 Todas las piezas son inyectables con `fabricas` (tests y la integración):
     despachador()                         → Despachador
@@ -68,7 +68,7 @@ _log = logging.getLogger("lune.montaje")
 RAIZ = Path(__file__).resolve().parent.parent
 DIR_SFX = RAIZ / "ui_web" / "assets" / "sfx"
 ORDEN = ("despachador", "tema", "atajos", "juego", "radial", "bandeja")
-# Actividades de la tabla de prioridades (nucleo/estado_mascota.PRIORIDAD) que hace
+# Actividades de la tabla de prioridades (nucleo/estado_asistente.PRIORIDAD) que hace
 # físicamente cada controlador (recibe ceder/reanudar de ellas).
 ACTIVIDADES = {"juego": ("juego",)}
 EXPRESIONES_VALIDAS = frozenset(e[0] for e in acciones_ui.EXPRESIONES)
@@ -80,8 +80,8 @@ class Anfitrion(Protocol):
     modo: str                                   # "normal" | "br"
 
     def mostrar_ventana(self) -> None: ...
-    def mascota(self) -> Any: ...
-    def alternar_mascota(self) -> bool: ...
+    def asistente(self) -> Any: ...
+    def alternar_asistente(self) -> bool: ...
     def voz_on(self) -> bool: ...
     def alternar_voz(self) -> bool: ...
     def llamada_on(self) -> bool: ...
@@ -93,7 +93,7 @@ class Anfitrion(Protocol):
     def en_barra_on(self) -> bool: ...
     def set_en_barra(self, on: bool) -> None: ...
     # Opcionales: comentar() -> bool, ventana_visible() -> bool, soporta_llamada: bool,
-    # mascota_barra() -> bool y expresion_barra(arg, ms) (Lune en la barra lateral de la web)
+    # asistente_barra() -> bool y expresion_barra(arg, ms) (Lune en la barra lateral de la web)
 
 
 def _llamar(obj: Any, metodo: str, *args, **kw) -> Any:
@@ -308,20 +308,20 @@ def montar_escritorio(escritorio, anfitrion, config, *, voice=None, icono=None,
     avisos = _Avisos(parent)
 
     # ── Utilidades que usan los handlers ───────────────────────────────────
-    def mascota():
-        m = getattr(escritorio, "mascota", None)
+    def asistente():
+        m = getattr(escritorio, "asistente", None)
         if m is None or getattr(m, "cerrado", False):
-            m = _llamar(anfitrion, "mascota")
+            m = _llamar(anfitrion, "asistente")
         return None if m is None or getattr(m, "cerrado", False) else m
 
-    def mascota_a_la_vista():
-        m = mascota()
+    def asistente_a_la_vista():
+        m = asistente()
         return m if _visible(m) else None
 
-    def sacar_mascota():
-        if mascota_a_la_vista() is None:
-            anfitrion.alternar_mascota()
-        return mascota_a_la_vista()
+    def sacar_asistente():
+        if asistente_a_la_vista() is None:
+            anfitrion.alternar_asistente()
+        return asistente_a_la_vista()
 
     def ventana_visible() -> bool:
         f = getattr(anfitrion, "ventana_visible", None)
@@ -380,7 +380,7 @@ def montar_escritorio(escritorio, anfitrion, config, *, voice=None, icono=None,
 
     def contexto() -> Contexto:
         est = bus.actual()
-        m = mascota()
+        m = asistente()
         vis = _visible(m)
         render = est.render or ""
         if not render and m is not None:
@@ -396,9 +396,9 @@ def montar_escritorio(escritorio, anfitrion, config, *, voice=None, icono=None,
             return defecto if v is None else bool(v)
         return Contexto(
             modo=str(getattr(anfitrion, "modo", "normal") or "normal"),
-            render=render, mascota_visible=vis,
+            render=render, asistente_visible=vis,
             # Web con la flotante guardada: Lune en la barra lateral (AnfitrionWeb).
-            mascota_barra=(not vis) and b("mascota_barra"),
+            asistente_barra=(not vis) and b("asistente_barra"),
             voz_on=b("voz_on"), llamada_on=b("llamada_on"),
             fantasma_on=fantasma_on(m), comentarios_auto_on=comentarios_on(m),
             siempre_encima=bool(_cfg(config, "avatar", "siempre_encima", True)),
@@ -486,7 +486,7 @@ def montar_escritorio(escritorio, anfitrion, config, *, voice=None, icono=None,
     s.bandeja = _crear("bandeja", crear_bandeja)
 
     # ── Handlers del Despachador ───────────────────────────────────────────
-    _registrar_acciones(s, desp, anfitrion, config, mascota, mascota_a_la_vista, sacar_mascota,
+    _registrar_acciones(s, desp, anfitrion, config, asistente, asistente_a_la_vista, sacar_asistente,
                         fantasma_on, comentarios_on, estado_juego, autoinicio, recortar, avisar, avisos)
 
     # ── Conexiones ─────────────────────────────────────────────────────────
@@ -582,8 +582,8 @@ def montar_escritorio(escritorio, anfitrion, config, *, voice=None, icono=None,
     return s
 
 
-def _registrar_acciones(s: ServiciosCorte4, desp: Despachador, anfitrion, config, mascota,
-                        mascota_a_la_vista, sacar_mascota, fantasma_on, comentarios_on,
+def _registrar_acciones(s: ServiciosCorte4, desp: Despachador, anfitrion, config, asistente,
+                        asistente_a_la_vista, sacar_asistente, fantasma_on, comentarios_on,
                         estado_juego, autoinicio, recortar, avisar, avisos) -> None:
     reg = desp.registrar
 
@@ -592,11 +592,11 @@ def _registrar_acciones(s: ServiciosCorte4, desp: Despachador, anfitrion, config
     reg("ajustes", lambda arg="": anfitrion.abrir_ajustes(arg))
     reg("salir", lambda: anfitrion.salir())
 
-    # Mascota
-    reg("mascota", lambda: anfitrion.alternar_mascota())
+    # Asistente
+    reg("asistente", lambda: anfitrion.alternar_asistente())
 
     def chat():
-        m = sacar_mascota()
+        m = sacar_asistente()
         _llamar(m, "abrir_chat")
     reg("chat", chat)
 
@@ -604,15 +604,15 @@ def _registrar_acciones(s: ServiciosCorte4, desp: Despachador, anfitrion, config
         if callable(getattr(anfitrion, "comentar", None)):
             anfitrion.comentar()
             return
-        m = sacar_mascota()
+        m = sacar_asistente()
         if m is not None and callable(getattr(m, "comentar_pantalla", None)):
             m.comentar_pantalla()
         else:
-            avisar("Comentar la pantalla necesita la mascota animada o 3D.")
+            avisar("Para comentar la pantalla necesito estar animada o en 3D.")
     reg("comentar", comentar)
 
     def fantasma():
-        m = mascota()
+        m = asistente()
         nuevo = not fantasma_on(m)
         if m is not None and callable(getattr(m, "set_click_through", None)):
             m.set_click_through(nuevo)            # guarda avatar.click_through
@@ -621,7 +621,7 @@ def _registrar_acciones(s: ServiciosCorte4, desp: Despachador, anfitrion, config
     reg("fantasma", fantasma)
 
     def comentarios_auto():
-        m = mascota()
+        m = asistente()
         nuevo = not comentarios_on(m)
         if m is not None and callable(getattr(m, "set_comentarios_auto", None)):
             m.set_comentarios_auto(nuevo)
@@ -639,12 +639,12 @@ def _registrar_acciones(s: ServiciosCorte4, desp: Despachador, anfitrion, config
     def siempre_encima():
         nuevo = not bool(_cfg(config, "avatar", "siempre_encima", True))
         _cfg_set(config, "avatar", "siempre_encima", nuevo)
-        _llamar(mascota(), "set_encima", nuevo)
+        _llamar(asistente(), "set_encima", nuevo)
         config_cambiada("avatar", "siempre_encima")
     reg("siempre_encima", siempre_encima)
 
     def dormir():
-        m = mascota_a_la_vista()
+        m = asistente_a_la_vista()
         if m is None:
             return
         if getattr(m, "durmiendo", False):
@@ -658,7 +658,7 @@ def _registrar_acciones(s: ServiciosCorte4, desp: Despachador, anfitrion, config
         if arg not in claves:
             actual = str(_cfg(config, "avatar", "vrm_tamano", "normal") or "normal")
             arg = claves[(claves.index(actual) + 1) % len(claves)] if actual in claves else "normal"
-        _llamar(mascota_a_la_vista(), "aplicar_tamano", arg)
+        _llamar(asistente_a_la_vista(), "aplicar_tamano", arg)
     reg("tamano", tamano)
 
     def encuadre(arg: str = ""):
@@ -666,11 +666,11 @@ def _registrar_acciones(s: ServiciosCorte4, desp: Despachador, anfitrion, config
         if arg not in claves:
             actual = str(_cfg(config, "avatar", "vrm_encuadre", "retrato") or "retrato")
             arg = "cuerpo" if actual == "retrato" else "retrato"
-        _llamar(mascota_a_la_vista(), "aplicar_encuadre", arg)
+        _llamar(asistente_a_la_vista(), "aplicar_encuadre", arg)
     reg("encuadre", encuadre)
 
     def esquina():
-        m = mascota_a_la_vista()
+        m = asistente_a_la_vista()
         if m is None:
             return
         if callable(getattr(m, "llevar_a_esquina", None)):
@@ -680,23 +680,23 @@ def _registrar_acciones(s: ServiciosCorte4, desp: Despachador, anfitrion, config
             _llamar(m, "_guardar_posicion")
     reg("esquina", esquina)
 
-    def cerrar_mascota():
-        m = mascota()
+    def cerrar_asistente():
+        m = asistente()
         if m is None:
             return
         _llamar(m, "close")
         # Lo que estuviera pensando (comentar la pantalla) se va con ella: el sondeo o el
         # modelo que contestaran después ya no lo apagarían (pensando pegado en el bus).
         _llamar(getattr(s.escritorio, "estado", None), "actualizar", pensando=False)
-    reg("cerrar_mascota", cerrar_mascota)
+    reg("cerrar_asistente", cerrar_asistente)
 
     def expresion(arg: str = ""):
         if arg not in EXPRESIONES_VALIDAS:
             return
-        m = mascota_a_la_vista()
+        m = asistente_a_la_vista()
         if m is not None:
             _llamar(m, "set_estado", arg, MS_EXPRESION)
-        elif _llamar(anfitrion, "mascota_barra"):
+        elif _llamar(anfitrion, "asistente_barra"):
             # Web con la flotante guardada: la pone Lune en la barra lateral.
             _llamar(anfitrion, "expresion_barra", arg, MS_EXPRESION)
     reg("expresion", expresion)

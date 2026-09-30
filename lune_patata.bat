@@ -1,7 +1,7 @@
 @echo off
 rem ============================================================
 rem  lune_patata.bat - Lune en la terminal (modo patata)
-rem  Sin Qt, sin animaciones, sin mascota: solo texto y caritas.
+rem  Sin Qt, sin animaciones, sin asistente en escritorio: solo texto y caritas.
 rem  Sirve tambien de rescate si la interfaz normal no abre.
 rem  Busca Python igual que instalar_lune.bat (el "python" de la
 rem  Microsoft Store no cuenta: no ejecuta nada).

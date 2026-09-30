@@ -42,9 +42,10 @@ _NUCLEO_RESPALDO = {
     },
 }
 if sys.platform == "win32":
-    _NUCLEO_RESPALDO["Windows: mascota y detector de música (obligatorio)"] = {
+    _NUCLEO_RESPALDO["Windows: asistente en escritorio y detector de música (obligatorio)"] = {
         "modulos": {"win32gui": "pywin32", "comtypes": "comtypes"},
-        "nota": "La mascota fantasma y la ventana activa (pywin32); el detector de música y el "
+        "nota": "El modo fantasma de la asistente en escritorio y la ventana activa (pywin32); el "
+                "detector de música y el "
                 "audio por programa para bailar (comtypes). Solo Windows.",
     }
 _OPCIONALES_RESPALDO = {
@@ -53,7 +54,8 @@ _OPCIONALES_RESPALDO = {
     "Voz de entrada (dictado)": {"modulos": {"faster_whisper": "faster-whisper", "sounddevice": "sounddevice"},
         "nota": "Para hablarle por micrófono y para el modo llamada. 100% local; pesa bastante."},
     "Interfaz completa (piel web animada)": {"modulos": {"PyQt6.QtWebEngineWidgets": "PyQt6-WebEngine"},
-        "nota": "La interfaz animada, la mascota en video y el avatar 3D (VRM). Sin esto se usa la nativa ligera."},
+        "nota": "La interfaz animada y la asistente en escritorio animada o en 3D (VRM). Sin esto se "
+                "usa la nativa ligera."},
     "Leer PDF": {"modulos": {"pypdf": "pypdf"}, "nota": "Para adjuntar PDF al chat."},
     "Leer Word (.docx)": {"modulos": {"docx": "python-docx"}, "nota": "Para adjuntar Word al chat."},
     "Optimizador del sistema": {"modulos": {"psutil": "psutil"},
@@ -61,7 +63,7 @@ _OPCIONALES_RESPALDO = {
     "Red local (descubrir dispositivos)": {"modulos": {"zeroconf": "zeroconf"},
         "nota": "Para que Lune encuentre otros equipos con Lune en tu red."},
     "Comentar lo que ves en pantalla": {"modulos": {"PIL": "Pillow"},
-        "nota": "La captura con la que la mascota comenta tu pantalla (nunca con un juego abierto)."},
+        "nota": "La captura con la que Lune comenta tu pantalla (nunca con un juego abierto)."},
     "Voz 100% local (Kokoro)": {"modulos": {"kokoro_onnx": "kokoro-onnx"},
         "nota": "Lune habla sin internet. Necesita además espeak-ng y los pesos en modelos_voz/."},
     "Conversión de voz RVC (experimental)": {"modulos": {"rvc_python": "rvc-python"},
@@ -74,16 +76,17 @@ _OPCIONALES_RESPALDO = {
 # NÚCLEO aunque ya salga como opcional (antes numpy se quedaba en opcional y sin él no
 # cargan el mezclador, las alarmas con sonido ni los bailes).
 _EXTRAS_NUCLEO = {
-    "Sonidos, alarmas y mascota (obligatorio)": {
+    "Sonidos, alarmas y bailes (obligatorio)": {
         "modulos": {"numpy": "numpy", "sounddevice": "sounddevice", "imageio_ffmpeg": "imageio-ffmpeg"},
-        "nota": "El mezclador de sonidos de la mascota, alarmas y bailes (numpy + sounddevice) y "
+        "nota": "El mezclador de sonidos de Lune, alarmas y bailes (numpy + sounddevice) y "
                 "un ffmpeg para leer mp3/ogg/m4a (imageio-ffmpeg; sin él solo .wav).",
     },
 }
 if sys.platform == "win32":
-    _EXTRAS_NUCLEO["Windows: mascota y audio por proceso (obligatorio)"] = {
+    _EXTRAS_NUCLEO["Windows: asistente en escritorio y audio por proceso (obligatorio)"] = {
         "modulos": {"win32gui": "pywin32", "comtypes": "comtypes"},
-        "nota": "Ventanas de la mascota (atravesar clics, ventana activa) y el audio por programa "
+        "nota": "La ventana de la asistente en escritorio (atravesar clics, ventana activa) y el "
+                "audio por programa "
                 "para bailar con la música. Solo Windows.",
     }
 _EXTRAS_OPCIONALES = {
@@ -292,7 +295,7 @@ def orden_accesos_directos(raiz: Path = RAIZ, escritorio: bool = True, menu_inic
             f"$l.Arguments = {_ps(chr(34) + str(raiz / 'iniciar_lune.vbs') + chr(34))}",
             f"$l.WorkingDirectory = {_ps(raiz)}",
             f"$l.IconLocation = {_ps(raiz / 'assets' / 'lune_icon.ico')}",
-            "$l.Description = 'Lune CD, tu asistente de escritorio'",
+            "$l.Description = 'Lune CD, tu asistente personal'",
             "$l.Save()",
         ]
     return "; ".join(lineas)

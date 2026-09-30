@@ -12,13 +12,13 @@
  *
  * Los CSS usan esos tokens directamente (var(--cyan-500)) o sus canales con alfa
  * (rgb(var(--cyan-500-rgb, 0 229 255) / .5)), así que todo se recolorea sin
- * filter: hue-rotate (que teñiría también a la mascota y costaría GPU).
+ * filter: hue-rotate (que teñiría también a la asistente y costaría GPU).
  *
  * Lista blanca: solo --cyan-*, --blue-*, --yellow-* e --ink-* (con o sin -rgb);
  * los hex tienen que ser #RGB, #RRGGBB o #RRGGBBAA y los canales "R G B" (0–255).
  * Lo demás se ignora. Cada llamada quita primero lo que puso la anterior.
  * Devuelve cuántas variables aplicó (-1 si el texto no era JSON: no toca nada).
- * La usan index.html (vía window.luneEscritorio) y las dos páginas de la mascota
+ * La usan index.html (vía window.luneEscritorio) y las dos páginas de la asistente
  * (ui/companion.py → aplicar_tema).
  */
 (function (w) {

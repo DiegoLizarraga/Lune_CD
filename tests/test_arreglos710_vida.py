@@ -1,7 +1,7 @@
 """
 Arreglos de la revisión final 7-10 (zona «vida»): `pensando` pegado (RR5) al cerrar la
-mascota con un «Comentar pantalla» a medias, con el CompanionFlotante de verdad (vista
-web falsa de tests/test_mascota_c78) y ServiciosEscritorio de verdad.
+asistente con un «Comentar pantalla» a medias, con el CompanionFlotante de verdad (vista
+web falsa de tests/test_asistente_c78) y ServiciosEscritorio de verdad.
 """
 import sys
 from pathlib import Path
@@ -13,15 +13,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 pytest.importorskip("PyQt6.QtWidgets")
 
-from test_mascota_c78 import config, lune_activa, web_falso  # noqa: E402,F401  (fixtures)
+from test_asistente_c78 import config, lune_activa, web_falso  # noqa: E402,F401  (fixtures)
 
 
 def _comentando(config, monkeypatch):
-    """Una mascota real a la vista que empieza «Comentar pantalla» y se queda a medias
+    """Una asistente real a la vista que empieza «Comentar pantalla» y se queda a medias
     (el paso previo al comentario, _sondear, no acaba). 10.9: solo nube, así que con
     clave de OpenRouter (los tests ya no leen el datos.json de verdad)."""
     from nucleo import datos
-    from nucleo.estado_mascota import BusEstado
+    from nucleo.estado_asistente import BusEstado
     from ui.companion import CompanionFlotante
     monkeypatch.setattr(datos, "openrouter_key", lambda: "sk-prueba")
     monkeypatch.setattr(datos, "ollama_model", lambda: "llava")
@@ -40,10 +40,10 @@ def _comentando(config, monkeypatch):
     return c, bus
 
 
-def test_cerrar_la_mascota_durante_el_sondeo_no_deja_pensando(qapp, web_falso, config, lune_activa, monkeypatch):
+def test_cerrar_la_asistente_durante_el_sondeo_no_deja_pensando(qapp, web_falso, config, lune_activa, monkeypatch):
     c, bus = _comentando(config, monkeypatch)
     bus.pensar("chat", True)                         # el chat de la ventana también piensa
-    c.close()                                        # «Cerrar mascota»
+    c.close()                                        # «Cerrar asistente»
     assert bus.actual().pensando is True             # el chat sigue: esa fuente no es suya
     c._on_sondeo({"local": True, "ok": False, "vision": None})   # el hilo del sondeo acaba después
     bus.pensar("chat", False)
@@ -62,12 +62,12 @@ def test_el_sondeo_que_llega_tras_cerrar_tambien_la_suelta(qapp, web_falso, conf
     c.close()
 
 
-def test_mascota_destruida_apaga_su_fuente_de_pensando(qapp):
+def test_asistente_destruida_apaga_su_fuente_de_pensando(qapp):
     from PyQt6 import sip
     from PyQt6.QtCore import QObject, pyqtSignal
     from ui.escritorio import ServiciosEscritorio
 
-    class Mascota(QObject):
+    class Asistente(QObject):
         visibilidad = pyqtSignal(bool)
         evento_js = pyqtSignal(str, dict)
 
@@ -75,12 +75,12 @@ def test_mascota_destruida_apaga_su_fuente_de_pensando(qapp):
             return True
 
     esc = ServiciosEscritorio(None)
-    m = Mascota()
-    esc.set_mascota(m, render="vrm")
+    m = Asistente()
+    esc.set_asistente(m, render="vrm")
     esc.estado.actualizar(pensando=True)             # comentando la pantalla
     esc.estado.pensar("chat", True)
     sip.delete(m)                                    # la ventana se destruye (destroyed)
-    assert esc.mascota is None and esc.estado.actual().render == ""
+    assert esc.asistente is None and esc.estado.actual().render == ""
     assert esc.estado.actual().pensando is True      # el chat sigue pensando
     esc.estado.pensar("chat", False)
     assert esc.estado.actual().pensando is False     # antes: la fuente «directo» se quedaba

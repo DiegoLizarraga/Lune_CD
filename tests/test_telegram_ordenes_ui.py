@@ -151,7 +151,7 @@ def puente(qapp, tmp_path, monkeypatch, datos_tmp):
                       opciones_acciones={"audit_path": None,
                                          "programar": lambda s, fn: timers.append(fn) or MagicMock()})
     senales = {n: [] for n in ("done", "herramienta", "aprobacion_pedida", "aprobacion_resuelta",
-                               "usuario_mascota", "aviso")}
+                               "usuario_asistente", "aviso")}
     for n, lista in senales.items():
         getattr(b, n).connect(lambda *a, l=lista: l.append(a if len(a) != 1 else a[0]))
     b._ventana_a_la_vista = lambda: True                        # la página está delante
@@ -177,7 +177,7 @@ def test_web_desactivada_contesta_y_no_hace_nada(puente, monkeypatch):
     monkeypatch.setattr(datos, "telegram_admin_id", lambda: "")
     b._orden_remota("o2", "abre youtube")
     assert b._tg_worker.enviados[-1] == ("o2", tw.AVISO_TG_DESACTIVADAS)
-    assert b.urls == [] and b.senales["usuario_mascota"] == [] and WorkerFalso.creados == []
+    assert b.urls == [] and b.senales["usuario_asistente"] == [] and WorkerFalso.creados == []
     assert b.senales["aprobacion_pedida"] == []
 
 
@@ -187,13 +187,13 @@ def test_web_ocupada(puente):
     b._worker.start()
     b._orden_remota("o1", "abre youtube")
     assert b._tg_worker.enviados == [("o1", tw.AVISO_TG_OCUPADA)]
-    assert b.senales["usuario_mascota"] == [] and b.senales["aprobacion_pedida"] == []
+    assert b.senales["usuario_asistente"] == [] and b.senales["aprobacion_pedida"] == []
 
 
 def test_web_comando_directo_sin_ia_se_aprueba_en_el_pc_y_vuelve_a_telegram(puente):
     b = puente
     b._orden_remota("o1", "abre youtube")
-    assert b.senales["usuario_mascota"] == ["📱 Telegram: abre youtube"]   # burbuja en el chat
+    assert b.senales["usuario_asistente"] == ["📱 Telegram: abre youtube"]   # burbuja en el chat
     assert WorkerFalso.creados == []                                      # sin IA
     assert b.urls == [] and len(b.senales["aprobacion_pedida"]) == 1      # aún no: se pregunta
     p = _pedida(b)
@@ -237,7 +237,7 @@ def test_web_turno_de_ia_con_origen_remoto(puente):
     assert w.message == "[Desde Telegram] ¿me abres youtube y me dices algo?"
     assert w.kw["origen"] == "remoto" and w.kw["ctx"]["origen"] == "remoto"
     assert w.kw["ejecutor"] is b.acciones.ejecutor and b._turno["remoto"] == "o2"
-    assert b.senales["usuario_mascota"] == ["📱 Telegram: ¿me abres youtube y me dices algo?"]
+    assert b.senales["usuario_asistente"] == ["📱 Telegram: ¿me abres youtube y me dices algo?"]
     w.response_ready.emit('Claro, te lo abro. <|CALL ["abrir_url", {"url": "https://www.youtube.com"}]|>')
     # La respuesta limpia y, como la acción espera tu permiso, dicho (prueba real:
     # llegaba «te lo abro» antes de que nadie lo aprobara en el PC).
@@ -406,7 +406,7 @@ def nativa(qapp, monkeypatch):
     yo._resultado_turno = types.SimpleNamespace(emit=lambda r, i: yo._on_resultado_turno(r, i))
     _enlazar(yo, "_orden_remota", "_send_message", "_remota_en_curso", "_responder_telegram",
              "_texto_telegram", "_ejecutar_acciones", "_on_resultado_turno", "_on_resultado_accion",
-             "_on_response", "_on_error", "_acciones_locales", "_eco_mascota", "_burbuja_mascota",
+             "_on_response", "_on_error", "_acciones_locales", "_eco_asistente", "_burbuja_asistente",
              "_worker_vivo", "_cancelar_worker", "_stop_generation")
     yield {"yo": yo, "acc": acc, "preguntas": preguntas, "timers": timers, "urls": urls,
            "lanzadas": lanzadas, "tg": yo._tg_worker}
@@ -536,26 +536,26 @@ def test_panel_nativo_guarda_el_interruptor(qapp, tmp_path, monkeypatch, datos_t
     panel.deleteLater()
 
 
-# ── 10.9: la mascota de la nativa contesta solo con la nube ─────────────────────
+# ── 10.9: la asistente de la nativa contesta solo con la nube ─────────────────────
 
-def test_nativa_mascota_sin_clave_de_nube_lo_dice_y_no_llama_al_modelo(nativa, monkeypatch):
+def test_nativa_asistente_sin_clave_de_nube_lo_dice_y_no_llama_al_modelo(nativa, monkeypatch):
     import main
     from nucleo import datos
-    from nucleo.respuestas import AVISO_MASCOTA_SIN_NUBE
+    from nucleo.respuestas import AVISO_ASISTENTE_SIN_NUBE
     monkeypatch.setattr(datos, "openrouter_key", lambda: "")
     yo = nativa["yo"]
     yo.memoria.procesar_mensaje_usuario.return_value = None
-    yo._send_message(texto="cuéntame algo de gatos", desde_mascota=True)
+    yo._send_message(texto="cuéntame algo de gatos", desde_asistente=True)
     assert WorkerFalso.creados == []                                  # ni el modelo local
-    yo._burbuja_bot.assert_called_with(AVISO_MASCOTA_SIN_NUBE)
+    yo._burbuja_bot.assert_called_with(AVISO_ASISTENTE_SIN_NUBE)
 
 
-def test_nativa_mascota_con_clave_va_por_la_nube_y_la_ventana_con_el_suyo(nativa, monkeypatch):
+def test_nativa_asistente_con_clave_va_por_la_nube_y_la_ventana_con_el_suyo(nativa, monkeypatch):
     from nucleo import datos
     monkeypatch.setattr(datos, "openrouter_key", lambda: "sk-prueba")
     yo = nativa["yo"]
     yo.memoria.procesar_mensaje_usuario.return_value = None
-    yo._send_message(texto="cuéntame algo de gatos", desde_mascota=True)
+    yo._send_message(texto="cuéntame algo de gatos", desde_asistente=True)
     w = WorkerFalso.creados[-1]
     assert w.provider_id == "openrouter" and yo._turno["proveedor"] == "openrouter"
     assert w.kw["ctx"]["proveedor"] == "openrouter"

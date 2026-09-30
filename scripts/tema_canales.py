@@ -75,7 +75,7 @@ def convertir(texto: str, canales: Dict[Tuple[int, int, int], str]) -> Tuple[str
 
 
 def archivos_por_defecto(raiz: Path = RAIZ) -> List[Path]:
-    """Los del tema (corte 4, agente C): tokens, componentes, páginas de la mascota
+    """Los del tema (corte 4, agente C): tokens, componentes, páginas de la asistente
     y el bundle. index.html va aparte (se le puede pasar como argumento)."""
     ui = raiz / "ui_web"
     lista = [ui / "tokens" / "base.css", ui / "tokens" / "effects.css"]

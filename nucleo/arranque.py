@@ -11,20 +11,22 @@ servicios/autoinicio.py) el inicio de sesión ya va cargado, así que:
   crear la ventana, para no sumar QtWebEngine (150–250 MB) al arranque de Windows;
 - `sistema.autoinicio_como` decide cómo aparece:
     bandeja → ventana oculta, solo el icono de la bandeja (por defecto, D3);
-    mascota → ventana oculta y la mascota fuera;
+    asistente → ventana oculta y la asistente en el escritorio;
     ventana → la ventana principal visible;
 - `silencioso`: si ya había otra Lune abierta, esta se va sin traerla al frente
   (a quien arrancó el PC no le salta una ventana).
 
     opc = parsear_args(sys.argv[1:])
-    plan = plan_arranque(config, opc)   # → Plan(splash, mostrar_ventana, abrir_mascota, retraso_s, silencioso)
+    plan = plan_arranque(config, opc)   # → Plan(splash, mostrar_ventana, abrir_asistente, retraso_s, silencioso)
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Iterable
 
-COMOS = ("bandeja", "mascota", "ventana")
+from nucleo import nombres_antiguos
+
+COMOS = ("bandeja", "asistente", "ventana")
 COMO_DEFECTO = "bandeja"
 RETRASO_DEFECTO_S = 20
 RETRASO_MAX_S = 300
@@ -40,12 +42,12 @@ class Opciones:
 class Plan:
     splash: bool
     mostrar_ventana: bool
-    abrir_mascota: bool
+    abrir_asistente: bool
     retraso_s: int
     silencioso: bool
 
 
-PLAN_NORMAL = Plan(splash=True, mostrar_ventana=True, abrir_mascota=False, retraso_s=0, silencioso=False)
+PLAN_NORMAL = Plan(splash=True, mostrar_ventana=True, abrir_asistente=False, retraso_s=0, silencioso=False)
 
 
 def parsear_args(argv: Iterable[Any]) -> Opciones:
@@ -71,6 +73,7 @@ def _sistema(config: Any, clave: str, defecto: Any) -> Any:
 def como(config: Any) -> str:
     """sistema.autoinicio_como validado (lo desconocido → bandeja)."""
     c = str(_sistema(config, "autoinicio_como", COMO_DEFECTO) or "").strip().lower()
+    c = nombres_antiguos.como_autoinicio(c)           # el nombre de antes de la 11
     return c if c in COMOS else COMO_DEFECTO
 
 
@@ -94,7 +97,7 @@ def plan_arranque(config: Any, opciones: Opciones) -> Plan:
     return Plan(
         splash=False,
         mostrar_ventana=(c == "ventana"),
-        abrir_mascota=(c == "mascota"),
+        abrir_asistente=(c == "asistente"),
         retraso_s=retraso_s(config),
         silencioso=True,
     )

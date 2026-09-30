@@ -33,7 +33,7 @@ Ranuras (JS: el resultado llega por callback, `luneEscenario.x(args…, cb)`):
                                       escaneo o a un importar (lo nuevo llega por bailes_cambio)
     bailes_refrescar() → bool         vuelve a mirar la carpeta (en un hilo) → bailes_cambio
     mmd_estado_json() → str           {fase, id, titulo, autor, autor_mmd, t, total, modo, al_terminar, volumen,
-                                       en_el_sitio, error, analizando, pausado, cedida, pendiente, modo_mascota,
+                                       en_el_sitio, error, analizando, pausado, cedida, pendiente, modo_asistente,
                                        sin_esqueleto, importando, servicio}
     mmd_reproducir(id) → str          {ok, texto, estado}     id: 12 hex, o "" = seguir / el último / el primero
     mmd_pausa() → str                 {ok, estado}            alterna (D5: al reposo y sigue desde el mismo punto)
@@ -196,7 +196,7 @@ def estado_mmd(e: Any, *, al_terminar: str = AL_TERMINAR_DEFECTO, volumen: float
     t = _finito(e.get("t"), 0.0, T_MAX)
     total = _finito(e.get("total"), 0.0, T_MAX)
     vol = _finito(e.get("volumen"), 0.0, 1.0)
-    modo_m = e.get("modo_mascota") if e.get("modo_mascota") in MODOS_MMD else ""
+    modo_m = e.get("modo_asistente") if e.get("modo_asistente") in MODOS_MMD else ""
     return {
         "fase": e.get("fase") if e.get("fase") in FASES_MMD else "parado",
         "id": e.get("id") if id_baile(e.get("id")) else "",
@@ -214,7 +214,7 @@ def estado_mmd(e: Any, *, al_terminar: str = AL_TERMINAR_DEFECTO, volumen: float
         "pausado": e.get("pausado") is True,
         "cedida": e.get("cedida") is True,
         "pendiente": e.get("pendiente") is True,
-        "modo_mascota": modo_m,
+        "modo_asistente": modo_m,
         "sin_esqueleto": e.get("sin_esqueleto") is True or modo_m in ("animado", "sprites"),
         "importando": e.get("importando") is True,
         "servicio": servicio,

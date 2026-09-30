@@ -193,8 +193,8 @@ def test_plantilla_declara_compat_preset_voz_y_minecraft(monkeypatch):
     lune = d["personajes"][0]
     assert lune["voz"] == {"motor": "edge", "id": "es-MX-DaliaNeural",
                            "rate": "+0%", "pitch": "+0Hz"}
-    assert lune["frases_mascota"] == {}
-    assert "voz" in d["_nota"] and "frases_mascota" in d["_nota"]
+    assert lune["frases_asistente"] == {}
+    assert "voz" in d["_nota"] and "frases_asistente" in d["_nota"]
 
     mc = {k: v for k, v in d["minecraft"].items() if not k.startswith("_")}
     assert mc == datos.MINECRAFT_DEFECTO

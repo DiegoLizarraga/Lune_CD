@@ -1,12 +1,12 @@
 """
 Tests de ui/asiento_qt.ControlAsiento (offscreen, corte 7): el delegado de
 arrastre mueve en px físicos; al encajar pide la prioridad «sentada», sienta a la
-mascota y la pone justo encima de la ventana; sin «sentarse en ventanas» no
+asistente y la pone justo encima de la ventana; sin «sentarse en ventanas» no
 enumera; con un juego delante ni enumera ni encaja; sentada va a 15 Hz y a 60 Hz
 un rato cuando la ventana se mueve; minimizada se levanta; ceder por la pantalla
 grande y reanudar; la barra reafirma «siempre encima» cada 2 s; los sprites
 encajan al soltar; el punto de asiento se vuelve a medir; la herramienta desde
-otro hilo; detener idempotente. Mascota, ventanas, pantalla, cursor y reloj
+otro hilo; detener idempotente. Asistente, ventanas, pantalla, cursor y reloj
 falsos; ServiciosEscritorio y BusEstado reales.
 """
 import json
@@ -29,11 +29,11 @@ from ventanas_falsas_c78 import (ApiVentanasFalsa, Config, EntradaFalsa, Pantall
 
 PROPIA = 0x7000
 BLOC = (300, 400, 1100, 900)
-RECT_M = (100, 100, 400, 600)                   # la ventana de la mascota: 300×500
+RECT_M = (100, 100, 400, 600)                   # la ventana de la asistente: 300×500
 
 
-class MascotaFalsa(QObject):
-    """Cumple el contrato de la mascota de los cortes 7/8 (CompanionFlotante)."""
+class AsistenteFalsa(QObject):
+    """Cumple el contrato de la asistente de los cortes 7/8 (CompanionFlotante)."""
     arrastre_cambio = pyqtSignal(bool)
 
     def __init__(self, dpr=1.0, render="vrm", punto=None, sincrono=True):
@@ -78,7 +78,7 @@ class MascotaFalsa(QObject):
         return None
 
 
-class SpritesFalsos(MascotaFalsa):
+class SpritesFalsos(AsistenteFalsa):
     """AvatarOverlay: arrastre nativo, sin delegado."""
     set_arrastre_delegado = None
 
@@ -90,7 +90,7 @@ class Entorno:
     pass
 
 
-def _montar(qapp, config=None, mascota=None, ventanas=None, pantalla=None, en_ui=None, activa=0):
+def _montar(qapp, config=None, asistente=None, ventanas=None, pantalla=None, en_ui=None, activa=0):
     from ui.asiento_qt import ControlAsiento
     from ui.escritorio import ServiciosEscritorio
     import random
@@ -106,8 +106,8 @@ def _montar(qapp, config=None, mascota=None, ventanas=None, pantalla=None, en_ui
                            hwnd_principal=lambda: 0, en_ui=en_ui, reloj=e.reloj, azar=random.Random(3))
     e.esc.registrar("asiento", e.ctl, ("sentada",))
     e.esc.iniciar()
-    e.m = mascota or MascotaFalsa()
-    e.esc.set_mascota(e.m)
+    e.m = asistente or AsistenteFalsa()
+    e.esc.set_asistente(e.m)
     e.estados, e.sentadas, e.levantadas = [], [], []
     e.ctl.cambio.connect(lambda s: e.estados.append(json.loads(s)))
     e.ctl.sentada.connect(lambda modo, v: e.sentadas.append((modo, v)))
@@ -140,7 +140,7 @@ def mover_cursor(e, x, y, dt=0.02):
 
 
 def sentar_arrastrando(e):
-    """Arrastra la mascota hasta que la sonda (150, 420) queda en (700, 410), el borde del
+    """Arrastra la asistente hasta que la sonda (150, 420) queda en (700, 410), el borde del
     Bloc, y la deja ahí quieta medio segundo (sin MouseMove: el tic del arrastre)."""
     e.m.arrastre_cambio.emit(True)
     assert e.m.delegado is not None
@@ -171,7 +171,7 @@ def tics_hasta_quieta(e, n=200):
 # ── Arrastre manual ────────────────────────────────────────────────────────────
 
 def test_el_delegado_mueve_en_px_fisicos(entorno):
-    e = entorno(mascota=MascotaFalsa(dpr=1.5))
+    e = entorno(asistente=AsistenteFalsa(dpr=1.5))
     e.m.arrastre_cambio.emit(True)
     assert mover_cursor(e, 530, 520) is True
     assert e.win.de("mover")[-1] == ("mover", PROPIA, 130, 120)
@@ -359,7 +359,7 @@ def test_el_punto_de_asiento_se_remide_cada_segundo(entorno):
 
 
 def test_el_punto_de_un_pedido_viejo_no_pisa_el_asiento(entorno):
-    e = entorno(config=Config(sentarse_ventanas=True), mascota=MascotaFalsa(sincrono=False))
+    e = entorno(config=Config(sentarse_ventanas=True), asistente=AsistenteFalsa(sincrono=False))
     e.m.arrastre_cambio.emit(True)
     viejo = e.m.pendientes[-1]                          # pedido antes de sentarse
     e.m.pendientes.clear()
@@ -418,7 +418,7 @@ def test_el_juego_la_levanta_y_al_acabar_vuelve(entorno):
 
 def test_los_sprites_encajan_al_soltar(entorno):
     m = SpritesFalsos(punto={"asiento": [150, 480], "sonda": [150, 480]})
-    e = entorno(mascota=m)
+    e = entorno(asistente=m)
     e.m.arrastre_cambio.emit(True)
     assert e.m.delegado is None                        # el SO mueve la ventana
     e.win.rects[PROPIA] = Rect(100, 550, 400, 1050)    # el SO la dejó con la figura sobre la barra
@@ -430,32 +430,32 @@ def test_los_sprites_encajan_al_soltar(entorno):
 
 
 def test_los_sprites_sentados_se_levantan_al_empezar_a_arrastrar(entorno):
-    e = entorno(mascota=SpritesFalsos(punto={"asiento": [150, 480], "sonda": [150, 480]}))
+    e = entorno(asistente=SpritesFalsos(punto={"asiento": [150, 480], "sonda": [150, 480]}))
     e.ctl.sentar("barra")
     e.m.arrastre_cambio.emit(True)
     assert bus(e).sentada == "" and e.levantadas == ["arrastre"]
 
 
-# ── Mascota, órdenes y ciclo de vida ───────────────────────────────────────────
+# ── Asistente, órdenes y ciclo de vida ───────────────────────────────────────────
 
-def test_mascota_oculta_se_levanta(entorno):
+def test_asistente_oculta_se_levanta(entorno):
     e = entorno()
     e.ctl.sentar("barra")
     e.esc.estado.actualizar(visible=False)
     assert bus(e).sentada == "" and e.levantadas == ["oculta"]
 
 
-def test_sin_mascota_o_cambiada_se_levanta(entorno):
+def test_sin_asistente_o_cambiada_se_levanta(entorno):
     e = entorno()
     e.ctl.sentar("barra")
-    e.esc.set_mascota(None)
+    e.esc.set_asistente(None)
     assert bus(e).sentada == "" and e.m.asientos[-1][0] is False
     assert e.ctl.sentar("barra") == (False, "Necesito estar a la vista para sentarme: sácame primero.")
 
 
 def test_ordenes_y_textos(entorno):
     e = entorno(config=Config(sentarse_ventanas=False))
-    assert e.ctl.sentar("ventana") == (False, "Sentarme en ventanas está desactivado (Ajustes → Mascota).")
+    assert e.ctl.sentar("ventana") == (False, "Sentarme en ventanas está desactivado (Ajustes → Sentarse).")
     assert e.ctl.bajar() is False
     assert e.ctl.sentar("barra")[0] is True and e.ctl.sentada_en == "barra"
     assert e.ctl.sentar("barra") == (True, "Me senté en la barra de tareas.")      # ya lo estaba
@@ -501,7 +501,7 @@ def test_desactivar_ventanas_la_baja_de_la_ventana(entorno):
 def test_herramienta_desde_otro_hilo(entorno, qapp):
     from ui.montaje_ocio import EnHiloQt
     e = entorno(en_ui=EnHiloQt())
-    fn = e.ctl.herramientas()["mascota_sentarse"]
+    fn = e.ctl.herramientas()["asistente_sentarse"]
     caja = {}
     hilo = threading.Thread(target=lambda: caja.update(r=fn({"sitio": "barra"}, None)))
     hilo.start()

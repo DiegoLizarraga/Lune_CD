@@ -94,7 +94,7 @@
    usarlos con alfa:  rgb(var(--cyan-500-rgb) / .6)
    Siempre con respaldo: rgb(var(--cyan-500-rgb, 0 229 255) / .6)
    El tema (HSV) redefine estos canales junto con los hex; los
-   CSS nuevos (burbuja, grande, alarma, mascota animada) usan
+   CSS nuevos (burbuja, grande, alarma, asistente animada) usan
    SOLO estos nombres en vez de rgba() con números literales.
    tests/test_js_modulos.py comprueba que coinciden con los hex.
    ============================================================ */

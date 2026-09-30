@@ -1,7 +1,7 @@
 /*
  * ui_web/vrm/lune_modulos.js — bus de módulos del avatar VRM y utilidades de física.
  *
- * Para qué sirve: cada función nueva de la mascota 3D (idles, movimiento, sentarse,
+ * Para qué sirve: cada función nueva de la asistente 3D (idles, movimiento, sentarse,
  * baile, pantalla grande, comida…) vive en su propio archivo `ui_web/vrm/lune_*.js`
  * y se ENGANCHA a lune_vrm.js a través de este bus, en vez de editar todas el mismo
  * bucle de animación. lune_vrm.js crea el bus una vez (con 'idles' y 'movimiento'
@@ -280,7 +280,7 @@ export function emitirPorDefecto(tipo, datos) {
   return true;
 }
 
-// ── Registro genérico (lo comparten el bus VRM y el de la mascota animada) ────
+// ── Registro genérico (lo comparten el bus VRM y el de la asistente animada) ────
 
 /**
  * Registro de módulos ordenados. `ctx` se pasa a instalar() y a los avisos de error.

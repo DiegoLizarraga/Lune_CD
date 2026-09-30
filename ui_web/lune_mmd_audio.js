@@ -1,7 +1,7 @@
 /*
  * ui_web/lune_mmd_audio.js — la canción de un baile MMD/VRMA en la propia página de la
- * mascota (corte 9; script clásico, como lune_ritmo.js). La usan ui_web/vrm/lune_mmd.js
- * (mascota VRM) y ui_web/anim/lune_anim_mmd.js (mascota animada: baila «a su manera» al
+ * asistente (corte 9; script clásico, como lune_ritmo.js). La usan ui_web/vrm/lune_mmd.js
+ * (asistente VRM) y ui_web/anim/lune_anim_mmd.js (asistente animada: baila «a su manera» al
  * pulso analizado de la canción). Suena donde se ve: el audio manda el reloj del baile.
  *
  *   var a = LuneMMDAudio.crear({doc, crearAudio, emitir, ahora});

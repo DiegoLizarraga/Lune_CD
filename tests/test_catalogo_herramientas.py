@@ -18,8 +18,8 @@ from lune_core import herramientas as H  # noqa: E402
 
 NUEVAS_PLAN = {
     "temporizador", "alarma", "cancelar_alarma", "listar_alarmas",
-    "mascota_bailar", "parar_baile", "mascota_dormir", "mascota_despertar",
-    "mascota_pantalla_grande", "mascota_sentarse", "mascota_tamano",
+    "asistente_bailar", "parar_baile", "asistente_dormir", "asistente_despertar",
+    "asistente_pantalla_grande", "asistente_sentarse", "asistente_tamano",
     "dar_de_comer", "cambiar_voz", "comentar_pantalla",
     "minecraft_estado", "minecraft_orden", "minecraft_bot",
     "listar_bailes",                     # cortes 9/10 (reproductor de bailes)
@@ -54,14 +54,14 @@ def test_existentes_coinciden_con_registro_por_defecto():
     ("alarma", H.Riesgo.ESCRITURA, False, 1),
     ("cancelar_alarma", H.Riesgo.ESCRITURA, False, 1),
     ("listar_alarmas", H.Riesgo.LECTURA, False, 0),
-    ("mascota_bailar", H.Riesgo.ESCRITURA, False, 0),
+    ("asistente_bailar", H.Riesgo.ESCRITURA, False, 0),
     ("parar_baile", H.Riesgo.ESCRITURA, False, 0),
     ("listar_bailes", H.Riesgo.LECTURA, False, 0),
-    ("mascota_dormir", H.Riesgo.ESCRITURA, False, 0),
-    ("mascota_despertar", H.Riesgo.ESCRITURA, False, 0),
-    ("mascota_pantalla_grande", H.Riesgo.ESCRITURA, False, 0),
-    ("mascota_sentarse", H.Riesgo.ESCRITURA, False, 0),
-    ("mascota_tamano", H.Riesgo.ESCRITURA, False, 0),
+    ("asistente_dormir", H.Riesgo.ESCRITURA, False, 0),
+    ("asistente_despertar", H.Riesgo.ESCRITURA, False, 0),
+    ("asistente_pantalla_grande", H.Riesgo.ESCRITURA, False, 0),
+    ("asistente_sentarse", H.Riesgo.ESCRITURA, False, 0),
+    ("asistente_tamano", H.Riesgo.ESCRITURA, False, 0),
     ("dar_de_comer", H.Riesgo.ESCRITURA, False, 0),
     ("cambiar_voz", H.Riesgo.ESCRITURA, False, 1),
     ("comentar_pantalla", H.Riesgo.LECTURA, False, 1),
@@ -112,19 +112,19 @@ def test_registro_completo():
 
 def test_modos():
     cat = C.CATALOGO
-    assert cat["mascota_dormir"].disponible_en("vrm")          # vrm es una mascota
-    assert cat["mascota_dormir"].disponible_en("mascota")
-    assert not cat["mascota_dormir"].disponible_en("patata")
-    assert cat["mascota_sentarse"].disponible_en("vrm")
-    assert cat["mascota_sentarse"].disponible_en("mascota")     # cortes 7/8: animada y sprites se apoyan
-    assert not cat["mascota_sentarse"].disponible_en("normal")  # sin mascota a la vista, no
-    assert not cat["mascota_sentarse"].disponible_en("patata")
-    assert not cat["mascota_tamano"].disponible_en("mascota")   # el tamaño sigue siendo solo de la 3D
+    assert cat["asistente_dormir"].disponible_en("vrm")          # vrm es una asistente
+    assert cat["asistente_dormir"].disponible_en("asistente")
+    assert not cat["asistente_dormir"].disponible_en("patata")
+    assert cat["asistente_sentarse"].disponible_en("vrm")
+    assert cat["asistente_sentarse"].disponible_en("asistente")     # cortes 7/8: animada y sprites se apoyan
+    assert not cat["asistente_sentarse"].disponible_en("normal")  # sin asistente a la vista, no
+    assert not cat["asistente_sentarse"].disponible_en("patata")
+    assert not cat["asistente_tamano"].disponible_en("asistente")   # el tamaño sigue siendo solo de la 3D
     assert cat["dar_de_comer"].disponible_en("patata") and cat["dar_de_comer"].disponible_en("normal")
-    assert cat["mascota_bailar"].disponible_en("normal")
-    assert cat["mascota_bailar"].disponible_en("br")
+    assert cat["asistente_bailar"].disponible_en("normal")
+    assert cat["asistente_bailar"].disponible_en("br")
     # Cortes 9/10: en patata también (el título baila al ritmo de la canción de tu biblioteca).
-    assert cat["mascota_bailar"].disponible_en("patata") and cat["parar_baile"].disponible_en("patata")
+    assert cat["asistente_bailar"].disponible_en("patata") and cat["parar_baile"].disponible_en("patata")
     assert all(cat["listar_bailes"].disponible_en(m) for m in C.MODOS)
     assert cat["temporizador"].disponible_en("patata")
     assert cat["temporizador"].disponible_en(None)            # sin modo, sin filtro
@@ -132,12 +132,12 @@ def test_modos():
 
 def test_disponibles_en_filtra_por_handler_modo_y_registro():
     reg = H.registro_basico()                                 # sin las nuevas
-    con = {"temporizador", "sistema_info", "mascota_dormir"}
+    con = {"temporizador", "sistema_info", "asistente_dormir"}
     assert C.disponibles_en("patata", con, reg) == ["sistema_info"]
     reg_c = C.registro_completo()
     assert C.disponibles_en("patata", con, reg_c) == ["sistema_info", "temporizador"]
     assert C.disponibles_en("vrm", con, reg_c) == ["sistema_info", "temporizador",
-                                                  "mascota_dormir"]
+                                                  "asistente_dormir"]
 
 
 # ── Validación ───────────────────────────────────────────────────────────────────
@@ -163,7 +163,7 @@ def test_requerido_y_null():
 
 
 def test_defectos():
-    assert validar("mascota_bailar", {}) == {"segundos": 30}
+    assert validar("asistente_bailar", {}) == {"segundos": 30}
     assert validar("buscar_web", {"consulta": "gatos"}) == {"consulta": "gatos",
                                                             "sitio": "google"}
     assert validar("temporizador", {"segundos": 5})["texto"] == ""
@@ -200,7 +200,7 @@ def test_alarma_dias():
 
 
 def test_enum_sin_mayusculas_ni_tildes():
-    assert validar("mascota_tamano", {"tamano": "Pequeño"})["tamano"] == "pequeno"
+    assert validar("asistente_tamano", {"tamano": "Pequeño"})["tamano"] == "pequeno"
     assert validar("buscar_web", {"consulta": "x", "sitio": "YouTube"})["sitio"] == "youtube"
     with pytest.raises(C.ArgumentosInvalidos):
         validar("dar_de_comer", {"comida": "pizza"})
@@ -228,11 +228,11 @@ def test_abrir_url_sin_espacios():
 
 
 def test_bool():
-    assert validar("mascota_pantalla_grande", {"activar": "true"})["activar"] is True
-    assert validar("mascota_pantalla_grande", {"activar": "no"})["activar"] is False
-    assert validar("mascota_pantalla_grande", {"activar": 1})["activar"] is True
+    assert validar("asistente_pantalla_grande", {"activar": "true"})["activar"] is True
+    assert validar("asistente_pantalla_grande", {"activar": "no"})["activar"] is False
+    assert validar("asistente_pantalla_grande", {"activar": 1})["activar"] is True
     with pytest.raises(C.ArgumentosInvalidos):
-        validar("mascota_pantalla_grande", {"activar": "quizá"})
+        validar("asistente_pantalla_grande", {"activar": "quizá"})
 
 
 def test_cambiar_voz_patron():

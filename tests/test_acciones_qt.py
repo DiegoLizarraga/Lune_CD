@@ -2,7 +2,7 @@
 Tests de ui/acciones_qt.py: el Ejecutor enchufado a Qt (corte 2).
 
 Con la ventana a la vista la pregunta es un QMessageBox no bloqueante; sin
-ella, un DialogoAprobacion junto a la mascota. Lo que llega tras aprobar o al
+ella, un DialogoAprobacion junto a la asistente. Lo que llega tras aprobar o al
 caducar (hilo de un temporizador) se ejecuta en el hilo de Qt, y los
 resultados salen por la señal `resultado`.
 """
@@ -116,7 +116,7 @@ def test_el_texto_del_modelo_no_se_interpreta_como_html(entorno):
     assert caja.textFormat() == Qt.TextFormat.PlainText
 
 
-def test_ventana_oculta_usa_el_dialogo_junto_a_la_mascota(entorno):
+def test_ventana_oculta_usa_el_dialogo_junto_a_la_asistente(entorno):
     from ui.aprobacion_qt import DialogoAprobacion
     entorno["visible"]["si"] = False
     acc = entorno["acc"]
@@ -191,6 +191,6 @@ def test_pregunta_propia_con_la_ventana_visible_y_resolver_por_id(qapp, monkeypa
 
 def test_sin_herramienta_con_handler_no_se_pregunta(entorno):
     acc = entorno["acc"]
-    _, llamadas = acc.procesar('<|CALL ["mascota_dormir", {}]|>', A.USUARIO, {"modo": "normal"})
+    _, llamadas = acc.procesar('<|CALL ["asistente_dormir", {}]|>', A.USUARIO, {"modo": "normal"})
     acc.ejecutar(llamadas, A.USUARIO, {"modo": "normal"})
     assert entorno["res"][-1].estado == A.NO_DISPONIBLE and acc.abiertas == {}

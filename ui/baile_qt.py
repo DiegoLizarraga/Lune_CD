@@ -11,11 +11,11 @@ El controlador del baile de ServiciosEscritorio (ui/escritorio.py), actividad
   si no se permite (pantalla grande, alarma, juego, sentada, comida…) no baila y
   lo vuelve a intentar cuando cambie el estado. Dormida NO baila y no se la
   despierta (decisión D5): baila al despertar si la música sigue;
-- la mascota: `mascota.bailar(True, opciones)` y `mascota.pulso(bpm, fase,
+- la asistente: `asistente.bailar(True, opciones)` y `asistente.pulso(bpm, fase,
   energia)` (≤ 2 Hz; las páginas y los sprites extrapolan con su reloj). Sin
-  mascota, la barra web y la carita nativa lo pintan con `estado_cambio`/`pulso`.
+  asistente, la barra web y la carita nativa lo pintan con `estado_cambio`/`pulso`.
 
-Baile a mano (`bailar(segundos)`, herramienta `mascota_bailar`, acción
+Baile a mano (`bailar(segundos)`, herramienta `asistente_bailar`, acción
 `bailar`): `prioridad.iniciar("baile", "manual")`, el detector sigue el pulso
 de lo que más suene (aunque su app no esté permitida) y, sin música, un
 metrónomo de 120 BPM. `parar()` para y no vuelve a bailar sola hasta que la
@@ -40,14 +40,14 @@ from typing import Any, Callable, Dict, List, Optional
 from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 
 from nucleo import baile as nb
-from nucleo.estado_mascota import BAILE_MUSICA
+from nucleo.estado_asistente import BAILE_MUSICA
 from nucleo.pulso import Pulso, metronomo
 from servicios.musica_detector import DetectorMusica, leer_config, normalizar_nombre_app
 
 _log = logging.getLogger("lune.baile")
 
 BAILE_MANUAL = "manual"
-PULSO_MS = 500                  # ≤ 2 Hz hacia la mascota y las páginas
+PULSO_MS = 500                  # ≤ 2 Hz hacia la asistente y las páginas
 CONF_MIN = 0.3                  # pulso del detector que se da por bueno
 VIGENCIA_PULSO_S = 12.0         # un pulso bueno se sigue extrapolando este tiempo
 
@@ -73,7 +73,7 @@ class ControlBaile(QObject):
         self._detector = detector
         self._en_ui = en_ui
         self._reloj = reloj
-        self._mascota: Any = None
+        self._asistente: Any = None
         self._iniciado = False
         self._bailando = False
         self._origen = ""
@@ -115,7 +115,7 @@ class ControlBaile(QObject):
         est = self._estado_bus()
         if est is not None and getattr(est, "durmiendo", False):
             return True
-        v = getattr(self._mascota, "durmiendo", None)
+        v = getattr(self._asistente, "durmiendo", None)
         return v is True
 
     def _en_juego(self) -> bool:
@@ -183,10 +183,10 @@ class ControlBaile(QObject):
         self._pausado = False
         self._emitir_estado()
 
-    def set_mascota(self, v: Any) -> None:
-        self._mascota = v
+    def set_asistente(self, v: Any) -> None:
+        self._asistente = v
         if v is not None and self._bailando:
-            self._mascota_bailar(True)
+            self._asistente_bailar(True)
             self._enviar_pulso(self._pulso_actual(self._reloj()))
 
     def ceder(self, c: Any) -> None:
@@ -219,7 +219,7 @@ class ControlBaile(QObject):
             self.parar(silenciar_auto=False)
         if self._bailando:
             self._opciones = nb.opciones_pagina(self.config, self._opciones.get("estilo"))
-            self._mascota_bailar(True)
+            self._asistente_bailar(True)
         d = self._detector
         if d is not None and self._iniciado:
             try:
@@ -261,7 +261,7 @@ class ControlBaile(QObject):
         self.ultimo_motivo = ""
         if origen == "manual":
             self._pausado = False
-            m = self._mascota
+            m = self._asistente
             if m is not None and callable(getattr(m, "despertar", None)):
                 try:
                     m.despertar()                      # se lo han pedido: se despierta
@@ -392,10 +392,10 @@ class ControlBaile(QObject):
         return base
 
     def herramientas(self) -> dict:
-        """{nombre: handler(args, ctx)} de `mascota_bailar` y `parar_baile` (con
+        """{nombre: handler(args, ctx)} de `asistente_bailar` y `parar_baile` (con
         ctx["mmd"] si el reproductor de bailes está montado)."""
         return {
-            "mascota_bailar": lambda args=None, ctx=None: nb.herramienta_bailar(args, self._ctx(ctx)),
+            "asistente_bailar": lambda args=None, ctx=None: nb.herramienta_bailar(args, self._ctx(ctx)),
             "parar_baile": lambda args=None, ctx=None: nb.herramienta_parar(args, self._ctx(ctx)),
         }
 
@@ -455,7 +455,7 @@ class ControlBaile(QObject):
             self.apps_cambio.emit(json.dumps(lista, ensure_ascii=False))
 
     def _on_bus(self, estado: Any = None, cambios: Any = None) -> None:
-        """Cambió el estado de la mascota: ¿ahora sí se puede bailar con la música?"""
+        """Cambió el estado de la asistente: ¿ahora sí se puede bailar con la música?"""
         if self._musica and not self._bailando:
             self._intentar_auto()
 
@@ -482,7 +482,7 @@ class ControlBaile(QObject):
         t = self._reloj()
         self._metro = metronomo(self._pulso_ref.bpm if self._pulso_ref else 120.0, t)
         self._forzar(origen == "manual")
-        self._mascota_bailar(True)
+        self._asistente_bailar(True)
         self._t_pulso.start()
         self._tic_pulso()
 
@@ -492,7 +492,7 @@ class ControlBaile(QObject):
         self._forzar(False)
         self._bailando = False
         self._origen = ""
-        self._mascota_bailar(False)
+        self._asistente_bailar(False)
 
     def _forzar(self, on: bool) -> None:
         d = self._detector
@@ -534,8 +534,8 @@ class ControlBaile(QObject):
             except Exception:
                 pass
 
-    def _mascota_bailar(self, on: bool) -> None:
-        m = self._mascota
+    def _asistente_bailar(self, on: bool) -> None:
+        m = self._asistente
         f = getattr(m, "bailar", None) if m is not None else None
         if not callable(f):
             return
@@ -545,7 +545,7 @@ class ControlBaile(QObject):
             else:
                 f(False)
         except Exception:
-            _log.exception("baile: la mascota no pudo %s", "bailar" if on else "parar")
+            _log.exception("baile: la asistente no pudo %s", "bailar" if on else "parar")
 
     def _pulso_actual(self, t: float) -> Pulso:
         """El pulso en `t`: el último bueno del detector extrapolado o el metrónomo."""
@@ -564,13 +564,13 @@ class ControlBaile(QObject):
 
     def _enviar_pulso(self, p: Pulso) -> None:
         self._ultimo_pulso = p
-        m = self._mascota
+        m = self._asistente
         f = getattr(m, "pulso", None) if m is not None else None
         if callable(f):
             try:
                 f(float(p.bpm), float(p.fase), float(p.energia))
             except Exception:
-                _log.debug("baile: la mascota no aceptó el pulso", exc_info=True)
+                _log.debug("baile: la asistente no aceptó el pulso", exc_info=True)
         self.pulso.emit(json.dumps(p.a_dict()))
 
     def _emitir_estado(self) -> None:

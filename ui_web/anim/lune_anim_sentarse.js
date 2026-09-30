@@ -1,5 +1,5 @@
 /*
- * ui_web/anim/lune_anim_sentarse.js — módulo 'sentarseAnim' de la mascota ANIMADA:
+ * ui_web/anim/lune_anim_sentarse.js — módulo 'sentarseAnim' de la asistente ANIMADA:
  * «sentada» en el borde de una ventana o en la barra de tareas (corte 7, decisión D2).
  *
  * Los clips WebM no tienen pose sentada: la animada se APOYA de pie sobre el borde (la

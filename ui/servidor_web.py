@@ -2,13 +2,13 @@
 ui/servidor_web.py — Servidor http local para las páginas web de Lune.
 
 Sirve `ui_web/` en 127.0.0.1 (puerto aleatorio) en un hilo daemon. Lo usan la
-ventana principal con la piel web (ui/web_shell.py) y la mascota flotante
-(ui/companion.py). Vive aparte de web_shell para que la mascota pueda importarlo
+ventana principal con la piel web (ui/web_shell.py) y la asistente flotante
+(ui/companion.py). Vive aparte de web_shell para que la asistente pueda importarlo
 sin arrastrar PyQt6-WebEngine en el módulo (la interfaz nativa no lo tiene).
 
 Qué más sirve, además de `ui_web/`:
 - Rutas extra: archivos sueltos que están FUERA de ui_web/ (el modelo .vrm de la
-  mascota, que vive en modelo_vrm/ o donde el usuario lo tenga) se publican con
+  asistente, que vive en modelo_vrm/ o donde el usuario lo tenga) se publican con
   `rutas_extra={"/vrm/actual.vrm": Path(...)}` o `publicar(ruta, archivo)`.
 - Carpetas publicadas: `publicar_carpeta("/bailes/", carpeta)` sirve los archivos
   de esa carpeta bajo ese prefijo (bailes .vmd/.vrma, packs de sonido, biblioteca
@@ -22,7 +22,7 @@ peticiones cuyo `Host` sea 127.0.0.1/localhost/::1. Así otra web abierta en el
 navegador no puede leer bailes, sonidos o el VRM por el puerto local, ni siquiera
 con DNS rebinding.
 
-Se conserva el soporte de HTTP Range (206): los <video> de la mascota animada y
+Se conserva el soporte de HTTP Range (206): los <video> de la asistente animada y
 los audios largos lo necesitan para reproducir y hacer bucle sin cortes.
 """
 from __future__ import annotations
@@ -246,7 +246,7 @@ class HandlerSilencioso(SimpleHTTPRequestHandler):
         return super().send_head()
 
     def do_GET(self):
-        # Soporta HTTP Range (206) para que los <video> grandes (mascota) reproduzcan
+        # Soporta HTTP Range (206) para que los <video> grandes (asistente) reproduzcan
         # y loopeen sin cortes; el resto se sirve normal (200).
         rango = self.headers.get("Range")
         if not rango:

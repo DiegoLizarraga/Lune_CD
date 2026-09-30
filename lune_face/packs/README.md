@@ -14,4 +14,4 @@ packs/
 Selecciónalo en **⚙️ Configuración General → 🎨 Modelo visual de Lune**.
 Lo que falte en tu pack cae automáticamente al set por defecto (`lune_face/`).
 
-El avatar flotante (mascota de escritorio) está en `avatar_overlay.py`.
+El avatar flotante (asistente en escritorio) está en `avatar_overlay.py`.

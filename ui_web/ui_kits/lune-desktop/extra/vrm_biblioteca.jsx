@@ -13,7 +13,7 @@
  *
  * Los rangos son los de nucleo/vrm.py AJUSTES y ui_web/vrm/lune_params.js (tests/test_vrm_biblioteca.py
  * comprueba que coinciden). Los cambios de calibración se mandan agrupados (150 ms) a
- * window.lune.vrm_ajustes; el backend los guarda en modelo_vrm/<modelo>.lune.json y, si la mascota
+ * window.lune.vrm_ajustes; el backend los guarda en modelo_vrm/<modelo>.lune.json y, si la asistente
  * 3D enseña ese modelo, se los pasa con window.luneParams.
  *
  * Puente (QWebChannel, todo opcional; sin window.lune hay una demo local que no guarda nada):
@@ -517,14 +517,14 @@
 
     return (
       <>
-        <Card eyebrow={<><Icono width={13} height={13}/> Mascota · VRM</>} title="Biblioteca de modelos 3D" tone="blue">
+        <Card eyebrow={<><Icono width={13} height={13}/> Asistente en escritorio · VRM</>} title="Biblioteca de modelos 3D" tone="blue">
           <p className="ln-card-nota">
-            Los .vrm de <b>modelo_vrm/</b>. Elige uno para ver su ficha y calibrarlo: los cambios se ven en la mascota 3D
+            Los .vrm de <b>modelo_vrm/</b>. Elige uno para ver su ficha y calibrarlo: los cambios se ven en la asistente 3D
             al momento y se guardan con el modelo.
           </p>
           {!bib.webengine && (
             <p className="ln-vrm-aviso">
-              La mascota 3D necesita PyQt6-WebEngine (Sistema → Instalar componentes…). Puedes preparar los modelos igual.
+              La asistente 3D necesita PyQt6-WebEngine (Sistema → Instalar componentes…). Puedes preparar los modelos igual.
             </p>
           )}
           {cargando && bib.modelos.length === 0 && <p className="ln-x-estado">Cargando modelos…</p>}
@@ -634,7 +634,7 @@
 
             <div className="lune-overline ln-vrm-sec">Seguimiento del cursor</div>
             {hayCfg && (
-              <Switch label="Seguir el cursor (todas las mascotas)" checked={siguiendo}
+              <Switch label="Seguir el cursor (en todos los modelos)" checked={siguiendo}
                 onChange={(e) => set('seguir_cursor')(!!(e && e.target ? e.target.checked : e))} />
             )}
             {!siguiendo && (

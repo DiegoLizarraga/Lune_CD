@@ -285,8 +285,8 @@ class PuenteEscritorio(QObject):
     def juego(self) -> Any:
         return self._ctl("juego")
 
-    def _mascota(self) -> Any:
-        return getattr(self.escritorio, "mascota", None) if self.escritorio is not None else None
+    def _asistente(self) -> Any:
+        return getattr(self.escritorio, "asistente", None) if self.escritorio is not None else None
 
     # Módulos de otros agentes, en diferido e inyectables (tests con dobles).
     def _modulo(self, attr: str, nombre: str) -> Any:
@@ -335,14 +335,14 @@ class PuenteEscritorio(QObject):
         return None
 
     def _estado_foto(self) -> Any:
-        """EstadoMascota actual (lo que esperan las reglas de nucleo.acciones_ui)."""
+        """EstadoAsistente actual (lo que esperan las reglas de nucleo.acciones_ui)."""
         bus = getattr(self.escritorio, "estado", None) if self.escritorio is not None else None
         actual = getattr(bus, "actual", None)
         if callable(actual):
             try:
                 return actual()
             except Exception:
-                _log.exception("puente_escritorio: estado de la mascota")
+                _log.exception("puente_escritorio: estado de la asistente")
                 return None
         return bus
 
@@ -1220,8 +1220,8 @@ class PuenteEscritorio(QObject):
         return _dump({"ok": ok, "error": "" if ok else "No pude guardar.", "estado": self._rendimiento()})
 
     def _aplicar_rendimiento(self, cambios: Dict[str, Any]) -> None:
-        """Al momento, sin reiniciar: mascota, recorte periódico y barra de tareas."""
-        m = self._mascota()
+        """Al momento, sin reiniciar: asistente, recorte periódico y barra de tareas."""
+        m = self._asistente()
         if "fps_max" in cambios:
             _llamar(m, "set_fps_max", cambios["fps_max"])
         if "siempre_encima" in cambios:

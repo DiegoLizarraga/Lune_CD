@@ -47,6 +47,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from nucleo import nombres_antiguos
+
 RAIZ = Path(__file__).resolve().parent.parent
 RUTA_CONFIG = RAIZ / "config.json"
 
@@ -236,17 +238,17 @@ class Config:
             "pack": "default",                   # carpeta lune_face/ por defecto
             "render": "animado",                 # animado (video anime) · vrm (avatar 3D) · sprites (ligero, bajos recursos)
             "vrm_archivo": "",                   # .vrm por defecto; vacío = el 1º en modelo_vrm/ (cada personaje puede traer el suyo)
-            "vrm_tamano": "normal",              # pequeno · normal · grande (tamaño de la mascota 3D)
-            "vrm_escala": 1.0,                   # ajuste fino con la rueda del ratón sobre la mascota (0.6–1.5)
+            "vrm_tamano": "normal",              # pequeno · normal · grande (tamaño de la asistente 3D)
+            "vrm_escala": 1.0,                   # ajuste fino con la rueda del ratón sobre la asistente (0.6–1.5)
             "vrm_fantasma_auto": True,           # los clics pasan al escritorio donde no hay avatar
             "vrm_encuadre": "retrato",           # retrato (cara y torso) · cuerpo (entera)
-            "dormir_min": 10,                    # la mascota 3D se duerme tras N min sin tocarla ni hablarle (0 = nunca)
-            "click_through": False,              # mascota "fantasma": deja pasar los clics
+            "dormir_min": 10,                    # la asistente 3D se duerme tras N min sin tocarla ni hablarle (0 = nunca)
+            "click_through": False,              # modo fantasma: los clics la atraviesan
             "comentarios_cada_min": 0,           # companion comenta la pantalla cada N min (0 = off)
-            "overlay_x": None, "overlay_y": None,      # posición de la mascota clásica
+            "overlay_x": None, "overlay_y": None,      # posición de la asistente clásica
             "companion_x": None, "companion_y": None,  # posición del companion animado
             # ── Serie 10.3+ (funciones de Mate-Engine) ──
-            "siempre_encima": True,              # la mascota se queda por encima de las ventanas (P11)
+            "siempre_encima": True,              # la asistente se queda por encima de las ventanas (P11)
             "fps_max": 60,                       # 15–144; en reposo = min(fps_max, 30) (P11)
             "seguir_cursor": True,               # cabeza/ojos/torso siguen al ratón (P14)
             "peso_cabeza": 1.0,                  # 0–1: cuánto gira la cabeza hacia el cursor (P14)
@@ -259,7 +261,7 @@ class Config:
             "mareo": True,                       # se marea si la zarandeas (P02)
             "sonidos": False,                    # sonidos al arrastrar y soltar (P02)
             "pack_sonidos": "default",           # carpeta de sonidos de reacción (P08)
-            "volumen_sfx": 0.7,                  # 0–1: volumen de los efectos de la mascota
+            "volumen_sfx": 0.7,                  # 0–1: volumen de los efectos de la asistente
         },
         # Optimizador estilo Stacer: qué categorías limpiar por defecto.
         "optimizador": {
@@ -366,7 +368,7 @@ class Config:
         "juego": {
             "activo": True,                      # detectar juegos
             "accion": "ocultar",                 # ocultar · fondo · nada
-            "fps": 0,                            # fps de la mascota durante el juego (0 = pausada)
+            "fps": 0,                            # fps de la asistente durante el juego (0 = pausada)
             "apps": [],                          # .exe que siempre cuentan como juego
             "rutas_juego": True,                 # contar como juego lo que corre desde steamapps\common y similares
             "incluir_videos": True,              # un vídeo a pantalla completa también cuenta (QUNS_BUSY)
@@ -377,7 +379,7 @@ class Config:
         # Arranque con Windows y mantenimiento (P12).
         "sistema": {
             "autoinicio": False,                 # arrancar con Windows
-            "autoinicio_como": "bandeja",        # bandeja · mascota · ventana
+            "autoinicio_como": "bandeja",        # bandeja · asistente · ventana
             "autoinicio_retraso_s": 20,          # esperar antes de cargar lo pesado
             "recorte_ram_auto": False,           # recortar RAM periódicamente
         },
@@ -408,7 +410,7 @@ class Config:
             "activa": True,                      # clic central → comida
             "catalogo_extra": [],                # comidas añadidas por el usuario
         },
-        # Tema de color de la interfaz y la mascota (P10).
+        # Tema de color de la interfaz y de la asistente en escritorio (P10).
         "tema": {
             "preset": "cian",                    # cian · y los demás presets de nucleo/tema.py
             "hue": 0.0,                          # desplazamiento de tono (grados)
@@ -422,7 +424,7 @@ class Config:
             "barrido": True,                     # barrido al cambiar de pantalla
             "micro": True,                       # microinteracciones
         },
-        # Botones del menú radial de la mascota (P10).
+        # Botones del menú radial de la asistente en escritorio (P10).
         "menu_radial": {
             "principal": ["ajustes", "chat", "comentar", "expresiones", "bailar",   # clic derecho
                           "alarma", "voz", "dormir", "tamano", "bajar"],
@@ -440,7 +442,7 @@ class Config:
             "sonido": False,                     # sonido al usar un atajo
             "lista": [                           # combos guardados con atajos_globales.normalizar()
                 {"id": "mostrar_lune",    "combo": "ctrl+alt+shift+l"},
-                {"id": "mascota",         "combo": "ctrl+alt+shift+m"},
+                {"id": "asistente",       "combo": "ctrl+alt+shift+m"},
                 {"id": "menu_radial",     "combo": "ctrl+alt+shift+space"},
                 {"id": "comentar",        "combo": "ctrl+alt+shift+c"},
                 {"id": "voz",             "combo": "ctrl+alt+shift+v"},
@@ -453,7 +455,7 @@ class Config:
         },
         # Acciones del menú de la bandeja (la misma lista que el radial y los atajos) (P10).
         "bandeja": {
-            "acciones": ["mascota", "comentar", "voz", "llamada", "dormir", "pantalla_grande",   # en este orden
+            "acciones": ["asistente", "comentar", "voz", "llamada", "dormir", "pantalla_grande",   # en este orden
                          "bailar", "temporizador_rapido", "comida", "modo_juego_forzar",
                          "discord", "minecraft"],
         },
@@ -463,10 +465,20 @@ class Config:
             "caritas": "clasico",                # clasico · kaomoji
             "prompt": "tú > ",                   # texto del prompt
         },
+        # Bienvenida (11, nucleo/bienvenida.py): las tres preguntas de Lune cuando aún no te
+        # conoce (tu nombre, cómo eres y cómo quieres que sea contigo). Sin migración: un
+        # config.json viejo la recibe sin hacer y solo empieza con la memoria vacía de ti.
+        "bienvenida": {
+            "hecha": False,                      # terminada o saltada (con memoria ya no se pregunta)
+            "paso": 0,                           # 0 = sin empezar · 1 nombre · 2 cómo eres · 3 cómo la quieres
+            "reintento_nombre": False,           # ya se repitió la pregunta del nombre una vez
+            "pedida": False,                     # esta ronda la pediste con /conocernos (ya te conozco)
+        },
         # Versión del esquema de config.json: cada migración única de _migrar() sube uno.
         # Un config.json sin esta sección viene de antes de las migraciones (10.3).
+        # 1 (serie 10.3+): baile.umbral · 2 (11): nombres del modo asistente en escritorio.
         "esquema": {
-            "version": 1,
+            "version": 2,
         },
     }
 
@@ -720,11 +732,52 @@ class Config:
             if isinstance(umbral, (int, float)) and not isinstance(umbral, bool) and abs(umbral - 0.2) < 1e-9:
                 baile["umbral"] = self.DEFAULT_CONFIG["baile"]["umbral"]
                 _log.info("config: baile.umbral 0.2 (defecto de la 10.3) → %s", baile["umbral"])
+        if version < 2:
+            # 11: el modo «asistente en escritorio» dejó atrás su nombre de antes. Los ids
+            # de acción y el modo de autoinicio guardados con él pasan al de ahora
+            # (nucleo/nombres_antiguos); lo demás no se toca.
+            tocado = self._migrar_nombres_antiguos(merged)
+            if tocado:
+                _log.info("config: nombres del modo asistente en escritorio al día en %s",
+                          ", ".join(tocado))
         if version < self.DEFAULT_CONFIG["esquema"]["version"]:
             sec = merged.get("esquema")
             if not isinstance(sec, dict):
                 sec = merged["esquema"] = {}
             sec["version"] = self.DEFAULT_CONFIG["esquema"]["version"]
+
+    # Listas de ids de acción (nucleo/acciones_ui) que guarda config.json.
+    _LISTAS_DE_ACCIONES = (("bandeja", "acciones"), ("menu_radial", "principal"),
+                           ("menu_radial", "secundario"))
+
+    @classmethod
+    def _migrar_nombres_antiguos(cls, merged: Dict) -> List[str]:
+        """Ids de acción (atajos, bandeja, menú radial) y sistema.autoinicio_como con los
+        nombres de ahora. Las listas se sustituyen por otras nuevas: `merged` comparte las
+        suyas con lo leído y así se nota el cambio al comparar. Devuelve qué se tocó."""
+        tocado: List[str] = []
+        atajos = merged.get("atajos")
+        if isinstance(atajos, dict):
+            lista, cambio = nombres_antiguos.migrar_atajos(atajos.get("lista"))
+            if cambio:
+                atajos["lista"] = lista
+                tocado.append("atajos.lista")
+        for sec, clave in cls._LISTAS_DE_ACCIONES:
+            seccion = merged.get(sec)
+            if not isinstance(seccion, dict):
+                continue
+            lista, cambio = nombres_antiguos.migrar_lista_acciones(seccion.get(clave))
+            if cambio:
+                seccion[clave] = lista
+                tocado.append(f"{sec}.{clave}")
+        sistema = merged.get("sistema")
+        if isinstance(sistema, dict):
+            como = sistema.get("autoinicio_como")
+            nuevo = nombres_antiguos.como_autoinicio(como)
+            if nuevo != como:
+                sistema["autoinicio_como"] = nuevo
+                tocado.append("sistema.autoinicio_como")
+        return tocado
 
     # ── Fusión con los valores por defecto ─────────────────────────────────────
     def _merge_defaults(self, loaded: Dict, default: Dict) -> Dict:

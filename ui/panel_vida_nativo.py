@@ -14,7 +14,7 @@ del controlador de ese apartado y emite `cambiado(str seccion)`.
 - DISCORD (`discord`): la presencia, el Application ID (17–20 cifras; D1: sin él no
   hace nada), enseñar el modelo VRM y el enlace del botón (https). Muestra qué se
   publica («Discord ve: …», solo los textos fijos) y nunca títulos de ventana ni el chat.
-- ARRANQUE (`arranque`): cómo aparece Lune al arrancar con Windows (bandeja, mascota
+- ARRANQUE (`arranque`): cómo aparece Lune al arrancar con Windows (bandeja, asistente
   o ventana) y cuánto espera, con el estado de la entrada (desactivada desde el
   Administrador de tareas, carpeta movida…). La casilla «Arrancar Lune junto con
   Windows» sigue en settings_panel.
@@ -48,7 +48,7 @@ SECCIONES = ("asiento", "comida", "discord", "arranque")
 ESPERA_GUARDADO_MS = 300
 OFFSET_MAX = 64
 RETRASO_MAX = 120
-COMOS = (("bandeja", "En la bandeja (sin ventana)"), ("mascota", "Con la mascota fuera"),
+COMOS = (("bandeja", "En la bandeja (sin ventana)"), ("asistente", "Con la asistente en escritorio"),
          ("ventana", "Con la ventana abierta"))
 ID_DISCORD = re.compile(r"^\d{17,20}$")
 AVISO_ANTICHEAT = ("Para sentarse en ventanas, Lune lee la posición de las ventanas abiertas (sin tocarlas ni "
@@ -88,7 +88,7 @@ def _llamar(obj: Any, metodo: str, *args, **kw) -> Any:
 
 
 def texto_discord_ve(estado: Any) -> str:
-    """«Discord ve: Lune CD · Mascota 3D — Bailando ♪» (solo textos de la lista fija)."""
+    """«Discord ve: Lune CD · Escritorio · 3D — Bailando ♪» (solo textos de la lista fija)."""
     from ui.puente_vida import publicacion_segura
     e = estado if isinstance(estado, dict) else {}
     if not e.get("activo"):
@@ -584,7 +584,7 @@ class PanelVidaNativo(QWidget):
     def _pintar_asiento(self, *_: Any) -> None:
         a = self.asiento
         if a is None:
-            self._estado(self.estado_asiento, "Se sienta la mascota: sácala para probarlo.")
+            self._estado(self.estado_asiento, "Se sienta la asistente en escritorio: sácala para probarlo.")
             return
         e = _llamar(a, "estado")
         e = e if isinstance(e, dict) else {}
@@ -596,7 +596,7 @@ class PanelVidaNativo(QWidget):
         elif e.get("juego"):
             texto = "Con un juego delante no se sienta (ni mira las ventanas)."
         elif not e.get("disponible"):
-            texto = "De pie. Saca la mascota para sentarla."
+            texto = "De pie. Saca a la asistente al escritorio para sentarla."
         else:
             texto = "De pie."
         self._estado(self.estado_asiento, texto)

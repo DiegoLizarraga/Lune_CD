@@ -1,5 +1,5 @@
 """
-Tests del contrato de la mascota de los cortes 7 y 8 en ui/companion.py (animada y VRM):
+Tests del contrato de la asistente de los cortes 7 y 8 en ui/companion.py (animada y VRM):
 
 - clic CENTRAL soltado sobre ella → menu_pedido('secundario', QPoint) (y no lo ve Chromium);
 - `arrastre_cambio(True)` al pasar el umbral ANTES del delegado de ese MouseMove y
@@ -56,7 +56,7 @@ def centro(w, dx=0, dy=0):
 
 
 class FrasesSiempre:
-    """Frases de la mascota que siempre dicen algo (para ver qué evento se pidió)."""
+    """Frases de la asistente que siempre dicen algo (para ver qué evento se pidió)."""
 
     def __init__(self):
         self.pedidas = []
@@ -101,7 +101,7 @@ def web_falso(monkeypatch):
     """QWebEngineView falso: anota el JS; `pagina.respuestas` = [(trozo, valor)] decide qué
     contesta un runJavaScript con callback (la primera coincidencia; si no, None)."""
     if not HAY_WEBENGINE:
-        pytest.skip("la mascota web necesita PyQt6-WebEngine")
+        pytest.skip("la asistente web necesita PyQt6-WebEngine")
     from PyQt6.QtCore import QUrl
     from PyQt6.QtWidgets import QWidget
     import ui.companion as comp
@@ -160,7 +160,7 @@ def web_falso(monkeypatch):
 
 
 @pytest.fixture
-def mascota(qapp, web_falso, config, lune_activa):
+def asistente(qapp, web_falso, config, lune_activa):
     from ui.companion import CompanionFlotante
     c = CompanionFlotante(config, ai_manager=object(), bandeja=False)
     c._aparecer_pendiente = False
@@ -174,7 +174,7 @@ def mascota(qapp, web_falso, config, lune_activa):
 
 @pytest.fixture
 def win_ventana(monkeypatch):
-    """win_ventana sin Win32 y la mascota creyendo que hay HWND de verdad."""
+    """win_ventana sin Win32 y la asistente creyendo que hay HWND de verdad."""
     import servicios.win_ventana as wv
     import ui.companion as comp
     falsa = WinVentanaFalsa()
@@ -193,7 +193,7 @@ def llamadas(c, fn):
 
 
 def filtro(c, tipo, boton, x, y, botones=None):
-    """Un evento de ratón por el filtro de la vista (lo que ve la mascota sobre la página)."""
+    """Un evento de ratón por el filtro de la vista (lo que ve la asistente sobre la página)."""
     return c.eventFilter(c.web, raton(tipo, boton, x, y, botones))
 
 
@@ -203,8 +203,8 @@ def comentarios(c):
 
 # ── Clic central → menú secundario ─────────────────────────────────────────────
 
-def test_clic_central_soltado_pide_el_menu_secundario(mascota):
-    c = mascota
+def test_clic_central_soltado_pide_el_menu_secundario(asistente):
+    c = asistente
     pedidos = []
     c.menu_pedido.connect(lambda tipo, p: pedidos.append((tipo, p)))
     x, y = centro(c)
@@ -228,8 +228,8 @@ def test_clic_central_soltado_pide_el_menu_secundario(mascota):
 
 # ── Arrastre: señal, delegado y soltar ─────────────────────────────────────────
 
-def test_arrastre_cambio_en_el_umbral_y_al_soltar_antes_de_devolverla_y_guardar(mascota, monkeypatch):
-    c = mascota
+def test_arrastre_cambio_en_el_umbral_y_al_soltar_antes_de_devolverla_y_guardar(asistente, monkeypatch):
+    c = asistente
     orden = []
     c.arrastre_cambio.connect(lambda on: orden.append(("señal", on)))
     asegurar, guardar = c._asegurar_en_pantalla, c._guardar_posicion
@@ -251,8 +251,8 @@ def test_arrastre_cambio_en_el_umbral_y_al_soltar_antes_de_devolverla_y_guardar(
     assert orden == []
 
 
-def test_el_delegado_se_pone_en_la_senal_y_mueve_en_ese_mismo_movimiento(mascota):
-    c = mascota
+def test_el_delegado_se_pone_en_la_senal_y_mueve_en_ese_mismo_movimiento(asistente):
+    c = asistente
     llamadas_del = []
 
     def delegado():
@@ -292,8 +292,8 @@ def test_el_delegado_se_pone_en_la_senal_y_mueve_en_ese_mismo_movimiento(mascota
     assert c._delegado_arrastre is None
 
 
-def test_arrastre_cortado_tambien_avisa(mascota):
-    c = mascota
+def test_arrastre_cortado_tambien_avisa(asistente):
+    c = asistente
     senales = []
     c.arrastre_cambio.connect(senales.append)
     x, y = centro(c)
@@ -312,8 +312,8 @@ def test_arrastre_cortado_tambien_avisa(mascota):
     c.grande_fase("fin")
 
 
-def test_arrastrandola_sentada_no_se_balancea(mascota):
-    c = mascota
+def test_arrastrandola_sentada_no_se_balancea(asistente):
+    c = asistente
     c.asiento(True, "ventana", 1)
     c.set_arrastre_delegado(lambda: True)
     x, y = centro(c)
@@ -333,8 +333,8 @@ def test_arrastrandola_sentada_no_se_balancea(mascota):
 PUNTO = '{"asiento":{"x":120,"y":300.5},"sonda":{"x":120,"y":330}}'
 
 
-def test_asiento_llama_a_luneSentar_analiza_el_cb_y_dice_las_frases(mascota):
-    c = mascota
+def test_asiento_llama_a_luneSentar_analiza_el_cb_y_dice_las_frases(asistente):
+    c = asistente
     c.web.page().respuestas = [("luneSentar", PUNTO)]
     recibidos = []
     c.asiento(True, "ventana", 2, cb=recibidos.append)
@@ -387,8 +387,8 @@ def test_asiento_con_la_pagina_sin_cargar_contesta_none_y_se_repite_al_cargar(qa
     assert c.hwnd() == 0
 
 
-def test_punto_asiento_lee_luneSeatPx(mascota):
-    c = mascota
+def test_punto_asiento_lee_luneSeatPx(asistente):
+    c = asistente
     c.web.page().respuestas = [("luneSeatPx", '{"asiento":[100,200],"sonda":{"x":101,"y":260}}')]
     rec = []
     c.punto_asiento(rec.append)
@@ -401,8 +401,8 @@ def test_punto_asiento_lee_luneSeatPx(mascota):
     c.punto_asiento(None)                                  # sin callback: nada
 
 
-def test_sentada_no_la_devuelve_a_la_pantalla_ni_toca_el_orden_z(mascota, win_ventana, config):
-    c = mascota
+def test_sentada_no_la_devuelve_a_la_pantalla_ni_toca_el_orden_z(asistente, win_ventana, config):
+    c = asistente
     c.asiento(True, "ventana", 0)
     c.move(-5000, -5000)
     c._asegurar_en_pantalla()
@@ -423,8 +423,8 @@ def test_sentada_no_la_devuelve_a_la_pantalla_ni_toca_el_orden_z(mascota, win_ve
     assert isinstance(c.hwnd(), int)
 
 
-def test_soltar_sentada_no_la_devuelve_a_la_pantalla(mascota):
-    c = mascota
+def test_soltar_sentada_no_la_devuelve_a_la_pantalla(asistente):
+    c = asistente
     c.arrastre_cambio.connect(lambda on: c.asiento(True, "ventana", 1) if not on else None)
     x, y = centro(c)
     filtro(c, PRESS, IZQ, x, y)
@@ -436,9 +436,9 @@ def test_soltar_sentada_no_la_devuelve_a_la_pantalla(mascota):
 
 # ── Comida ─────────────────────────────────────────────────────────────────────
 
-def test_cabeza_lee_luneCabeza_y_la_da_en_px_globales(mascota):
+def test_cabeza_lee_luneCabeza_y_la_da_en_px_globales(asistente):
     from nucleo import comida as nc
-    c = mascota
+    c = asistente
     c.web.page().respuestas = [("luneCabeza(0.1)", '{"x":100.5,"y":50,"r":20}')]
     rec = []
     c.cabeza(rec.append)
@@ -451,8 +451,8 @@ def test_cabeza_lee_luneCabeza_y_la_da_en_px_globales(mascota):
     assert rec[1:] == [None] * 5
 
 
-def test_comer_llama_a_luneComer_dice_la_frase_y_la_despierta(mascota):
-    c = mascota
+def test_comer_llama_a_luneComer_dice_la_frase_y_la_despierta(asistente):
+    c = asistente
     c._dormir()
     assert c.durmiendo
     js(c).clear()
@@ -467,8 +467,8 @@ def test_comer_llama_a_luneComer_dice_la_frase_y_la_despierta(mascota):
     assert 'window.luneComer && window.luneComer("comer", 2500)' in js(c)
 
 
-def test_con_comida_en_la_mano_ni_comenta_ni_chat_ni_sueno(mascota, monkeypatch):
-    c = mascota
+def test_con_comida_en_la_mano_ni_comenta_ni_chat_ni_sueno(asistente, monkeypatch):
+    c = asistente
     comentados, chats = [], []
     monkeypatch.setattr(c, "comentar_pantalla", lambda: comentados.append(1))
     monkeypatch.setattr(c._chat, "abrir", lambda: chats.append(1))
@@ -494,8 +494,8 @@ def test_con_comida_en_la_mano_ni_comenta_ni_chat_ni_sueno(mascota, monkeypatch)
     assert chats == [1]
 
 
-def test_recargar_la_pagina_repite_sentada_y_comida(mascota):
-    c = mascota
+def test_recargar_la_pagina_repite_sentada_y_comida(asistente):
+    c = asistente
     c.asiento(True, "ventana", 3)
     c.set_comida_activa(True)
     js(c).clear()
@@ -510,12 +510,12 @@ def test_recargar_la_pagina_repite_sentada_y_comida(mascota):
 
 # ── Con el ControlAsiento de verdad ────────────────────────────────────────────
 
-def test_con_control_asiento_real_el_delegado_mueve_y_encaja_en_el_bloc(mascota, config):
+def test_con_control_asiento_real_el_delegado_mueve_y_encaja_en_el_bloc(asistente, config):
     from ventanas_falsas_c78 import ApiVentanasFalsa, EntradaFalsa, PantallaFalsa, Reloj, V, VentanaPropiaFalsa
     from ui.asiento_qt import ControlAsiento
     from ui.escritorio import ServiciosEscritorio
     import random
-    c = mascota
+    c = asistente
     config.set("avatar", "sentarse_ventanas", True)
     esc = ServiciosEscritorio(config)
     api = ApiVentanasFalsa({2: V((300, 400, 1100, 900))})
@@ -529,7 +529,7 @@ def test_con_control_asiento_real_el_delegado_mueve_y_encaja_en_el_bloc(mascota,
     try:
         c.web.page().respuestas = [("luneSeatPx", '{"asiento":{"x":150,"y":400},"sonda":{"x":150,"y":420}}'),
                                    ("luneSentar", '{"asiento":{"x":150,"y":380},"sonda":{"x":150,"y":420}}')]
-        esc.set_mascota(c)
+        esc.set_asistente(c)
         pos0 = c.pos()
         x, y = centro(c)
         filtro(c, PRESS, IZQ, x, y)
@@ -540,7 +540,7 @@ def test_con_control_asiento_real_el_delegado_mueve_y_encaja_en_el_bloc(mascota,
         cursor.c = (540, 525)
         filtro(c, MOVE, IZQ, x + 40, y + 25, IZQ)
         assert win.de("mover")[-1] == ("mover", h, 130, 120), "lo movió el delegado (px físicos)"
-        assert c.pos() == pos0, "y la mascota no hizo move"
+        assert c.pos() == pos0, "y la asistente no hizo move"
         cursor.c = (960, 395)
         filtro(c, MOVE, IZQ, x + 460, y - 105, IZQ)     # llega al borde del Bloc…
         assert c.sentada == ""

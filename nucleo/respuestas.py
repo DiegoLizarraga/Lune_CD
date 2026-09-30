@@ -35,10 +35,10 @@ _MESES = [
 ]
 
 
-# ── Frases fijas de la mascota (10.9: la mascota responde solo con la nube) ─────
-# Sin clave de OpenRouter la mascota no cae al modelo local: lo dice y dónde ponerla.
-AVISO_MASCOTA_SIN_NUBE = ("Desde la mascota solo hablo con la nube y no tengo clave de "
-                          "OpenRouter. Ponla en AJUSTES → Red Neuronal y seguimos.")
+# ── Frases fijas del chat de la asistente en escritorio (10.9: ahí solo responde la nube) ─
+# Sin clave de OpenRouter, el chat del escritorio no cae al modelo local: lo dice y dónde ponerla.
+AVISO_ASISTENTE_SIN_NUBE = ("En el escritorio solo hablo con la nube y no tengo clave de "
+                            "OpenRouter. Ponla en AJUSTES → Red Neuronal y seguimos.")
 # El comentario de pantalla llegó vacío (solo marcas, o nada): antes se quedaba en «…».
 COMENTARIO_VACIO = "Mmm… nada me pareció interesante."
 
@@ -141,7 +141,7 @@ class BancoRespuestas:
 
     def _r_quien_eres(self) -> str:
         return self._elegir([
-            f"Soy {self.nombre} tu asistente de escritorio: te ayudo a escribir, "
+            f"Soy {self.nombre}, tu asistente personal: te ayudo a escribir, "
             "buscar, abrir apps y mantener tus cosas en orden. ¡Y siempre con buena onda!",
             f"¡Soy {self.nombre}! Tu copiloto digital. Puedo investigar, redactar, "
             "lanzar programas, recordar cosas por ti y hasta optimizar tu PC.",

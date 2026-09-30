@@ -630,7 +630,7 @@ test('con el motor de verdad: bailando los brazos suben y al parar las manos aca
   const baile = vmdBaile({ dedo: true, cadera: false });
   for (const version of ['1', '0']) {
     frames.length = 0;
-    const m = motorReal.crearMascota({ canvas: lienzoFalso(), src: '/vrm/actual.vrm' });
+    const m = motorReal.crearAsistente({ canvas: lienzoFalso(), src: '/vrm/actual.vrm' });
     const vrm = crearVRMReal(THREE, { version });
     cargas.pop().alCargar({ scene: vrm.scene, userData: { vrm } });
     assert.equal(m.ctx.sXZ, version === '0' ? -1 : 1);

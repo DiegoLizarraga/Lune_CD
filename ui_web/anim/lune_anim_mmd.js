@@ -1,6 +1,6 @@
 /*
- * ui_web/anim/lune_anim_mmd.js — módulo 'mmdAnim' de la mascota ANIMADA: los bailes de la
- * biblioteca en una mascota sin esqueleto (corte 9; decisión D1 de Diego, «equivalente
+ * ui_web/anim/lune_anim_mmd.js — módulo 'mmdAnim' de la asistente ANIMADA: los bailes de la
+ * biblioteca en la asistente animada, que no tiene esqueleto (corte 9; decisión D1 de Diego, «equivalente
  * mínimo»).
  *
  * La animada no puede seguir un .vmd ni un .vrma: suena la canción del baile en esta página
@@ -9,7 +9,7 @@
  * anim/lune_anim_baile.js) al pulso ANALIZADO de esa canción: Python (nucleo/bailes.
  * Biblioteca.analizar_pulso) manda {bpm, fase0} y aquí la fase sale del reloj del audio
  * con LuneMMDAudio.pulsoEn(t, {bpm, fase0}), como mucho a 2 Hz (lunePulso extrapola entre
- * medias). El panel avisa «esta mascota no tiene esqueleto: baila a su manera».
+ * medias). El panel avisa: «En 2D mi figura no tiene esqueleto: bailo a mi manera».
  *
  * Python (ui/mmd_qt.ControlMMD → ui/companion.py mmd → window.luneMMD) pide:
  *   api.cargar({id, tipo:'audio', audio, bpm, fase0, offsetMs, volumen, bucle, autoplay, titulo})
@@ -78,7 +78,7 @@ export function opcionesAudio(entrada, origen) {
   let o = entrada;
   if (typeof o === 'string') { try { o = JSON.parse(o); } catch (e) { return { error: 'datos no válidos' }; } }
   if (!o || typeof o !== 'object' || Array.isArray(o)) return { error: 'datos no válidos' };
-  if (o.tipo !== 'audio') return { error: 'esta mascota solo baila con la canción (tipo «audio»)' };
+  if (o.tipo !== 'audio') return { error: 'en modo animado solo bailo con la canción (tipo «audio»)' };
   const audio = urlPermitida(o.audio, origen);
   if (!audio) return { error: 'ruta no permitida' };
   const n = (v, d, a, b) => {

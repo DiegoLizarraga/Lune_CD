@@ -1,4 +1,4 @@
-/* Lune CD desktop — Voz de Lune y pack de sonidos de la mascota (Ajustes).
+/* Lune CD desktop — Voz de Lune y pack de sonidos de la asistente (Ajustes).
  *
  * VozCard({cfg, set}):    motor de salida (automático · edge-tts · gTTS · Kokoro), voz de edge-tts
  *                         agrupada por país con marca F/M, velocidad y tono de −50 a +50, acento de
@@ -545,8 +545,8 @@
     const Icono = window.IconMoon || (() => null);
     const IconoVol = window.IconVolume || (() => null);
     return (
-      <Card eyebrow={<><Icono width={13} height={13}/> Mascota · Sonidos</>} title="Pack de sonidos" tone="blue">
-        <p className="ln-card-nota">Los ruiditos de la mascota: arrastrarla, soltarla, comer, menús. Cada pack es una carpeta en <b>sonidos/</b>.</p>
+      <Card eyebrow={<><Icono width={13} height={13}/> Asistente en escritorio · Sonidos</>} title="Pack de sonidos" tone="blue">
+        <p className="ln-card-nota">Mis ruiditos en el escritorio: cuando me arrastras, me sueltas, como o abres un menú. Cada pack es una carpeta en <b>sonidos/</b>.</p>
         <div className="ln-settings-grid">
           <div className="lune-field">
             <label className="lune-field-label" htmlFor="f-pack-sfx">Pack</label>

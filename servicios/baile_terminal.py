@@ -1,7 +1,7 @@
 """
 servicios/baile_terminal.py — Lune baila en la terminal (modo patata).
 
-En patata no hay mascota: el baile es texto.
+En patata no hay asistente en escritorio: el baile es texto.
 
 - Con música en una app permitida (el mismo detector que la app de ventanas,
   servicios/musica_detector.py, en su hilo), el TÍTULO de la ventana baila: una

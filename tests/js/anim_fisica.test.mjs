@@ -1,4 +1,4 @@
-// tests/js/anim_fisica.test.mjs — arrastre, toque y sueño de la mascota animada
+// tests/js/anim_fisica.test.mjs — arrastre, toque y sueño de la asistente animada
 // (ui_web/anim/lune_anim_fisica.js), solo y junto a lune_anim_video.js en el registro.
 // Sin navegador: stage, vídeos, documento y temporizador falsos (dom_falso.mjs).
 import { test } from 'node:test';

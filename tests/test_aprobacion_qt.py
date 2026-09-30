@@ -1,5 +1,5 @@
 """
-Tests de ui/aprobacion_qt.py: el «¿Lo hago?» junto a la mascota cuando la
+Tests de ui/aprobacion_qt.py: el «¿Lo hago?» junto a la asistente cuando la
 ventana principal no está a la vista.
 
 Sin pantalla (QT_QPA_PLATFORM=offscreen) y con un reloj falso para la cuenta
@@ -240,7 +240,7 @@ def test_descartar_no_emite(crear):
     assert d.isHidden()
 
 
-def test_mostrar_junto_a_la_mascota(crear):
+def test_mostrar_junto_a_la_asistente(crear):
     from ui.entrada_chat import pantalla_disponible, posicion_junto_a
     d = crear()
     ancla = QRect(400, 300, 200, 300)
@@ -250,7 +250,7 @@ def test_mostrar_junto_a_la_mascota(crear):
                                 pantalla_disponible(ancla),
                                 ("derecha", "izquierda", "arriba", "abajo"))
     assert (d.x(), d.y()) == esperado
-    # Al lado (derecha o, si no cabe en la pantalla offscreen, izquierda): no tapa a la mascota.
+    # Al lado (derecha o, si no cabe en la pantalla offscreen, izquierda): no tapa a la asistente.
     assert d.x() >= 400 + 200 or d.x() + d.width() <= 400
     assert d.focusWidget() in (None, d.boton_no)        # el foco va a «No», nunca a «Sí»
     assert d.focusWidget() is not d.boton_si

@@ -31,6 +31,10 @@ def leer(ruta: Path) -> dict:
     return json.loads(ruta.read_text(encoding="utf-8"))
 
 
+# Versión actual del esquema (sube con cada migración única de Config._migrar).
+ESQUEMA = Config.DEFAULT_CONFIG["esquema"]["version"]
+
+
 # ── Varios escritores ──────────────────────────────────────────────────────────
 
 def test_dos_instancias_cambian_claves_distintas_y_sobreviven_las_dos(tmp_path):
@@ -398,7 +402,7 @@ def test_config_de_la_10_3_pasa_el_umbral_del_baile_a_005_una_vez(tmp_path):
     c = Config(config_path=str(ruta))
     assert c.get("baile", "umbral") == 0.05
     guardado = leer(ruta)
-    assert guardado["baile"]["umbral"] == 0.05 and guardado["esquema"]["version"] == 1
+    assert guardado["baile"]["umbral"] == 0.05 and guardado["esquema"]["version"] == ESQUEMA
     assert guardado["avatar"]["render"] == "vrm", "lo demás se conserva"
     # Una vez migrado, si la persona vuelve a elegir 0.2, se respeta.
     c.set("baile", "umbral", 0.2)
@@ -410,12 +414,12 @@ def test_la_migracion_no_pisa_un_umbral_elegido(tmp_path):
     ruta = tmp_path / "config.json"
     ruta.write_text(json.dumps(_config_10_3(umbral=0.35)), encoding="utf-8")
     assert Config(config_path=str(ruta)).get("baile", "umbral") == 0.35
-    assert leer(ruta)["esquema"]["version"] == 1
+    assert leer(ruta)["esquema"]["version"] == ESQUEMA
 
 
 def test_config_nuevo_ya_nace_migrado(tmp_path):
     ruta = tmp_path / "config.json"
     c = Config(config_path=str(ruta))
-    assert c.get("baile", "umbral") == 0.05 and leer(ruta)["esquema"]["version"] == 1
+    assert c.get("baile", "umbral") == 0.05 and leer(ruta)["esquema"]["version"] == ESQUEMA
     c.set("baile", "umbral", 0.2)
     assert Config(config_path=str(ruta)).get("baile", "umbral") == 0.2

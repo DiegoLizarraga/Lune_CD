@@ -2,7 +2,7 @@
 ui/puente_escritorio.py — el segundo objeto del QWebChannel (window.luneEscritorio).
 
 Con dobles de los controladores del corte 4 (Despachador, ControlTema, GestorAtajosQt,
-ControlModoJuego, anfitrión, mascota) y una Config real en una carpeta temporal:
+ControlModoJuego, anfitrión, asistente) y una Config real en una carpeta temporal:
 validación y rechazo de todo lo que llega de la página, vista previa del tema sin disco,
 efectos en config.efectos, juego_forzar 1/0/-1, reemisión de las señales y registro en
 el canal. Un test más con los módulos reales de nucleo/ (si existen) comprueba el contrato.
@@ -27,7 +27,7 @@ class Accion(SimpleNamespace):
 
 ACCIONES = {i: Accion(id=i, etiqueta=i.capitalize(), icono="ic_" + i, usos=frozenset(u))
             for i, u in (("ajustes", "rb"), ("voz", "rbt"), ("dormir", "rbt"), ("expresiones", "r"),
-                         ("expresion", ""), ("mascota", "rbt"), ("mostrar_lune", "rbt"), ("salir", "rb"),
+                         ("expresion", ""), ("asistente", "rbt"), ("mostrar_lune", "rbt"), ("salir", "rb"),
                          ("bailar", "rbt"), ("modo_juego_forzar", "rbt"))}
 for _a in ACCIONES.values():
     _a.usos = frozenset({"r": "radial", "b": "bandeja", "t": "atajo"}[c] for c in _a.usos)
@@ -63,7 +63,7 @@ def acciones_falsas(registro):
 
 
 class Despachador:
-    def __init__(self, ids=("ajustes", "voz", "dormir", "expresiones", "expresion", "mascota", "mostrar_lune",
+    def __init__(self, ids=("ajustes", "voz", "dormir", "expresiones", "expresion", "asistente", "mostrar_lune",
                             "bailar", "modo_juego_forzar")):
         self.ids = set(ids)
         self.ejecutadas = []
@@ -164,7 +164,7 @@ class Juego(QObject):
         self.recargas += 1
 
 
-class Mascota:
+class Asistente:
     def __init__(self):
         self.llamadas = []
 
@@ -189,10 +189,10 @@ def montar(config, *, tema=None, atajos=None, juego=None, registro=None, **kw):
     registro = [] if registro is None else registro
     desp = Despachador()
     anfitrion = SimpleNamespace(barra=[], set_en_barra=lambda on: anfitrion.barra.append(on))
-    ctx = SimpleNamespace(modo="normal", mascota_visible=True)
+    ctx = SimpleNamespace(modo="normal", asistente_visible=True)
     serv = SimpleNamespace(despachador=desp, tema=tema, atajos=atajos, juego=juego, radial=None, bandeja=None,
                            contexto=lambda: ctx, anfitrion=anfitrion)
-    esc = SimpleNamespace(estado=Bus(), mascota=Mascota())
+    esc = SimpleNamespace(estado=Bus(), asistente=Asistente())
     kw.setdefault("tema_mod", SimpleNamespace(PRESETS={"cian": 0.0, "violeta": 0.233},
                                               css_json=lambda cfg: json.dumps({"--cyan-500": "#123456"}),
                                               normalizar=lambda cfg: dict(cfg)))
@@ -237,7 +237,7 @@ def test_registrar_en_canal_como_escritorio(qapp, config):
     tema = Tema()
     anfitrion = SimpleNamespace(navegar=None)
     serv = SimpleNamespace(despachador=Despachador(), tema=tema, anfitrion=anfitrion, _deshacer=[])
-    p = registrar_en_canal(canal, serv, SimpleNamespace(estado=Bus(), mascota=None), config)
+    p = registrar_en_canal(canal, serv, SimpleNamespace(estado=Bus(), asistente=None), config)
     assert isinstance(p, PuenteEscritorio)
     assert canal.registrados == [("escritorio", p)]
     assert p.parent() is canal, "vive lo que vive el canal"
@@ -434,7 +434,7 @@ def test_radial_estado_y_guardar(qapp, config):
     est = json.loads(p.radial_estado())
     assert est["max"] == 10 and est["sonidos"] is True and est["volumen"] == 0.6
     assert est["defecto"][:3] == ["ajustes", "chat", "comentar"]
-    assert {a["id"] for a in est["catalogo"]} == {"ajustes", "voz", "dormir", "expresiones", "mascota", "mostrar_lune",
+    assert {a["id"] for a in est["catalogo"]} == {"ajustes", "voz", "dormir", "expresiones", "asistente", "mostrar_lune",
                                                   "bailar", "modo_juego_forzar"}, "solo uso radial y con handler"
     assert ("catalogo", "radial") in x.registro
     r = json.loads(p.radial_guardar('{"principal": ["voz", "voz", "salir", "nada", "ajustes"], "sonidos": false, "volumen": 3}'))
@@ -451,7 +451,7 @@ def test_radial_estado_y_guardar(qapp, config):
 def test_bandeja_estado_y_guardar(qapp, config):
     p, x = montar(config)
     est = json.loads(p.bandeja_estado())
-    assert est["acciones"][0] == "mascota" and est["max"] == 20
+    assert est["acciones"][0] == "asistente" and est["max"] == 20
     assert "expresiones" not in {a["id"] for a in est["catalogo"]}, "las de solo radial no salen"
     r = json.loads(p.bandeja_guardar('{"acciones": ["voz", "expresiones", "dormir"]}'))
     assert r["ok"] and disco(config)["bandeja"]["acciones"] == ["voz", "dormir"] and r["descartados"] == ["expresiones"]
@@ -511,13 +511,13 @@ def test_rendimiento_guarda_y_aplica(qapp, config):
     assert json.loads(p.rendimiento()) == {"fps_max": 60, "siempre_encima": True, "recorte_ram_auto": False, "en_barra_tareas": True}
     r = json.loads(p.rendimiento_guardar('{"fps_max": 30, "siempre_encima": false, "recorte_ram_auto": true, "en_barra_tareas": false}'))
     assert r["ok"] and r["estado"]["fps_max"] == 30
-    assert x.esc.mascota.llamadas == [("fps", 30), ("encima", False)]
+    assert x.esc.asistente.llamadas == [("fps", 30), ("encima", False)]
     assert x.anfitrion.barra == [False] and j.recargas == 1
     d = disco(config)
     assert (d["avatar"]["fps_max"], d["avatar"]["siempre_encima"], d["sistema"]["recorte_ram_auto"],
             d["interfaz"]["en_barra_tareas"]) == (30, False, True, False)
     p.rendimiento_guardar('{"fps_max": 30}')
-    assert x.esc.mascota.llamadas == [("fps", 30), ("encima", False)], "sin cambio, no se reaplica"
+    assert x.esc.asistente.llamadas == [("fps", 30), ("encima", False)], "sin cambio, no se reaplica"
     for malo in ('{"fps_max": 14}', '{"fps_max": 145}', '{"fps_max": "60"}', '{"siempre_encima": 1}', '{"x": true}'):
         assert json.loads(p.rendimiento_guardar(malo))["ok"] is False, malo
 
@@ -554,9 +554,9 @@ def test_con_modulos_reales_de_nucleo(qapp, config):
     hechos = []
     desp.registrar("voz", lambda: hechos.append("voz"))
     desp.registrar("expresion", lambda arg: hechos.append(("expresion", arg)))
-    ctx = acc.Contexto(modo="normal", render="vrm", mascota_visible=True)
+    ctx = acc.Contexto(modo="normal", render="vrm", asistente_visible=True)
     serv = SimpleNamespace(despachador=desp, tema=None, atajos=None, juego=None, contexto=lambda: ctx)
-    esc = SimpleNamespace(estado=Bus(), mascota=None)
+    esc = SimpleNamespace(estado=Bus(), asistente=None)
     p = PuenteEscritorio(serv, esc, config)
     items = json.loads(p.acciones_catalogo("radial"))
     assert [i["id"] for i in items] == ["voz"] and items[0]["etiqueta"] and "marcado" in items[0]

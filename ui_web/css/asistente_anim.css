@@ -1,5 +1,5 @@
 /* ============================================================
-   ui_web/css/mascota_anim.css — mascota ANIMADA (companion.html)
+   ui_web/css/asistente_anim.css — asistente ANIMADA (companion.html)
    Estilos de los módulos ui_web/anim/lune_anim_video.js (doble
    búfer de clips) y ui_web/anim/lune_anim_fisica.js (arrastre,
    toque y sueño).
@@ -41,7 +41,7 @@ body #stage .lune-vid {
 
 /* Ocultos por defecto SOLO cuando el módulo está vivo (pone
    .lune-doble en el stage): si el JS no cargara, el clip se sigue
-   viendo en vez de quedarse la mascota en blanco. */
+   viendo en vez de quedarse la asistente en blanco. */
 body #stage.lune-doble .lune-vid {
   opacity: 0;
   transition:

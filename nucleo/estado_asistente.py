@@ -1,12 +1,12 @@
 """
-nucleo/estado_mascota.py — Qué está haciendo Lune ahora, en un solo sitio.
+nucleo/estado_asistente.py — Qué está haciendo Lune ahora, en un solo sitio.
 
 PARA QUÉ SIRVE
 --------------
 Varias piezas necesitan saber lo mismo: la presencia de Discord («Bailando»),
 los botones del menú radial (¿se enseña «Parar baile»?), el salvapantallas
 (no salta si la están arrastrando o si habla), la cadencia de Minecraft, el
-modo juego... En vez de que cada una pregunte a la ventana de la mascota,
+modo juego... En vez de que cada una pregunte a la ventana de la asistente,
 todas leen `BusEstado.actual()` o se suscriben a sus cambios.
 
 Y hay máquinas que se pisan: la pantalla grande, las alarmas, sentarse, el
@@ -52,15 +52,15 @@ SENTADA_BARRA = "barra"
 SENTADA_VENTANA = "ventana"
 
 # Fuentes de `pensando` (BusEstado.pensar): lo escrito con actualizar(pensando=…) (la
-# mascota comentando la pantalla) y el chat de la ventana web o nativa.
+# asistente comentando la pantalla) y el chat de la ventana web o nativa.
 PENSANDO_DIRECTO = "directo"
 PENSANDO_CHAT = "chat"
 
 
 @dataclass(frozen=True)
-class EstadoMascota:
+class EstadoAsistente:
     """Foto inmutable de lo que hace Lune. Se cambia con `BusEstado.actualizar()`."""
-    render: str = ""                # vrm · animado · sprites · carita · patata · web ("" = sin mascota)
+    render: str = ""                # vrm · animado · sprites · carita · patata · web ("" = sin asistente)
     visible: bool = False
     arrastrando: bool = False
     durmiendo: bool = False
@@ -78,7 +78,7 @@ class EstadoMascota:
     emocion: str = "neutral"        # la última emoción canónica (happy, sad…)
 
 
-_CAMPOS: Dict[str, Any] = {f.name: f.default for f in dataclasses.fields(EstadoMascota)}
+_CAMPOS: Dict[str, Any] = {f.name: f.default for f in dataclasses.fields(EstadoAsistente)}
 _CAMPOS_TEXTO = frozenset(n for n, d in _CAMPOS.items() if isinstance(d, str))
 
 # ── Tabla de prioridades ─────────────────────────────────────────────────────────
@@ -130,7 +130,7 @@ def _comprobar_actividad(actividad: str) -> None:
         raise ValueError(f"actividad desconocida: {actividad!r} (válidas: {', '.join(ACTIVIDADES)})")
 
 
-def esta_activa(actividad: str, estado: EstadoMascota) -> bool:
+def esta_activa(actividad: str, estado: EstadoAsistente) -> bool:
     """¿Está `actividad` en marcha según `estado`? `idle` nunca cuenta como activa."""
     _comprobar_actividad(actividad)
     if actividad == "idle":
@@ -144,7 +144,7 @@ def esta_activa(actividad: str, estado: EstadoMascota) -> bool:
     return bool(valor)
 
 
-def actividades_activas(estado: EstadoMascota) -> List[str]:
+def actividades_activas(estado: EstadoAsistente) -> List[str]:
     """Las actividades en marcha, de la más a la menos prioritaria."""
     return [a for a in ACTIVIDADES if esta_activa(a, estado)]
 
@@ -153,7 +153,7 @@ def _coexisten(a: str, b: str) -> bool:
     return frozenset({a, b}) in COEXISTEN
 
 
-def _bloqueo(actividad: str, estado: EstadoMascota) -> str:
+def _bloqueo(actividad: str, estado: EstadoAsistente) -> str:
     """Motivo por el que `actividad` no puede empezar, o "" si puede."""
     _comprobar_actividad(actividad)
     p = PRIORIDAD[actividad]
@@ -168,7 +168,7 @@ def _bloqueo(actividad: str, estado: EstadoMascota) -> str:
     return ""
 
 
-def puede(actividad: str, estado: EstadoMascota) -> bool:
+def puede(actividad: str, estado: EstadoAsistente) -> bool:
     """¿Puede empezar `actividad` con este estado?
 
     No puede si hay otra activa de prioridad mayor o igual (salvo los pares de
@@ -178,7 +178,7 @@ def puede(actividad: str, estado: EstadoMascota) -> bool:
     return not _bloqueo(actividad, estado)
 
 
-def que_ceder(nueva: str, estado: EstadoMascota) -> List[str]:
+def que_ceder(nueva: str, estado: EstadoAsistente) -> List[str]:
     """Actividades activas que hay que interrumpir para que empiece `nueva`.
 
     De la más a la menos prioritaria. Lista vacía si no hay que interrumpir nada
@@ -191,7 +191,7 @@ def que_ceder(nueva: str, estado: EstadoMascota) -> List[str]:
             if a != nueva and not _coexisten(a, nueva) and PRIORIDAD[a] < p]
 
 
-def _sin_actividad(estado: EstadoMascota, actividad: str) -> EstadoMascota:
+def _sin_actividad(estado: EstadoAsistente, actividad: str) -> EstadoAsistente:
     """`estado` con `actividad` apagada (solo si estaba activa)."""
     if actividad == "idle" or not esta_activa(actividad, estado):
         return estado
@@ -199,7 +199,7 @@ def _sin_actividad(estado: EstadoMascota, actividad: str) -> EstadoMascota:
     return dataclasses.replace(estado, **{campo: _CAMPOS[campo]})
 
 
-def _con_actividad(estado: EstadoMascota, actividad: str, valor: Any = None) -> EstadoMascota:
+def _con_actividad(estado: EstadoAsistente, actividad: str, valor: Any = None) -> EstadoAsistente:
     """`estado` tras empezar `actividad` como lo haría `iniciar_actividad`:
     apaga las que ceden y marca la nueva (sin comprobar si puede)."""
     for a in que_ceder(actividad, estado):
@@ -240,11 +240,11 @@ class Resultado:
         return self.ok
 
 
-Suscriptor = Callable[[EstadoMascota, Dict[str, Tuple[Any, Any]]], None]
+Suscriptor = Callable[[EstadoAsistente, Dict[str, Tuple[Any, Any]]], None]
 
 
 class BusEstado:
-    """Fuente única y compartida entre hilos del estado de la mascota.
+    """Fuente única y compartida entre hilos del estado de la asistente.
 
     - `actual()` → la foto actual (inmutable).
     - `actualizar(**campos)` → cambia campos; solo notifica si algo cambió.
@@ -255,17 +255,17 @@ class BusEstado:
       mayor a menor prioridad; `reanudar_despues` deja pendiente una que al
       final no pudo empezar).
     - `pensar(fuente, on)` → `pensando` con VARIAS fuentes a la vez (cortes 9/10):
-      el chat de la ventana web o nativa («chat») y la mascota comentando la
+      el chat de la ventana web o nativa («chat») y la asistente comentando la
       pantalla (que escribe `actualizar(pensando=…)`, la fuente PENSANDO_DIRECTO).
       `pensando` es True mientras alguna siga pensando: que una acabe no apaga la
       otra (Discord, el sueño, el salvapantallas y el bot de Minecraft lo leen).
     """
 
-    def __init__(self, inicial: Optional[EstadoMascota] = None):
+    def __init__(self, inicial: Optional[EstadoAsistente] = None):
         self._lock = threading.RLock()
-        self._estado = inicial if inicial is not None else EstadoMascota()
+        self._estado = inicial if inicial is not None else EstadoAsistente()
         self._subs: List[Suscriptor] = []
-        self._cola: Deque[Tuple[EstadoMascota, Dict[str, Tuple[Any, Any]]]] = deque()
+        self._cola: Deque[Tuple[EstadoAsistente, Dict[str, Tuple[Any, Any]]]] = deque()
         self._notificando = False
         # actividad que interrumpió → cesiones pendientes de reanudar cuando acabe
         self._pendientes: Dict[str, List[Cesion]] = {}
@@ -273,7 +273,7 @@ class BusEstado:
         self._pensando_fuentes: set = {PENSANDO_DIRECTO} if self._estado.pensando else set()
 
     # ── Lectura y suscripción ────────────────────────────────────────────────────
-    def actual(self) -> EstadoMascota:
+    def actual(self) -> EstadoAsistente:
         with self._lock:
             return self._estado
 
@@ -328,7 +328,7 @@ class BusEstado:
 
         Si se permite: marca `nueva` en el estado (con `valor`, p. ej. "ventana"
         para `sentada`), apaga las que ceden y devuelve sus Cesion para que el
-        llamador las deshaga en la mascota. Las REANUDABLES se recuerdan y las
+        llamador las deshaga en la asistente. Las REANUDABLES se recuerdan y las
         devolverá `terminar_actividad(nueva)`. Si no se permite, no toca nada.
         """
         _comprobar_actividad(nueva)
@@ -446,13 +446,13 @@ class BusEstado:
         if all(x.actividad != c.actividad for x in lista):
             lista.append(c)
 
-    def _diferencias(self, nuevo: EstadoMascota) -> Dict[str, Any]:
+    def _diferencias(self, nuevo: EstadoAsistente) -> Dict[str, Any]:
         return {n: getattr(nuevo, n) for n in _CAMPOS if getattr(nuevo, n) != getattr(self._estado, n)}
 
     @staticmethod
     def _normalizar(campo: str, valor: Any) -> Any:
         if campo not in _CAMPOS:
-            raise TypeError(f"EstadoMascota no tiene el campo {campo!r}")
+            raise TypeError(f"EstadoAsistente no tiene el campo {campo!r}")
         if campo in _CAMPOS_TEXTO:
             if valor is None or valor is False:
                 return ""
@@ -494,7 +494,7 @@ class BusEstado:
                     try:
                         fn(estado, cambios)
                     except Exception:
-                        _log.exception("Error en un suscriptor del estado de la mascota")
+                        _log.exception("Error en un suscriptor del estado de la asistente")
         except BaseException:
             with self._lock:
                 self._notificando = False

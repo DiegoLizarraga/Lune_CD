@@ -111,10 +111,10 @@ def test_herramienta_desconocida_no_revienta():
 # ── Comandos directos: solo peticiones claras (revisión 4-5-6, MO1/RH1) ─────────
 
 @pytest.mark.parametrize("texto, esperado", [
-    ("baila", ("mascota_bailar", {})),
-    ("¡a bailar!", ("mascota_bailar", {})),
-    ("oye Lune, baila", ("mascota_bailar", {})),
-    ("bailemos, porfa", ("mascota_bailar", {})),
+    ("baila", ("asistente_bailar", {})),
+    ("¡a bailar!", ("asistente_bailar", {})),
+    ("oye Lune, baila", ("asistente_bailar", {})),
+    ("bailemos, porfa", ("asistente_bailar", {})),
     ("para de bailar", ("parar_baile", {})),
     ("ya deja de bailar, Lune", ("parar_baile", {})),
     ("avísame en 10 minutos", ("temporizador", {"segundos": 600, "texto": ""})),
@@ -163,7 +163,7 @@ def con_biblioteca(tmp_path, monkeypatch):
     ("ponme el baile de Caramelldansen", "Caramelldansen"),                   # «el baile de X» no cambia
 ])
 def test_pon_la_cancion_de_tu_biblioteca_o_entre_comillas(con_biblioteca, texto, cancion):
-    assert ToolManager._detectar_pedido(texto) == ("mascota_bailar", {"cancion": cancion})
+    assert ToolManager._detectar_pedido(texto) == ("asistente_bailar", {"cancion": cancion})
 
 
 @pytest.mark.parametrize("texto", [
@@ -186,6 +186,6 @@ def test_pon_la_cancion_sin_foto_de_la_biblioteca_la_decide_el_modelo(tmp_path, 
     monkeypatch.setattr(nbl, "_COMPARTIDA", bib)
     assert ToolManager._detectar_pedido("pon la canción Despacito") is None and not bib.escaneada
     # «baila» / «para el baile» / alarmas / Minecraft siguen igual
-    assert ToolManager._detectar_pedido("baila") == ("mascota_bailar", {})
+    assert ToolManager._detectar_pedido("baila") == ("asistente_bailar", {})
     assert ToolManager._detectar_pedido("para el baile") == ("parar_baile", {})
     assert ToolManager._detectar_pedido("conecta el bot de Minecraft") == ("minecraft_bot", {"accion": "conectar"})

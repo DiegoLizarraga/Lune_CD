@@ -1,5 +1,5 @@
 """
-Tests de la mascota flotante (avatar_overlay.py).
+Tests de la asistente flotante (avatar_overlay.py).
 
 No se puede verificar lo visual (transparencia, siempre-encima) sin pantalla,
 pero sí la construcción, las banderas de ventana, el mapeo de emoción y la
@@ -57,7 +57,7 @@ def test_persistencia_de_posicion(qapp, tmp_path):
     assert cfg.get("avatar", "overlay_y") == 200 + ov._margen[1]
     ov.close()
 
-    # una nueva mascota restaura esa posición
+    # una nueva asistente restaura esa posición
     ov2 = AvatarOverlay(config=cfg)
     assert (ov2.x(), ov2.y()) == (300, 200)
     ov2.close()
@@ -109,7 +109,7 @@ def test_modo_fantasma_persiste_en_config(qapp, tmp_path):
     ov.close()
 
 
-# ── Misma interfaz que la mascota 3D (ui/companion.py) ───────────────────────────
+# ── Misma interfaz que la asistente 3D (ui/companion.py) ───────────────────────────
 
 def test_interfaz_comun_con_el_companion(overlay):
     """El puente y main.py no distinguen sprites de VRM: mismas llamadas y señal."""

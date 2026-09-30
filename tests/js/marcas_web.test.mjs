@@ -1,7 +1,7 @@
 /*
  * app.jsx — limpieza de marcas en la burbuja (prueba real con qwen2.5:7b, 2026-09):
  *   · el modelo escribía marcas rotas o inventadas (|<ACT …>|, <|OPEN_URL …|>,
- *     <|mascota_bailar(…)|>, |<CHANGEOFVOZ …>|) y la página solo quitaba ACT/DELAY/CALL
+ *     <|asistente_bailar(…)|>, |<CHANGEOFVOZ …>|) y la página solo quitaba ACT/DELAY/CALL
  *     bien escritos, y SOLO durante el streaming: al terminar (`done`) se pintaba tal cual;
  *   · ahora limpiarMarcadores sigue las mismas reglas que lune_core/marcadores.py y se
  *     aplica también en `done`. «a | b» (tablas) y «x <| f |>» (F#) no se tocan.
@@ -32,7 +32,7 @@ function cargar(lune = null) {
   return { S, props };
 }
 function luneFalso() {
-  const base = { mascota_visible(cb) { cb(false); }, proveedores(cb) { cb('{}'); }, proveedor_elegido() {} };
+  const base = { asistente_visible(cb) { cb(false); }, proveedores(cb) { cb('{}'); }, proveedor_elegido() {} };
   return new Proxy(base, { get(t, k) { if (!(k in t) && typeof k === 'string') t[k] = senal(); return t[k]; } });
 }
 
@@ -40,14 +40,14 @@ function luneFalso() {
 const CASOS = [
   ['¡Claro! Estoy abriendo la página de la NASA para ti.\n\n<|OPEN_URL https://www.nasa.gov/|>',
     '¡Claro! Estoy abriendo la página de la NASA para ti.'],
-  ['¡Claro! |<mascota_sentarse(sitio="barra")>|', '¡Claro!'],
-  ['|<ACT {"emotion":"neutral","intensity":0.8}>| Ahí me siento más cerca de ti. |<mascota_sentarse sitio="barra"|>',
+  ['¡Claro! |<asistente_sentarse(sitio="barra")>|', '¡Claro!'],
+  ['|<ACT {"emotion":"neutral","intensity":0.8}>| Ahí me siento más cerca de ti. |<asistente_sentarse sitio="barra"|>',
     ' Ahí me siento más cerca de ti.'],
   ['¡Claro! |<CHANGEOFVOZ "es-AR-HoracioNeural">|', '¡Claro!'],
   ['Así lo he programado. |ACT {"emotion":"neutral", "intensity":0.5}| Por cierto…', 'Así lo he programado.  Por cierto…'],
   ['¿Te interesaría? <ACT {"emotion":"curious", "intensity":0.6}>', '¿Te interesaría?'],
   ['¡Hola! |<|ACT {"emotion":"wave","intensity":0.8}|>|<|DELAY 1.5|>', '¡Hola!'],
-  ['Vale <|mascota_bailar(segundos=60, cancion="Danza el mono")|> ¡Qué divertido!', 'Vale  ¡Qué divertido!'],
+  ['Vale <|asistente_bailar(segundos=60, cancion="Danza el mono")|> ¡Qué divertido!', 'Vale  ¡Qué divertido!'],
   ['Te abro Google. <|CALL ["abrir_url", {"url": "https://www.google.com"}]|>', 'Te abro Google.'],
   ['Eco: < |CALL ["lanzar_app", {"app": "paint"}]|> fin', 'Eco:  fin'],
   // Ronda 3 de la prueba real: el CALL pegado al ACT («|>|CALL …|>») se quedaba visible.
@@ -66,7 +66,7 @@ test('limpiarMarcadores: una marca a medio escribir al final no parpadea', () =>
   const limpiar = cargar().S.sb.LuneLimpiarMarcadores;
   assert.equal(limpiar('Hola <|AC'), 'Hola');
   assert.equal(limpiar('Hola <|CALL ["temporizador", {"seg'), 'Hola');
-  assert.equal(limpiar('Hola |<mascota_sen'), 'Hola');
+  assert.equal(limpiar('Hola |<asistente_sen'), 'Hola');
   assert.equal(limpiar('Hola <|'), 'Hola');
 });
 
@@ -91,7 +91,7 @@ test('done también limpia: lo que no reconoció el backend no se pinta', () => 
   assert.equal(msgs.length, 1);
   assert.equal(msgs[0].text, '¡Claro! Te abro la NASA.');
   // Sin streaming previo: la burbuja nueva también sale limpia.
-  L.done.emit('Listo |<mascota_sentarse(sitio="barra")>|', 'happy');
+  L.done.emit('Listo |<asistente_sentarse(sitio="barra")>|', 'happy');
   A.S.render(app);
   msgs = A.props.ChatStream.messages;
   assert.equal(msgs.slice(-1)[0].text, 'Listo');

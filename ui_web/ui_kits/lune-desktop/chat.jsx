@@ -8,20 +8,20 @@ function buildReply(text, provider) {
   const open = t.match(/\b(abre|ve a|abrir)\s+(youtube|netflix|wikipedia|spotify|github|gmail)/);
   if (open) {
     const site = open[2];
-    return { kind:'tool', tool:{ ok:true, icon:'ext', title:`Abriendo ${site}`, detail:`https://${site}.com — lanzado en tu navegador.` }, mascot:'happy' };
+    return { kind:'tool', tool:{ ok:true, icon:'ext', title:`Abriendo ${site}`, detail:`https://${site}.com — lanzado en tu navegador.` }, asistente:'happy' };
   }
   if (/\bbusca(r)?\b/.test(t)) {
     const q = text.replace(/.*busca(r)?\s*(en\s+\w+)?\s*/i, '').trim() || 'tu consulta';
-    return { kind:'tool', tool:{ ok:true, icon:'search', title:'Búsqueda lanzada', detail:`Resultados para “${q}”.` }, mascot:'reading' };
+    return { kind:'tool', tool:{ ok:true, icon:'search', title:'Búsqueda lanzada', detail:`Resultados para “${q}”.` }, asistente:'reading' };
   }
   if (/\b(lanza|abre el programa|abre la app)\b/.test(t)) {
-    return { kind:'tool', tool:{ ok:true, icon:'bolt', title:'App lanzada', detail:'Proceso iniciado localmente (0.1s, sin tokens).' }, mascot:'happy' };
+    return { kind:'tool', tool:{ ok:true, icon:'bolt', title:'App lanzada', detail:'Proceso iniciado localmente (0.1s, sin tokens).' }, asistente:'happy' };
   }
   if (/\b(estado del pc|info del sistema|sistema)\b/.test(t)) {
-    return { kind:'tool', tool:{ ok:true, icon:'cpu', title:'Estado del sistema', detail:'CPU 18% · RAM 42% · Disco 61% · Red OK' }, mascot:'reading' };
+    return { kind:'tool', tool:{ ok:true, icon:'cpu', title:'Estado del sistema', detail:'CPU 18% · RAM 42% · Disco 61% · Red OK' }, asistente:'reading' };
   }
   if (/\b(recuerda|anota)\b/.test(t)) {
-    return { text:'Anotado. Lo guardé en memoria — no se me olvida.', mascot:'happy' };
+    return { text:'Anotado. Lo guardé en memoria — no se me olvida.', asistente:'happy' };
   }
   const canned = [
     'Listo. Lo tengo. ¿Seguimos?',
@@ -31,7 +31,7 @@ function buildReply(text, provider) {
       : 'Tirando del modelo en la nube. Respuesta lista.',
     'Te dejo lo esencial. Si quieres más profundidad, pídemelo.',
   ];
-  return { text: canned[Math.floor(Math.random()*canned.length)], mascot:'happy' };
+  return { text: canned[Math.floor(Math.random()*canned.length)], asistente:'happy' };
 }
 window.buildReply = buildReply;
 
@@ -56,7 +56,7 @@ function TypingIndicator({ provider }) {
   const { Avatar } = window.LUNE;
   return (
     <div className="ln-typing">
-      <Avatar src="../../assets/mascot/anime/lune-thinking.png" size="md" ring={provider==='cloud'?'blue':'cyan'} />
+      <Avatar src="../../assets/asistente/anime/lune-thinking.png" size="md" ring={provider==='cloud'?'blue':'cyan'} />
       <div className="ln-typing-bubble">
         <span className="ln-dot" /><span className="ln-dot" /><span className="ln-dot" />
       </div>
@@ -80,12 +80,12 @@ function Welcome({ provider, onEjemplo }) {
     return (
       <div className="nube-hero">
         <div className="nube-avatar-wrap">
-          <img className="nube-avatar" src="../../assets/mascot/anime/lune_inicio.png" alt="Lune" />
+          <img className="nube-avatar" src="../../assets/asistente/anime/lune_inicio.png" alt="Lune" />
           {Nube && <Nube className="nube-avatar-cloud" width={150} fill="#f3f8ff" opacity="0.95" />}
         </div>
         <div className="nube-kanji">ルネ起動</div>
         <h1 className="nube-h1">LUNE ENTRE NUBES</h1>
-        <p className="nube-p">Tu asistente de escritorio. Memoria persistente, herramientas al instante, modelos en la nube.</p>
+        <p className="nube-p">Tu asistente personal. Memoria persistente, herramientas al instante, modelos en la nube.</p>
         {chips('nube-chips')}
       </div>
     );
@@ -94,12 +94,12 @@ function Welcome({ provider, onEjemplo }) {
     <div className="ln-welcome">
       <div className="ln-welcome-giant" aria-hidden="true">LUNE</div>
       <div className="ln-welcome-mark">
-        <img src="../../assets/mascot/anime/lune_inicio.png" alt="Lune" />
+        <img src="../../assets/asistente/anime/lune_inicio.png" alt="Lune" />
       </div>
       <div className="ln-welcome-jp lune-jp">ルネ起動</div>
       <h1 className="ln-welcome-title">LUNE EN LÍNEA</h1>
       <p className="ln-welcome-sub">
-        Tu asistente de escritorio. Memoria persistente, herramientas al instante,
+        Tu asistente personal. Memoria persistente, herramientas al instante,
         {provider==='cloud' ? ' modelos en la nube.' : ' 100% local y privada.'}
       </p>
       {chips('ln-welcome-chips')}
@@ -123,7 +123,7 @@ function ChatStream({ messages, typing, provider, onEjemplo }) {
             return <ChatBubble key={m.id} role="user" time={m.time}>{m.text}</ChatBubble>;
           return (
             <ChatBubble key={m.id} role="bot" provider={m.provider} time={m.time} streaming={m.streaming}
-              avatar={<Avatar src={`../../assets/mascot/anime/lune-${m.provider==='cloud'?'happy':'composed'}.png`} size="md" ring={m.provider==='cloud'?'blue':'cyan'} />}>
+              avatar={<Avatar src={`../../assets/asistente/anime/lune-${m.provider==='cloud'?'happy':'composed'}.png`} size="md" ring={m.provider==='cloud'?'blue':'cyan'} />}>
               {m.text}
             </ChatBubble>
           );

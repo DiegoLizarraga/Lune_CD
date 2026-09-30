@@ -1,11 +1,11 @@
 """
-avatar_overlay.py — Lune como mascota flotante ligera (sprites 2D) sobre el escritorio.
+avatar_overlay.py — Lune como asistente flotante ligera (sprites 2D) sobre el escritorio.
 
 Ventana sin bordes, transparente, siempre encima y arrastrable que muestra los
 PNG/MP4 de lune_face y reacciona a las emociones del modelo (<|ACT|>, ver
 lune_core/marcadores). Se recorta a la SILUETA del personaje con una máscara por
 chroma-key (el fondo oscuro del sprite se vuelve transparente y deja pasar los
-clics fuera de la figura). Es la mascota de "bajos recursos": sin Chromium.
+clics fuera de la figura). Es la asistente de "bajos recursos": sin Chromium.
 
 El avatar 3D (VRM) vive en ui/companion.py (render="vrm"): mismas llamadas
 (set_estado / set_emocion / set_act / set_hablando / set_click_through, señal
@@ -16,13 +16,13 @@ distingue una de otra.
 Además hay un "modo fantasma" (click-through total): la ventana deja pasar TODOS
 los clics. En Windows se hace con WS_EX_TRANSPARENT.
 
-Mecánica de ventana portada de la mascota Electron de AIRI a Qt:
+Mecánica de ventana portada del avatar flotante Electron de AIRI a Qt:
     FramelessWindowHint | WindowStaysOnTopHint | Tool  ≈ frameless/always-on-top/panel
     WA_TranslucentBackground                            ≈ transparent, sin sombra
     windowHandle().startSystemMove()                    ≈ arrastre nativo
     setMask(QRegion)                                     ≈ recorte a la silueta
 
-Chat con la mascota (corte 2, igual que la animada/VRM; ui/chat_mascota.py):
+Chat con la asistente (corte 2, igual que la animada/VRM; ui/chat_asistente.py):
 doble clic (o la bandeja) → `abrir_chat()`, la cajita EntradaChat bajo ella; lo
 escrito va a `on_chat(texto)` (lo pone quien lleva la app) y la respuesta sale en
 una burbuja Qt (`burbuja_texto` / `burbuja_fin`). Para distinguir clic, doble
@@ -44,7 +44,7 @@ Movimiento (corte 3, ui/sprites_fx.py):
   escribiendo) o con `set_habilitado_fisica(False)` (modo juego).
 - Sueño (nucleo/sueno.ReglaSueno) tras avatar.dormir_min sin tocarla ni hablarle:
   cara dormida (lune_sleeping.png o la más cercana), oscurecida y respirando lento.
-- Frases de la mascota (lune_core/frases_mascota.py) en la burbuja Qt: arrastre,
+- Frases de la asistente (lune_core/frases_asistente.py) en la burbuja Qt: arrastre,
   soltar, mareo, dormir, despertar y aparecer, sin pisar una respuesta de la IA.
 
 Corte 4 (el mismo contrato que ui/companion.py): `bandeja=False` y
@@ -110,9 +110,9 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QPoint, QRect, QSize, QTimer, pyqtSignal
 from PyQt6.QtGui import QAction, QIcon, QRegion, QImage, QPixmap
 
-from lune_core.frases_mascota import frases_para
+from lune_core.frases_asistente import frases_para
 from nucleo.sueno import ReglaSueno
-from ui.chat_mascota import BurbujaQt, ChatMascota, DesambiguadorClic, ms_lectura
+from ui.chat_asistente import BurbujaQt, ChatAsistente, DesambiguadorClic, ms_lectura
 from ui.lune_face import LuneFaceWidget, estado_desde_emocion, tiene_cara
 from ui.sprites_baile import DY_MAX as BAILE_DY_MAX, BaileSpriteQt
 from ui.sprites_fx import (
@@ -136,7 +136,7 @@ ALARMA_CPS = 35                  # caracteres por segundo al escribirla
 ALARMA_ANCHO_MAX = 600
 ALARMA_RETRASO_MS = 3000
 
-MS_FRASE = 3500                  # lo que dura una frase de la mascota en la burbuja
+MS_FRASE = 3500                  # lo que dura una frase de la asistente en la burbuja
 MS_MAREO = 2500                  # cara mareada
 MS_SOLTAR = 1500                 # cara de «soltar» (happy) al dejarla quieta
 REINTENTO_SUENO_MS = 30_000      # la regla no deja dormir ahora: se vuelve a mirar
@@ -225,7 +225,7 @@ def _boton_izquierdo():
 
 
 class AvatarOverlay(QMainWindow):
-    """Mascota flotante de sprites. `config` persiste su posición y el modo fantasma."""
+    """Asistente flotante de sprites. `config` persiste su posición y el modo fantasma."""
 
     visibilidad = pyqtSignal(bool)       # se muestra / se oculta o cierra
     menu_pedido = pyqtSignal(str, object)  # ('principal'|'secundario', QPoint global): menú radial
@@ -254,10 +254,10 @@ class AvatarOverlay(QMainWindow):
         self._encima = bool(config.get("avatar", "siempre_encima", True)) if config else True
         self._fps_max = self._fps_de_config()
         self._acento_tema = None         # borde de la burbuja (--cyan-500 del tema)
-        # Chat con la mascota: on_chat(texto) -> bool lo pone quien lleva la app.
+        # Chat con la asistente: on_chat(texto) -> bool lo pone quien lleva la app.
         self.on_chat = None
         self.proveedor_chat = None
-        self._chat = ChatMascota(self)
+        self._chat = ChatAsistente(self)
         self._clic = DesambiguadorClic(self._clic_simple, self.abrir_chat, self)
         self._burbuja = None
         self._pulsado = None             # {"origen", "movido"} mientras el botón está abajo
@@ -269,7 +269,7 @@ class AvatarOverlay(QMainWindow):
         self._t_guardar.timeout.connect(self._guardar_posicion)
 
         # Corte 3: sueño, frases, cara y lo que la regla de sueño necesita saber.
-        self._bus_estado = None          # nucleo.estado_mascota.BusEstado (opcional)
+        self._bus_estado = None          # nucleo.estado_asistente.BusEstado (opcional)
         self._regla = ReglaSueno.desde_config(config)
         self._frases = frases_para(reloj=time.monotonic)   # del personaje activo
         self._durmiendo = False
@@ -698,7 +698,7 @@ class AvatarOverlay(QMainWindow):
         else:
             self._restaurar_cara()
 
-    # ── Frases de la mascota (lune_core/frases_mascota.py) ─────────────────────
+    # ── Frases de la asistente (lune_core/frases_asistente.py) ─────────────────────
     def _burbuja_qt(self) -> BurbujaQt:
         if self._burbuja is None:
             self._burbuja = BurbujaQt(self)
@@ -765,10 +765,10 @@ class AvatarOverlay(QMainWindow):
         self._actualizar_frases()
 
     def aplicar_params_vrm(self):
-        """Solo la mascota VRM tiene calibración por modelo: aquí no hace nada."""
+        """Solo la asistente VRM tiene calibración por modelo: aquí no hace nada."""
 
     def aplicar_tamano(self, nombre: str):
-        """Tamaños de la mascota 3D (herramienta mascota_tamano): los sprites no cambian."""
+        """Tamaños de la asistente 3D (herramienta asistente_tamano): los sprites no cambian."""
 
     def aplicar_opciones(self):
         """Ajustes cambiaron (avatar.dormir_min): rearma el sueño."""
@@ -782,7 +782,7 @@ class AvatarOverlay(QMainWindow):
         return self._durmiendo
 
     def dormir(self) -> bool:
-        """Que se duerma YA (herramienta mascota_dormir). True si se durmió o ya
+        """Que se duerma YA (herramienta asistente_dormir). True si se durmió o ya
         dormía; False si ahora no puede (cerrada, arrastrándola, en llamada…). Si la
         voz está sonando se duerme al callar (y devuelve True)."""
         if self.cerrado:
@@ -799,7 +799,7 @@ class AvatarOverlay(QMainWindow):
         return self._durmiendo
 
     def despertar(self) -> bool:
-        """Que se despierte (herramienta mascota_despertar). True si está despierta."""
+        """Que se despierte (herramienta asistente_despertar). True si está despierta."""
         if self.cerrado:
             return False
         self._despertar(usuario=True)
@@ -1214,7 +1214,7 @@ class AvatarOverlay(QMainWindow):
         return max(FPS_MIN, min(FPS_MAX, n))
 
     def set_fps_max(self, n: int):
-        """avatar.fps_max: se guarda (lo usan las mascotas web); los sprites no tienen
+        """avatar.fps_max: se guarda (lo usa la asistente web, animada o 3D); los sprites no tienen
         bucle de render que limitar."""
         try:
             n = max(FPS_MIN, min(FPS_MAX, int(n)))
@@ -1263,9 +1263,9 @@ class AvatarOverlay(QMainWindow):
         if getattr(self.cara, "_current_state", "normal") in ("normal", "sitting"):
             self.cara.set_state("happy", auto_revert_ms=1500)
 
-    # ── Chat con la mascota ────────────────────────────────────────────────────
+    # ── Chat con la asistente ────────────────────────────────────────────────────
     def abrir_chat(self):
-        """Doble clic / bandeja: la cajita para escribirle, anclada bajo la mascota."""
+        """Doble clic / bandeja: la cajita para escribirle, anclada bajo la asistente."""
         if self.cerrado:
             return
         self._clic.cancelar()
@@ -1273,14 +1273,14 @@ class AvatarOverlay(QMainWindow):
         self._chat.abrir()
 
     def burbuja_texto(self, texto: str, tipeado: bool = False):
-        """La respuesta del chat en una burbuja sobre la mascota (texto plano)."""
+        """La respuesta del chat en una burbuja sobre la asistente (texto plano)."""
         t = str(texto or "").strip()
         if self.cerrado or not t or not self.isVisible():
             return                                   # oculta: la burbuja no reaparece sola
         if self._alarma_texto is not None:
             return                                   # la alarma manda en la burbuja
         self._despertar()
-        self._burbuja_ia, self._burbuja_ultimo = True, t   # las frases de la mascota esperan
+        self._burbuja_ia, self._burbuja_ultimo = True, t   # las frases de la asistente esperan
         self._burbuja_qt().texto(texto)
 
     def burbuja_fin(self, ms: int | None = None):
@@ -1656,7 +1656,7 @@ class AvatarOverlay(QMainWindow):
         if os.path.exists(ruta):
             icono = QIcon(ruta)
         self.tray = QSystemTrayIcon(icono, self)
-        self.tray.setToolTip("Lune · mascota")
+        self.tray.setToolTip("Lune · asistente en escritorio")
         menu = self._menu_bandeja = QMenu()
         act_chat = QAction("Escribirle a Lune…", self)
         act_chat.triggered.connect(self.abrir_chat)
@@ -1669,7 +1669,7 @@ class AvatarOverlay(QMainWindow):
         self.act_fantasma.setCheckable(True)
         self.act_fantasma.setChecked(bool(self.config and self.config.get("avatar", "click_through", False)))
         self.act_fantasma.toggled.connect(self._alternar_fantasma)
-        act_cerrar = QAction("Cerrar mascota", self)
+        act_cerrar = QAction("Cerrar la asistente en escritorio", self)
         act_cerrar.triggered.connect(self.close)
         menu.addAction(act_mostrar); menu.addAction(act_centrar)
         menu.addAction(self.act_fantasma)

@@ -1,5 +1,5 @@
 /* ============================================================
-   ui_web/css/burbuja.css — añadidos a la burbuja de la mascota
+   ui_web/css/burbuja.css — añadidos a la burbuja de la asistente
    (companion.html y companion_vrm.html) para lune_burbuja.js:
    texto en streaming con alto máximo y el final a la vista,
    cursor de máquina de escribir y burbuja espejada (luneLado).
@@ -47,7 +47,7 @@ body #bubble.tipeando #btxt::after {
   56%, 100% { opacity: 0; }
 }
 
-/* luneLado('izq'): la mascota está pegada al borde izquierdo de la
+/* luneLado('izq'): la asistente está pegada al borde izquierdo de la
    pantalla → la burbuja se va hacia dentro (derecha), como siempre. */
 body #bubble[data-lado="izq"] {
   align-self: flex-end;

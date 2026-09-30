@@ -4,7 +4,7 @@ otras piezas les llaman, con firmas compatibles (inspect.signature(...).bind con
 argumentos exactos que usan quien las llama). Si alguien renombra un método o cambia
 una firma, esto falla aquí y no en pantalla.
 
-  · mascotas (CompanionFlotante, AvatarOverlay) → contrato §1.3 del plan;
+  · asistentes (CompanionFlotante, AvatarOverlay) → contrato §1.3 del plan;
   · ControlModoJuego, ControlTema, GestorAtajosQt, BandejaLune, ControlMenuRadial y
     PuenteEscritorio → lo que usan montar_escritorio, el puente web y Ajustes;
   · AnfitrionWeb / AnfitrionNativo → contra VentanaWeb, LuneBridge y LuneCDWindow
@@ -54,9 +54,9 @@ def _es_senal(cls, nombre) -> bool:
 YO = object()          # el «self» para bind() sobre métodos sin enlazar
 
 
-# ── Mascotas: contrato §1.3 del plan ──────────────────────────────────────────────
+# ── Asistentes: contrato §1.3 del plan ──────────────────────────────────────────────
 
-def _mascotas():
+def _asistentes():
     from ui.avatar_overlay import AvatarOverlay
     clases = [AvatarOverlay]
     try:
@@ -67,11 +67,11 @@ def _mascotas():
     return clases
 
 
-@pytest.mark.parametrize("cls", _mascotas(), ids=lambda c: c.__name__)
-def test_mascotas_cumplen_el_contrato_del_corte4(cls):
+@pytest.mark.parametrize("cls", _asistentes(), ids=lambda c: c.__name__)
+def test_asistentes_cumplen_el_contrato_del_corte4(cls):
     init = cls.__init__
     assert "bandeja" in _firma(init).parameters and _firma(init).parameters["bandeja"].default is True
-    assert _admite(init, YO, None, bandeja=False)          # web_bridge/main: crear_mascota(..., bandeja=False)
+    assert _admite(init, YO, None, bandeja=False)          # web_bridge/main: crear_asistente(..., bandeja=False)
     assert _es_senal(cls, "menu_pedido")                   # ('principal'|'secundario', QPoint)
     for nombre, args in (("quitar_bandeja", ()), ("ancla_menu", (lambda p: None,)),
                          ("set_menu_abierto", (True,)), ("aplicar_plan_juego", (None,)),
@@ -89,8 +89,8 @@ def test_mascotas_cumplen_el_contrato_del_corte4(cls):
     assert _admite(cls.set_estado, YO, "happy", 4000)
 
 
-def test_crear_mascota_quita_la_bandeja_solo_si_la_clase_sabe():
-    from ui.escritorio import crear_mascota
+def test_crear_asistente_quita_la_bandeja_solo_si_la_clase_sabe():
+    from ui.escritorio import crear_asistente
 
     class ConBandeja:
         def __init__(self, config=None, bandeja=True):
@@ -107,10 +107,10 @@ def test_crear_mascota_quita_la_bandeja_solo_si_la_clase_sabe():
     class SinInit:
         pass
 
-    assert crear_mascota(ConBandeja, "cfg").bandeja is False
-    assert crear_mascota(ConKw, "cfg").kw == {"bandeja": False}
-    assert crear_mascota(Vieja, "cfg").config == "cfg"
-    assert isinstance(crear_mascota(SinInit), SinInit)
+    assert crear_asistente(ConBandeja, "cfg").bandeja is False
+    assert crear_asistente(ConKw, "cfg").kw == {"bandeja": False}
+    assert crear_asistente(Vieja, "cfg").config == "cfg"
+    assert isinstance(crear_asistente(SinInit), SinInit)
 
 
 # ── Controladores del escritorio ──────────────────────────────────────────────────
@@ -120,7 +120,7 @@ def test_control_modo_juego():
     assert _es_senal(ControlModoJuego, "cambio")
     # montaje._juego_defecto y los tests: (escritorio, config, voice=, parent=)
     assert _admite(ControlModoJuego.__init__, YO, None, None, voice=None, parent=None)
-    for nombre, args in (("iniciar", ()), ("detener", ()), ("set_mascota", (None,)), ("forzar", (None,)),
+    for nombre, args in (("iniciar", ()), ("detener", ()), ("set_asistente", (None,)), ("forzar", (None,)),
                          ("forzar", (True,)), ("activo", ()), ("estado", ()), ("recargar_config", ())):
         assert _admite(getattr(ControlModoJuego, nombre), YO, *args), nombre
 
@@ -132,7 +132,7 @@ def test_control_tema():
     for nombre, args in (("actual", ()), ("css_json", ()), ("qss_menu", ()), ("colores_radial", ()),
                          ("previsualizar", ({},)), ("guardar", ({},)), ("guardar", ()),
                          ("restablecer", ()), ("aplicar_preset", ("violeta",)), ("recargar", ()),
-                         ("set_mascota", (None,)), ("iniciar", ()), ("detener", ()), ("guardar_ya", ())):
+                         ("set_asistente", (None,)), ("iniciar", ()), ("detener", ()), ("guardar_ya", ())):
         assert _admite(getattr(ControlTema, nombre), YO, *args), nombre
 
 
@@ -151,7 +151,7 @@ def test_gestor_atajos_qt():
 
 def test_bandeja_lune(qapp):
     from nucleo.acciones_ui import Contexto, Despachador
-    from nucleo.estado_mascota import BusEstado
+    from nucleo.estado_asistente import BusEstado
     from ui.bandeja import BandejaLune
     # montaje: BandejaLune(desp, bus, contexto, config, icono=, parent=[, fabrica_tray=])
     assert _admite(BandejaLune.__init__, YO, None, None, None, None, icono=None, parent=None,
@@ -159,7 +159,7 @@ def test_bandeja_lune(qapp):
     b = BandejaLune(Despachador(), BusEstado(), lambda: Contexto(), {}, icono=None)
     try:
         assert b.icono_tray is None                        # inerte hasta iniciar(): sin icono
-        for nombre, args in (("iniciar", ()), ("detener", ()), ("set_mascota", (None,)),
+        for nombre, args in (("iniciar", ()), ("detener", ()), ("set_asistente", (None,)),
                              ("mostrar_aviso", ("t", "x")), ("mostrar_aviso", ("t", "x", 4000, "info")),
                              ("aplicar_qss", ("",)), ("refrescar_tooltip", ()), ("items", ()),
                              ("ejecutar", ("mostrar_lune", ""))):
@@ -173,7 +173,7 @@ def test_control_menu_radial():
     from ui.menu_radial import ControlMenuRadial, MenuRadial
     assert _admite(ControlMenuRadial.__init__, YO, None, None, None, lambda: None, colores=None,
                    sonar=None, parent=None, traer_al_frente=None)
-    for nombre, args in (("iniciar", ()), ("detener", ()), ("set_mascota", (None,)), ("set_colores", ({},)),
+    for nombre, args in (("iniciar", ()), ("detener", ()), ("set_asistente", (None,)), ("set_colores", ({},)),
                          ("abierto", ()), ("cerrar", ()), ("items", ("principal",)),
                          ("abrir", ("principal",)), ("abrir", ("expresiones", QPoint(1, 1)))):
         assert _admite(getattr(ControlMenuRadial, nombre), YO, *args), nombre
@@ -213,7 +213,7 @@ def test_montaje_y_servicios_corte4():
 
 # ── Anfitriones contra las ventanas y el puente DE VERDAD ────────────────────────
 
-PROTOCOLO = ("mostrar_ventana", "mascota", "alternar_mascota", "voz_on", "alternar_voz", "llamada_on",
+PROTOCOLO = ("mostrar_ventana", "asistente", "alternar_asistente", "voz_on", "alternar_voz", "llamada_on",
              "alternar_llamada", "abrir_ajustes", "salir", "aviso", "set_aburrimiento", "en_barra_on",
              "set_en_barra")
 
@@ -232,7 +232,7 @@ def test_anfitrion_web_contra_luneBridge_y_ventanaweb_reales():
     from ui.web_bridge import LuneBridge
     from ui.web_shell import VentanaWeb
     # Lo que AnfitrionWeb llama del puente…
-    for nombre in ("mascota_toggle", "comentar_pantalla", "voz_toggle", "llamada_toggle", "_mascota_viva",
+    for nombre in ("asistente_toggle", "comentar_pantalla", "voz_toggle", "llamada_toggle", "_asistente_viva",
                    "pausar_aburrimiento", "_rearmar_aburrimiento"):
         assert callable(getattr(LuneBridge, nombre, None)), nombre
     assert _es_senal(LuneBridge, "aviso")
@@ -247,7 +247,7 @@ def test_anfitrion_nativo_contra_lunecdwindow_real():
     import main
     W = main.LuneCDWindow
     for nombre in ("_restore_from_tray", "_toggle_overlay", "_toggle_voice", "_toggle_keys_panel",
-                   "salir_de_verdad", "_quit_app", "_mascota_viva", "_set_status", "isVisible",
+                   "salir_de_verdad", "_quit_app", "_asistente_viva", "_set_status", "isVisible",
                    "winId", "hide", "show"):
         assert callable(getattr(W, nombre, None)), nombre
     assert _admite(W._set_status, YO, "texto", "#00E5FF")

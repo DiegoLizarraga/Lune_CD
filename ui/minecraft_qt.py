@@ -4,7 +4,7 @@ y el bot de Minecraft de Lune.
 
 `ControlMinecraft` es un controlador de `ServiciosEscritorio` (ui/escritorio.py):
 lo registra el montaje como ("minecraft", ctl), SIN actividades de la tabla (no
-mueve a la mascota: solo lee el bus), y recibe iniciar, detener y set_mascota.
+mueve a la asistente: solo lee el bus), y recibe iniciar, detener y set_asistente.
 
 REACCIONES (config minecraft.reaccionar)
 ----------------------------------------
@@ -18,14 +18,14 @@ REACCIONES (config minecraft.reaccionar)
 - Los eventos del log y los del bot (observador) se deduplican (mismo tipo y
   jugador en 5 s cuentan una vez), pasan por `Cadencia` y `reaccion`
   (lune_core/minecraft.py) y se entregan según el modo:
-    · mascota a la vista → `mascota.decir_reaccion(texto, estado, ms)` (+ voz si
+    · asistente a la vista → `asistente.decir_reaccion(texto, estado, ms)` (+ voz si
       `voz_reacciones` y no está silenciada);
-    · sin mascota (web o nativa) → `anfitrion.aviso(texto)` + `anfitrion.reaccion`;
+    · sin asistente (web o nativa) → `anfitrion.aviso(texto)` + `anfitrion.reaccion`;
     · no hay burbuja arrastrándola, con un menú, alarma, pantalla grande,
       salvapantallas, hablando o pensando (ni si decir_reaccion dice que no: la
       burbuja de la IA manda): esa reacción no se dice (queda en los eventos
       recientes con entregado=False);
-    · MODO JUEGO (D4): la mascota está oculta. Con el bot conectado y
+    · MODO JUEGO (D4): la asistente está oculta. Con el bot conectado y
       `decir_en_juego`, las muertes, logros y peligros los dice el bot en el chat
       del juego; y con `resumen_al_salir`, tus muertes y logros de ESA partida se
       apuntan (el resumen se vacía al entrar) y al salir sale el resumen en la burbuja.
@@ -183,7 +183,7 @@ class ControlMinecraft(QObject):
         self._resumen = nm.Resumen()
         self._recientes: Deque[dict] = collections.deque(maxlen=MAX_EVENTOS)
         self._dedup: Dict[tuple, float] = {}
-        self._mascota = getattr(escritorio, "mascota", None)
+        self._asistente = getattr(escritorio, "asistente", None)
         self._iniciado = False
         self._conectado_bus = False
         self._juego = False
@@ -320,8 +320,8 @@ class ControlMinecraft(QObject):
             self._hilo(parar)
         self._bot.update(conectando=False, conectado=False, instalando=False)
 
-    def set_mascota(self, v: Any) -> None:
-        self._mascota = v
+    def set_asistente(self, v: Any) -> None:
+        self._asistente = v
 
     def recargar_config(self) -> None:
         """Ajustes guardados (reaccionar, ruta del log, otros…): se aplican sin reiniciar."""
@@ -496,8 +496,8 @@ class ControlMinecraft(QObject):
         except Exception:
             return None
 
-    def _mascota_visible(self) -> bool:
-        m = self._mascota
+    def _asistente_visible(self) -> bool:
+        m = self._asistente
         if m is None or getattr(m, "cerrado", False):
             return False
         try:
@@ -510,15 +510,15 @@ class ControlMinecraft(QObject):
         if self._juego:
             if (tipo in DECIR_EN_JUEGO and self._bot.get("conectado") and bool(self._cfg("decir_en_juego", True))):
                 return bool(_llamar(self.proceso, "decir", r.texto))
-            return False                                # la mascota está oculta: al resumen (ya anotado)
+            return False                                # la asistente está oculta: al resumen (ya anotado)
         # Fuera del modo juego lo que no se dice se pierde (queda en «eventos recientes» con
         # entregado=False): el resumen es solo de la partida en modo juego (BM9, como patata).
         est = self._estado_bus()
         if est is not None and any(bool(getattr(est, c, False)) for c in BLOQUEAN_BURBUJA):
             return False
         ok = False
-        if self._mascota_visible() and callable(getattr(self._mascota, "decir_reaccion", None)):
-            ok = bool(_llamar(self._mascota, "decir_reaccion", r.texto, r.estado, r.ms))
+        if self._asistente_visible() and callable(getattr(self._asistente, "decir_reaccion", None)):
+            ok = bool(_llamar(self._asistente, "decir_reaccion", r.texto, r.estado, r.ms))
             if not ok:
                 return False
         elif self.anfitrion is not None:

@@ -52,7 +52,7 @@ const LISTA = [
   { id: '../../x', titulo: 'malo' },
 ];
 const ESTADO = { fase: 'sonando', id: ID, titulo: 'Senbonzakura', autor: 'Kurousa-P', t: 61, total: 245, modo: 'vrm', al_terminar: 'parar',
-  volumen: 0.25, en_el_sitio: true, pausado: false, modo_mascota: 'vrm', sin_esqueleto: false, servicio: true };
+  volumen: 0.25, en_el_sitio: true, pausado: false, modo_asistente: 'vrm', sin_esqueleto: false, servicio: true };
 
 function backendBailes(estado = ESTADO) {
   let e = { ...estado };
@@ -90,7 +90,7 @@ test('LuneBailesWeb: normalización, tiempos y textos', () => {
   const l = B.normalizarLista({ bailes: [...LISTA, LISTA[0]], servicio: true });
   assert.deepEqual(plano(l.bailes.map((x) => x.id)), [ID, ID2]);
   assert.equal(B.normalizarLista(Array.from({ length: 600 }, (_, i) => ({ id: i.toString(16).padStart(12, '0') }))).bailes.length, 500);
-  const e = B.normalizarEstado({ fase: 'bailoteo', modo_mascota: 'sprites', t: -1, total: 1e9, al_terminar: 'bucle' });
+  const e = B.normalizarEstado({ fase: 'bailoteo', modo_asistente: 'sprites', t: -1, total: 1e9, al_terminar: 'bucle' });
   assert.equal(e.fase, 'parado');
   assert.equal(e.sin_esqueleto, true);
   assert.equal(e.t, 0);
@@ -103,7 +103,7 @@ test('LuneBailesWeb: normalización, tiempos y textos', () => {
   const s = (o) => B.textoEstado(B.normalizarEstado({ servicio: true, ...o }));
   assert.match(s({ fase: 'cargando', titulo: 'X', analizando: true }), /escuchando el ritmo/);
   assert.match(s({ fase: 'pausado', pausado: true, cedida: true, titulo: 'X' }), /juego, la alarma/);
-  assert.match(s({ pendiente: true, fase: 'cargando', titulo: 'X' }), /Saco a la mascota/);
+  assert.match(s({ pendiente: true, fase: 'cargando', titulo: 'X' }), /Salgo al escritorio/);
   assert.match(B.textoEstado(B.normalizarEstado({})), /necesita la app/);
 });
 
@@ -188,12 +188,12 @@ test('BailesPanel: buscar (diferido), bailar, pausa, parar, siguiente y anterior
 });
 
 test('BailesPanel: al terminar, en el sitio, volumen diferido y el aviso sin esqueleto', () => {
-  const { P } = backendBailes({ ...ESTADO, modo_mascota: 'animado', modo: 'animado' });
+  const { P } = backendBailes({ ...ESTADO, modo_asistente: 'animado', modo: 'animado' });
   const S = cargar([BAILES], P.obj);
   const el = S.h(S.sb.BailesPanel);
   let a = S.render(el);
   assert.equal(conClase(a, 'ln-bl-aviso').length, 1);
-  assert.match(todoTexto(a), /no tiene esqueleto: baila a su manera/);
+  assert.match(todoTexto(a), /no tiene esqueleto: bailo a mi manera/);
   boton(a, 'Al azar').props.onClick();
   interruptor(S.render(el), 'Bailar en el sitio').onChange({ target: { checked: false } });
   porId(S.render(el), 'f-bl-volumen').props.onChange(ev('60'));

@@ -1,5 +1,5 @@
 """
-Tests del contrato de la mascota del corte 4 en ui/companion.py (animada/VRM) y
+Tests del contrato de la asistente del corte 4 en ui/companion.py (animada/VRM) y
 ui/avatar_overlay.py (sprites):
 
 - bandeja=False no crea icono; quitar_bandeja() quita el que haya;
@@ -93,7 +93,7 @@ class WinVentanaFalsa:
 
 @pytest.fixture
 def win_ventana(monkeypatch):
-    """win_ventana sin Win32 y las mascotas creyendo que hay HWND de verdad."""
+    """win_ventana sin Win32 y las asistentes creyendo que hay HWND de verdad."""
     import servicios.win_ventana as wv
     import ui.avatar_overlay as ao
     falsa = WinVentanaFalsa()
@@ -120,14 +120,14 @@ def config(tmp_path):
     return cfg
 
 
-# ── Mascota web (ui/companion.py) ──────────────────────────────────────────────
+# ── Asistente web (ui/companion.py) ──────────────────────────────────────────────
 
 @pytest.fixture
 def web_falso(monkeypatch):
     """QWebEngineView falso: anota el JS; `pagina.cabeza` decide qué contesta
     luneCabeza (un JSON, None o "nunca" = no contesta)."""
     if not HAY_WEBENGINE:
-        pytest.skip("la mascota web necesita PyQt6-WebEngine")
+        pytest.skip("la asistente web necesita PyQt6-WebEngine")
     from PyQt6.QtCore import QUrl
     from PyQt6.QtWidgets import QWidget
     import ui.companion as comp
@@ -438,10 +438,10 @@ def test_vrm_fps_cero_en_partida_para_tambien_el_cursor(qapp, web_falso, config,
 
 def test_companion_capturas_y_comentarios_bloqueados_en_juego(animada, monkeypatch):
     from nucleo import datos
-    from nucleo.estado_mascota import BusEstado
+    from nucleo.estado_asistente import BusEstado
     from PIL import ImageGrab
     c = animada
-    # 10.9: la mascota comenta solo con la nube; sin clave ni lo intenta. Hermético: no
+    # 10.9: la asistente comenta solo con la nube; sin clave ni lo intenta. Hermético: no
     # depende de que el datos.json de este equipo tenga clave.
     monkeypatch.setattr(datos, "openrouter_key", lambda: "sk-prueba")
 
@@ -527,7 +527,7 @@ def test_companion_llevar_a_esquina_y_propiedades(animada, config):
     c.set_click_through(False)
 
 
-# ── Mascota de sprites (ui/avatar_overlay.py) ──────────────────────────────────
+# ── Asistente de sprites (ui/avatar_overlay.py) ──────────────────────────────────
 
 @pytest.fixture
 def sprites(qapp, lune_activa, config):
@@ -649,7 +649,7 @@ def test_sprites_encima_fps_comentarios_tema_y_esquina(sprites, win_ventana, con
 
 # ── Contrato común ─────────────────────────────────────────────────────────────
 
-def test_contrato_comun_de_las_dos_mascotas():
+def test_contrato_comun_de_las_dos_asistentes():
     import inspect
     from ui.avatar_overlay import AvatarOverlay
     clases = [AvatarOverlay]

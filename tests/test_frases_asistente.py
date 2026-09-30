@@ -1,5 +1,5 @@
 """
-Tests de lune_core/frases_mascota.py: qué dice la mascota en cada evento.
+Tests de lune_core/frases_asistente.py: qué dice la asistente en cada evento.
 
 Probabilidades con azar sembrado, cooldown global de 20 s con reloj falso, la
 bolsa que no repite, las frases del personaje que sobrescriben a las de Lune y
@@ -15,7 +15,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from lune_core import frases_mascota as fm  # noqa: E402
+from lune_core import frases_asistente as fm  # noqa: E402
 
 RAIZ = Path(__file__).resolve().parent.parent
 
@@ -34,7 +34,7 @@ class Reloj:
 
 
 def sin_cooldown(personaje=None, semilla=1):
-    return fm.FrasesMascota(personaje, reloj=Reloj(), rng=random.Random(semilla), cooldown_s=0)
+    return fm.FrasesAsistente(personaje, reloj=Reloj(), rng=random.Random(semilla), cooldown_s=0)
 
 
 # ── Frases base ──────────────────────────────────────────────────────────────────
@@ -65,24 +65,24 @@ FRASES_VIEJAS_VRM = {
 }
 
 
-def test_las_frases_de_la_mascota_salen_de_python():
-    """companion_vrm.html ya no elige frases: las elige FrasesMascota en Python (las
-    dos mascotas) y las viejas listas de la página siguen en FRASES_BASE."""
+def test_las_frases_de_la_asistente_salen_de_python():
+    """companion_vrm.html ya no elige frases: las elige FrasesAsistente en Python (las
+    dos asistentes) y las viejas listas de la página siguen en FRASES_BASE."""
     html = (RAIZ / "ui_web" / "companion_vrm.html").read_text(encoding="utf-8")
     assert not re.search(r"\bFRASES\b|\bfrase\(", html), "la página no debe elegir frases"
     for ev, frases in FRASES_VIEJAS_VRM.items():
         for frase in frases:
             assert frase in fm.FRASES_BASE[ev], (ev, frase)
-    # Las dos mascotas de escritorio las piden a FrasesMascota con los eventos.
+    # Las dos asistentes en escritorio las piden a FrasesAsistente con los eventos.
     for archivo in ("ui/companion.py", "ui/avatar_overlay.py"):
         src = (RAIZ / archivo).read_text(encoding="utf-8")
-        assert "from lune_core.frases_mascota import frases_para" in src, archivo
+        assert "from lune_core.frases_asistente import frases_para" in src, archivo
         assert "self._frases.elegir(evento)" in src and "self._frases.set_personaje(" in src, archivo
     comp = (RAIZ / "ui" / "companion.py").read_text(encoding="utf-8")
     # evento de la página → frase → burbuja de la página
     assert 'self._frase("arrastre" if datos.get("on") else "soltar")' in comp
     assert "window.comentar && window.comentar({_js_str(t)}, {MS_FRASE})" in comp
-    # (el comportamiento, con Qt: tests/test_mascota_corte3.py)
+    # (el comportamiento, con Qt: tests/test_asistente_corte3.py)
 
 
 # ── Probabilidades ───────────────────────────────────────────────────────────────
@@ -106,7 +106,7 @@ def test_mismo_azar_mismas_frases():
 
 def test_forzar_ignora_dado_y_cooldown():
     reloj = Reloj()
-    f = fm.FrasesMascota(None, reloj=reloj, rng=random.Random(1))
+    f = fm.FrasesAsistente(None, reloj=reloj, rng=random.Random(1))
     assert f.elegir("soltar", forzar=True) in fm.FRASES_BASE["soltar"]
     assert f.en_cooldown()
     assert f.elegir("soltar", forzar=True) in fm.FRASES_BASE["soltar"]
@@ -116,7 +116,7 @@ def test_forzar_ignora_dado_y_cooldown():
 
 def test_cooldown_global_de_20_s_entre_eventos():
     reloj = Reloj()
-    f = fm.FrasesMascota(None, reloj=reloj, rng=random.Random(3))
+    f = fm.FrasesAsistente(None, reloj=reloj, rng=random.Random(3))
     primera = f.elegir("aparecer", forzar=True)
     assert primera and f.ultima == ("aparecer", primera)
     assert f.restante_cooldown() == pytest.approx(20.0)
@@ -144,7 +144,7 @@ def test_eventos_de_los_cortes_7_y_8_comparten_el_cooldown_global():
     de silencio con los demás eventos (ninguno es prioritario)."""
     assert not ({"sentarse", "bajar", "comer"} & fm.PRIORITARIOS)
     reloj = Reloj()
-    f = fm.FrasesMascota(None, reloj=reloj, rng=random.Random(8))
+    f = fm.FrasesAsistente(None, reloj=reloj, rng=random.Random(8))
     dicha = f.elegir("sentarse", forzar=True)
     assert dicha in fm.FRASES_BASE["sentarse"] and f.ultima == ("sentarse", dicha)
     reloj.avanzar(10)
@@ -160,7 +160,7 @@ def test_eventos_de_los_cortes_7_y_8_comparten_el_cooldown_global():
 
 
 def test_eventos_nuevos_del_personaje():
-    personaje = {"nombre": "Aria", "frases_mascota": {
+    personaje = {"nombre": "Aria", "frases_asistente": {
         "comer": ["¡Ñam!"], "Sentarse": {"p": 0.9}, "bajar": []}}
     f = sin_cooldown(personaje)
     assert f.frases("comer") == ["¡Ñam!"] and f.probabilidad("comer") == 0.5
@@ -173,7 +173,7 @@ def test_eventos_nuevos_del_personaje():
 
 def test_mareo_se_salta_el_cooldown_pero_lo_reinicia():
     reloj = Reloj()
-    f = fm.FrasesMascota(None, reloj=reloj, rng=random.Random(5))
+    f = fm.FrasesAsistente(None, reloj=reloj, rng=random.Random(5))
     f.elegir("aparecer", forzar=True)
     reloj.avanzar(5)
     assert f.elegir("mareo") in fm.FRASES_BASE["mareo"]           # prioritario y p = 1
@@ -184,7 +184,7 @@ def test_mareo_se_salta_el_cooldown_pero_lo_reinicia():
 
 def test_reiniciar_y_marcar_hablado():
     reloj = Reloj()
-    f = fm.FrasesMascota(None, reloj=reloj, rng=random.Random(5))
+    f = fm.FrasesAsistente(None, reloj=reloj, rng=random.Random(5))
     f.marcar_hablado()
     assert f.en_cooldown()
     f.reiniciar_cooldown()
@@ -221,7 +221,7 @@ def test_elegir_recorre_todas_las_frases_antes_de_repetir():
 def test_frases_del_personaje_sobrescriben_por_evento():
     personaje = {
         "nombre": "Aria",
-        "frases_mascota": {
+        "frases_asistente": {
             "arrastre": ["¡Eh, que me mareo!", "  ¡Eh, que me mareo!  ", "", 5, "Otra   con\nsaltos"],
             "Caricia": {"frases": ["Jeje"], "p": 0.9},
             "soltar": [],                                   # callada
@@ -250,30 +250,30 @@ def test_frases_del_personaje_sobrescriben_por_evento():
 
 def test_frases_largas_se_recortan_y_hay_tope():
     larga = "x" * 500
-    f = sin_cooldown({"frases_mascota": {"caricia": [larga] + [f"f{i}" for i in range(100)]}})
+    f = sin_cooldown({"frases_asistente": {"caricia": [larga] + [f"f{i}" for i in range(100)]}})
     frases = f.frases("caricia")
     assert len(frases) == fm.MAX_FRASES
     assert len(frases[0]) == fm.MAX_LARGO and frases[0].endswith("…")
 
 
 def test_personaje_raro_no_revienta():
-    for p in (None, {}, {"frases_mascota": None}, {"frases_mascota": ["a"]}, {"frases_mascota": {"caricia": 5}}, "x"):
+    for p in (None, {}, {"frases_asistente": None}, {"frases_asistente": ["a"]}, {"frases_asistente": {"caricia": 5}}, "x"):
         f = sin_cooldown(p)
         assert f.frases("caricia") == list(fm.FRASES_BASE["caricia"])
 
 
 def test_set_personaje_conserva_el_cooldown():
     reloj = Reloj()
-    f = fm.FrasesMascota(None, reloj=reloj, rng=random.Random(1))
+    f = fm.FrasesAsistente(None, reloj=reloj, rng=random.Random(1))
     f.elegir("aparecer", forzar=True)
-    f.set_personaje({"nombre": "Aria", "frases_mascota": {"caricia": ["Jeje"]}})
+    f.set_personaje({"nombre": "Aria", "frases_asistente": {"caricia": ["Jeje"]}})
     assert f.en_cooldown() and f.frases("caricia") == ["Jeje"]
 
 
 # ── Para la página ───────────────────────────────────────────────────────────────
 
 def test_como_json():
-    f = fm.FrasesMascota({"nombre": "Aria", "frases_mascota": {"soltar": [], "caricia": {"frases": ["Jeje"], "p": 0.9}}},
+    f = fm.FrasesAsistente({"nombre": "Aria", "frases_asistente": {"soltar": [], "caricia": {"frases": ["Jeje"], "p": 0.9}}},
                          reloj=Reloj(), rng=random.Random(1))
     texto = f.como_json()
     assert "\n" not in texto and "¿" in texto and "\\u00bf" not in texto   # ensure_ascii=False
@@ -289,7 +289,7 @@ def test_como_json():
 
 def test_frases_para_usa_el_personaje_activo(monkeypatch):
     from nucleo import personajes
-    monkeypatch.setattr(personajes, "get_activo", lambda: {"nombre": "Nyx", "frases_mascota": {"dormir": ["zz"]}})
+    monkeypatch.setattr(personajes, "get_activo", lambda: {"nombre": "Nyx", "frases_asistente": {"dormir": ["zz"]}})
     f = fm.frases_para(reloj=Reloj(), rng=random.Random(1))
     assert f.nombre == "Nyx" and f.frases("dormir") == ["zz"]
     g = fm.frases_para({"nombre": "Lune"}, reloj=Reloj())

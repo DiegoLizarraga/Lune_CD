@@ -1,8 +1,8 @@
 """
 servicios/cancion_python.py — La canción de un baile sonando desde Python.
 
-Para las mascotas que no tienen página que la reproduzca (sprites) o que no
-saben reproducir bailes (D1: «equivalente mínimo»): la canción suena por el
+Para la asistente en escritorio cuando no tiene página que la reproduzca (sprites) o
+no sabe reproducir bailes (D1: «equivalente mínimo»): la canción suena por el
 Mezclador (servicios/mezclador.py, canal `musica`, que no se cachea) y Lune
 hace el baile procedural al pulso analizado de esa canción
 (nucleo.bailes.Biblioteca.analizar_pulso). La patata la usa igual.

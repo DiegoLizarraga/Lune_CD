@@ -1,5 +1,5 @@
 """
-nucleo/sueno.py — Cuándo se duerme la mascota (y cómo se cuenta en la terminal).
+nucleo/sueno.py — Cuándo se duerme la asistente (y cómo se cuenta en la terminal).
 
 PARA QUÉ SIRVE
 --------------
@@ -7,7 +7,7 @@ Mate-Engine duerme al avatar tras un rato sin tocarlo, pero solo desde ciertos
 estados: no se duerme a mitad de una respuesta, hablando, escuchando el micro
 o mientras la arrastras. Lune hacía eso solo en el VRM y con un filtro a mano
 (`companion._dormir`: «si está pensando, no»). Aquí está la regla en un solo
-sitio, sin Qt, para la mascota VRM, la animada, los sprites y la barra lateral:
+sitio, sin Qt, para la asistente VRM, la animada, los sprites y la barra lateral:
 
 - `ReglaSueno(dormir_min, permitidos={'normal', 'bored'})`
     `debe_dormir(inactivo_s, estado_actual)` → ¿toca dormirse YA? Lista blanca:
@@ -15,15 +15,15 @@ sitio, sin Qt, para la mascota VRM, la animada, los sprites y la barra lateral:
     listening, ni arrastrándola, ni con la voz sonando, ni en llamada (tampoco
     con alarma, pantalla grande, baile, comida o un menú abierto).
     `estado_actual` puede ser el nombre del estado visual ('normal', 'bored',
-    'thinking'…) o un `nucleo.estado_mascota.EstadoMascota` (o cualquier objeto
+    'thinking'…) o un `nucleo.estado_asistente.EstadoAsistente` (o cualquier objeto
     o dict con sus campos).
     `segundos_restantes(inactivo_s)` → para rearmar el QTimer de sueño.
-    `mensaje_diferido(pausa_s)` → en patata no hay mascota que dormir: cuando el
+    `mensaje_diferido(pausa_s)` → en patata no hay asistente en escritorio que dormir: cuando el
     usuario vuelve tras una pausa larga se imprime «Lune se quedó dormida hace
     N min… (-_-) zzZ».
 - `herramienta_dormir(args, ctx)` / `herramienta_despertar(args, ctx)`: los
-  handlers de las herramientas del modelo `mascota_dormir` / `mascota_despertar`
-  (lune_core/catalogo_herramientas.py). Llaman a `ctx['mascota'].dormir()` /
+  handlers de las herramientas del modelo `asistente_dormir` / `asistente_despertar`
+  (lune_core/catalogo_herramientas.py). Llaman a `ctx['asistente'].dormir()` /
   `.despertar()` (en el hilo de Qt si `ctx['en_ui']` existe; contrato:
   `en_ui(fn)` devuelve el resultado de `fn`) y devuelven el texto para el
   modelo, o `(False, motivo)` si no se pudo (lo entiende el Ejecutor). Si `en_ui`
@@ -32,7 +32,7 @@ sitio, sin Qt, para la mascota VRM, la animada, los sprites y la barra lateral:
   `ctx` puede ser un dict, un objeto o el dict con que el Ejecutor envuelve un
   objeto ({..., 'contexto': objeto}), igual que `nucleo.vrm.herramienta_tamano`.
   La herramienta NO pasa por la regla: si el usuario le pide que se duerma, se
-  duerme aunque esté hablando (la mascota puede diferirlo al acabar la voz).
+  duerme aunque esté hablando (la asistente puede diferirlo al acabar la voz).
 """
 from __future__ import annotations
 
@@ -44,7 +44,7 @@ PERMITIDOS_POR_DEFECTO: FrozenSet[str] = frozenset({"normal", "bored"})
 # Estados desde los que NUNCA se duerme, aunque alguien los meta en `permitidos`.
 NUNCA: FrozenSet[str] = frozenset({"working", "thinking", "talking", "listening"})
 
-# Campos booleanos de EstadoMascota (o banderas sueltas) que impiden dormirse.
+# Campos booleanos de EstadoAsistente (o banderas sueltas) que impiden dormirse.
 # campo → motivo legible.
 BLOQUEOS: Tuple[Tuple[str, str], ...] = (
     ("arrastrando", "la están arrastrando"),
@@ -57,7 +57,7 @@ BLOQUEOS: Tuple[Tuple[str, str], ...] = (
     ("menu_abierto", "hay un menú abierto"),
 )
 
-# Emoción canónica (EstadoMascota.emocion) → estado visual.
+# Emoción canónica (EstadoAsistente.emocion) → estado visual.
 _EMOCION_A_ESTADO = {"neutral": "normal", "": "normal", "think": "thinking", "question": "thinking"}
 
 EstadoT = Union[str, Mapping[str, Any], Any]
@@ -129,7 +129,7 @@ class ReglaSueno:
     def estado_visual(estado_actual: EstadoT) -> str:
         """El estado visual equivalente ('normal', 'thinking', 'sleeping'…).
 
-        Con un EstadoMascota (o dict/objeto con sus campos): durmiendo → sleeping,
+        Con un EstadoAsistente (o dict/objeto con sus campos): durmiendo → sleeping,
         pensando → thinking, hablando → talking, llamada → listening,
         arrastrando → dragging; si no, su emoción ('neutral' → 'normal').
         """
@@ -237,10 +237,10 @@ def _llamar_en_ui(ctx: Any, fn: Callable[[], Any]) -> Tuple[Any, bool]:
     return fn(), False
 
 
-def _durmiendo(mascota: Any) -> Optional[bool]:
+def _durmiendo(asistente: Any) -> Optional[bool]:
     """¿Duerme ya? Mira `durmiendo` (atributo, propiedad o método) o `_durmiendo`."""
     for nombre in ("durmiendo", "_durmiendo"):
-        v = getattr(mascota, nombre, None)
+        v = getattr(asistente, nombre, None)
         if callable(v):
             try:
                 v = v()
@@ -255,18 +255,19 @@ _YA_ESTABA = object()     # centinela: ya estaba dormida / despierta
 
 
 def _herramienta(ctx: Any, metodo: str, quiere_dormida: bool) -> Union[str, Tuple[bool, str]]:
-    mascota = _de_ctx(ctx, "mascota")
-    if mascota is None:
-        return False, ("No hay mascota en pantalla: no tengo dónde dormirme." if quiere_dormida
-                       else "No hay mascota en pantalla que despertar.")
-    fn = getattr(mascota, metodo, None)
+    asistente = _de_ctx(ctx, "asistente")
+    if asistente is None:
+        return False, ("No estoy en el escritorio: sácame primero y me echo la siesta ahí."
+                       if quiere_dormida
+                       else "No estoy en el escritorio: no hay nada que despertar.")
+    fn = getattr(asistente, metodo, None)
     if not callable(fn):
-        return False, ("Esta mascota todavía no sabe dormirse." if quiere_dormida
-                       else "Esta mascota todavía no sabe despertarse.")
+        return False, ("Con esta figura todavía no sé dormirme." if quiere_dormida
+                       else "Con esta figura todavía no sé despertarme.")
 
     def paso():
         # Todo en el hilo de Qt (con en_ui): mirar si ya lo está y, si no, pedirlo.
-        if _durmiendo(mascota) is quiere_dormida:
+        if _durmiendo(asistente) is quiere_dormida:
             return _YA_ESTABA
         return fn()
 
@@ -277,10 +278,10 @@ def _herramienta(ctx: Any, metodo: str, quiere_dormida: bool) -> Union[str, Tupl
         if r is None and por_en_ui:
             # Un en_ui que no devuelve el resultado (o un dormir() sin valor): no se
             # da por hecho. Se vuelve a preguntar, también en el hilo de Qt.
-            ahora = _llamar_en_ui(ctx, lambda: _durmiendo(mascota))[0]
+            ahora = _llamar_en_ui(ctx, lambda: _durmiendo(asistente))[0]
             if ahora is None:
-                return False, ("Se lo pedí a la mascota, pero no pude comprobar si "
-                               + ("se durmió." if quiere_dormida else "se despertó."))
+                return False, ("Lo intenté, pero no pude comprobar si "
+                               + ("me quedé dormida." if quiere_dormida else "me desperté."))
             r = ahora is quiere_dormida
     except Exception as e:
         return False, f"No pude {'dormirme' if quiere_dormida else 'despertarme'}: {e}"[:300]
@@ -292,17 +293,17 @@ def _herramienta(ctx: Any, metodo: str, quiere_dormida: bool) -> Union[str, Tupl
 
 
 def herramienta_dormir(args: Any = None, ctx: Any = None) -> Union[str, Tuple[bool, str]]:
-    """Handler de `mascota_dormir` ({}). Llama a `ctx['mascota'].dormir()`.
+    """Handler de `asistente_dormir` ({}). Llama a `ctx['asistente'].dormir()`.
 
-    `ctx` es un dict (u objeto) con `mascota` y, opcional, `en_ui(fn)` para
+    `ctx` es un dict (u objeto) con `asistente` y, opcional, `en_ui(fn)` para
     ejecutar en el hilo de Qt. Devuelve el texto para el modelo; `(False, motivo)`
-    si no hay mascota, no sabe dormirse o `dormir()` devolvió False.
+    si no hay asistente a la vista, su figura no sabe dormirse o `dormir()` devolvió False.
     """
     return _herramienta(ctx, "dormir", True)
 
 
 def herramienta_despertar(args: Any = None, ctx: Any = None) -> Union[str, Tuple[bool, str]]:
-    """Handler de `mascota_despertar` ({}). Llama a `ctx['mascota'].despertar()`."""
+    """Handler de `asistente_despertar` ({}). Llama a `ctx['asistente'].despertar()`."""
     return _herramienta(ctx, "despertar", False)
 
 

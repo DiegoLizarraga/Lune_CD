@@ -24,7 +24,7 @@ elige por frase: el pedido si está disponible; si no, edge; si no, gTTS.
     on_error(msg)               aviso legible de lo que antes se tragaba (voz
                                 inexistente → NoAudioReceived, sin red…). Llega
                                 desde el hilo de audio: marshalear a Qt
-    al_hablar(bool)             ya existía: la boca de la mascota
+    al_hablar(bool)             ya existía: la boca de la asistente
 """
 import json
 import os
@@ -484,7 +484,7 @@ class VoiceEngine:
         threading.Thread(target=_probar, name="voz-prueba", daemon=True).start()
         return True
 
-    # ── Aviso «está sonando» (la mascota 3D mueve la boca mientras Lune habla) ──
+    # ── Aviso «está sonando» (la asistente 3D mueve la boca mientras Lune habla) ──
     def _sonando(self, activo: bool):
         cb = self.al_hablar
         if cb is None:

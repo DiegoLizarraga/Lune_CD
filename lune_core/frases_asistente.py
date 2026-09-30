@@ -1,9 +1,9 @@
 """
-lune_core/frases_mascota.py — Lo que dice la mascota cuando le pasa algo.
+lune_core/frases_asistente.py — Lo que dice la asistente cuando le pasa algo.
 
 PARA QUÉ SIRVE
 --------------
-Frases cortas, sin pasar por el modelo, para los eventos de la mascota: la
+Frases cortas, sin pasar por el modelo, para los eventos de la asistente: la
 arrastras, la sueltas, la acaricias, se duerme, se despierta, se marea al
 agitarla, aparece en pantalla, se sienta en la barra o en una ventana, se baja
 o come algo (cortes 7 y 8). Antes vivían fijas en `ui_web/companion_vrm.html`
@@ -12,7 +12,7 @@ o come algo (cortes 7 y 8). Antes vivían fijas en `ui_web/companion_vrm.html`
 - `FRASES_BASE`: las de Lune, con su tono (directa y con filo, nada de «amo~»).
   Incluye las cuatro listas que había en companion_vrm.html.
 - `PROBABILIDADES`: no habla SIEMPRE que pasa algo (se haría pesada).
-- `FrasesMascota(personaje, reloj, rng)`:
+- `FrasesAsistente(personaje, reloj, rng)`:
     `elegir(evento)` → texto o None. Tira el dado con la probabilidad del
     evento, saca la frase de una `Bolsa` (no repite hasta agotar la lista) y
     respeta un COOLDOWN GLOBAL de 20 s entre frases de cualquier evento. El
@@ -24,7 +24,7 @@ o come algo (cortes 7 y 8). Antes vivían fijas en `ui_web/companion_vrm.html`
 
 Cada personaje puede traer las suyas en `datos.json`:
 
-    "frases_mascota": {
+    "frases_asistente": {
         "arrastre": ["¡Eh, que me mareo!"],         # sustituye a las de Lune
         "caricia": {"frases": ["Jeje"], "p": 0.9},  # con su propia probabilidad
         "soltar": []                                # lista vacía = callada en ese evento
@@ -32,8 +32,8 @@ Cada personaje puede traer las suyas en `datos.json`:
 
 Lo que no traiga sale de FRASES_BASE. Eventos desconocidos (p. ej. «pudor», que
 está fuera del alcance de esta versión) se ignoran. Los eventos «sentarse»,
-«bajar» y «comer» los dicen las mascotas de escritorio (ui/companion.py y
-ui/avatar_overlay.py) al sentarse, bajarse y comer.
+«bajar» y «comer» los dicen las ventanas de la asistente en escritorio
+(ui/companion.py y ui/avatar_overlay.py) al sentarse, bajarse y comer.
 
 Sin Qt ni red: reloj y azar inyectables, así los tests son deterministas.
 """
@@ -263,7 +263,7 @@ def frases_de_personaje(personaje: Optional[Mapping[str, Any]]) -> Dict[str, Tup
     efectivas: Dict[str, Tuple[List[str], float]] = {
         ev: (list(FRASES_BASE[ev]), PROBABILIDADES[ev]) for ev in EVENTOS
     }
-    extra = personaje.get("frases_mascota") if isinstance(personaje, Mapping) else None
+    extra = personaje.get("frases_asistente") if isinstance(personaje, Mapping) else None
     if not isinstance(extra, Mapping):
         return efectivas
     for ev, valor in extra.items():
@@ -280,8 +280,8 @@ def frases_de_personaje(personaje: Optional[Mapping[str, Any]]) -> Dict[str, Tup
     return efectivas
 
 
-class FrasesMascota:
-    """Elige qué dice la mascota en cada evento.
+class FrasesAsistente:
+    """Elige qué dice la asistente en cada evento.
 
     `personaje`: el dict del personaje activo (o None → solo FRASES_BASE).
     `reloj`: función → segundos monótonos (por defecto time.monotonic).
@@ -337,7 +337,7 @@ class FrasesMascota:
         self._ultima_t = None
 
     def marcar_hablado(self) -> None:
-        """Arranca el cooldown sin elegir frase (p. ej. si la mascota dijo otra cosa)."""
+        """Arranca el cooldown sin elegir frase (p. ej. si la asistente dijo otra cosa)."""
         self._ultima_t = self._reloj()
 
     # ── Elegir ──
@@ -389,18 +389,18 @@ class FrasesMascota:
         return json.dumps(self.como_dict(), ensure_ascii=False, separators=(",", ":"))
 
 
-def frases_para(personaje: Optional[Mapping[str, Any]] = None, **kwargs: Any) -> FrasesMascota:
-    """Atajo: `FrasesMascota` del personaje dado o, si es None, del activo en datos.json."""
+def frases_para(personaje: Optional[Mapping[str, Any]] = None, **kwargs: Any) -> FrasesAsistente:
+    """Atajo: `FrasesAsistente` del personaje dado o, si es None, del activo en datos.json."""
     if personaje is None:
         try:
             from nucleo import personajes
             personaje = personajes.get_activo()
         except Exception:
             personaje = None
-    return FrasesMascota(personaje, **kwargs)
+    return FrasesAsistente(personaje, **kwargs)
 
 
 __all__: Sequence[str] = (
     "EVENTOS", "PROBABILIDADES", "COOLDOWN_S", "PRIORITARIOS", "FRASES_BASE",
-    "Bolsa", "FrasesMascota", "frases_de_personaje", "frases_para",
+    "Bolsa", "FrasesAsistente", "frases_de_personaje", "frases_para",
 )

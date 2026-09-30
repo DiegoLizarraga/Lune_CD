@@ -1,6 +1,6 @@
 """
-Tests de la mascota de sprites (ui/avatar_overlay.py) en los cortes 5 y 6: el
-contrato de la mascota que aplica a los sprites.
+Tests de la asistente de sprites (ui/avatar_overlay.py) en los cortes 5 y 6: el
+contrato de la asistente que aplica a los sprites.
 
 - `bailar(on, opciones)` / `pulso(...)`: cara feliz, sin respiración, cuadros del
   baile compuestos con SpriteRotado (los saltitos caben en el lienzo), el
@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 
 class FrasesSiempre:
-    """Frases de la mascota que siempre dicen algo (para ver si la alarma las tapa)."""
+    """Frases de la asistente que siempre dicen algo (para ver si la alarma las tapa)."""
 
     def __init__(self):
         self.pedidas = []
@@ -151,7 +151,7 @@ def test_con_alarma_ni_frases_ni_chat_ni_clic_la_tapan(ov):
 
 
 def test_ocultar_alarma_quita_la_burbuja_y_el_estilo(ov):
-    from ui.chat_mascota import BurbujaQt
+    from ui.chat_asistente import BurbujaQt
     ov.mostrar_alarma("Pan", retraso_ms=0)
     ov._empezar_alarma()
     ov._tipear_alarma(); ov._tipear_alarma(); ov._tipear_alarma()

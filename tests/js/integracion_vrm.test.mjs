@@ -1,4 +1,4 @@
-// tests/js/integracion_vrm.test.mjs — integración del corte 3 en la mascota:
+// tests/js/integracion_vrm.test.mjs — integración del corte 3 en la asistente:
 //   · ui_web/vrm/lune_vrm.js DE VERDAD (no una copia), cargado en Node con three.js,
 //     GLTFLoader y three-vrm falsos (three_falso.mjs): los imports del motor se
 //     reescriben hacia el falso y hacia las rutas absolutas de sus módulos, y se importa
@@ -81,11 +81,11 @@ function correr(seg, antes = null, despues = null) {
   }
 }
 
-/** Mascota con un VRM falso ya cargado (el GLTFLoader falso se completa a mano). */
+/** Asistente con un VRM falso ya cargado (el GLTFLoader falso se completa a mano). */
 function montar({ version = '1', expresiones = EXPRESIONES_BASE } = {}) {
   frames = [];
   const eventos = [];
-  const m = motor.crearMascota({ canvas: lienzoFalso(), src: '/vrm/actual.vrm', onEvento: (t, d) => eventos.push([t, d]) });
+  const m = motor.crearAsistente({ canvas: lienzoFalso(), src: '/vrm/actual.vrm', onEvento: (t, d) => eventos.push([t, d]) });
   const carga = cargas.pop();
   assert.ok(carga && carga.url === '/vrm/actual.vrm', 'el motor pidió el modelo');
   const vrm = crearVRMFalso({ version, expresiones });
@@ -93,7 +93,7 @@ function montar({ version = '1', expresiones = EXPRESIONES_BASE } = {}) {
   return { m, vrm, eventos, est: m.ctx.estado() };
 }
 
-/** Deja la mascota en 'normal' sin idles (para aislar gestos y seguimiento). */
+/** Deja la asistente en 'normal' sin idles (para aislar gestos y seguimiento). */
 function quietaSinIdles(m) {
   correr(3);                                   // el saludo (wave, 2.6 s) vuelve solo a normal
   m.mod('idles', 'set', { activo: false });
@@ -406,7 +406,7 @@ test('estirarse: brazos abajo y atrás, nunca por encima de la horizontal (VRM 1
 test('cargar un modelo con ella dormida no la despierta: sin saludo ni despertar, sigue dormida', () => {
   frames = [];
   vaciarCola();
-  const m = motor.crearMascota({ canvas: lienzoFalso(), src: '/vrm/actual.vrm' });
+  const m = motor.crearAsistente({ canvas: lienzoFalso(), src: '/vrm/actual.vrm' });
   const carga = cargas.pop();
   // companion._on_cargado manda luneSleep(true) antes de que acabe la descarga del .vrm
   m.dormir(true);
@@ -448,7 +448,7 @@ test('arrastre sin modelo o con uno roto: luneDrag(false) suelta y avisa; no fue
   for (const caso of ['sin modelo', 'modelo roto']) {
     frames = [];
     vaciarCola();
-    const m = motor.crearMascota({ canvas: lienzoFalso(), src: caso === 'sin modelo' ? undefined : '/vrm/roto.vrm' });
+    const m = motor.crearAsistente({ canvas: lienzoFalso(), src: caso === 'sin modelo' ? undefined : '/vrm/roto.vrm' });
     if (caso === 'modelo roto') cargas.pop().alFallar(new Error('404'));
     correr(0.5);
     const r0 = m.ctx.renderer.renders;
@@ -502,7 +502,7 @@ test('un módulo opcional roto (404 o error de sintaxis) no tumba el avatar', as
 
   frames = [];
   vaciarCola();
-  const m = sinNada.crearMascota({ canvas: lienzoFalso(), src: '/vrm/actual.vrm' });
+  const m = sinNada.crearAsistente({ canvas: lienzoFalso(), src: '/vrm/actual.vrm' });
   const vrm = crearVRMFalso();
   cargas.pop().alCargar({ scene: vrm.scene, userData: { vrm } });
   assert.equal(m.listo, true);
@@ -525,7 +525,7 @@ test('un módulo opcional roto (404 o error de sintaxis) no tumba el avatar', as
   m.destruir();
 
   frames = [];
-  const m2 = sinIdles.crearMascota({ canvas: lienzoFalso(), src: '/vrm/actual.vrm' });
+  const m2 = sinIdles.crearAsistente({ canvas: lienzoFalso(), src: '/vrm/actual.vrm' });
   const vrm2 = crearVRMFalso();
   cargas.pop().alCargar({ scene: vrm2.scene, userData: { vrm: vrm2 } });
   assert.deepEqual(m2.bus.lista(), ['movimiento'], 'solo falta el que no cargó');
@@ -550,7 +550,7 @@ test('destruir (barra lateral): la carga en vuelo no entra en la escena del moto
     const ventana = { addEventListener() {}, removeEventListener() {}, innerWidth: 1280, innerHeight: 820 };
     const lienzo = lienzoFalso({ style: {}, getContext: () => ({}), addEventListener() {}, removeEventListener() {} });
     const h = barra.crear(lienzo, '/vrm/actual.vrm', {
-      version: 'v1', ventana, crearMascota: (o) => (m = motor.crearMascota(o)), alError: (e) => errores.push(e),
+      version: 'v1', ventana, crearAsistente: (o) => (m = motor.crearAsistente(o)), alError: (e) => errores.push(e),
     });
     await new Promise((r) => setTimeout(r, 0));
     assert.ok(m, 'motor creado');
@@ -586,7 +586,7 @@ test('destruir (barra lateral): la carga en vuelo no entra en la escena del moto
 
     // Motor suelto: un error de carga que llega tarde no avisa, y cargar() ya no pide nada
     const eventos = [];
-    const m2 = motor.crearMascota({ canvas: lienzoFalso(), src: '/vrm/x.vrm', onEvento: (t) => eventos.push(t) });
+    const m2 = motor.crearAsistente({ canvas: lienzoFalso(), src: '/vrm/x.vrm', onEvento: (t) => eventos.push(t) });
     const tarde = cargas.pop();
     assert.equal(m2.destruir(), true);
     tarde.alFallar(new Error('llegó tarde'));
@@ -599,9 +599,9 @@ test('destruir (barra lateral): la carga en vuelo no entra en la escena del moto
   }
 });
 
-// ── Mascota animada: los eventos del módulo 'fisica' llegan a la cola ───────────
+// ── Asistente animada: los eventos del módulo 'fisica' llegan a la cola ───────────
 
-test('mascota animada: lune_anim_fisica emite arrastre {on}, mareo, dormir y despertar a window.luneEventos', () => {
+test('asistente animada: lune_anim_fisica emite arrastre {on}, mareo, dormir y despertar a window.luneEventos', () => {
   vaciarCola();
   let ms = 0;
   const reg = crearRegistroAnim({ stage: null, raf: () => 0, caf: () => {}, ahora: () => ms });
@@ -640,7 +640,7 @@ function scriptsEnLinea(pagina) {
   return { html, scripts: res };
 }
 
-/** Funciones window.* que llama ui/companion.py (lo mismo que busca tests/test_mascota_vrm.py). */
+/** Funciones window.* que llama ui/companion.py (lo mismo que busca tests/test_asistente_vrm.py). */
 function llamadasDePython() {
   const py = readFileSync(new URL('../ui/companion.py', UI), 'utf8');
   return [...new Set([...py.matchAll(/window\.(lune\w+|setEmocion|comentar|pensando|ocultarBurbuja)\b/g)].map((m) => m[1]))].sort();
@@ -667,7 +667,7 @@ test('companion_vrm.html: sin FRASES, luneParams antes y después del módulo, y
   globalThis.location = { search: '?src=/vrm/actual.vrm&v=7' };
   frames = [];
   const { html } = scriptsEnLinea('companion_vrm.html');
-  assert.equal(/FRASES|frase\(/.test(html), false, 'las frases son de Python (frases_mascota.py)');
+  assert.equal(/FRASES|frase\(/.test(html), false, 'las frases son de Python (frases_asistente.py)');
   try {
     // El script clásico se ejecuta primero: una llamada temprana queda pendiente
     vm.runInThisContext(scriptsEnLinea('companion_vrm.html').scripts[0].codigo, { filename: 'companion_vrm.html' });
@@ -754,7 +754,7 @@ test('companion_vrm.html: avisos de error como texto (sin innerHTML) y al dormir
     globalThis.luneSleep(false);                 // despertar: tampoco
     assert.deepEqual(burbuja, [['ocultar'], ['comentar', 'zzz…']], 'la frase de dormir se ve');
   } finally {
-    try { globalThis.luneMascota.destruir(); } catch (_) { /* sigue */ }
+    try { globalThis.luneAsistente.destruir(); } catch (_) { /* sigue */ }
     delete globalThis.luneBurbuja;
     vaciarCola();
   }
@@ -772,7 +772,7 @@ test('companion.html: css de la animada, doble búfer, setEmocion pendiente y lu
   delete globalThis.luneBurbuja;
   for (const fn of ['luneDrag', 'luneTouch', 'luneSleep', 'setEmocion', 'luneMod', 'luneSetFPS']) delete globalThis[fn];
   const { html, scripts } = scriptsEnLinea('companion.html');
-  assert.ok(html.indexOf('href="css/burbuja.css"') < html.indexOf('href="css/mascota_anim.css"'), 'mascota_anim.css tras burbuja.css');
+  assert.ok(html.indexOf('href="css/burbuja.css"') < html.indexOf('href="css/asistente_anim.css"'), 'asistente_anim.css tras burbuja.css');
   assert.ok(/<video id="v"/.test(html), 'se deja el <video id="v">');
   assert.equal(scripts.length, 2);
   globalThis.document = doc;

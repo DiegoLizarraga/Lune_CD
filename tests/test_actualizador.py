@@ -106,7 +106,7 @@ def test_numpy_y_el_sonido_son_obligatorios():
     assert {"numpy", "sounddevice", "imageio-ffmpeg"} <= nucleo
     assert "numpy" not in opcionales                        # ya no se ofrece como opcional
     if sys.platform == "win32":
-        assert {"comtypes", "pywin32"} <= nucleo            # detector de música, mascota fantasma
+        assert {"comtypes", "pywin32"} <= nucleo            # detector de música, asistente fantasma
     assert "psutil" in opcionales and "gtts" in opcionales
 
 

@@ -4,16 +4,16 @@ El código está por capas: nucleo/ (datos, config, memoria…), servicios/
 (ai_manager, voice, tools…) y ui/ (paneles y widgets Qt). El núcleo de red
 está en lune_core/.
 
-Mascota (corte 3): herramientas del modelo `mascota_dormir`, `mascota_despertar`
-y `mascota_tamano` con la mascota flotante a la vista (solo se ofrecen con ella
-fuera: el modo del turno pasa a "mascota"/"vrm"), y el panel de modelos VRM de
-Configuración recarga la mascota 3D y le aplica la calibración.
+Asistente (corte 3): herramientas del modelo `asistente_dormir`, `asistente_despertar`
+y `asistente_tamano` con la asistente flotante a la vista (solo se ofrecen con ella
+fuera: el modo del turno pasa a "asistente"/"vrm"), y el panel de modelos VRM de
+Configuración recarga la asistente 3D y le aplica la calibración.
 
 Corte 4 (modo juego, bandeja única, menú radial, atajos globales y tema): el tema se
 aplica a COLORS antes de construir la interfaz (ui.theme.aplicar_tema); `_build_tray`
 monta los servicios (ui/montaje_escritorio.montar_escritorio con
 ui/anfitrion_nativo.AnfitrionNativo) en iniciar_servicios: UN icono de bandeja siempre
-(features.minimizar_a_bandeja solo decide si cerrar oculta la ventana), la mascota sin
+(features.minimizar_a_bandeja solo decide si cerrar oculta la ventana), la asistente sin
 icono propio y el panel de Ajustes con sus apartados de escritorio
 (ui/escritorio_panel_nativo.py). cerrar_para_cambio y salir los desmontan una vez.
 
@@ -28,7 +28,7 @@ Cortes 7 y 8 (sentarse, comida, Discord): también dentro del montaje del corte 
 (ServiciosCorte4.vida, ui/montaje_vida.py) y el panel de Ajustes (PanelVidaNativo, vía
 usar_servicios). Arranque con Windows (nucleo/arranque.py, servicios/autoinicio.py):
 `main.py --autoinicio` no enseña la pantalla de inicio, espera
-`sistema.autoinicio_retraso_s` y abre en la bandeja, con la mascota o con la ventana
+`sistema.autoinicio_retraso_s` y abre en la bandeja, con la asistente o con la ventana
 (si mientras tanto vuelves a abrir Lune, abre ya y se ve); una segunda instancia
 lanzada así se va sin traer la primera al frente. Al arrancar y al cambiar de
 interfaz se repara la entrada de arranque (carpeta movida, modo cambiado).
@@ -75,8 +75,9 @@ from nucleo.utils import Logger, log_info, log_error
 from nucleo import datos
 
 from nucleo.memoria import MemoriaManager
+from nucleo.bienvenida import Bienvenida, ya_preguntada
 from servicios.tools import ToolManager, ctx_acciones
-from nucleo.respuestas import AVISO_MASCOTA_SIN_NUBE, BancoRespuestas
+from nucleo.respuestas import AVISO_ASISTENTE_SIN_NUBE, BancoRespuestas
 
 from ui.theme import (
     COLORS, APP_VERSION, PROVIDER_META,
@@ -88,7 +89,7 @@ from lune_core import marcadores, expresiones
 from servicios.notas_service import NotasService
 from servicios.red_service import RedService
 from ui.avatar_overlay import AvatarOverlay
-from ui.escritorio import ServiciosEscritorio, crear_mascota
+from ui.escritorio import ServiciosEscritorio, crear_asistente
 from ui.lune_face import LuneFaceWidget, detect_emotion
 from ui.icons import icon, icon_pixmap
 from ui.effects import apply_glow, clear_glow
@@ -108,7 +109,7 @@ from nucleo import personajes
 from nucleo import sueno, vrm
 
 from ui.splash import PantallaInicio
-from ui.cambio_interfaz import (GestorInterfaz, bot_minecraft_de, callar_voz, cerrar_mascota,
+from ui.cambio_interfaz import (GestorInterfaz, bot_minecraft_de, callar_voz, cerrar_asistente,
                                 desmontar_servicios_c4, detener_bot, detener_hilo_ia, hilo_vivo,
                                 instantanea_sesion, ordenes_cortadas, parar_temporizadores,
                                 quitar_bandeja, reconectar_bot_minecraft, retomar_sesion, soltar_hilos)
@@ -218,18 +219,18 @@ def soltar_avisos_voz(ventana) -> None:
 #  MAIN WINDOW
 # ─────────────────────────────────────────────────────────────────────────────
 class LuneCDWindow(QMainWindow):
-    _hablando = pyqtSignal(bool)     # la voz suena (hilo de audio) → boca de la mascota 3D
+    _hablando = pyqtSignal(bool)     # la voz suena (hilo de audio) → boca de la asistente 3D
     _acto_voz = pyqtSignal(str)      # empieza a sonar un tramo con esta emoción
     _voz_error = pyqtSignal(str)     # la voz falló (hilo de audio) → aviso en la ventana
-    _en_ui_senal = pyqtSignal(object)  # fn() a correr en el hilo de Qt (herramientas de la mascota)
-    # (ResultadoAccion, {mascota, directo}): resultado de una acción con destino propio
-    # (chat de la mascota o pedida por la persona); llega de cualquier hilo.
+    _en_ui_senal = pyqtSignal(object)  # fn() a correr en el hilo de Qt (herramientas de la asistente)
+    # (ResultadoAccion, {asistente, directo}): resultado de una acción con destino propio
+    # (chat de la asistente o pedida por la persona); llega de cualquier hilo.
     _resultado_turno = pyqtSignal(object, object)
     # Ajustes pidió otro modo de interfaz (lo hace GestorInterfaz, ui/cambio_interfaz.py).
     cambio_interfaz_pedido = pyqtSignal(str)
     MODO_INTERFAZ = "nativo"         # «Bajos recursos» en Ajustes
     MODO_ACCIONES = "normal"         # modo del catálogo de herramientas en la nativa
-    ESPERA_UI_S = 5.0                # herramientas de la mascota: espera máxima al hilo de Qt
+    ESPERA_UI_S = 5.0                # herramientas de la asistente: espera máxima al hilo de Qt
     FABRICAS_C4 = None               # fábricas de montar_escritorio (tests); None = las de verdad
     def __init__(self, *, diferir_servicios: bool = False):
         """`diferir_servicios`: la construye GestorInterfaz con la ventana anterior aún
@@ -262,8 +263,8 @@ class LuneCDWindow(QMainWindow):
         self._voz_error.connect(self._on_voz_error)
         self.voice.on_error = self._aviso_voz_error
         # Servicios de escritorio (ui/escritorio.py): estado compartido de la
-        # mascota, tabla de prioridades y registro de controladores. Recibe la
-        # mascota flotante en _crear_mascota y se cierra en closeEvent.
+        # asistente, tabla de prioridades y registro de controladores. Recibe la
+        # asistente flotante en _crear_asistente y se cierra en closeEvent.
         self.escritorio = ServiciosEscritorio(self.config, voice=self.voice,
                                               ai=self.ai_manager, parent=self)
         self._seguidor = None            # <|ACT|> vistos en el stream en curso
@@ -282,15 +283,15 @@ class LuneCDWindow(QMainWindow):
         self.tools            = ToolManager()
         # Acciones del modelo (<|CALL …|>): handlers de esta app (cambiar_voz…) en
         # el ToolManager y un Ejecutor con aprobación visible (ui/acciones_qt.py):
-        # QMessageBox con la ventana delante, DialogoAprobacion junto a la mascota
+        # QMessageBox con la ventana delante, DialogoAprobacion junto a la asistente
         # si no. El formato antiguo (ABRIR_URL:, TOOL:) ya no se ejecuta.
-        self._registrar_herramientas_mascota()
+        self._registrar_herramientas_asistente()
         self.escritorio.conectar_herramientas(self.tools)
         self.acciones = AccionesQt(self.tools, ventana=self, ventana_visible=self._ventana_a_la_vista,
-                                   ancla=self._ancla_mascota, parent=self)
+                                   ancla=self._ancla_asistente, parent=self)
         self.acciones.resultado.connect(self._on_resultado_accion)
         self._resultado_turno.connect(self._on_resultado_turno)
-        self._turno = {}                # origen, ctx, proveedor y si salió del chat de la mascota
+        self._turno = {}                # origen, ctx, proveedor y si salió del chat de la asistente
         # Generación del envío en curso: lo que emita un worker de un envío ya cortado
         # (conversación nueva, otro personaje…) se ignora. Ver _cortar_respuesta.
         self._gen = 0
@@ -339,6 +340,22 @@ class LuneCDWindow(QMainWindow):
         if not diferir_servicios:
             self.iniciar_servicios()         # bandeja y servicios de escritorio
         self._restaurar_o_iniciar_sesion()
+
+        # Bienvenida (11, nucleo/bienvenida.py): si la memoria aún no sabe nada de ti, Lune te
+        # hace tres preguntas por el chat. La primera sale en la siguiente vuelta del bucle
+        # (temporizador hijo): después de aplicar_estado (el cambio de interfaz en caliente
+        # repinta el chat) y de decidir si la ventana se ve. En modo terminal de la red (la
+        # memoria es la del host) no se hace.
+        self._bienvenida = Bienvenida(self.config, self.memoria, nombre_asistente=self._nombre_bot)
+        # Qué pregunta (clave_paso) se ve en la ventana y en la burbuja de la asistente en
+        # escritorio (solo cuenta como respuesta lo que escribes donde la viste) y cuál se ve
+        # en el chat sin estar aún en chats/ (va antes del próximo turno que se guarde).
+        self._bienvenida_marcas = {"ventana": None, "burbuja": None}
+        self._bienvenida_sin_guardar = None
+        self._timer_bienvenida = QTimer(self)
+        self._timer_bienvenida.setSingleShot(True)
+        self._timer_bienvenida.timeout.connect(self._arrancar_bienvenida)
+        self._timer_bienvenida.start(0)
 
         # Punto de estado de cada proveedor: se sondea al arrancar y cada 60 s,
         # para no enterarte de que Ollama está caído al mandar un mensaje.
@@ -503,6 +520,8 @@ class LuneCDWindow(QMainWindow):
             if item.widget():
                 item.widget().deleteLater()
         self._add_welcome()
+        if isinstance(getattr(self, "_bienvenida", None), Bienvenida):
+            self._repintar_pregunta_bienvenida([])    # bienvenida a medias: sigue su pregunta
         self.lune_face.set_state("normal")
         self.stack.setCurrentIndex(0)
         if hasattr(self, "historial_panel"):
@@ -517,13 +536,22 @@ class LuneCDWindow(QMainWindow):
         self._avisar_ordenes_pendientes(avisada)
         self.acciones.nueva_conversacion()       # otra conversación: presupuesto propio
         self._pintar_sesion(sesion)
+        if isinstance(getattr(self, "_bienvenida", None), Bienvenida):
+            # Bienvenida a medias: lo siguiente que escribas sigue siendo la respuesta, así
+            # que la pregunta tiene que verse (salvo que esa conversación ya termine en ella).
+            self._repintar_pregunta_bienvenida(sesion.get("mensajes") or [])
+            self._scroll_bottom()
         self.stack.setCurrentIndex(0)
         self.historial_panel.refrescar()
 
-    def _guardar_turno(self, rol, contenido, adjuntos=None, uso=None, no_confiable=False):
+    def _guardar_turno(self, rol, contenido, adjuntos=None, uso=None, no_confiable=False,
+                       bienvenida=False):
         if self.config.feature("guardar_conversaciones", True):
-            # La marca solo viaja si hace falta (dobles de test con la firma vieja).
+            # Las marcas solo viajan si hace falta (dobles de test con la firma vieja).
+            # «bienvenida»: turno de las tres preguntas (se ve, pero no vuelve al modelo).
             extra = {"no_confiable": True} if no_confiable else {}
+            if bienvenida:
+                extra["bienvenida"] = True
             self.chats.agregar(rol, contenido, adjuntos=adjuntos, uso=uso, **extra)
 
     # ── Estado de los proveedores ─────────────────────────────────────────────
@@ -606,7 +634,7 @@ class LuneCDWindow(QMainWindow):
 
         layout.addStretch()
 
-        # ── ESCENARIO DE LA MASCOTA ──
+        # ── ESCENARIO DE LUNE (su cara en la barra lateral) ──
         self.lune_face = LuneFaceWidget()
         fc = QHBoxLayout(); fc.setContentsMargins(0,0,0,0)
         fc.addStretch(); fc.addWidget(self.lune_face); fc.addStretch()
@@ -621,7 +649,10 @@ class LuneCDWindow(QMainWindow):
         mem_btn  = self._tile_btn("MEMORIA", "brain");    mem_btn.clicked.connect(self._show_memoria)
         tools_btn= self._tile_btn("TOOLS", "tool");      tools_btn.clicked.connect(self._show_tools)
         hist_btn = self._tile_btn("HISTORIAL", "history"); hist_btn.clicked.connect(self._toggle_historial)
-        masc_btn = self._tile_btn("MASCOTA", "user"); masc_btn.clicked.connect(self._toggle_overlay)
+        # Asistente en escritorio: sacarla o guardarla («ASISTENTE» a secas era ambiguo: la app
+        # entera es la asistente).
+        masc_btn = self._tile_btn("ESCRITORIO", "user"); masc_btn.clicked.connect(self._toggle_overlay)
+        masc_btn.setToolTip("Asistente en escritorio: sácame al escritorio o guárdame")
         # Cortes 5/6: alarmas y temporizadores (el editor, por el despachador «alarma»).
         alarm_btn = self._tile_btn("ALARMAS", "alarm"); alarm_btn.clicked.connect(self._abrir_alarmas)
         # El tile de Telegram era relleno visual sin acción y solo aparecía si
@@ -828,7 +859,7 @@ class LuneCDWindow(QMainWindow):
         self.settings_panel = SettingsPanel(self.config, voice=self.voice,
                                             servicios=lambda: getattr(self, "_servicios_c4", None))
         self.settings_panel.saved.connect(self._on_keys_saved); layout.addWidget(self.settings_panel)
-        # Panel de modelos VRM (importar, asignar, seguimiento) → la mascota 3D al día.
+        # Panel de modelos VRM (importar, asignar, seguimiento) → la asistente 3D al día.
         senal_vrm = getattr(self.settings_panel, "vrm_cambiado", None)
         if senal_vrm is not None:
             senal_vrm.connect(self._on_vrm_cambiado)
@@ -1090,6 +1121,7 @@ class LuneCDWindow(QMainWindow):
         wl.addSpacing(12); wl.addLayout(chips_row)
 
         wl.addStretch(); self.messages_layout.insertWidget(0, welcome)
+        self._panel_inicio = welcome             # la bienvenida lo esconde (sus chips la pisarían)
 
     def _chip_enviar(self, texto):
         self.input_field.setText(texto); self._send_message()
@@ -1187,13 +1219,13 @@ class LuneCDWindow(QMainWindow):
 
     def _pensando_chat(self, on: bool) -> None:
         """Cortes 9/10: el chat de esta ventana espera al modelo (BusEstado.pensar, fuente
-        «chat»: no pisa a la mascota cuando comenta la pantalla)."""
+        «chat»: no pisa a la asistente cuando comenta la pantalla)."""
         bus = getattr(getattr(self, "escritorio", None), "estado", None)
         f = getattr(bus, "pensar", None)
         if not callable(f):
             return
         try:
-            from nucleo.estado_mascota import PENSANDO_CHAT
+            from nucleo.estado_asistente import PENSANDO_CHAT
             f(PENSANDO_CHAT, bool(on))
         except Exception as e:
             log_error(f"[escritorio] no pude marcar «pensando»: {e}")
@@ -1274,12 +1306,121 @@ class LuneCDWindow(QMainWindow):
         self.messages_layout.insertWidget(self.messages_layout.count() - 1, b)
         return b
 
-    def _send_message(self, *_senal, texto=None, desde_mascota=False, remoto=""):
+    # ── Bienvenida (11): las tres preguntas cuando aún no te conozco ──────────
+    def _nombre_bot(self) -> str:
+        """El nombre del personaje activo para los textos de la bienvenida."""
+        return str(getattr(getattr(self, "banco", None), "nombre", "") or "Lune")
+
+    def _marcas_bienvenida(self) -> dict:
+        """{"ventana": clave, "burbuja": clave}: qué pregunta se ve en cada sitio."""
+        m = getattr(self, "_bienvenida_marcas", None)
+        if not isinstance(m, dict):
+            m = self._bienvenida_marcas = {"ventana": None, "burbuja": None}
+        return m
+
+    def _ventana_se_ve(self) -> bool:
+        """¿La ventana está a la vista (visible y sin minimizar)?"""
+        try:
+            return bool(self.isVisible() and not self.isMinimized())
+        except Exception:
+            return False
+
+    def _ocultar_panel_inicio(self):
+        """Mientras Lune hace sus preguntas, fuera el panel de inicio («Dime qué necesitas»)
+        y sus chips: SALUDAR mandaría «Hola Lune» como respuesta a tu nombre."""
+        panel = getattr(self, "_panel_inicio", None)
+        if panel is None:
+            return
+        try:
+            panel.hide()
+        except Exception:                            # ya borrado (deleteLater)
+            pass
+
+    def _pintar_pregunta_bienvenida(self, b, pregunta, mensajes) -> bool:
+        """La pregunta en curso en el chat de la ventana (salvo que la conversación ya termine
+        en ella): se apunta como vista aquí y, si no está en chats/, como pendiente de
+        guardar. True si la pintó."""
+        self._bienvenida_sin_guardar = None
+        if not pregunta:
+            return False
+        try:
+            nucleo, clave = b.nucleo_actual(), b.clave_paso()
+        except Exception:
+            return False
+        self._marcas_bienvenida()["ventana"] = clave
+        if ya_preguntada(mensajes, nucleo):
+            return False
+        self._burbuja_bot(pregunta)
+        self._bienvenida_sin_guardar = pregunta
+        self._ocultar_panel_inicio()
+        return True
+
+    def _arrancar_bienvenida(self):
+        """Temporizador de arranque: si toca, la pregunta en curso como burbuja de Lune (sin
+        modelo). No se repite si la conversación restaurada ya termina en ella. Se dice en
+        voz alta solo con la ventana a la vista (arrancar con Windows en la bandeja no
+        habla) y una vez por proceso (un cambio de interfaz en caliente no la repite). No va
+        a chats/ hasta el próximo turno. Si solo usas el chat de la asistente en escritorio,
+        tu primer mensaje ahí recibe la pregunta (no la habías visto)."""
+        if self._cerrandose():
+            return
+        b = getattr(self, "_bienvenida", None)
+        if not isinstance(b, Bienvenida):
+            return
+        try:
+            pregunta = b.arrancar()
+        except Exception as e:
+            log_error(f"[bienvenida] {e}")
+            return
+        try:
+            previos = self.chats.mensajes_actuales()
+        except Exception:
+            previos = []
+        if not self._pintar_pregunta_bienvenida(b, pregunta, previos):
+            return
+        self.lune_face.set_state("happy", auto_revert_ms=4000)
+        if self._ventana_se_ve() and b.por_decir():
+            self.voice.speak(pregunta)
+        self._scroll_bottom()
+
+    def _repintar_pregunta_bienvenida(self, mensajes=None) -> bool:
+        """Chat vaciado (conversación nueva, otro personaje) o conversación abierta del
+        historial con la bienvenida a medias: la pregunta vuelve a salir, porque lo siguiente
+        que escribas sigue siendo la respuesta. True si la pintó."""
+        b = getattr(self, "_bienvenida", None)
+        if not isinstance(b, Bienvenida):
+            return False
+        try:
+            pregunta = b.pregunta_actual()
+        except Exception:
+            return False
+        return self._pintar_pregunta_bienvenida(b, pregunta, mensajes or [])
+
+    def _vista_bienvenida(self, desde_burbuja):
+        """Qué pregunta viste donde escribiste: la de la ventana o, desde la burbuja de la
+        asistente en escritorio, la que enseñó la burbuja (y la de la ventana si se ve)."""
+        m = self._marcas_bienvenida()
+        if not desde_burbuja:
+            return m.get("ventana")
+        vistas = [m.get("burbuja")]
+        if self._ventana_se_ve():
+            vistas.append(m.get("ventana"))
+        return vistas
+
+    def _guardar_pregunta_bienvenida(self):
+        """La pregunta que se ve en el chat y aún no está en chats/, antes del turno que se va
+        a guardar (sea tu respuesta, /memoria o una orden de Telegram)."""
+        pendiente = getattr(self, "_bienvenida_sin_guardar", None)
+        if isinstance(pendiente, str) and pendiente:
+            self._bienvenida_sin_guardar = None
+            self._guardar_turno("assistant", pendiente, bienvenida=True)
+
+    def _send_message(self, *_senal, texto=None, desde_asistente=False, remoto=""):
         """
         Envía lo escrito en la barra de la ventana o, con `texto`, lo que llega
-        de fuera (el chat de la mascota): mismo flujo, mismo historial. Lo de
+        de fuera (el chat de la asistente): mismo flujo, mismo historial. Lo de
         fuera no se lleva los adjuntos pendientes ni borra lo que estés
-        escribiendo. Con `desde_mascota`, la respuesta sale también en su burbuja.
+        escribiendo. Con `desde_asistente`, la respuesta sale también en su burbuja.
 
         Con `remoto` (id de una orden de Telegram, ver _orden_remota): burbuja
         «📱 Telegram: …» guardada como no confiable; sin memoria, banco de
@@ -1305,7 +1446,7 @@ class LuneCDWindow(QMainWindow):
             self._set_status("ESPERA · CORTANDO LO ANTERIOR", COLORS["warning"])
             return
         self._turno = {"origen": ORIGEN_REMOTO if remoto else ORIGEN_USUARIO, "ctx": None,
-                       "mascota": bool(desde_mascota), "proveedor": self.current_provider}
+                       "asistente": bool(desde_asistente), "proveedor": self.current_provider}
         if remoto:
             self._turno["remoto"] = remoto
         self.stack.setCurrentIndex(0)
@@ -1323,10 +1464,43 @@ class LuneCDWindow(QMainWindow):
             self.input_field.clear()
             self._adjuntos = []
             self._refrescar_adjuntos()
+        # Bienvenida (11, nucleo/bienvenida.py): mientras Lune te hace sus tres preguntas, lo
+        # que escribes (aquí o en el chat de la burbuja, si ahí viste la pregunta) es la
+        # respuesta: se guarda al instante, sin IA ni herramientas (va antes que el comando
+        # directo: «abre…» no es un nombre). Si no la habías visto, Lune te la enseña. Ni los
+        # adjuntos ni las órdenes de Telegram pasan por aquí. isinstance: una ventana de
+        # mentira (MagicMock) nunca tiene bienvenida.
+        bienv = getattr(self, "_bienvenida", None)
+        turno_b = None
+        if not remoto and not adjuntos_envio and isinstance(bienv, Bienvenida):
+            try:
+                turno_b = bienv.turno(text, vista=self._vista_bienvenida(desde_asistente))
+            except Exception as e:
+                log_error(f"[bienvenida] {e}")
+        if isinstance(bienv, Bienvenida):
+            self._guardar_pregunta_bienvenida()          # la pregunta que se veía, antes que esto
         if remoto:
             self._guardar_turno("user", visible, adjuntos=adjuntos_envio, no_confiable=True)
+        elif turno_b is not None:
+            self._guardar_turno("user", text, adjuntos=adjuntos_envio, bienvenida=True)
         else:
             self._guardar_turno("user", text, adjuntos=adjuntos_envio)
+        if turno_b is not None:
+            respuesta_b = turno_b.respuesta
+            self._burbuja_bot(respuesta_b)
+            self._guardar_turno("assistant", respuesta_b, bienvenida=True)
+            self._eco_asistente(respuesta_b, fin=True)
+            try:
+                clave = bienv.clave_paso()
+                marcas = self._marcas_bienvenida()
+                marcas["ventana"] = clave                 # la respuesta sale en la ventana
+                if desde_asistente:
+                    marcas["burbuja"] = clave             # …y en la burbuja
+                bienv.marcar_dicha()                      # la siguiente ya se dice aquí
+            except Exception as e:
+                log_error(f"[bienvenida] {e}")
+            self.lune_face.set_state(turno_b.cara or "happy", auto_revert_ms=4000)
+            self.voice.speak(respuesta_b); self._scroll_bottom(); return
 
         if not adjuntos_envio:
             # Lo pidió la persona con sus palabras («abre youtube», «avísame en 10
@@ -1346,7 +1520,7 @@ class LuneCDWindow(QMainWindow):
                     ctx["origen"] = ORIGEN_REMOTO
                 self._turno["ctx"] = ctx
                 self._ejecutar_acciones(llamadas, ORIGEN_REMOTO if remoto else ORIGEN_USUARIO, ctx,
-                                        mascota=bool(desde_mascota), directo=True, remoto=remoto)
+                                        asistente=bool(desde_asistente), directo=True, remoto=remoto)
                 self._scroll_bottom(); return
 
         # Con archivos adjuntos siempre va a la IA: ni la memoria ni el banco
@@ -1357,7 +1531,7 @@ class LuneCDWindow(QMainWindow):
             if respuesta_memoria:
                 self._burbuja_bot(respuesta_memoria)
                 self._guardar_turno("assistant", respuesta_memoria)
-                self._eco_mascota(respuesta_memoria, fin=True)
+                self._eco_asistente(respuesta_memoria, fin=True)
                 self.lune_face.set_state("happy", auto_revert_ms=4000); self._scroll_bottom(); return
 
             # Banco de respuestas instantáneas (saludos, gracias, hora…) — sin IA
@@ -1367,19 +1541,19 @@ class LuneCDWindow(QMainWindow):
                 if rta_rapida:
                     self._burbuja_bot(rta_rapida)
                     self._guardar_turno("assistant", rta_rapida)
-                    self._eco_mascota(rta_rapida, fin=True)
+                    self._eco_asistente(rta_rapida, fin=True)
                     self.lune_face.set_state("happy", auto_revert_ms=4000)
                     self.voice.speak(rta_rapida); self._scroll_bottom(); return
 
-        # La mascota contesta solo con la nube (10.9): sin clave de OpenRouter lo dice y
+        # La asistente contesta solo con la nube (10.9): sin clave de OpenRouter lo dice y
         # no cae al modelo local. Lo de arriba (órdenes, memoria, respuestas
         # instantáneas) no necesita modelo y funciona igual. La ventana, con el suyo.
         proveedor = self.current_provider
-        if desde_mascota and not remoto:
+        if desde_asistente and not remoto:
             if not str(datos.openrouter_key() or "").strip():
-                self._burbuja_bot(AVISO_MASCOTA_SIN_NUBE)
-                self._guardar_turno("assistant", AVISO_MASCOTA_SIN_NUBE)
-                self._eco_mascota(AVISO_MASCOTA_SIN_NUBE, fin=True)
+                self._burbuja_bot(AVISO_ASISTENTE_SIN_NUBE)
+                self._guardar_turno("assistant", AVISO_ASISTENTE_SIN_NUBE)
+                self._eco_asistente(AVISO_ASISTENTE_SIN_NUBE, fin=True)
                 self._scroll_bottom(); return
             proveedor = "openrouter"
 
@@ -1433,12 +1607,12 @@ class LuneCDWindow(QMainWindow):
             origen = ORIGEN_REMOTO
         else:
             origen = ORIGEN_NO_CONFIABLE if (adjuntos_envio or contexto_notas) else ORIGEN_USUARIO
-        # Con la mascota fuera el modo es "mascota"/"vrm": también las suyas (dormir…).
+        # Con la asistente fuera el modo es "asistente"/"vrm": también las suyas (dormir…).
         modo = self._modo_acciones()
         ctx = ctx_acciones(self.ai_manager, proveedor, modo)
         if remoto:
             ctx["origen"] = ORIGEN_REMOTO           # todas marcadas «(pide permiso)» en el prompt
-        self._turno = {"origen": origen, "ctx": ctx, "mascota": bool(desde_mascota),
+        self._turno = {"origen": origen, "ctx": ctx, "asistente": bool(desde_asistente),
                        "proveedor": proveedor}
         if remoto:
             self._turno["remoto"] = remoto
@@ -1477,7 +1651,7 @@ class LuneCDWindow(QMainWindow):
         visible = marcadores.limpiar_para_mostrar(partial)
         if self._voz_stream is not None:
             self._voz_stream.escribir(visible)
-        self._eco_mascota(visible)          # si el turno salió del chat de la mascota
+        self._eco_asistente(visible)          # si el turno salió del chat de la asistente
         # La cara cambia según llegan los <|ACT|> (salvo que la voz vaya a leer la
         # respuesta al final: entonces cambia al ritmo de la voz).
         if self._seguidor is not None and not self._voz_lee_al_final():
@@ -1545,10 +1719,10 @@ class LuneCDWindow(QMainWindow):
 
         # Las acciones que pide la IA solo se ejecutan si el usuario las tiene
         # permitidas en Configuración → Rendimiento, y nunca tras «Detener». Lo
-        # que pide permiso pregunta (QMessageBox o junto a la mascota) y su
+        # que pide permiso pregunta (QMessageBox o junto a la asistente) y su
         # resultado llega después por _on_resultado_accion.
         if llamadas and not getattr(self, "_cancelado", False):
-            self._ejecutar_acciones(llamadas, origen, ctx, mascota=bool(turno.get("mascota")),
+            self._ejecutar_acciones(llamadas, origen, ctx, asistente=bool(turno.get("asistente")),
                                     remoto=remoto)
 
         self.memoria.procesar_respuesta_lune(respuesta_limpia)
@@ -1561,7 +1735,7 @@ class LuneCDWindow(QMainWindow):
         con_acts = bool(expresiones.emociones(plan))
         if con_acts and hablable.strip():
             burbuja.update_text(hablable)   # la burbuja final sin marcadores
-        self._eco_mascota(hablable if hablable.strip() else respuesta_limpia, fin=True)
+        self._eco_asistente(hablable if hablable.strip() else respuesta_limpia, fin=True)
         hablo = False
         cancelado = getattr(self, "_cancelado", False)
         if self._voz_stream is not None:
@@ -1597,19 +1771,19 @@ class LuneCDWindow(QMainWindow):
     _ESTADOS_PROCESO = ("typing", "reading", "thinking", "error", "confused")
 
     def _expresar(self, emocion: str):
-        """Emoción canónica del modelo → cara del escenario y mascota (se queda)."""
+        """Emoción canónica del modelo → cara del escenario y asistente (se queda)."""
         if not emocion:
             return
         estado = lune_face.estado_desde_emocion(emocion)
         self.lune_face.set_state(estado, auto_revert_ms=6000 if estado in self._ESTADOS_PROCESO else 0)
-        ov = self._mascota_viva()
+        ov = self._asistente_viva()
         if ov is not None and ov.isVisible():
-            ov.set_emocion(emocion, 0)     # la mascota sí tiene clip/gesto para cada emoción
+            ov.set_emocion(emocion, 0)     # la asistente sí tiene clip/gesto para cada emoción
 
     def _expresar_estado(self, estado: str):
         ms = 6000 if estado in self._ESTADOS_PROCESO else 0
         self.lune_face.set_state(estado, auto_revert_ms=ms)
-        ov = self._mascota_viva()
+        ov = self._asistente_viva()
         if ov is not None and ov.isVisible():
             ov.set_estado(estado, ms)
 
@@ -1643,13 +1817,13 @@ class LuneCDWindow(QMainWindow):
         self.stop_btn.hide(); self.send_btn.show()
         self._set_status("ERROR", COLORS["error"]); self.input_field.setEnabled(True); self.input_field.setFocus()
         self.lune_face.set_state("error", auto_revert_ms=8000)
-        self._eco_mascota(f"✕ {error}", fin=True)
+        self._eco_asistente(f"✕ {error}", fin=True)
         remoto = (self._turno or {}).get("remoto")
         if remoto:                               # p. ej. Ollama apagado: que se entienda allí
             self._responder_telegram(remoto, f"✕ No pude responder: {error}")
         self._scroll_bottom()
 
-    # ── ACCIONES DEL MODELO, VOZ Y CHAT DE LA MASCOTA ───────────────────────────
+    # ── ACCIONES DEL MODELO, VOZ Y CHAT DE LA ASISTENTE ───────────────────────────
     def _acciones_locales(self) -> bool:
         """¿Procesa esta app las <|CALL|>? No si están apagadas (acciones_ia) ni si
         respondió el host (modo terminal): allí ya se ejecutaron y el texto llega limpio."""
@@ -1665,23 +1839,23 @@ class LuneCDWindow(QMainWindow):
         self._scroll_bottom()
         return texto
 
-    def _ejecutar_acciones(self, llamadas, origen, ctx, *, mascota: bool = False,
+    def _ejecutar_acciones(self, llamadas, origen, ctx, *, asistente: bool = False,
                            directo: bool = False, remoto: str = "") -> None:
         """
-        Corre las acciones de un turno. Las del chat de la mascota, las que pidió la
+        Corre las acciones de un turno. Las del chat de la asistente, las que pidió la
         persona con sus palabras y las de una orden de Telegram (`remoto` = su id)
         llevan su destino con el resultado (llegue en línea, tras aprobar o al
-        caducar): el ✓/✕ sale también en la burbuja de la mascota aunque entre
+        caducar): el ✓/✕ sale también en la burbuja de la asistente aunque entre
         tanto hayas escrito en la ventana, el de lo pedido se guarda en la
         conversación y el de una orden vuelve a Telegram. El resto, por
         AccionesQt.resultado como siempre.
         """
         if not llamadas:
             return
-        if not (mascota or directo or remoto):
+        if not (asistente or directo or remoto):
             self.acciones.ejecutar(llamadas, origen, ctx)
             return
-        info = {"mascota": bool(mascota), "directo": bool(directo)}
+        info = {"asistente": bool(asistente), "directo": bool(directo)}
         if remoto:
             info["remoto"] = str(remoto)
             origen = ORIGEN_REMOTO                   # todo con aprobación en el PC
@@ -1699,8 +1873,8 @@ class LuneCDWindow(QMainWindow):
             else:
                 self._guardar_turno("assistant", texto)
             self.lune_face.set_state("happy" if res.ok else "error", auto_revert_ms=5000)
-        if info.get("mascota"):
-            self._burbuja_mascota(texto, fin=True)
+        if info.get("asistente"):
+            self._burbuja_asistente(texto, fin=True)
         if remoto:
             self._responder_telegram(remoto, texto)
 
@@ -1758,7 +1932,7 @@ class LuneCDWindow(QMainWindow):
         está respondiendo, que está ocupada. Si no, entra por _send_message con
         `remoto`: burbuja «📱 Telegram: …», comando directo sin IA o turno de IA
         con origen 'remoto'. TODO se aprueba en el PC (QMessageBox con la ventana
-        delante o junto a la mascota), nunca desde Telegram.
+        delante o junto a la asistente), nunca desde Telegram.
         """
         oid, texto = str(oid or ""), str(texto or "").strip()
         if not oid or not texto:
@@ -1777,17 +1951,17 @@ class LuneCDWindow(QMainWindow):
 
     def _ventana_a_la_vista(self) -> bool:
         """¿Se verá un QMessageBox sobre la ventana? Solo si está visible, sin
-        minimizar y activa, y el turno no salió del chat de la mascota. Si no, la
-        pregunta va junto a la mascota (siempre encima): nunca caduca sin verse."""
+        minimizar y activa, y el turno no salió del chat de la asistente. Si no, la
+        pregunta va junto a la asistente (siempre encima): nunca caduca sin verse."""
         try:
             return bool(self.isVisible() and not self.isMinimized() and self.isActiveWindow()
-                        and not (self._turno or {}).get("mascota"))
+                        and not (self._turno or {}).get("asistente"))
         except Exception:
             return False
 
-    def _ancla_mascota(self):
-        """Rectángulo global de la mascota visible (para la pregunta «¿Lo hago?»), o None."""
-        ov = self._mascota_viva()
+    def _ancla_asistente(self):
+        """Rectángulo global de la asistente visible (para la pregunta «¿Lo hago?»), o None."""
+        ov = self._asistente_viva()
         if ov is None or not ov.isVisible():
             return None
         try:
@@ -1837,9 +2011,9 @@ class LuneCDWindow(QMainWindow):
         except Exception:
             return None
 
-    def _chat_desde_mascota(self, texto: str) -> bool:
+    def _chat_desde_asistente(self, texto: str) -> bool:
         """
-        on_chat de la mascota (EntradaChat bajo ella): lo que escribes ahí va por
+        on_chat de la asistente (EntradaChat bajo ella): lo que escribes ahí va por
         el flujo normal de la ventana (mismo historial y memoria) y la respuesta
         se ve también en su burbuja. False si aún está respondiendo a otra cosa.
         """
@@ -1847,7 +2021,7 @@ class LuneCDWindow(QMainWindow):
         if not texto:
             return False
         if self._worker_vivo():                  # también mientras corta tras «Detener»
-            ov = self._mascota_viva()
+            ov = self._asistente_viva()
             if ov is not None and hasattr(ov, "burbuja_texto"):
                 try:
                     ov.burbuja_texto("Espera, aún estoy con lo anterior…")
@@ -1855,20 +2029,20 @@ class LuneCDWindow(QMainWindow):
                 except Exception:
                     pass
             return False
-        self._send_message(texto=texto, desde_mascota=True)
+        self._send_message(texto=texto, desde_asistente=True)
         return True
 
-    def _eco_mascota(self, texto: str, fin: bool = False):
-        """Si el turno salió del chat de la mascota: el texto en su burbuja
+    def _eco_asistente(self, texto: str, fin: bool = False):
+        """Si el turno salió del chat de la asistente: el texto en su burbuja
         (burbuja_texto) y, al acabar, burbuja_fin con el tiempo de lectura."""
-        if not (self._turno or {}).get("mascota"):
+        if not (self._turno or {}).get("asistente"):
             return
-        self._burbuja_mascota(texto, fin)
+        self._burbuja_asistente(texto, fin)
 
-    def _burbuja_mascota(self, texto: str, fin: bool = False):
-        """El texto en la burbuja de la mascota, solo si está a la vista: oculta, cada
-        trozo del streaming la hacía reaparecer sola junto a una mascota invisible."""
-        ov = self._mascota_viva()
+    def _burbuja_asistente(self, texto: str, fin: bool = False):
+        """El texto en la burbuja de la asistente, solo si está a la vista: oculta, cada
+        trozo del streaming la hacía reaparecer sola junto a una asistente invisible."""
+        ov = self._asistente_viva()
         if ov is None or not hasattr(ov, "burbuja_texto"):
             return
         try:
@@ -1883,7 +2057,7 @@ class LuneCDWindow(QMainWindow):
             if fin and hasattr(ov, "burbuja_fin"):
                 ov.burbuja_fin(max(8000, len(texto) * 1000 // 15))
         except Exception as e:
-            log_error(f"[mascota] burbuja: {e}")
+            log_error(f"[asistente] burbuja: {e}")
 
     # ── HELPERS ───────────────────────────────────────────────────────────────
 
@@ -1942,85 +2116,85 @@ class LuneCDWindow(QMainWindow):
             self.stack.setCurrentIndex(0)
 
     def _toggle_overlay(self):
-        """Muestra u oculta la mascota flotante (avatar sobre el escritorio).
+        """Muestra u oculta la asistente flotante (avatar sobre el escritorio).
         Con avatar.render = "vrm" es el avatar 3D (ui/companion.py); si no, los
         sprites ligeros. Mientras está fuera, el escenario lateral no la dibuja."""
         if self._overlay is None or getattr(self._overlay, "cerrado", False):
-            self._overlay = self._crear_mascota()
+            self._overlay = self._crear_asistente()
         if self._overlay.isVisible():
             self._overlay.hide()
         else:
             self._overlay.show(); self._overlay.raise_()
 
-    def _crear_mascota(self):
+    def _crear_asistente(self):
         render = str(self.config.get("avatar", "render", "sprites") or "sprites")
         ov = None
         # Sin icono propio en la bandeja: la bandeja es una sola (corte 4, ui/bandeja.py).
         if render == "vrm":
             try:
                 from ui.companion import CompanionFlotante
-                ov = crear_mascota(CompanionFlotante, self.config, ai_manager=self.ai_manager,
-                                   render="vrm")
+                ov = crear_asistente(CompanionFlotante, self.config, ai_manager=self.ai_manager,
+                                     render="vrm")
             except Exception as e:
-                log_error(f"[mascota] no pude abrir el avatar 3D ({e}); uso sprites")
+                log_error(f"[asistente] no pude abrir el avatar 3D ({e}); uso sprites")
                 ov = None
         if ov is None:
-            ov = crear_mascota(AvatarOverlay, self.config)
+            ov = crear_asistente(AvatarOverlay, self.config)
         try:
-            ov.visibilidad.connect(self._on_mascota_visible)
+            ov.visibilidad.connect(self._on_asistente_visible)
         except Exception:
             pass
         try:
-            ov.recrear.connect(self._mascota_recrear)      # arrancó en vídeo y ya hay .vrm
+            ov.recrear.connect(self._asistente_recrear)      # arrancó en vídeo y ya hay .vrm
         except Exception:
             pass
-        # Chat de la mascota (doble clic → EntradaChat): envía por el flujo normal
-        # de la ventana. La mascota llama a `on_chat(texto)` si lo tiene puesto.
-        on_chat = getattr(self, "_chat_desde_mascota", None)
+        # Chat de la asistente (doble clic → EntradaChat): envía por el flujo normal
+        # de la ventana. La asistente llama a `on_chat(texto)` si lo tiene puesto.
+        on_chat = getattr(self, "_chat_desde_asistente", None)
         if callable(on_chat):
             try:
                 ov.on_chat = on_chat
             except Exception:
                 pass
-        self._escritorio_mascota(ov)
+        self._escritorio_asistente(ov)
         return ov
 
-    def _escritorio_mascota(self, ov):
-        """La mascota flotante nueva (o None) → ServiciosEscritorio (BusEstado y eventos)."""
+    def _escritorio_asistente(self, ov):
+        """La asistente flotante nueva (o None) → ServiciosEscritorio (BusEstado y eventos)."""
         esc = getattr(self, "escritorio", None)
         if esc is None:
             return
         try:
             render = None if ov is None else (
                 "sprites" if isinstance(ov, AvatarOverlay) else str(getattr(ov, "render", "") or ""))
-            esc.set_mascota(ov, render=render)
+            esc.set_asistente(ov, render=render)
         except Exception as e:
-            log_error(f"[escritorio] no pude enganchar la mascota: {e}")
+            log_error(f"[escritorio] no pude enganchar la asistente: {e}")
 
-    def _on_mascota_visible(self, fuera: bool):
+    def _on_asistente_visible(self, fuera: bool):
         """Lune fuera → el escenario de la barra lateral se apaga (no verla doble)."""
         if hasattr(self, "lune_face"):
             self.lune_face.setVisible(not fuera)
 
-    def _mascota_viva(self):
+    def _asistente_viva(self):
         ov = self._overlay
         return ov if (ov is not None and not getattr(ov, "cerrado", False)) else None
 
-    # ── Herramientas de la mascota (mascota_dormir / despertar / tamano) ──────
-    def _registrar_herramientas_mascota(self):
-        """Handlers del catálogo (riesgo ESCRITURA, sin aprobación, modos mascota/vrm)
+    # ── Herramientas de la asistente (asistente_dormir / despertar / tamano) ──────
+    def _registrar_herramientas_asistente(self):
+        """Handlers del catálogo (riesgo ESCRITURA, sin aprobación, modos asistente/vrm)
         por el registro de ServiciosEscritorio (llegan al ToolManager y al Ejecutor)."""
-        for nombre, fn in (("mascota_dormir", self._h_mascota_dormir),
-                           ("mascota_despertar", self._h_mascota_despertar),
-                           ("mascota_tamano", self._h_mascota_tamano)):
+        for nombre, fn in (("asistente_dormir", self._h_asistente_dormir),
+                           ("asistente_despertar", self._h_asistente_despertar),
+                           ("asistente_tamano", self._h_asistente_tamano)):
             try:
                 self.escritorio.registrar_herramienta(nombre, fn)
             except Exception as e:
                 log_error(f"[acciones] no pude registrar {nombre}: {e}")
 
-    def _mascota_a_la_vista(self):
-        """La mascota flotante si existe, no está cerrada y se ve; si no, None."""
-        ov = self._mascota_viva()
+    def _asistente_a_la_vista(self):
+        """La asistente flotante si existe, no está cerrada y se ve; si no, None."""
+        ov = self._asistente_viva()
         if ov is None:
             return None
         try:
@@ -2029,14 +2203,14 @@ class LuneCDWindow(QMainWindow):
             return None
 
     def _modo_acciones(self) -> str:
-        """Modo del catálogo para este turno: con la mascota fuera, "vrm" (3D) o
-        "mascota" (sprites); si no, MODO_ACCIONES ("normal")."""
-        ov = self._mascota_a_la_vista()
+        """Modo del catálogo para este turno: con la asistente fuera, "vrm" (3D) o
+        "asistente" (sprites); si no, MODO_ACCIONES ("normal")."""
+        ov = self._asistente_a_la_vista()
         if ov is None:
             return self.MODO_ACCIONES
         if isinstance(ov, AvatarOverlay):
-            return "mascota"
-        return "vrm" if str(getattr(ov, "render", "") or "") == "vrm" else "mascota"
+            return "asistente"
+        return "vrm" if str(getattr(ov, "render", "") or "") == "vrm" else "asistente"
 
     @staticmethod
     def _correr_en_ui(fn):
@@ -2065,13 +2239,13 @@ class LuneCDWindow(QMainWindow):
 
         self._en_ui_senal.emit(correr)
         if not hecho.wait(self.ESPERA_UI_S if espera_s is None else espera_s):
-            raise TimeoutError("la mascota no respondió a tiempo")
+            raise TimeoutError("la interfaz no respondió a tiempo")
         if "e" in caja:
             raise caja["e"]
         return caja.get("r")
 
-    def _ctx_mascota(self, ctx, **extra) -> dict:
-        """ctx del Ejecutor + la mascota a la vista (None si no hay: la herramienta
+    def _ctx_asistente(self, ctx, **extra) -> dict:
+        """ctx del Ejecutor + la asistente a la vista (None si no hay: la herramienta
         devuelve un error claro). `en_ui` solo desde otro hilo: en el de Qt se llama
         directo y el resultado de dormir()/despertar() cuenta."""
         if ctx is None:
@@ -2081,24 +2255,24 @@ class LuneCDWindow(QMainWindow):
         else:
             c = {"contexto": ctx}
         c.update(extra)
-        c["mascota"] = self._mascota_a_la_vista()
+        c["asistente"] = self._asistente_a_la_vista()
         if threading.get_ident() != self._hilo_qt:
             c["en_ui"] = self.en_ui
         return c
 
-    def _h_mascota_dormir(self, args, ctx=None):
-        return sueno.herramienta_dormir(args, self._ctx_mascota(ctx))
+    def _h_asistente_dormir(self, args, ctx=None):
+        return sueno.herramienta_dormir(args, self._ctx_asistente(ctx))
 
-    def _h_mascota_despertar(self, args, ctx=None):
-        return sueno.herramienta_despertar(args, self._ctx_mascota(ctx))
+    def _h_asistente_despertar(self, args, ctx=None):
+        return sueno.herramienta_despertar(args, self._ctx_asistente(ctx))
 
-    def _h_mascota_tamano(self, args, ctx=None):
-        return vrm.herramienta_tamano(args, self._ctx_mascota(ctx, config=self.config))
+    def _h_asistente_tamano(self, args, ctx=None):
+        return vrm.herramienta_tamano(args, self._ctx_asistente(ctx, config=self.config))
 
     def _on_vrm_cambiado(self):
-        """El panel de modelos VRM importó, asignó o guardó el seguimiento: la mascota
+        """El panel de modelos VRM importó, asignó o guardó el seguimiento: la asistente
         3D carga el modelo que toque (si cambió) y aplica la calibración."""
-        ov = self._mascota_viva()
+        ov = self._asistente_viva()
         if ov is None:
             return
         for metodo in ("recargar_modelo", "aplicar_params_vrm"):
@@ -2107,29 +2281,29 @@ class LuneCDWindow(QMainWindow):
                 try:
                     fn()
                 except Exception as e:
-                    log_error(f"[mascota] {metodo}: {e}")
+                    log_error(f"[asistente] {metodo}: {e}")
 
     def _on_hablando(self, activo: bool):
-        # También con la mascota oculta: si no, al ocultarla mientras habla se
+        # También con la asistente oculta: si no, al ocultarla mientras habla se
         # quedaría «hablando» para siempre (no se duerme, sonidos callados…). La
-        # mascota guarda el estado y se lo pasa a su página al volver a verse.
-        ov = self._mascota_viva()
+        # asistente guarda el estado y se lo pasa a su página al volver a verse.
+        ov = self._asistente_viva()
         if ov is not None and hasattr(ov, "set_hablando"):
             try:
                 ov.set_hablando(bool(activo))
             except Exception:
                 pass
 
-    def _mascota_recrear(self):
+    def _asistente_recrear(self):
         ov = self._overlay
         vis = ov is not None and not getattr(ov, "cerrado", False) and ov.isVisible()
         if ov is not None:
             try: ov.close()
             except Exception: pass
         self._overlay = None
-        self._escritorio_mascota(None)
+        self._escritorio_asistente(None)
         if vis:
-            self._overlay = self._crear_mascota(); self._overlay.show(); self._overlay.raise_()
+            self._overlay = self._crear_asistente(); self._overlay.show(); self._overlay.raise_()
 
     def _toggle_historial(self):
         if self.stack.currentIndex() != 4:
@@ -2156,7 +2330,7 @@ class LuneCDWindow(QMainWindow):
         # Cambiar avatar pack si el personaje define uno
         pack = p.get("avatar_pack", "default")
         lune_face.set_active_pack(pack); self.config.set("avatar", "pack", pack)
-        ov = self._mascota_viva()
+        ov = self._asistente_viva()
         if ov is not None and hasattr(ov, "recargar_modelo"):
             ov.recargar_modelo()                 # el personaje puede traer su propio .vrm
 
@@ -2170,9 +2344,13 @@ class LuneCDWindow(QMainWindow):
             item = self.messages_layout.takeAt(0)
             if item.widget(): item.widget().deleteLater()
         self._add_welcome()
-        saludo = p.get("fraseInicial") or f"Soy {nombre}. Dime qué necesitas."
-        bubble = MessageBubble(saludo, is_user=False, provider_id=self.current_provider)
-        self.messages_layout.insertWidget(self.messages_layout.count()-1, bubble)
+        # Bienvenida a medias: sigue su pregunta, que ya presenta al personaje (sin el
+        # «Dime qué necesitas» delante, que la contradice).
+        if not (isinstance(getattr(self, "_bienvenida", None), Bienvenida)
+                and self._repintar_pregunta_bienvenida([])):
+            saludo = p.get("fraseInicial") or f"Soy {nombre}. Dime qué necesitas."
+            bubble = MessageBubble(saludo, is_user=False, provider_id=self.current_provider)
+            self.messages_layout.insertWidget(self.messages_layout.count()-1, bubble)
         self.lune_face.set_state("happy", auto_revert_ms=4000)
         self.stack.setCurrentIndex(0); self._scroll_bottom()
 
@@ -2350,7 +2528,7 @@ class LuneCDWindow(QMainWindow):
     # ── Cambio de modo en caliente (GestorInterfaz, ui/cambio_interfaz.py) ─────
     def iniciar_servicios(self, estado=None):
         """Bandeja y servicios de escritorio (atajos globales, controladores) y lo que
-        estaba en marcha en la ventana anterior: la mascota fuera (en su posición
+        estaba en marcha en la ventana anterior: la asistente fuera (en su posición
         guardada) y el bot de Telegram (con el modo de órdenes de la config). Una vez."""
         if self._servicios_listos:
             return
@@ -2362,18 +2540,18 @@ class LuneCDWindow(QMainWindow):
             self.escritorio.iniciar()
         except Exception as e:
             log_error(f"[interfaz] servicios de escritorio: {e}")
-        if estado.get("mascota_fuera") and self._mascota_a_la_vista() is None:
+        if estado.get("asistente_fuera") and self._asistente_a_la_vista() is None:
             try:
                 self._toggle_overlay()
             except Exception as e:
-                log_error(f"[interfaz] no pude volver a sacar la mascota: {e}")
+                log_error(f"[interfaz] no pude volver a sacar a la asistente: {e}")
         if estado.get("telegram") and not hilo_vivo(self._tg_worker):
             try:
                 self._toggle_telegram()
             except Exception as e:
                 log_error(f"[interfaz] no pude relanzar el bot de Telegram: {e}")
         # El modo juego forzado a mano (bandeja, radial, atajo) sigue forzado. Al final:
-        # con la mascota ya fuera, el plan la esconde (si se sacara después, contaría
+        # con la asistente ya fuera, el plan la esconde (si se sacara después, contaría
         # como sacada a mano en plena partida).
         forzado = estado.get("juego_forzado")
         juego = getattr(getattr(self, "_servicios_c4", None), "juego", None)
@@ -2396,7 +2574,7 @@ class LuneCDWindow(QMainWindow):
             "proveedor": self.current_provider,
             "voz": bool(getattr(self.voice, "_enabled", False)),
             "sesion": instantanea_sesion(getattr(self, "chats", None)),
-            "mascota_fuera": self._mascota_a_la_vista() is not None,
+            "asistente_fuera": self._asistente_a_la_vista() is not None,
             "telegram": hilo_vivo(self._tg_worker),
             "juego_forzado": juego_forzado_de(getattr(self, "_servicios_c4", None)),
             "minecraft_bot": bot_minecraft_de(getattr(self, "_servicios_c4", None)),
@@ -2431,7 +2609,7 @@ class LuneCDWindow(QMainWindow):
     def cerrar_para_cambio(self) -> dict:
         """Cambio de modo: suelta todo lo que la ventana nueva vuelve a crear y se
         cierra de verdad SIN salir de la app (sin bandeja ni QApplication.quit).
-        Devuelve lo que estaba en marcha (mascota fuera, bot) para relanzarlo."""
+        Devuelve lo que estaba en marcha (asistente fuera, bot) para relanzarlo."""
         self._relevada = True
         # Órdenes de Telegram sin respuesta (la que se está respondiendo y la que espera
         # tu permiso): «Se detuvo…» una vez, antes de parar el bot. La marca se limpia:
@@ -2443,12 +2621,12 @@ class LuneCDWindow(QMainWindow):
         # Corte 4 (bandeja única, atajos, detector de juego, radial, tema), una sola vez
         # y antes que el resto: la ventana nueva monta los suyos en iniciar_servicios
         # (dos a la vez no pueden: RegisterHotKey fallaría) y el modo juego devuelve lo
-        # que cambió (prioridad, voz y la mascota que escondió, que cuenta como «fuera»).
+        # que cambió (prioridad, voz y la asistente que escondió, que cuenta como «fuera»).
         desmontar_servicios_c4(self)
         # IA en curso: cortada (generación nueva, señales fuera: ni pinta ni ejecuta
         # sus <|CALL|>), voz por frases y expresiones programadas fuera; el hilo se
         # retiene hasta que acabe. Si algo de esto falla, el resto se suelta igual (si no,
-        # el bot, la mascota o el hub seguirían vivos y la ventana nueva los duplicaría).
+        # el bot, la asistente o el hub seguirían vivos y la ventana nueva los duplicaría).
         w = self.ai_worker
         try:
             self._cortar_respuesta()
@@ -2467,7 +2645,7 @@ class LuneCDWindow(QMainWindow):
                 pass
             self._grabadora = None
         soltar_hilos(self._transcriptor, self._sondeo_prov, getattr(self, "_git_check", None))
-        parar_temporizadores(getattr(self, "_timer_estado", None))
+        parar_temporizadores(getattr(self, "_timer_estado", None), getattr(self, "_timer_bienvenida", None))
         try:
             self._cancelar_plan()
         except Exception as e:
@@ -2484,8 +2662,8 @@ class LuneCDWindow(QMainWindow):
                 fn()
             except Exception as e:
                 log_error(f"[interfaz] al cerrar: {e}")
-        # Mascota y bot: la ventana nueva los relanza si estaban en marcha.
-        fuera = cerrar_mascota(self._mascota_viva())
+        # Asistente y bot: la ventana nueva los relanza si estaban en marcha.
+        fuera = cerrar_asistente(self._asistente_viva())
         self._overlay = None
         telegram = detener_bot(self._tg_worker)
         self._tg_worker = None
@@ -2505,7 +2683,7 @@ class LuneCDWindow(QMainWindow):
         self.tray = None
         self.hide()
         self.close()
-        return {"mascota_fuera": fuera, "telegram": telegram}
+        return {"asistente_fuera": fuera, "telegram": telegram}
 
     def closeEvent(self, event):
         if getattr(self, "_relevada", False):
@@ -2555,6 +2733,8 @@ class LuneCDWindow(QMainWindow):
             self._overlay.close()
         if hasattr(self, "_timer_estado"):
             self._timer_estado.stop()
+        if getattr(self, "_timer_bienvenida", None) is not None:
+            self._timer_bienvenida.stop()
         if self._hub_cliente is not None:
             self._hub_cliente.detener()
         if self._hub_en_hilo is not None:
@@ -2878,21 +3058,21 @@ def _preparar_arranque(argv, config=None):
 
 def _presentar_principal(ventana, plan, *, mostrar: bool = False) -> str:
     """Enseña la ventana recién creada según el plan de arranque: "ventana" (a la
-    vista), "mascota" (oculta y la mascota fuera) o "bandeja" (oculta, solo el icono;
+    vista), "asistente" (oculta y la asistente fuera) o "bandeja" (oculta, solo el icono;
     los servicios y la bandeja ya arrancaron en el constructor). `mostrar` (alguien
     abrió Lune durante la espera) manda. Sin icono de bandeja nunca queda invisible."""
     if mostrar or plan.mostrar_ventana:
         _mostrar_de_verdad(ventana)
         return "ventana"
-    if plan.abrir_mascota:
+    if plan.abrir_asistente:
         desp = getattr(getattr(ventana, "_servicios_c4", None), "despachador", None)
         ok = False
         try:
-            ok = bool(desp.ejecutar("mascota")) if desp is not None else False
+            ok = bool(desp.ejecutar("asistente")) if desp is not None else False
         except Exception as e:
-            log_error(f"[arranque] no pude sacar la mascota: {e}")
+            log_error(f"[arranque] no pude sacar a la asistente: {e}")
         if ok:
-            return "mascota"
+            return "asistente"
     if getattr(ventana, "tray", None) is None:
         _mostrar_de_verdad(ventana)              # ni bandeja: que se vea algo
         return "ventana"
@@ -3025,7 +3205,7 @@ def main():
             QApplication.instance().quit()
             return
         gestor.adoptar(ventana)
-        # A la vista, o (arranque con Windows) en la bandeja o con la mascota fuera.
+        # A la vista, o (arranque con Windows) en la bandeja o con la asistente fuera.
         _presentar_principal(ventana, plan, mostrar=mostrar)
 
         # Si intentas abrir Lune otra vez, se trae al frente la ventana ACTUAL

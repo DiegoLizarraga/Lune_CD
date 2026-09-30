@@ -1,4 +1,4 @@
-// tests/js/pagina_mmd.test.mjs — window.luneMMD en las páginas de la mascota (corte 9):
+// tests/js/pagina_mmd.test.mjs — window.luneMMD en las páginas de la asistente (corte 9):
 // · companion_vrm.html: antes del módulo se guarda el último «cargar» y sus banderas
 //   (__luneOcioPendiente.mmd) y se repiten; lune_mmd.js + lune_vmd.js + three-vrm-animation +
 //   GLTFLoader se importan (tolerantes) y se registran UNA vez al pedir el primer baile; el
@@ -102,13 +102,13 @@ test('companion_vrm.html: luneMMD antes del módulo guarda el último cargar y s
   assert.deepEqual(JSON.parse(globalThis.luneMMD('estado')), { fase: 'cargando', pendiente: true });
   assert.deepEqual(globalThis.__luneOcioPendiente.mmd.banderas, [['pausa', { on: true }]], 'lo de antes del cargar se olvida');
   await cargarModulo();
-  const mascota = globalThis.luneMascota;
+  const asistente = globalThis.luneAsistente;
   try {
     await tics();
     const f = globalThis.__mmdFalso;
     assert.equal(globalThis.__luneOcioPendiente, null);
     assert.equal(f.instalaciones, 1);
-    assert.ok(mascota.bus.lista().includes('mmd'), 'registrado en el bus del avatar');
+    assert.ok(asistente.bus.lista().includes('mmd'), 'registrado en el bus del avatar');
     assert.equal(f.op.GLTFLoader, GLTFFalso, 'el GLTFLoader del importmap');
     assert.equal(typeof f.op.vmd.parsearVMD, 'function', 'lune_vmd.js');
     assert.equal(typeof f.op.VRMAnimation, 'function');
@@ -145,7 +145,7 @@ test('companion_vrm.html: luneMMD antes del módulo guarda el último cargar y s
     assert.equal(e.id, 'falso', 'el estado del módulo');
     assert.equal(e.quiereSonar, false, 'parado: nada que poner a sonar');
   } finally {
-    try { mascota.destruir(); } catch (_) { /* sigue */ }
+    try { asistente.destruir(); } catch (_) { /* sigue */ }
     delete globalThis.__mmdFalso;
   }
 });
@@ -153,7 +153,7 @@ test('companion_vrm.html: luneMMD antes del módulo guarda el último cargar y s
 test('companion_vrm.html: si el reproductor no carga, el cargar acaba en un evento «mmd» error con su id', async () => {
   const { cargarModulo } = await paginaVRM({ './vrm/lune_mmd.js': MMD_ROTO, '@pixiv/three-vrm-animation': VRMA_FALSO }, '\n// mmd-2');
   await cargarModulo();
-  const mascota = globalThis.luneMascota;
+  const asistente = globalThis.luneAsistente;
   try {
     vaciarCola();
     assert.equal(globalThis.luneMMD('cargar', cargaVMD()), true);
@@ -162,22 +162,22 @@ test('companion_vrm.html: si el reproductor no carga, el cargar acaba en un even
     assert.equal(ev.length, 1);
     assert.equal(ev[0].d.fase, 'error');
     assert.equal(ev[0].d.id, ID);
-    assert.equal(mascota.bus.lista().includes('mmd'), false);
+    assert.equal(asistente.bus.lista().includes('mmd'), false);
     assert.deepEqual(JSON.parse(globalThis.luneMMD('estado')), { fase: 'parado', pendiente: true });
   } finally {
-    try { mascota.destruir(); } catch (_) { /* sigue */ }
+    try { asistente.destruir(); } catch (_) { /* sigue */ }
   }
 });
 
 test('companion_vrm.html con el lune_mmd.js DE VERDAD: una ruta de fuera → evento «mmd» error y estado en JSON', async () => {
   const { cargarModulo } = await paginaVRM({ './vrm/lune_mmd.js': MMD_REAL, '@pixiv/three-vrm-animation': VRMA_FALSO }, '\n// mmd-3');
   await cargarModulo();
-  const mascota = globalThis.luneMascota;
+  const asistente = globalThis.luneAsistente;
   try {
     vaciarCola();
     assert.equal(globalThis.luneMMD('cargar', cargaVMD({ motion: ['http://evil.com/bailes/x.vmd'] })), true);
     await tics(10);
-    assert.ok(mascota.bus.lista().includes('mmd'));
+    assert.ok(asistente.bus.lista().includes('mmd'));
     const ev = vaciarCola().filter((e) => e.t === 'mmd');
     assert.ok(ev.some((e) => e.d.fase === 'error'), JSON.stringify(ev));
     const e = JSON.parse(globalThis.luneMMD('estado'));
@@ -185,7 +185,7 @@ test('companion_vrm.html con el lune_mmd.js DE VERDAD: una ruta de fuera → eve
     assert.equal(e.quiereSonar, true);
     assert.equal(globalThis.luneMMD('parar'), false, 'nada que parar');
   } finally {
-    try { mascota.destruir(); } catch (_) { /* sigue */ }
+    try { asistente.destruir(); } catch (_) { /* sigue */ }
   }
 });
 

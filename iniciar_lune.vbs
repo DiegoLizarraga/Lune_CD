@@ -9,8 +9,8 @@
 '  ARGUMENTOS
 '    (ninguno)             pythonw main.py (pantalla de inicio)
 '    /autoinicio           pythonw main.py --autoinicio
-'                          (sin pantalla de inicio; bandeja, mascota
-'                          o ventana tras la espera: nucleo/arranque.py)
+'                          (sin pantalla de inicio; bandeja, asistente en
+'                          escritorio o ventana tras la espera: nucleo/arranque.py)
 '    /autoinicio /patata   python.exe patata.py --autoinicio en una
 '                          consola MINIMIZADA (no exige PyQt6)
 '    /patata               python.exe patata.py en una consola normal

@@ -3,15 +3,15 @@ ui/modo_juego_qt.py — El modo juego en la app: detector cada 2 s y el plan apl
 
 `ControlModoJuego` es un controlador de `ServiciosEscritorio` (ui/escritorio.py):
 lo registra `montar_escritorio` (ui/montaje_escritorio.py) y recibe
-`set_mascota`, `iniciar` y `detener` como los demás. Cada `intervalo_ms` pide
+`set_asistente`, `iniciar` y `detener` como los demás. Cada `intervalo_ms` pide
 una lectura a `servicios.modo_juego.DetectorJuego` (reglas + histéresis) y al
 cambiar entra o sale del modo juego.
 
 AL ENTRAR (en este orden; al salir se deshace al revés):
   1. `escritorio.prioridad.iniciar("juego")` → BusEstado.juego = True y ceden la
-     pantalla grande, sentada, MMD… (tabla de nucleo/estado_mascota.py).
-  2. `mascota.aplicar_plan_juego(plan)`: ocultar / al fondo / nada, FPS, sin
-     comentarios ni capturas. La mascota solo vuelve a mostrarse si la ocultó
+     pantalla grande, sentada, MMD… (tabla de nucleo/estado_asistente.py).
+  2. `asistente.aplicar_plan_juego(plan)`: ocultar / al fondo / nada, FPS, sin
+     comentarios ni capturas. La asistente solo vuelve a mostrarse si la ocultó
      el modo juego (si el usuario la saca a mano durante la partida, gana él).
   3. `voice.silenciar(True)` si `juego.silenciar` (y solo si no lo estaba ya).
   4. `aplicar_prioridad(True)`: BELOW_NORMAL a Lune y sus QtWebEngineProcess.
@@ -62,7 +62,7 @@ def _llamar(obj: Any, metodo: str, *args) -> Any:
 
 
 class ControlModoJuego(QObject):
-    """Detector de juegos + plan del modo juego sobre la mascota, la voz y el proceso."""
+    """Detector de juegos + plan del modo juego sobre la asistente, la voz y el proceso."""
 
     cambio = pyqtSignal(bool, str)          # (activo, motivo)
 
@@ -82,7 +82,7 @@ class ControlModoJuego(QObject):
             detector = mj.DetectorJuego(config, pids=self._pids,
                                         lune_a_pantalla_completa=self._lune_a_pantalla_completa)
         self.detector = detector
-        self._mascota = getattr(escritorio, "mascota", None)
+        self._asistente = getattr(escritorio, "asistente", None)
         self._activo = False
         self._motivo = ""
         self._plan: Optional[mj.PlanJuego] = None
@@ -114,12 +114,12 @@ class ControlModoJuego(QObject):
         if self._activo:
             self._salir()
 
-    def set_mascota(self, v) -> None:
-        """La mascota cambió. Si hay partida, la nueva recibe el plan (si se crea
+    def set_asistente(self, v) -> None:
+        """La asistente cambió. Si hay partida, la nueva recibe el plan (si se crea
         oculta y el usuario la muestra, gana él). La vieja se suelta tal cual."""
-        if v is self._mascota:
+        if v is self._asistente:
             return
-        self._mascota = v
+        self._asistente = v
         if self._activo and v is not None and self._plan is not None:
             _llamar(v, "aplicar_plan_juego", self._plan)
 
@@ -168,8 +168,8 @@ class ControlModoJuego(QObject):
             nuevo = mj.plan(self.config)
             if nuevo != self._plan:                  # otro plan con la partida en marcha
                 self._plan = nuevo
-                if self._mascota is not None:
-                    _llamar(self._mascota, "aplicar_plan_juego", nuevo)
+                if self._asistente is not None:
+                    _llamar(self._asistente, "aplicar_plan_juego", nuevo)
 
     # ── Tic ─────────────────────────────────────────────────────────────────────
     def _tic(self) -> None:
@@ -213,9 +213,9 @@ class ControlModoJuego(QObject):
             self._deshacer.append(lambda: prioridad.terminar("juego"))
         else:
             _llamar(getattr(self.escritorio, "estado", None), "actualizar", juego=True)
-        if self._mascota is not None:
-            _llamar(self._mascota, "aplicar_plan_juego", plan)
-        self._deshacer.append(self._devolver_mascota)
+        if self._asistente is not None:
+            _llamar(self._asistente, "aplicar_plan_juego", plan)
+        self._deshacer.append(self._devolver_asistente)
         voz = self.voice
         if plan.silenciar_voz and voz is not None and not getattr(voz, "silenciada", False):
             _llamar(voz, "silenciar", True)
@@ -242,9 +242,9 @@ class ControlModoJuego(QObject):
         _log_info("[juego] sale")
         self.cambio.emit(False, "")
 
-    def _devolver_mascota(self) -> None:
-        if self._mascota is not None:
-            _llamar(self._mascota, "aplicar_plan_juego", None)
+    def _devolver_asistente(self) -> None:
+        if self._asistente is not None:
+            _llamar(self._asistente, "aplicar_plan_juego", None)
 
     def _llamar_prioridad(self, baja: bool) -> None:
         try:

@@ -80,7 +80,7 @@ class ConfigFalsa:
 
 
 # Sin handler todavía: pantalla_grande y baile_pausa (cortes 5 y 6).
-CON_HANDLER = {"mostrar_lune", "mascota", "menu_radial", "comentar", "voz", "llamada", "fantasma", "dormir"}
+CON_HANDLER = {"mostrar_lune", "asistente", "menu_radial", "comentar", "voz", "llamada", "fantasma", "dormir"}
 
 
 @pytest.fixture
@@ -201,7 +201,7 @@ def test_validar(at):
 def test_error_de_otra_app_al_arrancar_se_ve_en_estado(at):
     at.g.ocupados.add("ctrl+alt+shift+m")
     at.iniciar()
-    e = next(x for x in at.estado() if x["id"] == "mascota")
+    e = next(x for x in at.estado() if x["id"] == "asistente")
     assert e["error"] and not e["registrado"]
 
 

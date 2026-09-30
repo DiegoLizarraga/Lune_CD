@@ -3,11 +3,11 @@ Tests del tema de color en los CSS y las páginas:
 
 - scripts/tema_canales.py: convierte los rgba() de la paleta a canales con
   respaldo, es idempotente, conserva CRLF y no deja nada por convertir en los
-  archivos del tema (tokens, componentes, páginas de la mascota y _ds_bundle.js).
+  archivos del tema (tokens, componentes, páginas de la asistente y _ds_bundle.js).
 - En esos archivos no quedan literales cian/azul (ni amarillo/tinta de la
   paleta) salvo como respaldo de var(), y todo var(--x-rgb) lleva un respaldo
   con los MISMOS números que el token: con el tema cian se ve exactamente igual.
-- Las dos páginas de la mascota cargan tema.js antes de su código y definen
+- Las dos páginas de la asistente cargan tema.js antes de su código y definen
   window.luneTema (respaldo) y window.luneCabeza.
 - Con Node: todo lo que genera nucleo/tema.py lo acepta la lista blanca de
   ui_web/tema.js (el mapa entero, para cada preset y combinación de banderas).
@@ -139,7 +139,7 @@ def test_el_bundle_y_sus_componentes_dicen_lo_mismo():
             assert regla.strip() in bundle, (jsx, regla.strip())
 
 
-# ── Las páginas de la mascota ──────────────────────────────────────────────────
+# ── Las páginas de la asistente ──────────────────────────────────────────────────
 
 @pytest.mark.parametrize("pagina", ["companion.html", "companion_vrm.html"])
 def test_las_paginas_cargan_tema_js_y_exponen_la_api(pagina):

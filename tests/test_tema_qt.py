@@ -4,7 +4,7 @@ Tests de ui/tema_qt.py (ControlTema) y ui/tema_qss.py.
 Offscreen y con un config de mentira que cuenta las escrituras (y uno real de
 nucleo.config en una carpeta temporal): la vista previa no toca el disco, varios
 guardados seguidos son UNA escritura a los 400 ms (aquí, a los pocos ms), la
-mascota recibe el tema al engancharse y en cada cambio, y el QSS y los colores del
+asistente recibe el tema al engancharse y en cada cambio, y el QSS y los colores del
 radial salen de la paleta.
 """
 import json
@@ -36,7 +36,7 @@ class ConfigFalsa:
         return False
 
 
-class MascotaFalsa:
+class AsistenteFalsa:
     def __init__(self):
         self.temas = []
 
@@ -133,9 +133,9 @@ def test_presets_restablecer_y_entradas_raras(qapp, control):
     assert len(control.config.escrituras) == 1
 
 
-def test_la_mascota_recibe_el_tema(control):
-    m = MascotaFalsa()
-    control.set_mascota(m)
+def test_la_asistente_recibe_el_tema(control):
+    m = AsistenteFalsa()
+    control.set_asistente(m)
     assert m.temas == ["null"], "al engancharse, el tema actual"
     control.previsualizar({"preset": "violeta"})
     assert len(m.temas) == 2 and json.loads(m.temas[-1]) == json.loads(control.css_json())
@@ -146,11 +146,11 @@ def test_la_mascota_recibe_el_tema(control):
         def aplicar_tema(self, css):
             raise RuntimeError("wrapped C/C++ object has been deleted")
 
-    control.set_mascota(Destruida())
-    assert control._mascota is None
-    control.set_mascota(object())                                     # sin aplicar_tema: se ignora
+    control.set_asistente(Destruida())
+    assert control._asistente is None
+    control.set_asistente(object())                                     # sin aplicar_tema: se ignora
     control.previsualizar({"preset": "cian"})
-    control.set_mascota(None)
+    control.set_asistente(None)
 
 
 def test_recargar_lee_lo_que_escribio_otro(control):
