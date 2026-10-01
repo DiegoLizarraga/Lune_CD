@@ -9,4 +9,4 @@ LuneCD-Setup-<versión>.exe, el tag es v<versión> y el actualizador compara con
 esto. Súbela en cada versión (packaging/ y .github/workflows/release.yml la leen).
 """
 
-APP_VERSION = "11.2"
+APP_VERSION = "11.3"

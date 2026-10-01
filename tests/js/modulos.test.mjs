@@ -369,3 +369,85 @@ test('registro animado: iniciar/detener llaman a alIniciar/alDetener una vez', (
   assert.equal(reg.detener(), false);
   assert.deepEqual(log, ['ini', 'happy', 'fin']);
 });
+
+// ── En reposo, el paso siguiente con un temporizador (11.2) ───────────────────────
+
+/** Registro con rAF y temporizador falsos sobre el mismo reloj. */
+function registroConEspera() {
+  let ms = 0, n = 0;
+  const frames = [];
+  const timers = new Map();
+  const tm = {
+    poner(f, d) { const id = ++n; timers.set(id, { f, at: ms + d }); return id; },
+    quitar(id) { timers.delete(id); },
+  };
+  const { reg, stage } = registroAnim({ raf: (f) => { frames.push(f); return frames.length; }, ahora: () => ms, temporizador: tm });
+  let ocupado = false, ticks = 0;
+  reg.registrar({ nombre: 'm', tick: () => { ticks++; }, ocupado: () => ocupado, api: { ocupar: (on) => { ocupado = !!on; return ocupado; } } });
+  /** `seg` s: rAF en cada refresco de 60 Hz, temporizadores cuando vencen. */
+  const simular = (seg) => {
+    let rafs = 0, esperas = 0, dobles = 0;
+    const t0 = ticks, fin = ms + seg * 1000;
+    while (ms < fin - 1e-6) {
+      const vsync = ms + 1000 / 60;
+      for (;;) {
+        let prox = null;
+        for (const [id, x] of timers) if (!prox || x.at < prox[1].at) prox = [id, x];
+        if (!prox || prox[1].at > vsync) break;
+        timers.delete(prox[0]); ms = Math.max(ms, prox[1].at); esperas++; prox[1].f();
+      }
+      ms = vsync;
+      for (const f of frames.splice(0)) { rafs++; f(ms); }
+      if (frames.length && timers.size) dobles++;
+    }
+    return { rafs, esperas, dobles, ticks: ticks - t0 };
+  };
+  return { reg, stage, simular, frames, timers, ocupar: (on) => { ocupado = on; } };
+}
+
+test('registro animado en reposo: 15 pasos por segundo con temporizador y sin rAF a 60/s', () => {
+  const { reg, simular } = registroConEspera();
+  reg.iniciar();
+  simular(0.5);
+  const r = simular(4);
+  assert.ok(r.ticks >= 58 && r.ticks <= 61, `≈ fpsReposo 15 (${r.ticks} en 4 s)`);
+  assert.ok(r.rafs <= 1, `${r.rafs} rAF en 4 s (antes, 240)`);
+  assert.equal(r.dobles, 0, 'un solo bucle');
+  reg.detener();
+});
+
+test('registro animado: una llamada a un módulo o una emoción cortan la espera; ocupado, rAF a 60', () => {
+  const { reg, simular, frames, timers } = registroConEspera();
+  reg.iniciar();
+  simular(0.5);
+  assert.equal(timers.size, 1);
+  assert.equal(reg.api('m', 'ocupar', true), true);
+  assert.equal(timers.size, 0, 'espera cortada');
+  assert.equal(frames.length, 1, 'paso ya');
+  const r = simular(1);
+  assert.ok(r.ticks >= 58 && r.rafs >= 58 && r.esperas === 0, JSON.stringify(r));
+  reg.api('m', 'ocupar', false);
+  simular(0.5);
+  assert.equal(timers.size, 1, 'vuelve a esperar');
+  reg.emocion('happy');
+  assert.equal(timers.size, 0);
+  simular(0.5);
+  reg.estado({ cursor: { nx: 0.3 } });
+  assert.equal(timers.size, 1, 'el cursor no despierta');
+  reg.estado({ hablando: true });
+  assert.equal(timers.size, 0, 'lo demás sí');
+  reg.detener();
+  assert.equal(timers.size + frames.length, 1, 'detener quita la espera (el rAF ya pedido no corre)');
+  frames.splice(0).forEach((f) => f(0));
+  assert.equal(timers.size + frames.length, 0, 'parado');
+});
+
+test('registro animado: con raf inyectado y sin temporizador (los tests de siempre), nunca espera', () => {
+  let n = 0;
+  const { reg } = registroAnim({ raf: () => { n++; return n; }, ahora: () => 0 });
+  reg.iniciar();
+  assert.equal(n, 1);
+  reg.registrar({ nombre: 'x' });
+  assert.equal(n, 1, 'sin espera que cortar');
+  reg.detener();
+});

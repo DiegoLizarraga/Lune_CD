@@ -80,6 +80,15 @@ nadie la usara. La ventana le dice a la página si es la activa (window.luneFoco
 changeEvent de ActivationChange/WindowStateChange, showEvent, hideEvent y al cargar) y la
 página decide (ui_web/lune_reposo.js): sin foco 20 s o sin tocarla 90 s, body.lune-quieta
 congela las animaciones y la barra pausa su vídeo y su avatar 3D. Opción efectos.pausar_sin_foco.
+
+CARGA PEREZOSA (11.2): con `cargar_al_mostrar=True` (main.py, arranque con Windows a la bandeja o
+con la asistente fuera: la ventana nace oculta) la página NO se pide hasta el primer showEvent.
+Hasta entonces no hay proceso de render ni React ni Babel (unos 100 MB y el arranque de la
+página), y la mayoría de las veces nadie abre la ventana. Todo lo demás arranca igual: el puente
+y los objetos del canal se registran antes (setUrl llega después, en _cargar_pagina), los
+servicios de escritorio y la bandeja también, y lo que se manda a la página mientras tanto
+(_js) se pierde sin más: al cargar, la página lo pide todo (estado_inicial, vrm_barra, efectos…).
+al_estar_lista espera a loadFinished con su tope, como siempre.
 """
 from __future__ import annotations
 
@@ -113,14 +122,14 @@ COLOR_FONDO = "#080B16"
 # ¿Ya pintó React? (.ln-app es la raíz de app.jsx.) Se sondea tras loadFinished.
 JS_PAGINA_PINTADA = "!!document.querySelector('.ln-app')"
 SONDEO_PINTADA_MS = 60
+# Al salir de la app, lo que se espera como mucho a que corte el hilo de la IA.
+ESPERA_IA_SALIR_MS = 1500
 
 
 def js_foco(activa: bool) -> str:
     """JS que le dice a la página si la ventana es la activa (ui_web/lune_reposo.js: sin foco
     un rato, Lune se queda quieta y la ventana deja de gastar CPU)."""
     return f"window.luneFoco && window.luneFoco({'true' if activa else 'false'})"
-# Al salir de la app, lo que se espera como mucho a que corte el hilo de la IA.
-ESPERA_IA_SALIR_MS = 1500
 
 
 def _log_error(msg: str) -> None:
@@ -299,7 +308,7 @@ class VentanaWeb(QMainWindow):
     FABRICAS_C4 = None
 
     def __init__(self, config=None, ai_manager=None, memoria=None, tools=None, parent=None,
-                 *, diferir_servicios: bool = False):
+                 *, diferir_servicios: bool = False, cargar_al_mostrar: bool = False):
         super().__init__(parent)
         self._servicios_c4 = None     # corte 4 (montar_escritorio): en iniciar_servicios
         self._anfitrion = None        # ui/anfitrion_web.AnfitrionWeb
@@ -324,6 +333,9 @@ class VentanaWeb(QMainWindow):
         self._servicios = False       # bandeja y servicios de escritorio arrancados
         self._pagina_cargada = False
         self._al_cargar_pend = []     # al_estar_lista esperando a loadFinished
+        self._url_pagina = None       # la de la página (setUrl en _cargar_pagina)
+        self._pagina_pedida = False   # setUrl ya hecho (una vez)
+        self._carga_pendiente = False  # carga perezosa: setUrl al primer showEvent
         self.tray = None
 
         self._servidor = _ServidorEstatico(DIR_WEB)
@@ -388,7 +400,12 @@ class VentanaWeb(QMainWindow):
         s.setAttribute(QWebEngineSettings.WebAttribute.PlaybackRequiresUserGesture, False)
         self.web.page().setWebChannel(self._canal)
         self.web.loadFinished.connect(self._al_cargar)
-        self.web.setUrl(url_pagina)
+        self._url_pagina = url_pagina
+        # Nace oculta (arranque con Windows a la bandeja o con la asistente fuera): la página,
+        # al primer showEvent. Si no, ya.
+        self._carga_pendiente = bool(cargar_al_mostrar)
+        if not self._carga_pendiente:
+            self._cargar_pagina()
         self.setCentralWidget(self.web)
 
         # Quedarse en segundo plano (como Discord): al cerrar, se oculta en la
@@ -640,6 +657,17 @@ class VentanaWeb(QMainWindow):
         retomar = getattr(b, "retomar_sesion", None)
         if estado.get("sesion") and callable(retomar):
             retomar(estado["sesion"])
+
+    def _cargar_pagina(self) -> bool:
+        """setUrl de la página, UNA vez (al construir o, con la carga perezosa, al primer
+        showEvent). Los objetos del canal ya están registrados. → True si la pidió ahora."""
+        web, url = getattr(self, "web", None), getattr(self, "_url_pagina", None)
+        if getattr(self, "_pagina_pedida", False) or web is None or url is None:
+            return False
+        self._pagina_pedida = True
+        self._carga_pendiente = False
+        web.setUrl(url)
+        return True
 
     def _al_cargar(self, _ok=True):
         self._pagina_cargada = True
@@ -957,6 +985,8 @@ class VentanaWeb(QMainWindow):
             self._avisar_foco()
 
     def showEvent(self, ev):
+        if getattr(self, "_carga_pendiente", False):
+            self._cargar_pagina()                    # carga perezosa: la primera vez que se ve
         super().showEvent(ev)
         self._avisar_foco()
 

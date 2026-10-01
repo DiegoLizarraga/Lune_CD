@@ -439,7 +439,7 @@
 
     // ── Acciones ────────────────────────────────────────────────────────────
     const importar = () => {
-      if (!puede('vrm_importar')) { aviso('Demo · sin backend: copia el .vrm a la carpeta modelo_vrm/.'); return; }
+      if (!puede('vrm_importar')) { aviso(`Demo · sin backend: copia el .vrm a la carpeta ${carpeta}.`); return; }
       setOcupado(true);
       try {
         window.lune.vrm_importar((j) => {
@@ -510,6 +510,8 @@
       return f ? { ...(deBib || {}), ...f } : deBib;
     }, [bib, fichas, sel]);
     const esDelActivo = !!(sel && bib.activo_vrm && bib.activo_vrm.toLowerCase() === sel.toLowerCase());
+    // La carpeta de verdad (vrm_biblioteca la manda: en la instalada vive en %APPDATA%).
+    const carpeta = bib.carpeta || 'modelo_vrm/';
     const sinOjos = !!(ficha && ficha.tieneLookAt === false);
     const hayCfg = !!(cfg && typeof set === 'function');
     const siguiendo = !hayCfg || cfg.seguir_cursor !== false;
@@ -519,7 +521,7 @@
       <>
         <Card eyebrow={<><Icono width={13} height={13}/> Asistente en escritorio · VRM</>} title="Biblioteca de modelos 3D" tone="blue">
           <p className="ln-card-nota">
-            Los .vrm de <b>modelo_vrm/</b>. Elige uno para ver su ficha y calibrarlo: los cambios se ven en la asistente 3D
+            Los .vrm de <b>{carpeta}</b>. Elige uno para ver su ficha y calibrarlo: los cambios se ven en la asistente 3D
             al momento y se guardan con el modelo.
           </p>
           {!bib.webengine && (
@@ -531,7 +533,7 @@
           )}
           {cargando && bib.modelos.length === 0 && <p className="ln-x-estado">Cargando modelos…</p>}
           {!cargando && bib.modelos.length === 0 && (
-            <p className="ln-empty">Aún no hay ningún .vrm. Impórtalo con el botón o cópialo a la carpeta modelo_vrm/.</p>
+            <p className="ln-empty">Aún no hay ningún .vrm. Impórtalo con el botón o cópialo a la carpeta {carpeta}.</p>
           )}
           {bib.modelos.length > 0 && (
             <div className="ln-vrm-grid" role="listbox" aria-label="Modelos VRM">

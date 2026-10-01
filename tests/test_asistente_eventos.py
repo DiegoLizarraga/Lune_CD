@@ -90,7 +90,8 @@ def test_ocupado_inhibe_y_ciclo_del_modelo():
     assert "bus.llamar('alCargar', v);" in _cuerpo(js, "function cargar(url)")
     # API pública nueva
     ret = js[js.rindex("return {"):]
-    assert "mod: (nombre, metodo, ...args) => bus.api(nombre, metodo, ...args)" in ret
+    # (11.2: además corta la espera del frame siguiente en reposo, por si pone algo en marcha)
+    assert "mod: (nombre, metodo, ...args) => { const r = bus.api(nombre, metodo, ...args); cortarEspera(); return r; }" in ret
     assert "registrar:" in ret and "bus, ctx" in ret
 
 

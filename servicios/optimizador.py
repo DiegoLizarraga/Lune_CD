@@ -429,7 +429,20 @@ class Optimizador:
 
     # ── Estadísticas en vivo ───────────────────────────────────────────────────
 
+    @staticmethod
+    def cebar_cpu() -> None:
+        """Primera muestra de CPU (al abrir el monitor). cpu_percent(None) mide desde la
+        llamada anterior DEL MISMO HILO: sin cebar, la primera lectura sale en 0 %."""
+        if psutil:
+            try:
+                psutil.cpu_percent(interval=None)
+            except Exception:
+                pass
+
     def estadisticas_sistema(self) -> Dict:
+        """CPU/RAM/disco sin bloquear: la CPU es la media desde la llamada anterior
+        (cpu_percent(None)), así que hay que llamarla siempre desde el mismo hilo (el
+        monitor del panel, en el de Qt) y cebarla al abrir (`cebar_cpu`)."""
         if not psutil:
             return {"disponible": False}
         try:
@@ -437,7 +450,7 @@ class Optimizador:
             disco = psutil.disk_usage(os.path.abspath(os.sep))
             return {
                 "disponible": True,
-                "cpu": psutil.cpu_percent(interval=0.2),
+                "cpu": psutil.cpu_percent(interval=None),
                 "ram_pct": mem.percent,
                 "ram_usada": formatear_bytes(mem.used),
                 "ram_total": formatear_bytes(mem.total),
@@ -465,4 +478,7 @@ if __name__ == "__main__":
     for p in opt.procesos_pesados(5):
         print(f"  {p['nombre']} (PID {p['pid']}): {p['ram_str']}")
     print("\n== SISTEMA ==")
+    opt.cebar_cpu()
+    import time
+    time.sleep(0.5)
     print(" ", opt.estadisticas_sistema())

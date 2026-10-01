@@ -131,6 +131,40 @@ def test_asistente_recibe_el_bus_y_se_siguen_su_visibilidad_y_sus_eventos(qapp):
     s.cerrar()
 
 
+def test_crear_cerrar_o_esconder_la_asistente_invalida_los_pids_de_lune(qapp):
+    """Cada página de la asistente es un QtWebEngineProcess: PidsLune (30 s de caché)
+    vuelve a listar los hijos al crearla, enseñarla u ocultarla y al cerrarla."""
+    from PyQt6.QtCore import QObject, pyqtSignal
+    from servicios import win_pantalla
+    from ui.escritorio import ServiciosEscritorio
+
+    class AsistenteFalsa(QObject):
+        visibilidad = pyqtSignal(bool)
+        evento_js = pyqtSignal(str, dict)
+        render = "vrm"
+
+        def isVisible(self): return True
+
+    s = ServiciosEscritorio()
+    gen = win_pantalla._gen_pids
+    m = AsistenteFalsa()
+    s.set_asistente(m)
+    assert win_pantalla._gen_pids == gen + 1
+    s.set_asistente(m)                                 # la misma: nada cambia
+    assert win_pantalla._gen_pids == gen + 1
+    m.visibilidad.emit(False)
+    assert win_pantalla._gen_pids == gen + 2
+    s.set_asistente(None)
+    assert win_pantalla._gen_pids == gen + 3
+    otra = AsistenteFalsa()
+    s.set_asistente(otra)
+    otra.deleteLater()
+    from PyQt6.QtCore import QCoreApplication, QEvent
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete.value)
+    assert win_pantalla._gen_pids >= gen + 5 and s.asistente is None
+    s.cerrar()
+
+
 def test_los_cambios_de_estado_llegan_por_senal_en_el_hilo_de_qt(qapp):
     from ui.escritorio import ServiciosEscritorio
     s = ServiciosEscritorio()

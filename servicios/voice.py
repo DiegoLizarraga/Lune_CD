@@ -25,6 +25,15 @@ elige por frase: el pedido si está disponible; si no, edge; si no, gTTS.
                                 inexistente → NoAudioReceived, sin red…). Llega
                                 desde el hilo de audio: marshalear a Qt
     al_hablar(bool)             ya existía: la boca de la asistente
+
+MIXER PEREZOSO (11.3)
+---------------------
+El constructor ya no importa pygame ni abre la tarjeta (eran ~400 ms en el hilo
+de Qt antes de enseñar la ventana, y la salida quedaba abierta toda la sesión:
+Lune siempre en el mezclador de volumen de Windows y los auriculares Bluetooth
+sin entrar nunca en reposo). Se abre justo antes de sonar (`_asegurar_mixer`) y
+un vigilante lo cierra tras `MIXER_CIERRE_S` sin sonar. `available` solo dice
+si hay motor y pygame instalado; si no hay tarjeta, se avisa al primer uso.
 """
 import json
 import os
@@ -40,6 +49,24 @@ from servicios import voces  # noqa: E402  (ligero: no importa edge_tts)
 
 CACHE_PARAMS_S = 2.0            # cada cuánto se relee la voz del personaje activo
 SILENCIO_AVISOS_S = 20.0        # el mismo aviso no se repite antes de esto
+MIXER_CIERRE_S = 15.0           # sin sonar este rato, se suelta la tarjeta (pygame.mixer.quit)
+VIGILANTE_PASO_S = 1.0          # cada cuánto mira el vigilante si toca cerrarla
+
+
+def _pygame_si_cargado():
+    """El módulo pygame si alguien ya lo importó (None si no): para no pagar su import
+    (~350 ms) solo por cortar o mirar un mixer que nunca se abrió."""
+    return sys.modules.get("pygame")
+
+
+def _pygame_instalado() -> bool:
+    if _pygame_si_cargado() is not None:
+        return True
+    try:
+        import importlib.util
+        return importlib.util.find_spec("pygame") is not None
+    except (ImportError, ValueError):
+        return False
 
 
 def listar_salidas():
@@ -95,11 +122,21 @@ class VoiceEngine:
     _params_cache = None
     _avisos = None
     ultimo_error = ""
+    _salida = ""
+    _salida_pedida = None
+    _lock_mixer = None
+    _hilo_vig = None
+    _ultimo_sonido = 0.0
+    cierre_mixer_s = MIXER_CIERRE_S
 
     def __init__(self, config=None, on_error=None):
         self.config = config
         self._enabled = False; self._lock = threading.Lock(); self._engine = None
         self._salida = ""          # nombre de la salida con la que se abrió el mixer ("" = sistema)
+        self._salida_pedida = None # la elegida en caliente (aplicar_salida); None = la de config
+        self._lock_mixer = threading.RLock()   # abrir/cerrar/cargar el mixer (y el vigilante)
+        self._hilo_vig = None
+        self._ultimo_sonido = 0.0  # time.monotonic() de la última vez que sonó algo
         self._silenciada = False   # modo juego
         self._disponibles = set()  # motores importables: edge, gtts (kokoro se mira aparte)
         self._kokoro_ok = None     # None = sin comprobar
@@ -143,15 +180,101 @@ class VoiceEngine:
     def salida_actual(self):
         return self._salida
 
-    def aplicar_salida(self, nombre):
-        """Cambia la salida en caliente. Devuelve True si se abrió la pedida."""
-        if not self._engine:
+    def _candado_mixer(self):
+        if self._lock_mixer is None:          # motores de tests creados con __new__
+            self._lock_mixer = threading.RLock()
+        return self._lock_mixer
+
+    def mixer_abierto(self) -> bool:
+        """¿Tiene la tarjeta abierta ahora mismo? Sin importar pygame si nadie lo hizo."""
+        pg = _pygame_si_cargado()
+        try:
+            return bool(pg is not None and pg.mixer.get_init())
+        except Exception:
             return False
-        with self._lock:
+
+    def _asegurar_mixer(self):
+        """
+        Abre el mixer si está cerrado, en la salida elegida en caliente o la de config
+        (cae a la del sistema si ya no existe), y arranca el vigilante que lo cierra
+        tras MIXER_CIERRE_S sin sonar. Devuelve True si quedó abierto; si no hay
+        tarjeta, avisa (una vez cada rato) y devuelve False.
+        """
+        with self._candado_mixer():
+            self._ultimo_sonido = time.monotonic()
+            if self.mixer_abierto():
+                return True
             try:
-                return self._abrir_mixer(nombre or "")
+                self._abrir_mixer(self._salida_pedida)
+            except Exception as e:
+                self._avisar(f"No pude abrir la salida de audio: {e}")
+                return False
+            self._arrancar_vigilante()
+            return True
+
+    def cerrar_mixer(self) -> bool:
+        """Suelta la tarjeta si no está sonando nada. Devuelve True si la cerró."""
+        with self._candado_mixer():
+            pg = _pygame_si_cargado()
+            if pg is None or not self.mixer_abierto():
+                return False
+            try:
+                if pg.mixer.music.get_busy() or pg.mixer.get_busy():
+                    return False
+                pg.mixer.quit()
+                return True
             except Exception:
                 return False
+
+    def revisar_cierre(self, ahora=None) -> bool:
+        """Un paso del vigilante: cierra el mixer si lleva MIXER_CIERRE_S sin sonar.
+        Devuelve True cuando ya no hay nada que vigilar (mixer cerrado)."""
+        with self._candado_mixer():
+            if not self.mixer_abierto():
+                return True
+            ahora = time.monotonic() if ahora is None else ahora
+            pg = _pygame_si_cargado()
+            try:
+                sonando = bool(pg.mixer.music.get_busy() or pg.mixer.get_busy())
+            except Exception:
+                sonando = False
+            if sonando:
+                self._ultimo_sonido = ahora
+                return False
+            if ahora - self._ultimo_sonido < self.cierre_mixer_s:
+                return False
+            return self.cerrar_mixer()
+
+    def _arrancar_vigilante(self):
+        """Con el candado del mixer: un hilo que lo cierra tras el silencio y se acaba."""
+        if self._hilo_vig is not None and self._hilo_vig.is_alive():
+            return
+
+        def vigilar():
+            while True:
+                threading.Event().wait(VIGILANTE_PASO_S)
+                if self.revisar_cierre():
+                    return
+
+        self._hilo_vig = threading.Thread(target=vigilar, name="LuneVozVigilante", daemon=True)
+        self._hilo_vig.start()
+
+    def aplicar_salida(self, nombre):
+        """Cambia la salida en caliente. Devuelve True si se abrió la pedida. Con el
+        mixer cerrado solo guarda el nombre: se usa al abrirlo para la próxima frase."""
+        if not self._engine:
+            return False
+        nombre = str(nombre or "").strip()
+        with self._lock:
+            with self._candado_mixer():
+                self._salida_pedida = nombre
+                if not self.mixer_abierto():
+                    self._salida = nombre
+                    return True
+                try:
+                    return self._abrir_mixer(nombre)
+                except Exception:
+                    return False
 
     def probar_salida(self):
         """Suena un tono corto por la salida actual (para saber si es la buena)."""
@@ -162,8 +285,14 @@ class VoiceEngine:
                 try:
                     import math, struct, pygame
                     sr = 22050
-                    if not pygame.mixer.get_init():
-                        self._abrir_mixer()
+                    with self._candado_mixer():
+                        estaba = self.mixer_abierto()
+                        if not self._asegurar_mixer():
+                            return
+                        pedida = self._salida_pedida
+                        if not estaba and pedida and self._salida != pedida:
+                            # Con el mixer cerrado, aplicar_salida no pudo comprobarla.
+                            self._avisar(f"No encontré la salida «{pedida}»; suena por la del sistema.")
                     frec, ch = pygame.mixer.get_init()[0] or sr, pygame.mixer.get_init()[2] or 2
                     n = int(frec * 0.35)
                     muestras = bytearray()
@@ -223,12 +352,9 @@ class VoiceEngine:
         self._kokoro_ok = None
         params = self._params(refrescar=True)
         motor = self._motor_para(params)
-        if motor is None:
-            self._engine = None
-            return
-        try:
-            self._abrir_mixer()
-        except Exception:                 # sin tarjeta de sonido: mudo, no muerto
+        # Sin pygame no hay con qué sonar. La tarjeta NO se abre aquí (mixer perezoso):
+        # si no hay, se avisa al primer uso (_asegurar_mixer) y Lune sigue muda, no muerta.
+        if motor is None or not _pygame_instalado():
             self._engine = None
             return
         self._engine = motor
@@ -387,9 +513,10 @@ class VoiceEngine:
     def cancelar(self):
         """Corta lo que esté sonando y los tramos pendientes (mensaje nuevo, Detener)."""
         self._gen_voz += 1
+        if not self.mixer_abierto():       # nada suena (y sin pagar el import de pygame)
+            return
         try:
-            import pygame
-            pygame.mixer.music.stop()
+            _pygame_si_cargado().mixer.music.stop()
         except Exception:
             pass
 
@@ -610,12 +737,19 @@ class VoiceEngine:
     def _reproducir(self, ruta: str):
         try:
             import pygame
-            pygame.mixer.music.load(ruta); pygame.mixer.music.play()
+            # Abrir (si hace falta) y empezar a sonar con el candado: el vigilante no
+            # puede cerrar la tarjeta entre medias. Sin tarjeta, ya avisó y no suena.
+            with self._candado_mixer():
+                if not self._asegurar_mixer():
+                    self._borrar(ruta)
+                    return
+                pygame.mixer.music.load(ruta); pygame.mixer.music.play()
             self._sonando(True)
             try:
                 while pygame.mixer.music.get_busy():
                     threading.Event().wait(0.05)
             finally:
+                self._ultimo_sonido = time.monotonic()
                 self._sonando(False)
                 self._soltar_audio()
         except Exception as e:
@@ -626,9 +760,11 @@ class VoiceEngine:
     def _soltar_audio():
         # SDL mantiene el archivo abierto hasta unload(): sin esto, en Windows el
         # borrado falla (WinError 32) y los temporales se acumulan en %TEMP%.
+        pg = _pygame_si_cargado()
+        if pg is None:
+            return
         try:
-            import pygame
-            pygame.mixer.music.unload()
+            pg.mixer.music.unload()
         except Exception:
             pass
 

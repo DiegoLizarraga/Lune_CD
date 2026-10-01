@@ -298,3 +298,197 @@ def test_patata_comprobar_va_antes_que_todo(monkeypatch, patata_mod, argv, como_
 
 def test_patata_ayuda_menciona_comprobar(patata_mod):
     assert "--comprobar" in patata_mod.TXT_USO
+
+
+# ── 11.3: tu equipo, la red y los servicios (con todo FALSO: nada sale a internet) ──
+
+CLAVE = "sk-or-v1-claveSecretaDePrueba0123456789"
+TOKEN = "123456789:AAH-tokenSecretoDePrueba_0123456"
+
+
+class _Resp:
+    def __init__(self, codigo=200, datos=None):
+        self.status_code, self._datos = codigo, datos
+
+    def json(self):
+        return self._datos
+
+
+def _http(rutas):
+    pedidas = []
+
+    def get(url, headers=None, timeout=None):
+        pedidas.append(url)
+        for trozo, r in rutas.items():
+            if trozo in url:
+                if isinstance(r, BaseException):
+                    raise r
+                return r
+        raise AssertionError(url)
+    get.pedidas = pedidas
+    return get
+
+
+def _sd(mics=1, salidas=1):
+    disp = [{"name": f"Mic {i}", "max_input_channels": 1, "max_output_channels": 0} for i in range(mics)]
+    disp += [{"name": f"Alt {i}", "max_input_channels": 0, "max_output_channels": 2} for i in range(salidas)]
+    return SimpleNamespace(query_devices=lambda: disp)
+
+
+def _ctx_red(tmp_path, ajustes=None, rutas=None, **kw):
+    base = dict(
+        http=_http(rutas if rutas is not None else {
+            "api.github.com": _Resp(200, {}),
+            "/api/v1/key": _Resp(200, {"data": {"label": CLAVE[:12]}}),
+            "/getMe": _Resp(200, {"ok": True, "result": {"username": "LuneBot"}})}),
+        ajustes=lambda: dict(ajustes if ajustes is not None else {
+            "openrouter_key": CLAVE, "openrouter_model": "openrouter/auto", "ollama_url": "http://localhost:11434",
+            "ollama_model": "qwen2.5:7b", "telegram_token": TOKEN, "telegram_admin_id": "42",
+            "modelo_whisper": "base"}),
+        node=lambda: {"ok": True, "version": "v20.0.0", "mensaje": ""},
+        sonido=_sd(), whisper=lambda m: True,
+        disco=lambda ruta: (100, 10, 20 * 1024 ** 3),
+        listar_ollama=lambda url: (True, ["qwen2.5:7b"], "ok"),
+        carpeta_bot=lambda: True)
+    base.update(kw)
+    return _ctx(tmp_path, **base)
+
+
+def test_red_todo_bien_y_sin_secretos(tmp_path):
+    res = D.comprobar(True, ctx=_ctx_red(tmp_path))
+    assert res["ok"] is True, D.informe(res)
+    for id_ in ("internet", "openrouter", "ollama", "telegram", "node", "audio", "whisper_modelo", "espacio_libre"):
+        assert _item(res, id_)["ok"] is True, _item(res, id_)
+    assert "@LuneBot" in _item(res, "telegram")["detalle"]
+    texto = json.dumps(res, ensure_ascii=False) + D.informe(res)
+    assert CLAVE not in texto and TOKEN not in texto and CLAVE[:12] not in texto
+    secs = [i["seccion"] for i in res["items"]]
+    assert secs.index("equipo") < secs.index("red") and secs[-1] == "red"
+
+
+def test_sin_red_no_se_toca_internet(tmp_path):
+    ctx = _ctx_red(tmp_path)
+    res = D.comprobar(ctx=ctx)
+    assert "red" not in {i["seccion"] for i in res["items"]} and ctx.http.pedidas == []
+    assert _item(res, "audio")["ok"] is True                 # tu equipo sí (sin red)
+
+
+def test_red_sin_configurar_no_aplica(tmp_path):
+    vacio = {"openrouter_key": "", "openrouter_model": "openrouter/auto", "ollama_url": "", "ollama_model": "",
+             "telegram_token": "", "telegram_admin_id": "", "modelo_whisper": "base"}
+    ctx = _ctx_red(tmp_path, ajustes=vacio, node=lambda: {"ok": False, "version": "", "mensaje": ""},
+                   rutas={"api.github.com": _Resp(200, {})})
+    res = D.comprobar(True, ctx=ctx)
+    for id_ in ("openrouter", "ollama", "telegram", "node"):
+        assert _item(res, id_)["ok"] is None, _item(res, id_)
+    assert res["ok"] is True and ctx.http.pedidas == [D._pruebas().URL_INTERNET]
+
+
+class ConnectionError(Exception):          # como requests: el texto lleva la URL (con el token)
+    pass
+
+
+def test_red_fallos_con_que_hacer(tmp_path):
+    rutas = {"api.github.com": ConnectionError("sin red"),
+             "/api/v1/key": _Resp(401, {"error": CLAVE}),
+             "/getMe": ConnectionError(f"https://api.telegram.org/bot{TOKEN}/getMe")}
+    ctx = _ctx_red(tmp_path, rutas=rutas, listar_ollama=lambda u: (False, [], "No hay nadie escuchando ahí."),
+                   node=lambda: {"ok": False, "version": "v14.0.0", "mensaje": ""})
+    res = D.comprobar(True, ctx=ctx)
+    assert res["ok"] is False
+    assert "Wi-Fi" in _item(res, "internet")["detalle"]
+    assert "openrouter.ai/keys" in _item(res, "openrouter")["detalle"]
+    assert "ollama serve" in _item(res, "ollama")["detalle"]
+    assert "internet" in _item(res, "telegram")["detalle"]
+    assert "v14.0.0" in _item(res, "node")["detalle"]
+    texto = json.dumps(res, ensure_ascii=False) + D.informe(res)
+    assert CLAVE not in texto and TOKEN not in texto
+    assert "Me fallan 5" in D.resumen(res)
+
+
+def test_red_telegram_sin_carpeta_o_con_id_malo(tmp_path):
+    res = D.comprobar(True, ctx=_ctx_red(tmp_path, carpeta_bot=lambda: False))
+    assert _item(res, "telegram")["ok"] is False and "carpeta" in _item(res, "telegram")["detalle"]
+    malo = {"telegram_token": TOKEN, "telegram_admin_id": "abc", "ollama_model": ""}
+    res = D.comprobar(True, ctx=_ctx_red(tmp_path, ajustes=malo))
+    assert _item(res, "telegram")["ok"] is False and "solo números" in _item(res, "telegram")["detalle"]
+
+
+def test_equipo_sin_microfono_ni_modelo_no_es_fallo(tmp_path):
+    res = D.comprobar(ctx=_ctx_red(tmp_path, sonido=_sd(0, 0), whisper=lambda m: False))
+    assert _item(res, "audio")["ok"] is None and _item(res, "whisper_modelo")["ok"] is None
+    assert "145 MB" in _item(res, "whisper_modelo")["detalle"]
+    assert res["ok"] is True
+
+
+def test_poco_espacio_falla(tmp_path):
+    res = D.comprobar(ctx=_ctx_red(tmp_path, disco=lambda r: (1, 1, 50 * 1024 ** 2)))
+    assert _item(res, "espacio_libre")["ok"] is False and res["ok"] is False
+
+
+def test_parar_corta_antes_de_la_siguiente(tmp_path):
+    vistos = []
+    res = D.comprobar(True, ctx=_ctx_red(tmp_path), al_avanzar=vistos.append, parar=lambda: len(vistos) >= 3)
+    assert len(res["items"]) == 3 and res["parado"] is True
+    assert "a medias" in D.resumen(res)
+    assert D.evento_fin(res)["parado"] is True
+
+
+def test_eventos_para_la_interfaz(tmp_path):
+    ini = D.evento_inicio(True)
+    assert ini["tipo"] == "inicio" and ini["total"] == len(D.comprobaciones(True))
+    assert [s["id"] for s in ini["secciones"]] == ["recursos", "datos", "modulos", "equipo", "red"]
+    assert all(s["nombre"] for s in ini["secciones"])
+    res = D.comprobar(True, ctx=_ctx_red(tmp_path))
+    it = D.evento_item(res["items"][0])
+    assert it["tipo"] == "item" and it["seccion_nombre"] == "Lo que traigo"
+    fin = D.evento_fin(res)
+    assert fin["tipo"] == "fin" and fin["ok"] is True and fin["fallan"] == 0
+    assert fin["cuentan"] + fin["no_aplica"] == len(res["items"])
+    json.dumps([ini, it, fin])
+
+
+def test_ajustes_se_leen_sin_escribir_nada(tmp_path):
+    datos_dir = tmp_path / "datos"
+    datos_dir.mkdir()
+    (datos_dir / "datos.json").write_text(json.dumps({"apis": {"telegram_token": TOKEN},
+                                                      "modelos": {"ollama_model": "m"}}), "utf-8")
+    ctx = _ctx(tmp_path, datos=datos_dir)
+    a = D._ajustes(ctx)
+    assert a["telegram_token"] == TOKEN and a["ollama_model"] == "m"
+    assert a["openrouter_model"] == "openrouter/auto" and a["modelo_whisper"] == "base"
+    assert sorted(p.name for p in datos_dir.iterdir()) == ["datos.json"]       # ni config.json nuevo
+    vacio = _ctx(tmp_path / "otra", datos=tmp_path / "otra")
+    assert D._ajustes(vacio)["openrouter_key"] == ""
+
+
+def test_importar_sin_cargar_solo_mira(tmp_path):
+    marca = D.importar_sin_cargar("faster_whisper", cargados={}, buscar=lambda n: object())
+    assert getattr(marca, D.SIN_CARGAR) is True
+    with pytest.raises(ImportError):
+        D.importar_sin_cargar("ctranslate2", cargados={}, buscar=lambda n: None)
+    ya = SimpleNamespace(__version__="9")
+    assert D.importar_sin_cargar("faster_whisper", cargados={"faster_whisper": ya}) is ya
+    # Con la marca, el item sale bien sin mirar dentro (ni el VAD ni la CPU).
+    normal = _importador(tmp_path)
+
+    def importar(n):
+        return SimpleNamespace(**{D.SIN_CARGAR: True}) if n in D.SOLO_MIRAR_EN_APP else normal(n)
+    res = D.comprobar(ctx=_ctx(tmp_path, importar=importar))
+    assert _item(res, "faster_whisper")["ok"] is True and "lo cargo" in _item(res, "faster_whisper")["detalle"]
+    assert _item(res, "qt_webengine")["ok"] is True
+
+
+def test_contexto_en_app_no_precarga_ni_carga_lo_pesado():
+    ctx = D.contexto_en_app()
+    assert ctx.importar is D.importar_sin_cargar
+    assert "app" in ctx.precargar()
+
+
+def test_patata_comprobar_con_red(monkeypatch, patata_mod):
+    llamadas = []
+    monkeypatch.setattr(D, "main", lambda **k: llamadas.append(k) or 0)
+    assert patata_mod.main(["--comprobar", "--red"]) == 0
+    assert patata_mod.main(["--comprobar", "--json", "--RED"]) == 0
+    assert llamadas == [{"como_json": False, "red": True}, {"como_json": True, "red": True}]
+    assert "--red" in patata_mod.TXT_USO

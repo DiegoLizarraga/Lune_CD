@@ -29,6 +29,8 @@ function PersonajesPanel() {
   const asignarVrm = (nombre, archivo) => { if (window.lune) window.lune.personaje_vrm(nombre, archivo, () => cargar()); };
   const importar = () => { if (window.lune) window.lune.vrm_importar(() => cargar()); };
   const modelos = vrm.modelos || [];
+  // La carpeta de verdad (la manda vrm_modelos: en la instalada vive en %APPDATA%).
+  const carpeta = vrm.carpeta || 'modelo_vrm/';
   return (
     <PanelShell overline="Roleplay" title="PERSONAJES">
       {lista.length === 0 && <p className="ln-empty">Sin personajes (o backend inactivo).</p>}
@@ -51,7 +53,7 @@ function PersonajesPanel() {
       ))}
       <Card title="Modelos 3D (VRM)" tone="blue">
         <p className="ln-panel-desc">
-          {modelos.length ? `${modelos.length} en modelo_vrm/: ${modelos.join(', ')}.` : 'Aún no hay ningún .vrm en modelo_vrm/.'}
+          {modelos.length ? `${modelos.length} en ${carpeta}: ${modelos.join(', ')}.` : `Aún no hay ningún .vrm en ${carpeta}.`}
           {' '}Cada personaje puede tener el suyo; el resto usa el modelo por defecto de Ajustes → Asistente en escritorio.
         </p>
         <div style={{ marginTop: 12 }}>
@@ -163,10 +165,13 @@ function OptimizarPanel() {
   const { Card, Badge } = window.LUNE;
   const [info, setInfo] = React.useState(null);
   React.useEffect(() => {
+    // sistema_info no bloquea: la 1ª llamada ceba la CPU y pide los procesos a un hilo;
+    // la 2ª (a los 0,6 s) ya los trae. Luego cada 3 s, solo con la vista abierta.
     const cargar = () => { if (window.lune) window.lune.sistema_info((j) => { try { setInfo(JSON.parse(j)); } catch (e) {} }); };
     cargar();
+    const t0 = setTimeout(cargar, 600);
     const t = setInterval(cargar, 3000);
-    return () => clearInterval(t);
+    return () => { clearTimeout(t0); clearInterval(t); };
   }, []);
   const i = info || {};
   const Stat = ({ label, val }) => (

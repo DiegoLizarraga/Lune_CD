@@ -43,6 +43,9 @@ export function reescribirImports(src, base, extra = {}) {
 export const aDataURL = (src) => 'data:text/javascript;base64,' + Buffer.from(src, 'utf8').toString('base64');
 export const DATA_MOTOR = aDataURL(reescribirImports(readFileSync(URL_MOTOR, 'utf8'), URL_MOTOR));
 export const motor = await import(DATA_MOTOR);
+// Aquí los frames los simula el test a 60 Hz: en reposo, rAF y no el temporizador de la espera
+// (11.2; ese camino lo prueba tests/js/vrm_fps.test.mjs con un temporizador falso).
+motor.PARAMS.esperaTemporizador = false;
 
 export function lienzoFalso(extra = {}) {
   return Object.assign({

@@ -197,6 +197,8 @@ def test_voiceengine_cae_a_la_salida_del_sistema_si_no_existe(monkeypatch):
     ve = voice.VoiceEngine(ConfigFalsa())
     if ve._engine is None:
         pytest.skip("sin edge-tts/gtts en este entorno")
+    assert llamadas == []                              # mixer perezoso: el constructor no abre nada
+    assert ve._asegurar_mixer() is True                # antes de sonar
     assert llamadas[:2] == ["Headset apagado", None]   # probó la pedida y cayó al sistema
     assert ve.salida_actual == ""
     # y en caliente, una salida válida (None → sistema) se aplica sin quejas

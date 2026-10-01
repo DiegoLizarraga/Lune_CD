@@ -9,9 +9,16 @@ local) de datos.json.
     host        → sirve el modelo/memoria/voz: hub.modo = host
     interaccion → chat y avatar usando otro equipo: hub.modo = terminal
     hibrido     → todo aquí: hub.modo = local
+
+El anuncio (red.anunciar, apagado de serie desde la 11.3) nunca va en el hilo de Qt:
+importar zeroconf son ~0,6 s y register_service espera al sondeo mDNS (1–2 s), así
+que `anunciar()` y `reanunciar()` leen aquí lo que hace falta (nombre, rol, puerto,
+capacidades) y el resto lo hace un hilo. Uno a la vez y por generaciones: si llega
+otro anuncio o `detener()` mientras uno arranca, el viejo se retira al terminar.
 """
 from __future__ import annotations
 
+import threading
 from typing import List, Optional
 
 from PyQt6.QtCore import QObject, QThread, pyqtSignal
@@ -56,6 +63,9 @@ class RedService(QObject):
         self.config = config
         self._anuncio = None
         self._worker = None
+        self._lock = threading.RLock()
+        self._gen = 0                     # sube con cada anuncio y con detener()
+        self._hilo: Optional[threading.Thread] = None
 
     # ── Identidad de este equipo ───────────────────────────────────────────────
     def rol(self) -> str:
@@ -82,27 +92,51 @@ class RedService(QObject):
         return caps
 
     # ── Anuncio ────────────────────────────────────────────────────────────────
-    def anunciar(self):
-        if not self.config.get("red", "anunciar", True):
-            return
+    def anunciar(self) -> bool:
+        """Se anuncia en la LAN en un hilo (nunca bloquea a quien llama). False si no
+        toca (red.anunciar apagado o sin zeroconf)."""
+        if not self.config.get("red", "anunciar", False):
+            return False
         if not D.zeroconf_disponible():
             from nucleo import rutas
             log_info(f"[red] zeroconf no instalado: este equipo no se anuncia ({rutas.como_instalar('zeroconf')})")
+            return False
+        nombre, rol, puerto, caps = self.nombre(), self.rol(), datos.hub_puerto(), self.capacidades()
+        with self._lock:
+            self._gen += 1
+            gen = self._gen
+            viejo, self._anuncio = self._anuncio, None
+        self._lanzar(self._anunciar_en_hilo, gen, viejo, nombre, rol, puerto, caps)
+        return True
+
+    def _lanzar(self, fn, *args) -> None:
+        self._hilo = threading.Thread(target=fn, args=args, name="lune-red-anuncio", daemon=True)
+        self._hilo.start()
+
+    def _anunciar_en_hilo(self, gen, viejo, nombre, rol, puerto, caps) -> None:
+        if viejo is not None:
+            viejo.detener()
+        anuncio = D.AnuncioLune(nombre, rol, puerto, caps)
+        ok = anuncio.iniciar()
+        with self._lock:
+            vigente = gen == self._gen
+            if ok and vigente:
+                self._anuncio = anuncio
+        if ok and not vigente:                 # llegó otro anuncio o detener() mientras arrancaba
+            anuncio.detener()
             return
-        self.detener()
-        self._anuncio = D.AnuncioLune(self.nombre(), self.rol(),
-                                      datos.hub_puerto(), self.capacidades())
-        if self._anuncio.iniciar():
-            log_info(f"[red] anunciado como «{self.nombre()}» ({self.rol()})")
-        else:
-            self._anuncio = None
+        if ok:
+            log_info(f"[red] anunciado como «{nombre}» ({rol})")
 
     def reanunciar(self):
-        """Tras cambiar el rol o el modelo, refresca el anuncio."""
-        if self._anuncio is not None:
-            self._anuncio.actualizar(self.rol(), self.capacidades())
-        else:
+        """Tras cambiar el rol o el modelo, refresca el anuncio (en un hilo)."""
+        with self._lock:
+            actual = self._anuncio
+        if actual is None:
             self.anunciar()
+            return
+        rol, caps = self.rol(), self.capacidades()
+        self._lanzar(actual.actualizar, rol, caps)
 
     # ── Descubrimiento ─────────────────────────────────────────────────────────
     def buscar(self, timeout: float = 3.0):
@@ -129,6 +163,10 @@ class RedService(QObject):
         self.config.set("red", "rol", D.ROL_INTERACCION)
 
     def detener(self):
-        if self._anuncio is not None:
-            self._anuncio.detener()
-            self._anuncio = None
+        """Retira el anuncio (al salir: aquí mismo, para que no quede publicado). Uno que
+        aún esté arrancando en su hilo se retira solo al terminar."""
+        with self._lock:
+            self._gen += 1
+            anuncio, self._anuncio = self._anuncio, None
+        if anuncio is not None:
+            anuncio.detener()

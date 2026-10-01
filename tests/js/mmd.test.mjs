@@ -625,6 +625,7 @@ const URL_FALSO = new URL('./three_falso.mjs', import.meta.url).href;
 // three real con el renderizador y el reloj falsos (sin WebGL; el reloj lo mueve el test)
 const HIBRIDO = aDataURL(`export * from '${URL_THREE}';\nexport { WebGLRenderer, Clock } from '${URL_FALSO}';\n`);
 const motorReal = await import(aDataURL(reescribirImports(readFileSync(URL_MOTOR, 'utf8'), URL_MOTOR, { three: HIBRIDO })));
+motorReal.PARAMS.esperaTemporizador = false;      // frames simulados a 60 Hz (como motor_vrm_falso.mjs)
 
 test('con el motor de verdad: bailando los brazos suben y al parar las manos acaban bajo los hombros (VRM 1.0 y 0.x)', async () => {
   const baile = vmdBaile({ dedo: true, cadera: false });

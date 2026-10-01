@@ -32,10 +32,11 @@ Ranuras (JS: el resultado llega por callback, `luneVida.x(args…, cb)`):
     comida_guardar() → bool
     comida_evento(id) → bool          ComidaWeb acertó en la cabeza de la barra (enfriamiento 0.35 s)
     comida_config_guardar(json) → str {ok, error, estado}   {activa: bool}
-    discord_estado() → str            {activo, conectado, usuario, error, client_id_ok, sin_id, publicando,
-                                       vista_previa ({details, state} | null), servicio,
+    discord_estado() → str            {activo, conectado, usuario, error, motivo, client_id_ok, sin_id,
+                                       publicando, vista_previa ({details, state} | null), servicio,
                                        config: {client_id, mostrar_modelo, boton_url}}
     discord_alternar() → bool         el estado nuevo
+    discord_reconectar() → str        {ok, texto, estado}  «Reconectar»: lo intenta ya (o dice por qué no)
     discord_config_guardar(json) → str {ok, error, estado}  {activo?, mostrar_modelo?: bool,
                                        client_id?: "" | 17–20 cifras, boton_url?: "" | https ≤ 512 B}
     autoinicio_estado() → str         {activo, registrado, aprobado, ruta_ok, modo_ok, como, retraso_s,
@@ -456,6 +457,8 @@ class PuenteVida(PuenteOcioBase):
             "conectado": conectado,
             "usuario": texto_limpio(e.get("usuario"), 40) if conectado else "",
             "error": texto_limpio(e.get("error"), 160),
+            # Por qué no conecta, con el siguiente paso (discord_presencia.motivo). Sin servicio, "".
+            "motivo": "" if conectado or d is None else texto_limpio(e.get("motivo"), 200),
             "client_id_ok": bool(ID_DISCORD.match(cid_crudo)),
             "sin_id": bool(activo and not cid_crudo),
             "publicando": publicacion_segura(e.get("publicando")) if conectado else None,
@@ -467,6 +470,23 @@ class PuenteVida(PuenteOcioBase):
     @pyqtSlot(result=str)
     def discord_estado(self) -> str:
         return dump(self._estado_discord())
+
+    @pyqtSlot(result=str)
+    def discord_reconectar(self) -> str:
+        """«Reconectar» de la tarjeta: {ok, texto, estado}. ok False con el motivo en `texto`
+        si ni se puede intentar (apagada, sin Application ID, sin la app abierta); si no, la
+        presencia lo intenta ya y lo que pase llega por discord_cambio (con su `motivo`)."""
+        d = self._discord
+        if d is None:
+            r: Any = {"ok": False, "motivo": "Me conecto con la app abierta (y Discord abierto)."}
+        else:
+            r = llamar(d, "reconectar")
+            if not isinstance(r, dict):
+                r = {"ok": False, "motivo": "No pude volver a intentarlo; prueba otra vez."}
+        estado = self._estado_discord()
+        self.discord_cambio.emit(dump(estado))
+        texto = r.get("texto") if r.get("ok") is True else (r.get("motivo") or r.get("texto"))
+        return dump({"ok": r.get("ok") is True, "texto": texto_limpio(texto, 200), "estado": estado})
 
     @pyqtSlot(result=bool)
     def discord_alternar(self) -> bool:

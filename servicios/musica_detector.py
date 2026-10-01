@@ -14,6 +14,11 @@ de audio y, si una app PERMITIDA (baile.apps: «empieza por», sin mayúsculas n
   de esa sesión, en caché) y alimenta `nucleo.pulso.SeguidorPulso`; el pulso se
   entrega como mucho 2 veces por segundo.
 - Con un juego delante (`en_juego()`) no se llama a COM: ni enumera ni mide.
+- Sin nadie que la vea bailar (`hay_publico()` False: ni la asistente ni la ventana
+  principal a la vista) el sondeo es lento (cada `INTERVALO_SIN_PUBLICO_S`, solo para
+  la lista «suena ahora» y la histéresis) y no hay bucle rápido: horas de música con
+  Lune en la bandeja ya no son 50 despertares por segundo. `despertar()` (vuelve a
+  haber público) sondea al momento.
 - `baile.auto = False` apaga el sondeo automático (solo se sondea si se pide).
 - `forzar_pulso(True)` (baile a mano): se sigue el pulso de la sesión más fuerte
   que no sea de Lune, aunque su app no esté permitida.
@@ -186,17 +191,20 @@ class DetectorMusica:
     """
 
     INTERVALO_S = 2.0
+    INTERVALO_SIN_PUBLICO_S = 10.0
     RAPIDO_HZ = 50
     PULSO_MAX_HZ = 2
 
     def __init__(self, config: Any, *, medidor: Any = None, pids: Any = None,
                  reloj: Callable[[], float] = time.monotonic, en_juego: Callable[[], bool] = lambda: False,
-                 dormir: Callable[[float], Any] = time.sleep):
+                 dormir: Callable[[float], Any] = time.sleep,
+                 hay_publico: Callable[[], bool] = lambda: True):
         self.config = config
         self._medidor = medidor
         self._pids = pids
         self._reloj = reloj
         self._en_juego = en_juego
+        self._hay_publico = hay_publico
         self._dormir = dormir
         self.on_cambio: Optional[Callable[[bool, str], None]] = None
         self.on_pulso: Optional[Callable[[Pulso], None]] = None
@@ -302,6 +310,11 @@ class DetectorMusica:
         self._pedido.set()
         self._despertar.set()
 
+    def despertar(self) -> None:
+        """Vuelve a haber público (ventana o asistente a la vista): que sondee ya y, si
+        hay música, el bucle rápido arranque sin esperar al sondeo lento."""
+        self.pedir_sondeo()
+
     def apps_sonando(self) -> List[str]:
         with self._lock:
             return list(self._sonando)
@@ -356,7 +369,7 @@ class DetectorMusica:
         t = self._reloj() if t is None else float(t)
         eventos: list = []
         with self._lock:
-            if not self._rapido_activo() or self._juego() or not self._abierto:
+            if not self._rapido_activo() or self._juego() or not self._abierto or not self._publico():
                 return
             if self._activa and self._clave:
                 clave = self._clave
@@ -390,6 +403,13 @@ class DetectorMusica:
             return bool(self._en_juego())
         except Exception:
             return False
+
+    def _publico(self) -> bool:
+        """¿Alguien puede verla bailar? Ante la duda, sí (como antes)."""
+        try:
+            return bool(self._hay_publico())
+        except Exception:
+            return True
 
     def _abrir(self) -> bool:
         if self._abierto:
@@ -525,6 +545,9 @@ class DetectorMusica:
             while not self._parar.is_set():
                 t = self._reloj()
                 pedido = self._pedido.is_set()
+                # Sin público: sondeo lento y sin bucle rápido (despertar() lo adelanta).
+                publico = self._publico()
+                intervalo = self.INTERVALO_S if publico else self.INTERVALO_SIN_PUBLICO_S
                 if pedido or t >= proximo:
                     self._pedido.clear()
                     if pedido or self._toca_sondear():
@@ -532,11 +555,11 @@ class DetectorMusica:
                             self.sondear(t)
                         except Exception:
                             _log.exception("musica: fallo al sondear")
-                    proximo = t + self.INTERVALO_S
+                    proximo = t + intervalo
                 if self._parar.is_set():
                     break
                 with self._lock:
-                    rapido = self._rapido_activo() and not self._juego()
+                    rapido = publico and self._rapido_activo() and not self._juego()
                 if rapido:
                     try:
                         self.rapido(t)
@@ -545,7 +568,7 @@ class DetectorMusica:
                     espera = 1.0 / self.RAPIDO_HZ - (self._reloj() - t)
                 else:
                     espera = proximo - self._reloj()
-                self._esperar(max(0.001, min(self.INTERVALO_S, espera)))
+                self._esperar(max(0.001, min(intervalo, espera)))
         finally:
             self._cerrar()
 

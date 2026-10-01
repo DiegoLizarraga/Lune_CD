@@ -410,6 +410,19 @@ def test_notas_de_una_version(tmp_path):
         assert trozo in texto, trozo
 
 
+def test_notas_caen_a_la_fila_de_la_serie():
+    """Desde la 11 el README lleva una fila por serie («v11»), no una por versión: 11.3 sin fila propia
+    usa la de su serie; la exacta, si la hay, gana."""
+    serie = README_FALSO.replace("| v9.x | Red de dispositivos. |", "| **v11** | **Toda la serie 11**. |\n| v9.x | Red de dispositivos. |")
+    assert notas_release.candidatas("11.3") == ["11.3", "11.x", "11"]
+    assert notas_release.candidatas("v12") == ["12", "12.x"]
+    assert notas_release.fila_para(serie, "11.3") == "**Toda la serie 11**."
+    assert notas_release.fila_para(serie, "11.2").startswith("**Me instalo como un programa**")
+    assert notas_release.fila_para(README_FALSO, "9.4") == "Red de dispositivos."
+    assert notas_release.fila_para(README_FALSO, "12.0") is None
+    assert "**Toda la serie 11**." in notas_release.notas("11.3", serie)
+
+
 def test_notas_sin_fila_ni_hash():
     texto = notas_release.notas("12.0", README_FALSO)
     assert "Una versión nueva de Lune" in texto

@@ -102,42 +102,36 @@ body #stage[data-sueno] .lune-zzz {
   display: block;
 }
 
+/* Sin animación CSS (11.2): las mueve lune_anim_fisica.js (poseZzz) en cada tick del registro, a 15
+   por segundo. Una animación infinita obligaba a Chromium a sacar 60 frames por segundo y, en esta
+   ventana translúcida, Lune dormida gastaba casi el doble que despierta. */
 body #stage .lune-zzz span {
   position: absolute;
   left: 0;
   bottom: 0;
   font-size: 12px;
   opacity: 0;
-  animation: lune-zzz 3s ease-in-out infinite;
 }
 
 body #stage .lune-zzz span:nth-child(2) {
   font-size: 15px;
-  animation-delay: 1s;
 }
 
 body #stage .lune-zzz span:nth-child(3) {
   font-size: 19px;
-  animation-delay: 2s;
-}
-
-@keyframes lune-zzz {
-  0%   { opacity: 0;   transform: translate(0, 4px) scale(.7) rotate(-8deg); }
-  20%  { opacity: 1; }
-  75%  { opacity: .85; }
-  100% { opacity: 0;   transform: translate(18px, -40px) scale(1.1) rotate(10deg); }
 }
 
 /* ── Menos movimiento ────────────────────────────────────────── */
+/* !important: las «z» quietas aunque el módulo les escriba la pose en línea. */
 @media (prefers-reduced-motion: reduce) {
   body #stage.lune-doble .lune-vid,
   body #stage.lune-doble .lune-vid.saliendo {
     transition: none;
   }
   body #stage .lune-zzz span {
-    animation: none;
-    opacity: .85;
+    opacity: .85 !important;
+    transform: none !important;
   }
-  body #stage .lune-zzz span:nth-child(2) { transform: translate(8px, -16px); }
-  body #stage .lune-zzz span:nth-child(3) { transform: translate(16px, -34px); }
+  body #stage .lune-zzz span:nth-child(2) { transform: translate(8px, -16px) !important; }
+  body #stage .lune-zzz span:nth-child(3) { transform: translate(16px, -34px) !important; }
 }

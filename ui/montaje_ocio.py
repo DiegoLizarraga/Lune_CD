@@ -230,6 +230,10 @@ def montar_ocio(servicios_c4: Any, config: Any, *, voice: Any = None,
         escritorio, config, voice=voice, grande=ocio.grande, avisar=avisar, en_ui=en_ui, parent=parent))
     ocio.baile = _crear("baile", lambda: fab.get("baile", _baile_defecto)(
         escritorio, config, en_ui=en_ui, parent=parent))
+    # ¿Alguien la ve bailar? (ventana_visible del anfitrión): sin público, el detector de
+    # música va despacio y sin bucle rápido (ui/baile_qt.ControlBaile.hay_publico).
+    if ocio.baile is not None and anfitrion is not None:
+        _llamar(ocio.baile, "set_anfitrion", anfitrion)
 
     # Al desmontar (en orden inverso a como se apuntan): lo último que se hace es
     # soltar los objetos de Qt.

@@ -630,6 +630,13 @@
   <!-- 10.9 (se registra solo, antes de app.jsx): tareas.jsx (TareasPanel, LuneTareas), la vista «tareas» estilo
        Microsoft To Do, con window.luneTareas. -->
   <script type="text/babel" src="extra/tareas.jsx"></script>
+  <!-- 11.3 (se registra solo, antes de app.jsx): actualizaciones.jsx (ActualizacionesCard, LuneActualizaciones), la
+       tarjeta de Ajustes → Sistema que busca e instala mis versiones nuevas, con window.lune. -->
+  <script type="text/babel" src="extra/actualizaciones.jsx"></script>
+  <!-- 11.3 (se registra solo, antes de app.jsx): diagnostico.jsx (DiagnosticoCard, ProbarOpenRouter, ProbarOllama,
+       ProbarTelegram, ProbarDictado, LuneDiagnostico): «Comprobar que todo funciona» y los «Probar» de Ajustes, con
+       window.lune. -->
+  <script type="text/babel" src="extra/diagnostico.jsx"></script>
   <script type="text/babel" src="app.jsx"></script>
   <script type="text/babel">
     ReactDOM.createRoot(document.getElementById('root')).render(<window.LuneApp/>);

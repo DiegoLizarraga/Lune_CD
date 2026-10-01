@@ -6,11 +6,12 @@ import assert from 'node:assert/strict';
 
 import {
   PARAMS_FISICA, anguloObjetivo, anguloCSS, estironObjetivo, CaraArrastre, DetectorMareo,
-  reboteToque, bamboleoMareo, instalar, publicar,
+  reboteToque, bamboleoMareo, instalar, publicar, ZZZ, poseZzz, moverZzz,
 } from '../../ui_web/anim/lune_anim_fisica.js';
 import { instalar as instalarVideo, CARPETA } from '../../ui_web/anim/lune_anim_video.js';
 import { crearRegistroAnim } from '../../ui_web/anim/lune_anim_modulos.js';
 import { crearElemento, crearDocumento, crearTemporizador } from './dom_falso.mjs';
+import { readFileSync } from 'node:fs';
 
 const cerca = (a, b, tol, msg) => assert.ok(Math.abs(a - b) <= tol, `${msg ?? ''} ${a} ≉ ${b} (±${tol})`);
 const DT = 1 / 60;
@@ -322,4 +323,64 @@ test('registro completo: al arrastrar se ve surprised y luego nervous; al soltar
   pasos(0.8);
   assert.equal(reg.api('video', 'estado').clip, 'happy');
   delete globalThis.luneDrag; delete globalThis.luneTouch; delete globalThis.luneSleep;
+});
+
+// ── «z z z» dormida (11.2): sin animación CSS infinita, las mueve tick() ─────────
+
+test('poseZzz: el recorrido de la animación de antes (3 s, desfasadas 1 s)', () => {
+  assert.equal(ZZZ.periodo, 3);
+  assert.deepEqual([...ZZZ.desfases], [0, 1, 2]);
+  assert.deepEqual(poseZzz(0), { transform: 'translate(0px, 4px) scale(0.7) rotate(-8deg)', opacity: '0' });
+  assert.equal(poseZzz(0.6).opacity, '1', 'a tope al 20 %');
+  assert.equal(poseZzz(2.25).opacity, '0.85', '.85 al 75 %');
+  assert.equal(poseZzz(1.5).transform, 'translate(9px, -18px) scale(0.9) rotate(1deg)', 'a mitad de camino');
+  assert.deepEqual(poseZzz(3.7), poseZzz(0.7), 'periódico');
+  assert.deepEqual(poseZzz(2.5, 1), poseZzz(1.5), 'la segunda va 1 s por detrás');
+  assert.deepEqual(poseZzz(-0.5), poseZzz(2.5), 'tiempos negativos dentro del periodo');
+  assert.equal(poseZzz(NaN).opacity, '0');
+  assert.equal(moverZzz(null, 1), 0);
+  assert.equal(moverZzz({ children: [{}, { style: {} }] }, 1), 1, 'sin style se salta');
+});
+
+test('dormida, tick() mueve las «z» (una pose por tick); despierta no las toca', () => {
+  const { stage, mod, avanzar } = montar();
+  mod.api.dormir(true);
+  const zzz = stage.querySelector('.lune-zzz');
+  assert.equal(zzz.children.length, 3);
+  const z = zzz.children.map((s) => s.style);
+  assert.ok(z[0].transform && z[0].opacity !== undefined, 'pose desde que se duerme (sin esperar al tick)');
+  const vistos = new Set();
+  avanzar(3, () => vistos.add(z[0].transform));
+  assert.ok(vistos.size > 100, `cambia en cada tick (${vistos.size} poses en 3 s a 60 Hz)`);
+  assert.notEqual(z[0].transform, z[1].transform, 'desfasadas');
+  mod.api.tocar();
+  const quieta = [z[0].transform, z[1].opacity];
+  avanzar(1);
+  assert.deepEqual([z[0].transform, z[1].opacity], quieta, 'despierta: ocultas y sin tocarlas');
+});
+
+test('en el registro, dormida a 15 fps: las «z» se mueven al ritmo del registro y no a 60', () => {
+  const stage = crearElemento('div', 'stage');
+  const doc = crearDocumento(stage);
+  const frames = [];
+  let ms = 0;
+  const reg = crearRegistroAnim({ stage, raf: (f) => { frames.push(f); return frames.length; }, caf: () => {}, ahora: () => ms });
+  reg.registrar((ctx) => instalar(ctx, { documento: doc }));
+  reg.iniciar();
+  reg.api('fisica', 'dormir', true);
+  const correr = (s, cada) => { for (let i = 0; i < Math.round(s * 60); i++) { ms += 1000 / 60; frames.shift()(ms); if (cada) cada(); } };
+  correr(2);                                             // se funde el sueño (dormirEntrada)
+  const s0 = stage.querySelector('.lune-zzz').children[0].style;
+  let cambios = 0, previo = s0.transform;
+  correr(2, () => { if (s0.transform !== previo) { cambios++; previo = s0.transform; } });
+  assert.ok(cambios >= 28 && cambios <= 31, `≈ 15 poses por segundo (${cambios} en 2 s)`);
+  reg.detener();
+});
+
+test('asistente_anim.css: las «z» sin animación infinita; con menos movimiento, quietas', () => {
+  const css = readFileSync(new URL('../../ui_web/css/asistente_anim.css', import.meta.url), 'utf8');
+  const sinComentarios = css.replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.ok(!/infinite/.test(sinComentarios), 'ninguna animación infinita');
+  assert.ok(!/@keyframes\s+lune-zzz/.test(sinComentarios));
+  assert.match(sinComentarios, /\.lune-zzz span\s*\{[^}]*opacity:\s*\.85 !important;[^}]*transform:\s*none !important/);
 });

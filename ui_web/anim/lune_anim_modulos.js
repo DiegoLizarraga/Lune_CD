@@ -83,10 +83,16 @@ export function estadoInicial() {
  *   raf/caf    requestAnimationFrame/cancelAnimationFrame (inyectables en tests)
  *   ahora      () → ms (por defecto performance.now)
  *   fpsReposo  fps del bucle cuando ningún módulo está ocupado (por defecto 15)
+ *   temporizador {poner(fn, ms) → id, quitar(id)}: la espera entre pasos en reposo (11.2). En
+ *              reposo el paso siguiente lo da un temporizador y no un requestAnimationFrame en
+ *              cada refresco del monitor (ese bucle a 60/s sin pintar nada costaba un 7-10 % de
+ *              CPU en la asistente); con algo ocupado, o con la página oculta, rAF. Por defecto
+ *              setTimeout; con `raf` inyectado y sin `temporizador` (los tests de siempre), nunca.
+ *   esperaMinMs  esperas más cortas que esto van con rAF (por defecto 20)
  */
 export function crearRegistroAnim({
   stage = null, video = null, burbuja = null, objetivo = null, emitir = null,
-  raf = null, caf = null, ahora = null, fpsReposo = 15,
+  raf = null, caf = null, ahora = null, fpsReposo = 15, temporizador = null, esperaMinMs = 20,
 } = {}) {
   const g = globalThis;
   const est = estadoInicial();
@@ -104,8 +110,12 @@ export function crearRegistroAnim({
   const cancelarFrame = caf || (typeof g.cancelAnimationFrame === 'function' ? g.cancelAnimationFrame.bind(g) : clearTimeout);
   const reloj = ahora || (() => (g.performance && g.performance.now ? g.performance.now() : Date.now()));
 
+  const tm = temporizador && typeof temporizador.poner === 'function' ? temporizador
+    : (raf ? null : { poner: (f, ms) => setTimeout(f, ms), quitar: (id) => clearTimeout(id) });
+
   let destino = objetivo || stage;
   let corriendo = false, idFrame = null, ultimoTick = null, t = 0;
+  let espera = null;                     // temporizador del paso siguiente en reposo (o null)
   let aplicado = { transform: null, filtro: null, opacidad: null };
 
   /** Compone las piezas de `pose` y las escribe solo si cambiaron (evita recalcular estilos). */
@@ -143,10 +153,36 @@ export function crearRegistroAnim({
     return true;
   }
 
+  function quitarEspera() {
+    if (espera === null) return;
+    try { tm.quitar(espera); } catch (e) { /* ya salió */ }
+    espera = null;
+  }
+
+  /** El paso siguiente: rAF si algo está ocupado; en reposo, el temporizador hasta que toque. */
+  function siguiente() {
+    if (!corriendo || idFrame !== null || espera !== null) return;
+    const intervalo = 1000 / Math.max(1, num(fpsReposo, 15));
+    const falta = ultimoTick === null || reg.ocupado(est) ? 0 : intervalo - (reloj() - ultimoTick);
+    const oculta = g.document && g.document.hidden === true;
+    if (tm && !oculta && falta > esperaMinMs) {
+      espera = tm.poner(() => { espera = null; bucle(reloj()); }, falta);
+    } else {
+      idFrame = pedirFrame(bucle);
+    }
+  }
+
   function bucle(ms) {
+    idFrame = null;
     if (!corriendo) return;
-    paso(ms);
-    idFrame = pedirFrame(bucle);
+    try { paso(ms); } finally { siguiente(); }
+  }
+
+  /** Algo pasó (una llamada a un módulo, una emoción…): el paso, ya, sin esperar al temporizador. */
+  function despertar() {
+    if (espera === null) return;
+    quitarEspera();
+    if (corriendo && idFrame === null) idFrame = pedirFrame(bucle);
   }
 
   function iniciar() {
@@ -162,9 +198,16 @@ export function crearRegistroAnim({
     corriendo = false;
     if (idFrame !== null) { try { cancelarFrame(idFrame); } catch (e) { /* ya no existe */ } }
     idFrame = null;
+    quitarEspera();
     reg.llamar('alDetener');
     return true;
   }
+
+  // Lo que llega de Python o de la página (luneDrag, luneTouch… van por api) puede ocupar a un
+  // módulo: el paso, ya. El cursor no (llega 30 veces por segundo y no pone nada en marcha).
+  const apiBase = reg.api, registrarBase = reg.registrar;
+  reg.api = (...args) => { const r = apiBase(...args); despertar(); return r; };
+  reg.registrar = (mod) => { const r = registrarBase(mod); despertar(); return r; };
 
   return Object.assign(reg, {
     est, paso, iniciar, detener, componer,
@@ -172,15 +215,17 @@ export function crearRegistroAnim({
     /** Mezcla `parcial` en el estado compartido y lo devuelve. */
     estado(parcial) {
       if (parcial && typeof parcial === 'object') {
+        let otro = false;
         for (const k of Object.keys(parcial)) {
           if (k === 'cursor' && parcial.cursor && typeof parcial.cursor === 'object') Object.assign(est.cursor, parcial.cursor);
-          else est[k] = parcial[k];
+          else { est[k] = parcial[k]; otro = true; }
         }
+        if (otro) despertar();
       }
       return est;
     },
     /** La página cambió de clip: avisa a los módulos. */
-    emocion(nombre) { est.emocion = String(nombre || 'normal'); reg.llamar('alEmocion', est.emocion); },
+    emocion(nombre) { est.emocion = String(nombre || 'normal'); reg.llamar('alEmocion', est.emocion); despertar(); },
     setVideo(v) { videoActual = v; },
     setObjetivo(el) { destino = el; aplicado = { transform: null, filtro: null, opacidad: null }; },
   });

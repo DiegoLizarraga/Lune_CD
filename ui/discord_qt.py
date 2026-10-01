@@ -15,10 +15,15 @@ lo registra el montaje (`("discord", d)`, sin actividades de la tabla) y recibe
 - `alternar()` guarda `discord.activo` y enciende o apaga; `recargar_config()`
   (la tarjeta guardó el Application ID, el botón…) vuelve a mirar sin reiniciar:
   en cuanto hay Application ID, conecta (D1).
-- `estado()` → {activo, conectado, usuario, error, publicando, sin_id,
-  client_id_ok, vista_previa}. `vista_previa` es lo que Discord vería AHORA
-  ({details, state} o None con un juego), para la línea «Discord ve: …» de la
-  tarjeta aunque todavía no haya conexión. `estado_cambio(str)` lleva ese JSON.
+- `reconectar()` (el botón «Reconectar» de Ajustes) lo intenta ya, sin esperar al
+  próximo reintento → {ok, texto, motivo}; si ni se puede intentar (apagada, sin
+  Application ID) ok False y el motivo. Lo que pase después llega por estado_cambio.
+- `estado()` → {activo, conectado, usuario, error, motivo, publicando, sin_id,
+  client_id_ok, vista_previa}. `motivo` es por qué no conecta, con el siguiente paso
+  (discord_presencia.motivo: Discord cerrado, otra Lune ya publica, ID rechazado…).
+  `vista_previa` es lo que Discord vería AHORA ({details, state} o None con un juego),
+  para la línea «Discord ve: …» de la tarjeta aunque todavía no haya conexión.
+  `estado_cambio(str)` lleva ese JSON.
 - Del hilo de la presencia al de Qt se pasa por `PuenteHilo` (nunca un `emit`
   ligado guardado): `detener` lo cierra ANTES de soltar la presencia y no espera
   más de `ESPERA_DETENER_S` a su hilo (Discord lento: borra la actividad y suelta
@@ -164,6 +169,32 @@ class ControlDiscord(QObject):
         self._emitir()
         return nuevo
 
+    def reconectar(self) -> dict:
+        """«Reconectar» de Ajustes. → {ok, texto, motivo}. Apagada o sin un Application ID
+        bueno no se intenta (ok False y el motivo); si no, la presencia lo intenta ya en su
+        hilo y el resultado (conectada, o por qué no) llega por estado_cambio."""
+        e = self.estado()
+        cid = dp.client_id(self.config)
+        if not e.get("activo"):
+            return {"ok": False, "texto": "", "motivo": dp.motivo(e)}
+        if not cid:
+            return {"ok": False, "texto": "", "motivo": dp.motivo({**e, "sin_id": True})}
+        if not ID_OK.match(cid):
+            return {"ok": False, "texto": "",
+                    "motivo": "El Application ID son de 17 a 20 cifras (discord.com/developers → tu app)."}
+        if e.get("conectado"):
+            return {"ok": True, "texto": "Ya estoy conectada a Discord.", "motivo": ""}
+        if not self._iniciado:
+            return {"ok": False, "texto": "", "motivo": "Me conecto con la app abierta (y Discord abierto)."}
+        try:
+            self._presencia.reconectar()
+        except Exception:
+            _log.exception("discord: reconectar falló")
+            return {"ok": False, "texto": "", "motivo": "No pude volver a intentarlo; prueba otra vez."}
+        self._emitir()
+        return {"ok": True, "motivo": "",
+                "texto": "Lo intento ahora: si Discord está abierto, en unos segundos sale «Conectado»."}
+
     def estado(self) -> dict:
         try:
             e = dict(self._presencia.estado())
@@ -176,6 +207,7 @@ class ControlDiscord(QObject):
         cid = dp.client_id(self.config)
         e["client_id_ok"] = bool(ID_OK.match(cid))
         e["sin_id"] = bool(self.activo and not cid)
+        e["motivo"] = dp.motivo(e)
         e["vista_previa"] = self.vista_previa()
         return e
 

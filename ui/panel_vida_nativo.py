@@ -14,6 +14,8 @@ del controlador de ese apartado y emite `cambiado(str seccion)`.
 - DISCORD (`discord`): la presencia, el Application ID (17–20 cifras; D1: sin él no
   hace nada), enseñar el modelo VRM y el enlace del botón (https). Muestra qué se
   publica («Discord ve: …», solo los textos fijos) y nunca títulos de ventana ni el chat.
+  «RECONECTAR» lo intenta ya y, si no conecta, dice por qué (Discord cerrado, sin
+  Application ID, otra Lune ya publica: el `motivo` del controlador).
 - ARRANQUE (`arranque`): cómo aparece Lune al arrancar con Windows (bandeja, asistente
   o ventana) y cuánto espera, con el estado de la entrada (desactivada desde el
   Administrador de tareas, carpeta movida…). La casilla «Arrancar Lune junto con
@@ -461,6 +463,11 @@ class PanelVidaNativo(QWidget):
         self.discord_ve = self._texto("", tenue=True)
         self.discord_ve.setFont(QFont(FONT_MONO, 9))
         fl.addWidget(self.discord_ve)
+        # «Reconectar»: lo intenta ya y, si no puede, dice por qué (Discord cerrado, sin ID…).
+        self.btn_reconectar = self._boton("RECONECTAR")
+        self.btn_reconectar.setToolTip("Vuelve a intentar conectar con Discord ahora mismo.")
+        self.btn_reconectar.clicked.connect(self.reconectar_discord)
+        self._botones(fl, self.btn_reconectar)
         self.estado_discord = self._texto("", tenue=True)
         fl.addWidget(self.estado_discord)
         raiz.addWidget(caja)
@@ -580,6 +587,22 @@ class PanelVidaNativo(QWidget):
         self._pintar_comida()
         return r
 
+    def reconectar_discord(self) -> bool:
+        """«Reconectar»: guarda lo pendiente de Discord (un ID recién escrito) y lo intenta ya.
+        Si no se puede ni intentar, el motivo; lo demás llega por estado_cambio."""
+        if self.discord is None:
+            self._estado(self.estado_discord, "Me conecto con la app abierta (y Discord abierto).", aviso=True)
+            return False
+        if self._pendientes.get("discord"):
+            self.guardar_ya()
+        r = _llamar(self.discord, "reconectar")
+        r = r if isinstance(r, dict) else {"ok": False, "motivo": "No pude volver a intentarlo; prueba otra vez."}
+        if r.get("ok"):
+            self._estado(self.estado_discord, str(r.get("texto") or "Lo intento ahora…"))
+        else:
+            self._estado(self.estado_discord, str(r.get("motivo") or "No pude reconectar."), error=True)
+        return bool(r.get("ok"))
+
     # ── Estado a la vista ────────────────────────────────────────────────────────
     def _pintar_asiento(self, *_: Any) -> None:
         a = self.asiento
@@ -636,8 +659,10 @@ class PanelVidaNativo(QWidget):
             usuario = re.sub(r"[\x00-\x1f\x7f]", "", str(e.get("usuario") or ""))[:40]
             texto = f"Conectado{f' como {usuario}' if usuario else ''}."
         else:
+            # El motivo con el siguiente paso (Discord cerrado, otra Lune ya publica…).
+            motivo = re.sub(r"[\x00-\x1f\x7f]", "", str(e.get("motivo") or ""))[:200]
             err = re.sub(r"[\x00-\x1f\x7f]", "", str(e.get("error") or ""))[:160]
-            texto = f"Sin conectar{f': {err}' if err else ' (esperando a Discord)'}."
+            texto = motivo or f"Sin conectar{f': {err}' if err else ' (esperando a Discord)'}."
         self._estado(self.estado_discord, texto)
 
     def _mod_autoinicio(self) -> Any:

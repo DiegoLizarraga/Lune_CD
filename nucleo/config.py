@@ -294,7 +294,10 @@ class Config:
         "red": {
             "rol": "hibrido",              # host · interaccion · hibrido (ver descubrimiento.py)
             "nombre": "",                  # nombre visible; vacío = nombre del equipo
-            "anunciar": True,              # anunciarse por mDNS para que otros lo vean
+            # Anunciarse por mDNS para que otros Lune lo vean. Apagado de serie (11.3): así
+            # el Firewall de Windows no pregunta la primera vez que abres Lune; un config.json
+            # que ya lo tenga guardado conserva su valor.
+            "anunciar": False,
         },
         # Notas + RAG (memoria larga sobre documentos markdown, ver lune_core/rag.py).
         "notas": {
@@ -328,10 +331,13 @@ class Config:
             "rvc_transpose": 0,                  # semitonos
             "rvc_index_rate": 0.5,
         },
-        # Actualizaciones por git (ver actualizador.py).
+        # Actualizaciones (servicios/actualizador.py): GitHub Releases en la instalada, git desde
+        # el código. Al abrir Lune se mira como mucho una vez al día y nunca en modo juego.
         "actualizaciones": {
-            "rama": "master",
-            "comprobar_al_iniciar": False,
+            "rama": "master",                    # solo desde el código (git)
+            "comprobar_al_iniciar": True,        # sin migración: un config viejo conserva su False
+            "ultima_comprobacion": "",           # ISO-8601 UTC, p. ej. "2026-09-30T18:00:00Z"
+            "omitir_version": "",                # la versión que pediste saltarte, p. ej. "11.3"
         },
         # ══ Secciones de la serie 10.3+ (funciones de Mate-Engine) ══════════════
         # Salvapantallas: Lune ocupa la pantalla tras un rato sin tocar nada (P05).

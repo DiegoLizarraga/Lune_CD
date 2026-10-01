@@ -33,21 +33,18 @@
   #stage { position:relative; flex:1; min-height:0; width:100%; }
   #c { display:block; width:100%; height:100%; }
 
-  /* "z z z" mientras duerme. Solo existen (y se animan) dormida: con opacity 0 sus tres animaciones
-     infinitas seguían vivas y obligaban a Chromium a sacar 60 frames por segundo, que en esta ventana
-     translúcida Qt copia de la GPU a la CPU uno a uno. */
+  /* "z z z" mientras duerme. Solo existen dormida y NO llevan animación CSS: las mueve el módulo
+     'zzz' (abajo) en el mismo frame que el avatar, a fpsDormida. Una animación infinita (antes las
+     tres giraban siempre, con opacity 0) obliga a Chromium a sacar 60 frames por segundo, y en esta
+     ventana translúcida Qt copia cada uno de la GPU a la CPU: dormida gastaba más que despierta. */
   #zzz { position:absolute; top:6%; right:14%; pointer-events:none; display:none;
     font-family:var(--font-display, var(--font-mono, monospace)); font-weight:700; color:var(--cyan-400,#36ECFF);
     text-shadow:0 0 10px rgb(var(--cyan-400-rgb, 54 236 255) / .6); }
   #zzz.on { display:block; animation:zzz-in .6s ease-out; }
-  #zzz span { position:absolute; right:0; font-size:14px; }
-  #zzz.on span { animation:zzz 2.4s linear infinite; }
-  #zzz.on span:nth-child(2) { animation-delay:-.8s; }
-  #zzz.on span:nth-child(3) { animation-delay:-1.6s; }
+  #zzz span { position:absolute; right:0; font-size:14px; opacity:0; }
   #zzz span:nth-child(2) { font-size:18px; right:10px; }
   #zzz span:nth-child(3) { font-size:22px; right:22px; }
   @keyframes zzz-in { from{ opacity:0; } to{ opacity:1; } }
-  @keyframes zzz { 0%{ transform:translate(0,0) rotate(0); opacity:0; } 15%{ opacity:.9; } 100%{ transform:translate(14px,-46px) rotate(18deg); opacity:0; } }
 
   #aviso { position:absolute; inset:0; display:none; place-content:center; text-align:center;
     font:12.5px/1.5 var(--font-body, system-ui, sans-serif); color:#eee; background:rgb(var(--ink-800-rgb, 15 20 36) / .86);
@@ -221,6 +218,7 @@ const asistente = crearAsistente({
     else if (tipo === 'error') { mostrarAviso('No pude abrir el modelo.', dato, SRC); }
     else if (tipo === 'dormir') {
       zzz.classList.toggle('on', !!dato);
+      if (dato) moduloZzz();                       // la primera vez que se duerme
       // Al dormirse se quita lo que quede en la burbuja (la respuesta de la IA). La
       // frase de dormir la pone Python DESPUÉS, al leer el evento 'dormir' de la cola.
       if (dato && typeof window.ocultarBurbuja === 'function') window.ocultarBurbuja();
@@ -251,6 +249,37 @@ if (paramsPendientes != null) asistente.luneParams(paramsPendientes);
 // Bus de módulos del avatar (ui_web/vrm/lune_modulos.js): luneMod('baileProc', 'play', …).
 window.luneMod = (nombre, metodo, ...args) => asistente.mod(nombre, metodo, ...args);
 window.luneAsistente = asistente;                                    // para registrar módulos: luneAsistente.registrar(instalar)
+
+// «z z z» dormida: el módulo 'zzz' del bus las mueve en trasUpdate, o sea, solo en los frames que
+// pinta el avatar (dormida, fpsDormida: 12 por segundo) y ni uno más. Mismo recorrido que tenían en
+// CSS (2,4 s, desfasadas 0,8 s: suben 46 px, giran 18° y se apagan). Se registra la primera vez que
+// se duerme (window.luneMod('zzz', 'en', t, desfase) da la pose, para los tests).
+const ZZZ = { periodo: 2.4, desfases: [0, 0.8, 1.6], dx: 14, dy: -46, giro: 18, pico: 0.15, opacidad: 0.9 };
+function zzzEn(t, desfase = 0) {
+  const f = ((((Number(t) || 0) + desfase) % ZZZ.periodo) + ZZZ.periodo) % ZZZ.periodo / ZZZ.periodo;
+  const o = f < ZZZ.pico ? ZZZ.opacidad * f / ZZZ.pico : ZZZ.opacidad * (1 - (f - ZZZ.pico) / (1 - ZZZ.pico));
+  return { transform: `translate(${(ZZZ.dx * f).toFixed(1)}px, ${(ZZZ.dy * f).toFixed(1)}px) rotate(${(ZZZ.giro * f).toFixed(1)}deg)`,
+           opacity: o.toFixed(3) };
+}
+let modZzz = null;
+function moduloZzz() {
+  if (!modZzz) {
+    modZzz = asistente.registrar(() => ({
+      nombre: 'zzz', orden: 95,
+      trasUpdate(dt, t) {
+        if (!zzz.classList.contains('on')) return;
+        const spans = zzz.children || [];
+        for (let i = 0; i < spans.length && i < ZZZ.desfases.length; i++) {
+          const p = zzzEn(t, ZZZ.desfases[i]);
+          spans[i].style.transform = p.transform;
+          spans[i].style.opacity = p.opacity;
+        }
+      },
+      api: { en: zzzEn },
+    }));
+  }
+  return modZzz;
+}
 
 // Cola de eventos hacia Python (lune_eventos.js; companion.py la vacía a 12 Hz). Si
 // ese script no cargó, una cola vacía para que el sondeo no falle.

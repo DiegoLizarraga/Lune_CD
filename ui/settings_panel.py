@@ -190,6 +190,14 @@ class GitWorker(QThread):
             self.listo.emit({"ok": False, "mensaje": f"Algo falló: {e}"})
 
 
+def _soltar_pruebas(hilos: dict) -> None:
+    """Los hilos de «Probar» del panel, al borrarse: se paran y, si aún corren, se retienen."""
+    from ui.pruebas_qt import soltar
+    for h in list(hilos.values()):
+        soltar(h)
+    hilos.clear()
+
+
 def _cfg(config, seccion: str, clave: str, defecto=None):
     try:
         return config.get(seccion, clave, defecto) if config is not None else defecto
@@ -293,6 +301,12 @@ class SettingsPanel(QFrame):
         self.setStyleSheet("QFrame{background:transparent;}")
         self._sondeo = None
         self._prueba_compat = None
+        # «Probar» de cada apartado (ui/pruebas_qt.py, servicios/pruebas.py): un hilo por botón,
+        # sin padre; si el panel se borra con alguno corriendo, se suelta (se retiene hasta acabar).
+        self._pruebas = {}              # "openrouter" | "telegram" | "dictado" → hilo
+        self._dialogo_diag = None
+        _hilos = self._pruebas
+        self.destroyed.connect(lambda *_: _soltar_pruebas(_hilos))
         self.datos_data = datos.cargar() or {
             "apis": {}, "modelos": {}, "bot": {"personaje_default": "Lune"}, "personajes": []
         }
@@ -350,6 +364,9 @@ class SettingsPanel(QFrame):
                         apis.get("openrouter_key", ""), True)
         self._add_input(fl_ia, "openrouter_model", "Modelo (openrouter/auto enruta solo)",
                         modelos.get("openrouter_model", "openrouter/auto"), False)
+        self.btn_probar_or, self.lbl_probar_or = self._fila_prueba(
+            fl_ia, "PROBAR CLAVE", self._probar_openrouter,
+            "Pruebo lo escrito (aunque no lo hayas guardado) sin gastar tokens.")
         layout.addWidget(frame_ia)
 
         # ── SECCIÓN 2: LOCAL (Ollama) ──
@@ -384,6 +401,9 @@ class SettingsPanel(QFrame):
         ayuda_tg.setWordWrap(True); ayuda_tg.setFont(QFont("Segoe UI", 9))
         ayuda_tg.setStyleSheet(f"color:{COLORS['text_muted']};border:none;")
         fl_tg.addWidget(ayuda_tg)
+        self.btn_probar_tg, self.lbl_probar_tg = self._fila_prueba(
+            fl_tg, "PROBAR BOT", self._probar_telegram,
+            "El token, tu ID, Node.js 18+ y la carpeta del bot. No manda ningún mensaje.")
         layout.addWidget(frame_tg)
 
         # ── SECCIÓN 4: PERSONALIDAD ──
@@ -455,7 +475,7 @@ class SettingsPanel(QFrame):
         lbl_r.setFont(QFont("Segoe UI", 10)); lbl_r.setStyleSheet(f"color:{COLORS['text']};border:none;padding-top:6px;")
         self.render_combo = QComboBox()
         self.render_combo.addItem("Sprites 2D (los packs de arriba)", "sprites")
-        self.render_combo.addItem("Avatar VRM 3D (modelo_vrm/, necesita WebEngine)", "vrm")
+        self.render_combo.addItem("Avatar VRM 3D (tus modelos .vrm, necesita WebEngine)", "vrm")
         # La interfaz completa usa "animado" (video); se conserva para no pisarlo desde aquí.
         self.render_combo.addItem("Imágenes animadas (interfaz completa)", "animado")
         idx_r = self.render_combo.findData(self.config.get("avatar", "render", "sprites"))
@@ -529,6 +549,10 @@ class SettingsPanel(QFrame):
         # ── SECCIÓN 7: VOZ DE ENTRADA (dictado) ──
         layout.addWidget(self._create_section_title("Voz de entrada (dictado con Whisper)"))
         layout.addWidget(self._build_voz_group())
+
+        # ── SECCIÓN 7b: COMPROBAR QUE TODO FUNCIONA (servicios/diagnostico con red) ──
+        layout.addWidget(self._create_section_title("Sistema · comprobar que todo funciona"))
+        layout.addWidget(self._build_diagnostico_group())
 
         # ── SECCIÓN 8: ACTUALIZACIONES Y DEPENDENCIAS ──
         layout.addWidget(self._create_section_title("Actualizaciones y dependencias"))
@@ -940,6 +964,11 @@ class SettingsPanel(QFrame):
         fila_mic.addWidget(self.btn_probar_mic); fila_mic.addWidget(self.lbl_mic_prueba, 1)
         fl.addLayout(fila_mic)
         self._probador_mic = None
+        # «Probar dictado»: 3 s con este micrófono y el modelo de Whisper de arriba (de verdad,
+        # como el micrófono del chat; la primera vez se descarga el modelo).
+        self.btn_probar_dictado, self.lbl_probar_dictado = self._fila_prueba(
+            fl, "PROBAR DICTADO", self._probar_dictado,
+            "Grabo 3 s y te digo lo que entendí. La primera vez descargo el modelo (~145 MB el «base»).")
 
         # ── Salida: por dónde suena Lune (pygame/SDL; vacío = la del sistema) ──
         lbl_out = QLabel("Salida de audio (por dónde habla Lune)")
@@ -952,6 +981,11 @@ class SettingsPanel(QFrame):
         self.salida_combo.setCurrentIndex(idx_out if idx_out >= 0 else 0)
         self.salida_combo.setStyleSheet(self._estilo_combo())
         fl.addWidget(lbl_out); fl.addWidget(self.salida_combo)
+        self.btn_probar_salida, self.lbl_probar_salida = self._fila_prueba(
+            fl, "PROBAR SALIDA", self._probar_salida, "Suena un tono por la salida elegida (sin guardar).")
+        if self.voice is None:
+            self.btn_probar_salida.setEnabled(False)
+            self.lbl_probar_salida.setText("Probar necesita el motor de voz de la app.")
 
         # ── Voz de SALIDA: cómo habla Lune ─────────────────────────────────────
         sep = QLabel("Voz de salida (cómo habla Lune)")
@@ -1020,6 +1054,10 @@ class SettingsPanel(QFrame):
         """Graba 1.5 s del micrófono elegido (en un hilo) y dice si se oyó algo."""
         from ui.audio_prueba import ProbadorMic
         if self._probador_mic is not None and self._probador_mic.isRunning():
+            return
+        dictado = self._pruebas.get("dictado")
+        if dictado is not None and dictado.isRunning():
+            self.lbl_mic_prueba.setText("Estoy probando el dictado: espera a que acabe.")
             return
         nombre = self.mic_combo.currentData() or ""
         idx = voz_entrada.resolver_entrada(nombre) if nombre else None
@@ -1161,11 +1199,323 @@ class SettingsPanel(QFrame):
             self.lbl_probar_voz.setText(error or "No pude probar la voz (sin motor o sin salida de audio).")
             self.lbl_probar_voz.setStyleSheet(f"color:{COLORS['warning']};border:none;")
 
+    # ── «Probar» de cada apartado y «Comprobar que todo funciona» (11.3) ──────────
+    # La lógica es la de servicios/pruebas.py (la misma que la web y /probar de patata); lo
+    # que tarda va en un PruebaWorker (ui/pruebas_qt.py) y la respuesta sale en la etiqueta
+    # junto al botón: verde si funciona, amarillo si no (con qué hacer) y gris si no aplica.
+    def _fila_prueba(self, fl, texto: str, al_pulsar, ayuda: str):
+        """Botón «PROBAR …» y su etiqueta en una fila. → (botón, etiqueta)."""
+        fila = QHBoxLayout(); fila.setSpacing(8)
+        btn = QPushButton(texto)
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn.setFont(QFont(FONT_MONO, 9, QFont.Weight.Bold)); btn.setFixedHeight(32)
+        btn.setStyleSheet(self._estilo_boton())
+        btn.clicked.connect(al_pulsar)
+        lbl = QLabel(ayuda)
+        lbl.setWordWrap(True); lbl.setFont(QFont("Segoe UI", 9))
+        lbl.setStyleSheet(f"color:{COLORS['text_muted']};border:none;")
+        fila.addWidget(btn); fila.addWidget(lbl, 1)
+        fl.addLayout(fila)
+        return btn, lbl
+
+    @staticmethod
+    def _pintar_prueba(lbl, ok, texto: str) -> None:
+        color = COLORS["success"] if ok is True else (COLORS["warning"] if ok is False else COLORS["text_muted"])
+        lbl.setText(str(texto or ""))
+        lbl.setStyleSheet(f"color:{color};border:none;")
+
+    def _lanzar_prueba(self, clave: str, btn, lbl, fn, espera: str) -> bool:
+        """`fn()` (de servicios/pruebas) en un PruebaWorker; al acabar, su mensaje en `lbl`."""
+        from ui.pruebas_qt import PruebaWorker
+        h = self._pruebas.get(clave)
+        if h is not None and h.isRunning():
+            return False
+        btn.setEnabled(False)
+        self._pintar_prueba(lbl, None, espera)
+        w = PruebaWorker(fn)
+        w.listo.connect(lambda r, b=btn, l=lbl: self._on_prueba(b, l, r))
+        self._pruebas[clave] = w
+        w.start()
+        return True
+
+    def _on_prueba(self, btn, lbl, r) -> None:
+        btn.setEnabled(True)
+        r = r if isinstance(r, dict) else {}
+        texto = str(r.get("mensaje") or "")
+        # Telegram: lo que falle de cada parte (token, ID, Node, carpeta), debajo.
+        extra = [f"· {i.get('nombre')}: {i.get('detalle')}" for i in (r.get("items") or [])
+                 if isinstance(i, dict) and i.get("ok") is False and i.get("detalle") != texto]
+        self._pintar_prueba(lbl, r.get("ok"), "\n".join([texto, *extra]))
+
+    def _probar_openrouter(self) -> bool:
+        from servicios import pruebas
+        clave = self.fields["openrouter_api_key"].text().strip()
+        modelo = self.fields["openrouter_model"].text().strip()
+        return self._lanzar_prueba("openrouter", self.btn_probar_or, self.lbl_probar_or,
+                                   lambda: pruebas.probar_openrouter(clave, modelo),
+                                   "Preguntándole a OpenRouter por tu clave…")
+
+    def _probar_telegram(self) -> bool:
+        from servicios import pruebas
+        from servicios.telegram_worker import TelegramBotWorker
+        token = self.fields["telegram_token"].text().strip()
+        admin = self.fields["telegram_admin_id"].text().strip()
+        return self._lanzar_prueba("telegram", self.btn_probar_tg, self.lbl_probar_tg,
+                                   lambda: pruebas.probar_telegram(token, admin,
+                                                                   carpeta=TelegramBotWorker.preparar_carpeta),
+                                   "Probando tu bot (token, ID, Node.js y carpeta)…")
+
+    def _probar_salida(self) -> bool:
+        """Un tono por la salida del combo (la cambia en caliente; Guardar la fija)."""
+        from servicios import pruebas
+        r = pruebas.probar_salida(self.voice, self.salida_combo.currentData() or "")
+        self._pintar_prueba(self.lbl_probar_salida, r.get("ok"), r.get("mensaje"))
+        return bool(r.get("ok"))
+
+    def _probar_dictado(self) -> bool:
+        """3 s con el micrófono del combo y el modelo de Whisper elegido (ui/audio_prueba)."""
+        from ui.audio_prueba import ProbadorDictado
+        h = self._pruebas.get("dictado")
+        if h is not None and h.isRunning():
+            return False
+        if self._probador_mic is not None and self._probador_mic.isRunning():
+            self._pintar_prueba(self.lbl_probar_dictado, False, "Estoy probando el micrófono: espera a que acabe.")
+            return False
+        nombre = self.mic_combo.currentData() or ""
+        idx = voz_entrada.resolver_entrada(nombre) if nombre else None
+        if nombre and idx is None:
+            self._pintar_prueba(self.lbl_probar_dictado, False, f"No encuentro «{nombre}». ¿Está conectado?")
+            return False
+        modelo = self.whisper_combo.currentText() or "base"
+        idioma = self.fields["voz_idioma"].text().strip()
+        self.btn_probar_dictado.setEnabled(False)
+        self._pintar_prueba(self.lbl_probar_dictado, None, "Abriendo el micrófono…")
+        p = ProbadorDictado(idx, modelo, idioma)
+        p.progreso.connect(self._on_dictado_prueba)
+        self._pruebas["dictado"] = p
+        p.start()
+        return True
+
+    def _on_dictado_prueba(self, payload: str) -> None:
+        import json
+        try:
+            e = json.loads(payload)
+        except (TypeError, ValueError):
+            return
+        fase = e.get("fase")
+        if fase in ("listo", "error"):
+            self.btn_probar_dictado.setEnabled(True)
+        ok = e.get("ok") if fase in ("listo", "error") else None
+        self._pintar_prueba(self.lbl_probar_dictado, ok, e.get("mensaje"))
+
+    def _build_diagnostico_group(self) -> QFrame:
+        frame = self._create_group_frame()
+        fl = QVBoxLayout(frame); fl.setSpacing(10)
+        info = QLabel("Miro lo que traigo, que pueda escribir en tus carpetas, tu micrófono y tus altavoces, y los "
+                      "servicios que usas (internet, OpenRouter, Ollama, Telegram y Node.js). Lo que no tienes "
+                      "configurado sale como «no aplica». Tus claves no salen de aquí.")
+        info.setWordWrap(True); info.setFont(QFont("Segoe UI", 9))
+        info.setStyleSheet(f"color:{COLORS['text_muted']};border:none;")
+        fl.addWidget(info)
+        self.btn_diagnostico, self.lbl_diagnostico = self._fila_prueba(
+            fl, "COMPROBAR QUE TODO FUNCIONA", self._abrir_diagnostico, "Se abre el informe y se va llenando.")
+        return frame
+
+    def _abrir_diagnostico(self):
+        """El informe en un diálogo (ui/pruebas_qt.DialogoDiagnostico); uno solo a la vez."""
+        from ui.pruebas_qt import DialogoDiagnostico
+        d = self._dialogo_diag
+        try:
+            if d is not None and d.isVisible():
+                d.raise_(); d.activateWindow()
+                return d
+        except RuntimeError:
+            pass
+        d = DialogoDiagnostico(self)
+        d.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
+        self._dialogo_diag = d
+        d.show()
+        d.iniciar()
+        return d
+
     # ── Grupo de actualizaciones ───────────────────────────────────────────────
+    # Según actualizador.modo(): instalada → GitHub Releases con su barra de progreso
+    # (ui/actualizacion_qt.ControlActualizacion; aquí nunca se llama a git); desde el código
+    # (git) → lo de siempre (EstadoGitWorker + GitWorker); copia sin git → el enlace a la
+    # página de Releases. «Buscar al abrirme» guarda al momento en los tres.
     def _build_update_group(self) -> QFrame:
         frame = self._create_group_frame()
         fl = QVBoxLayout(frame); fl.setSpacing(10)
+        self._modo_update = actualizador.modo()
+        self._act = None
 
+        como = {actualizador.MODO_INSTALADA: "instalada",
+                actualizador.MODO_GIT: "desde el código (git)",
+                actualizador.MODO_CARPETA: "copia sin git"}.get(self._modo_update, self._modo_update)
+        cabecera = QLabel(f"Soy la versión <b>{actualizador.version_actual() or '?'}</b> · {como}")
+        cabecera.setFont(QFont(FONT_MONO, 9))
+        cabecera.setStyleSheet(f"color:{COLORS['text']};border:none;")
+        fl.addWidget(cabecera)
+
+        if self._modo_update == actualizador.MODO_INSTALADA:
+            self._build_update_releases(fl)
+        elif self._modo_update == actualizador.MODO_GIT:
+            self._build_update_git(fl)
+        else:
+            enlace = QLabel(
+                "Esta copia no es un repositorio git ni la versión instalada, así que no puedo "
+                "actualizarme sola. Mis versiones nuevas están en "
+                f"<a href=\"{actualizador.URL_RELEASES}\" style=\"color:{COLORS['accent']};\">"
+                "la página de Releases de GitHub</a> (el instalador te deja tus datos como están).")
+            enlace.setWordWrap(True); enlace.setFont(QFont("Segoe UI", 9))
+            enlace.setOpenExternalLinks(True)
+            enlace.setStyleSheet(f"color:{COLORS['text_muted']};border:none;")
+            fl.addWidget(enlace)
+
+        self.chk_buscar_inicio = QCheckBox("Buscar una versión nueva de mí al abrirme (una vez al día)")
+        self.chk_buscar_inicio.setChecked(bool(self.config.get("actualizaciones", "comprobar_al_iniciar", True)))
+        self.chk_buscar_inicio.setFont(QFont("Segoe UI", 10))
+        self.chk_buscar_inicio.setStyleSheet(f"QCheckBox{{color:{COLORS['text']};border:none;spacing:8px;}}QCheckBox::indicator{{width:16px;height:16px;}}")
+        self.chk_buscar_inicio.toggled.connect(
+            lambda on: self.config.set("actualizaciones", "comprobar_al_iniciar", bool(on)))
+        fl.addWidget(self.chk_buscar_inicio)
+
+        # Estado de las funciones opcionales
+        titulo_dep = QLabel("Funciones opcionales")
+        titulo_dep.setFont(QFont(FONT_MONO, 9, QFont.Weight.Bold))
+        titulo_dep.setStyleSheet(f"color:{COLORS['accent']};border:none;padding-top:8px;")
+        fl.addWidget(titulo_dep)
+
+        for o in actualizador.estado_opcionales():
+            if o["disponible"]:
+                texto, color = f"OK   {o['funcion']}", COLORS["success"]
+            else:
+                texto, color = f"—    {o['funcion']}  →  {o['comando']}", COLORS["warning"]
+            linea = QLabel(texto); linea.setFont(QFont(FONT_MONO, 9)); linea.setWordWrap(True)
+            linea.setToolTip(o["nota"])
+            linea.setStyleSheet(f"color:{color};border:none;")
+            fl.addWidget(linea)
+
+        return frame
+
+    def _boton_update(self, texto: str, primario: bool = False) -> QPushButton:
+        b = QPushButton(texto)
+        b.setCursor(Qt.CursorShape.PointingHandCursor)
+        b.setFont(QFont(FONT_MONO, 9, QFont.Weight.Bold)); b.setFixedHeight(36)
+        if primario:
+            b.setStyleSheet(
+                f"QPushButton{{background:qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 {COLORS['cyan_dark']},"
+                f"stop:1 {COLORS['accent']});color:{COLORS['bg']};border:none;border-radius:3px;"
+                f"padding:0 14px;letter-spacing:1px;}}QPushButton:hover{{background:{COLORS['accent']};}}"
+                f"QPushButton:disabled{{background:{COLORS['surface3']};color:{COLORS['text_dim']};}}")
+        else:
+            b.setStyleSheet(
+                f"QPushButton{{background:{COLORS['surface2']};color:{COLORS['accent']};"
+                f"border:2px solid {COLORS['cyan_dark']};border-radius:3px;padding:0 14px;letter-spacing:1px;}}"
+                f"QPushButton:hover{{background:{COLORS['surface3']};border-color:{COLORS['accent']};}}"
+                f"QPushButton:disabled{{color:{COLORS['text_dim']};border-color:{COLORS['border']};}}")
+        return b
+
+    def _build_update_releases(self, fl) -> None:
+        """Instalada: GitHub Releases (buscar, descargar con progreso, instalar, omitir)."""
+        from PyQt6.QtWidgets import QProgressBar
+        from ui.actualizacion_qt import ControlActualizacion, salir_de_verdad_de
+        self._act = ControlActualizacion(self.config, modo=self._modo_update,
+                                         salir=salir_de_verdad_de(self), parent=self)
+        self._act.cambio.connect(self._pintar_actualizacion)
+
+        explicacion = QLabel(
+            "Busco mi última versión en GitHub. «Instalar y reiniciar» la descarga (comprobada con "
+            "su SHA-256), me cierra, se instala sola y me vuelvo a abrir. Tus datos no se tocan.")
+        explicacion.setWordWrap(True); explicacion.setFont(QFont("Segoe UI", 9))
+        explicacion.setStyleSheet(f"color:{COLORS['text_muted']};border:none;")
+        fl.addWidget(explicacion)
+
+        fila = QHBoxLayout(); fila.setSpacing(8)
+        self.btn_comprobar = self._boton_update("BUSCAR ACTUALIZACIONES")
+        self.btn_comprobar.clicked.connect(self._act.buscar)
+        self.btn_actualizar = self._boton_update("INSTALAR Y REINICIAR", primario=True)
+        self.btn_actualizar.clicked.connect(self._instalar_release)
+        self.btn_actualizar.setEnabled(False)
+        self.btn_cancelar_update = self._boton_update("CANCELAR")
+        self.btn_cancelar_update.clicked.connect(self._act.cancelar)
+        self.btn_cancelar_update.setVisible(False)
+        self.btn_omitir = self._boton_update("OMITIR ESTA VERSIÓN")
+        self.btn_omitir.clicked.connect(self._omitir_release)
+        self.btn_omitir.setVisible(False)
+        for b in (self.btn_comprobar, self.btn_actualizar, self.btn_cancelar_update, self.btn_omitir):
+            fila.addWidget(b)
+        fila.addStretch()
+        fl.addLayout(fila)
+
+        self.barra_update = QProgressBar()
+        self.barra_update.setRange(0, 100); self.barra_update.setFixedHeight(12)
+        self.barra_update.setTextVisible(False); self.barra_update.setVisible(False)
+        self.barra_update.setStyleSheet(
+            f"QProgressBar{{background:{COLORS['surface2']};border:1px solid {COLORS['border']};border-radius:3px;}}"
+            f"QProgressBar::chunk{{background:{COLORS['accent']};}}")
+        fl.addWidget(self.barra_update)
+
+        self.lbl_update = QLabel("")
+        self.lbl_update.setWordWrap(True); self.lbl_update.setFont(QFont(FONT_MONO, 9))
+        self.lbl_update.setStyleSheet(f"color:{COLORS['text_muted']};border:none;")
+        fl.addWidget(self.lbl_update)
+        self.lbl_notas_update = QLabel("")
+        self.lbl_notas_update.setWordWrap(True); self.lbl_notas_update.setFont(QFont("Segoe UI", 9))
+        self.lbl_notas_update.setTextFormat(Qt.TextFormat.PlainText)
+        self.lbl_notas_update.setStyleSheet(f"color:{COLORS['text_muted']};border:none;")
+        self.lbl_notas_update.setVisible(False)
+        fl.addWidget(self.lbl_notas_update)
+
+    def _pintar_actualizacion(self, d) -> None:
+        """Un cambio de ControlActualizacion (instalada) → botones, barra y textos."""
+        d = d if isinstance(d, dict) else {}
+        fase = d.get("fase", "")
+        ocupado = fase in ("buscando", "descargando", "instalando")
+        self.btn_comprobar.setEnabled(not ocupado)
+        self.btn_comprobar.setText("BUSCANDO…" if fase == "buscando" else "BUSCAR ACTUALIZACIONES")
+        # Una versión nueva con su instalador comprobable (también la que pediste saltarte).
+        self.btn_actualizar.setEnabled(fase in ("hay", "al_dia", "lista", "error")
+                                       and bool(d.get("nueva")) and bool(d.get("instalable")))
+        self.btn_cancelar_update.setVisible(fase == "descargando")
+        self.btn_omitir.setVisible(fase == "hay" and bool(d.get("version")))
+        self.barra_update.setVisible(fase in ("descargando", "lista"))
+        self.barra_update.setValue(int(d.get("pct") or 0))
+        color = {"hay": COLORS["success"], "lista": COLORS["success"], "error": COLORS["error"],
+                 "instalando": COLORS["accent"]}.get(fase, COLORS["text_muted"])
+        self.lbl_update.setText(str(d.get("mensaje") or ""))
+        self.lbl_update.setStyleSheet(f"color:{color};border:none;")
+        notas = str(d.get("notas") or "") if fase in ("hay", "descargando", "lista") else ""
+        self.lbl_notas_update.setText(notas)
+        self.lbl_notas_update.setVisible(bool(notas))
+
+    def _instalar_release(self) -> None:
+        version = (self._act.estado().get("version") if self._act is not None else "") or ""
+        r = QMessageBox.question(
+            self, "Instalar y reiniciar",
+            f"Voy a descargar la {version or 'versión nueva'} (si no la tengo ya), cerrarme, "
+            "instalarme sola y volverme a abrir. Tus datos se quedan como están.\n\n¿Seguimos?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if r == QMessageBox.StandardButton.Yes and self._act is not None:
+            self._act.instalar()
+
+    def _omitir_release(self) -> None:
+        if self._act is not None:
+            self._act.omitir(self._act.estado().get("version") or "")
+
+    def recibir_novedad(self, res) -> None:
+        """El aviso al iniciar encontró algo (main.LuneCDWindow.avisar_actualizacion)."""
+        if self._act is not None:
+            self._act.recibir(res)
+        elif getattr(self, "lbl_update", None) is not None and isinstance(res, dict):
+            mensaje = str(res.get("mensaje") or "")
+            if res.get("commits"):
+                mensaje += "\n\n" + "\n".join(f"  · {c}" for c in res["commits"][:10])
+            self.lbl_update.setText(mensaje)
+            self.lbl_update.setStyleSheet(f"color:{COLORS['success']};border:none;")
+
+    def _build_update_git(self, fl) -> None:
+        """Desde el código: git (lo de siempre)."""
         # El estado real se rellena en cuanto responda el worker.
         self.lbl_repo = QLabel("Consultando el repositorio…")
         self.lbl_repo.setWordWrap(True); self.lbl_repo.setFont(QFont(FONT_MONO, 9))
@@ -1216,24 +1566,6 @@ class SettingsPanel(QFrame):
         self.lbl_update.setWordWrap(True); self.lbl_update.setFont(QFont(FONT_MONO, 9))
         self.lbl_update.setStyleSheet(f"color:{COLORS['text_muted']};border:none;")
         fl.addWidget(self.lbl_update)
-
-        # Estado de las funciones opcionales
-        titulo_dep = QLabel("Funciones opcionales")
-        titulo_dep.setFont(QFont(FONT_MONO, 9, QFont.Weight.Bold))
-        titulo_dep.setStyleSheet(f"color:{COLORS['accent']};border:none;padding-top:8px;")
-        fl.addWidget(titulo_dep)
-
-        for o in actualizador.estado_opcionales():
-            if o["disponible"]:
-                texto, color = f"OK   {o['funcion']}", COLORS["success"]
-            else:
-                texto, color = f"—    {o['funcion']}  →  {o['comando']}", COLORS["warning"]
-            linea = QLabel(texto); linea.setFont(QFont(FONT_MONO, 9)); linea.setWordWrap(True)
-            linea.setToolTip(o["nota"])
-            linea.setStyleSheet(f"color:{color};border:none;")
-            fl.addWidget(linea)
-
-        return frame
 
     def _on_estado_repo(self, est):
         if est.get("ok"):
@@ -1307,7 +1639,10 @@ class SettingsPanel(QFrame):
             f"{res['mensaje']}\n\n{detalle[:400]}\n\n¿Reinicio Lune ahora para aplicarlo?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         if r == QMessageBox.StandardButton.Yes:
-            actualizador.reiniciar()
+            # Me relanzo y salgo con el «Salir» de la bandeja (guarda el chat y suelta todo).
+            from ui.actualizacion_qt import salir_de_verdad_de
+            salir = salir_de_verdad_de(self)
+            actualizador.reiniciar(salir=lambda _codigo=0: salir())
 
     def _probar_ollama(self):
         url = self.fields["ollama_url"].text().strip()

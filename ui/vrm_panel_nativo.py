@@ -160,7 +160,7 @@ class VrmPanelNativo(QWidget):
         botones = QHBoxLayout()
         botones.setSpacing(8)
         self.btn_importar = self._boton("IMPORTAR .VRM…", principal=True)
-        self.btn_importar.setToolTip("Copia un .vrm a la carpeta modelo_vrm/ de Lune.")
+        self.btn_importar.setToolTip(f"Copia un .vrm a la carpeta de modelos de Lune ({vrm.CARPETA}).")
         self.btn_importar.clicked.connect(self.importar)
         self.btn_asignar = self._boton("USAR CON LUNE")
         self.btn_asignar.clicked.connect(self.asignar)
@@ -282,7 +282,8 @@ class VrmPanelNativo(QWidget):
             for m in modelos:
                 self.combo.addItem(m, m)
             if not modelos:
-                self.combo.addItem("No hay modelos en modelo_vrm/", None)
+                self.combo.addItem(f"No hay modelos en {vrm.CARPETA}", None)
+                self.combo.setItemData(0, str(vrm.CARPETA), Qt.ItemDataRole.ToolTipRole)
             self.combo.setCurrentIndex(indice)
         finally:
             self._cargando = False

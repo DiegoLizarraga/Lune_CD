@@ -8,10 +8,18 @@ para saber qué le falta a tu Lune. Con `--json`, lo mismo en JSON.
 
 Secciones, en este orden:
   recursos  lo que trae Lune y solo se lee (la piel web, el vídeo de inicio, las fuentes…)
-  datos     que tu carpeta de datos (y la local) se puedan escribir
+  datos     que tu carpeta de datos (y la local) se puedan escribir, y el espacio libre
   modulos   que se importen las librerías que van en el paquete
-  red       solo con red=True: COMPROBACIONES_RED (vacía por ahora; ahí irán Ollama,
-            la nube y compañía, y la tarjeta de la interfaz las pintará igual)
+  equipo    tu micrófono y tus altavoces, y si el modelo del dictado ya está bajado (sin
+            ellos no es un fallo de Lune: salen como «no aplica», también en el build)
+  red       solo con red=True: COMPROBACIONES_RED (internet, la clave de OpenRouter,
+            Ollama, el bot de Telegram y Node.js). Lo que no tienes configurado sale como
+            «no aplica». La clave y el token nunca salen en el detalle (servicios/pruebas).
+
+Con red, el informe es «Comprobar que todo funciona» de Ajustes (web: la tarjeta
+extra/diagnostico.jsx por la señal `diagnostico` del puente; nativa: ui/pruebas_qt.py) y
+`/diagnostico` de patata. Las pruebas de cada apartado viven en servicios/pruebas.py, las
+mismas que los botones «Probar» de Ajustes.
 
 Sin Qt al importar: todo se importa dentro de comprobar(), y en un orden que no repite el
 crash de MSVCP140 (nucleo/runtime_win.py): primero la precarga del runtime de C++, luego
@@ -26,16 +34,22 @@ ok None = no aplica aquí (p. ej. pywin32 fuera de Windows): no cuenta como fall
 Añadir una comprobación: una función (Contexto) -> (ok, detalle) y una Comprobacion(id,
 seccion, nombre, funcion) en la lista que toque (o en COMPROBACIONES_RED). Si la función
 lanza, el item sale con ok False y la excepción como detalle: nunca tumba el informe.
+`comprobar(…, parar=fn)` deja de comprobar en cuanto fn() dice True (la interfaz se cierra).
+
+Los ajustes (claves, URLs, modelo de Whisper) se leen de datos.json y config.json SIN
+escribir nada: la comprobación no crea ni migra archivos (Contexto.ajustes los cambia).
 """
 from __future__ import annotations
 
 import importlib
+import importlib.util
 import json
 import os
 import sys
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 Resultado = Tuple[Optional[bool], str]
@@ -44,11 +58,21 @@ SECCIONES = {
     "recursos": "Lo que traigo",
     "datos": "Tus carpetas",
     "modulos": "Librerías",
-    "red": "Red",
+    "equipo": "Tu equipo",
+    "red": "Red y servicios",
 }
 
 # El runtime de C++ que necesitan ctranslate2 y onnxruntime (ver nucleo/runtime_win.py).
 MSVC_MINIMA = (14, 40)
+
+# Dentro de la app («Comprobar que todo funciona» de Ajustes) lo que aún no está cargado no se
+# carga solo para mirarlo: QtWebEngine no se puede importar después de crear la QApplication,
+# y lo del dictado son cientos de MB que se quedarían en memoria (y es lo que podría tumbar el
+# proceso si el runtime de C++ fuera el viejo). De esos basta con saber que están: «Probar
+# dictado» los carga de verdad, y `--comprobar` (otro proceso) también.
+SOLO_MIRAR_EN_APP = ("PyQt6.QtWebEngineWidgets", "PyQt6.QtWebEngineCore", "PyQt6.QtMultimedia", "ctranslate2",
+                     "onnxruntime", "av", "faster_whisper")
+SIN_CARGAR = "_lune_sin_cargar"
 
 
 @dataclass
@@ -65,6 +89,15 @@ class Contexto:
     msvc_cargada: Optional[Callable[[], Optional[Tuple[str, Tuple[int, ...]]]]] = None
     informe_precarga: str = ""
     extra: Dict[str, Any] = field(default_factory=dict)
+    # Tu equipo y la red (servicios/pruebas). None = lo de verdad; los tests ponen falsos.
+    http: Optional[Callable[..., Any]] = None                 # como requests.get(url, headers=, timeout=)
+    ajustes: Optional[Callable[[], Dict[str, Any]]] = None    # claves y URLs (ver _ajustes)
+    node: Optional[Callable[[], Dict[str, Any]]] = None       # actualizador.estado_node
+    sonido: Any = None                                        # el módulo sounddevice (o uno falso)
+    whisper: Optional[Callable[[str], bool]] = None           # voz_entrada.modelo_descargado
+    disco: Optional[Callable[[str], Any]] = None              # shutil.disk_usage
+    listar_ollama: Optional[Callable[[str], Tuple[bool, List[str], str]]] = None
+    carpeta_bot: Optional[Callable[[], bool]] = None          # TelegramBotWorker.preparar_carpeta
 
 
 @dataclass(frozen=True)
@@ -143,9 +176,24 @@ def _local_escribible(ctx: Contexto) -> Resultado:
     return _escribible(ctx.local)
 
 
+def _de_prueba(r: Dict[str, Any]) -> Resultado:
+    """Lo que devuelve servicios/pruebas ({ok, mensaje}) como (ok, detalle)."""
+    return r.get("ok"), str(r.get("mensaje") or "")
+
+
+def _pruebas():
+    from servicios import pruebas
+    return pruebas
+
+
+def _espacio(ctx: Contexto) -> Resultado:
+    return _de_prueba(_pruebas().espacio_libre(ctx.datos, uso=ctx.disco))
+
+
 DATOS: List[Comprobacion] = [
     Comprobacion("carpeta_datos", "datos", "Carpeta de tus datos", _datos_escribible),
     Comprobacion("carpeta_local", "datos", "Carpeta local (registros y cachés)", _local_escribible),
+    Comprobacion("espacio_libre", "datos", "Espacio libre", _espacio),
 ]
 
 
@@ -164,6 +212,8 @@ def _modulo(nombre_modulo: str, extra: Optional[Callable[[Any, Contexto], str]] 
         if solo_windows and not ctx.windows:
             return None, "solo en Windows"
         mod = ctx.importar(nombre_modulo)
+        if getattr(mod, SIN_CARGAR, False):      # dentro de la app: está, pero no se carga para mirarlo
+            return True, "está (lo cargo cuando haga falta)"
         detalle = _version(mod)
         if extra is not None:
             mas = extra(mod, ctx)
@@ -283,19 +333,132 @@ MODULOS: List[Comprobacion] = [
     Comprobacion("msvc_cargada", "modulos", "Runtime de C++ en uso", _msvc_final),
 ]
 
-# Las de red (Ollama, la nube, GitHub…): solo con comprobar(red=True). Se añaden aquí.
-COMPROBACIONES_RED: List[Comprobacion] = []
+# ── Ajustes (leídos sin escribir nada) ───────────────────────────────────────────
+
+def _leer_json(ruta: Path) -> Dict[str, Any]:
+    try:
+        d = json.loads(Path(ruta).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return d if isinstance(d, dict) else {}
+
+
+def _ajustes_de_verdad(ctx: Contexto) -> Dict[str, Any]:
+    """Lo que hace falta de datos.json y config.json de la carpeta de datos, sin escribir
+    nada (ni la plantilla de datos.json ni la migración de config.json)."""
+    d, c = _leer_json(Path(ctx.datos) / "datos.json"), _leer_json(Path(ctx.datos) / "config.json")
+    apis = d.get("apis") if isinstance(d.get("apis"), dict) else {}
+    modelos = d.get("modelos") if isinstance(d.get("modelos"), dict) else {}
+    voz = c.get("voz") if isinstance(c.get("voz"), dict) else {}
+    texto = lambda v, defecto="": str(v if v not in (None, "") else defecto).strip()   # noqa: E731
+    return {
+        "openrouter_key": texto(apis.get("openrouter_key")),
+        "openrouter_model": texto(modelos.get("openrouter_model"), "openrouter/auto"),
+        "ollama_url": texto(modelos.get("ollama_url"), "http://localhost:11434"),
+        "ollama_model": texto(modelos.get("ollama_model")),
+        "telegram_token": texto(apis.get("telegram_token")),
+        "telegram_admin_id": texto(apis.get("telegram_admin_id")),
+        "modelo_whisper": texto(voz.get("modelo_whisper"), "base"),
+    }
+
+
+def _ajustes(ctx: Contexto) -> Dict[str, Any]:
+    if "ajustes" not in ctx.extra:
+        try:
+            ctx.extra["ajustes"] = dict((ctx.ajustes or (lambda: _ajustes_de_verdad(ctx)))() or {})
+        except Exception:           # noqa: BLE001
+            ctx.extra["ajustes"] = {}
+    return ctx.extra["ajustes"]
+
+
+# ── Tu equipo (sin red; lo que falta aquí no es un fallo de Lune) ──────────────────
+
+def _audio(ctx: Contexto) -> Resultado:
+    sd = ctx.sonido
+    if sd is None:
+        try:
+            sd = ctx.importar("sounddevice")
+        except Exception:           # noqa: BLE001 (ImportError u OSError de PortAudio)
+            return False, "No puedo usar el sonido: falta PortAudio (sounddevice)."
+    return _de_prueba(_pruebas().probar_audio(sd))
+
+
+def _whisper(ctx: Contexto) -> Resultado:
+    modelo = _ajustes(ctx).get("modelo_whisper") or "base"
+    return _de_prueba(_pruebas().probar_whisper(modelo, descargado=ctx.whisper,
+                                                faltan=[] if ctx.whisper is not None else None))
+
+
+EQUIPO: List[Comprobacion] = [
+    Comprobacion("audio", "equipo", "Micrófono y altavoces", _audio),
+    Comprobacion("whisper_modelo", "equipo", "Modelo del dictado (Whisper)", _whisper),
+]
+
+
+# ── Red y servicios (solo con red=True) ───────────────────────────────────────────
+
+def _internet(ctx: Contexto) -> Resultado:
+    return _de_prueba(_pruebas().probar_internet(http=ctx.http))
+
+
+def _openrouter(ctx: Contexto) -> Resultado:
+    a = _ajustes(ctx)
+    return _de_prueba(_pruebas().probar_openrouter(a.get("openrouter_key"), a.get("openrouter_model"),
+                                                   http=ctx.http))
+
+
+def _ollama(ctx: Contexto) -> Resultado:
+    a = _ajustes(ctx)
+    if not a.get("ollama_model"):
+        return None, "No uso Ollama: no hay modelo local elegido (Ajustes, apartado Ollama)."
+    return _de_prueba(_pruebas().probar_ollama(a.get("ollama_url"), a.get("ollama_model"),
+                                               listar=ctx.listar_ollama))
+
+
+def _telegram(ctx: Contexto) -> Resultado:
+    a = _ajustes(ctx)
+    p = _pruebas()
+    t = p.probar_token_telegram(a.get("telegram_token"), http=ctx.http)
+    if t["ok"] is not True:
+        return _de_prueba(t)
+    # El token vale: lo demás del bot (tu ID y su carpeta; Node va aparte).
+    i = p.probar_id_telegram(a.get("telegram_admin_id"))
+    try:
+        carpeta = bool((ctx.carpeta_bot or p._carpeta_bot_real)())
+    except Exception:               # noqa: BLE001
+        carpeta = False
+    if not carpeta:
+        return False, f"{t['mensaje']} Pero no encuentro la carpeta del bot ({p.CARPETA_BOT_TG}): reinstala Lune."
+    if i["ok"] is False:
+        return False, f"{t['mensaje']} {i['mensaje']}"
+    return True, t["mensaje"] + ("" if i["ok"] else f" {i['mensaje']}")
+
+
+def _node(ctx: Contexto) -> Resultado:
+    necesario = bool(_ajustes(ctx).get("telegram_token"))
+    return _de_prueba(_pruebas().probar_node(ctx.node, necesario=necesario))
+
+
+# Las de red: solo con comprobar(red=True). Se añaden aquí.
+COMPROBACIONES_RED: List[Comprobacion] = [
+    Comprobacion("internet", "red", "Internet", _internet),
+    Comprobacion("openrouter", "red", "Clave de OpenRouter (nube)", _openrouter),
+    Comprobacion("ollama", "red", "Ollama (modelo local)", _ollama),
+    Comprobacion("telegram", "red", "Bot de Telegram", _telegram),
+    Comprobacion("node", "red", "Node.js (bots)", _node),
+]
 
 
 def comprobaciones(red: bool = False) -> List[Comprobacion]:
     """La lista completa, en el orden en que se corren."""
-    return [*RECURSOS, *DATOS, *MODULOS, *(COMPROBACIONES_RED if red else [])]
+    return [*RECURSOS, *DATOS, *MODULOS, *EQUIPO, *(COMPROBACIONES_RED if red else [])]
 
 
 def modulos_empaquetados() -> List[str]:
     """Lo que comprobar() importa por nombre (para los hiddenimports de packaging/lune.spec:
     PyInstaller no ve los import_module con cadena)."""
-    fijos = ["faster_whisper.utils", "certifi", "PIL.ImageGrab", "nucleo.runtime_win", "nucleo.rutas", "version"]
+    fijos = ["faster_whisper.utils", "certifi", "PIL.ImageGrab", "nucleo.runtime_win", "nucleo.rutas", "version",
+             "servicios.pruebas"]
     vistos = [getattr(c.funcion, "modulo", None) for c in MODULOS]
     return list(dict.fromkeys([m for m in vistos if m] + fijos))
 
@@ -335,6 +498,34 @@ def contexto_real() -> Contexto:
                     precargar=_precargar_de_verdad, msvc_cargada=_msvc_de_verdad)
 
 
+def importar_sin_cargar(nombre: str, *, cargados: Optional[Dict[str, Any]] = None,
+                        buscar: Optional[Callable[[str], Any]] = None) -> Any:
+    """Como importlib.import_module, salvo lo de SOLO_MIRAR_EN_APP que aún no esté cargado:
+    de eso solo se mira que esté (find_spec) y se devuelve una marca (SIN_CARGAR)."""
+    cargados = sys.modules if cargados is None else cargados
+    if nombre in cargados:
+        return cargados[nombre]
+    if nombre in SOLO_MIRAR_EN_APP:
+        try:
+            spec = (buscar or importlib.util.find_spec)(nombre)
+        except (ImportError, ValueError):
+            spec = None
+        if spec is None:
+            raise ImportError(f"No module named '{nombre}'")
+        return SimpleNamespace(**{SIN_CARGAR: True})
+    return importlib.import_module(nombre)
+
+
+def contexto_en_app() -> Contexto:
+    """El contexto de verdad para comprobar DENTRO de la app (la tarjeta de la web y el diálogo
+    de la nativa): sin cargar lo de SOLO_MIRAR_EN_APP y sin precargar el runtime (lo hizo la
+    app al arrancar; el item «Runtime de C++ en uso» dice cuál quedó)."""
+    ctx = contexto_real()
+    ctx.importar = importar_sin_cargar
+    ctx.precargar = lambda: "la hizo la app al arrancar"
+    return ctx
+
+
 def _modo() -> str:
     from nucleo import rutas
     return "instalada" if rutas.INSTALADA else "codigo"
@@ -349,15 +540,22 @@ def _version_app() -> str:
 
 
 def comprobar(red: bool = False, *, ctx: Optional[Contexto] = None,
-              al_avanzar: Optional[Callable[[Dict[str, Any]], Any]] = None) -> Dict[str, Any]:
+              al_avanzar: Optional[Callable[[Dict[str, Any]], Any]] = None,
+              parar: Optional[Callable[[], bool]] = None) -> Dict[str, Any]:
     """Corre las comprobaciones y devuelve el informe. `al_avanzar(item)` se llama con cada
     item según sale (patata los va imprimiendo: si algo tumba el proceso, se ve hasta dónde
-    llegó). Nunca lanza por una comprobación que falla."""
+    llegó; la interfaz los va pintando). Con `parar`, antes de cada comprobación se le
+    pregunta y, si dice True, el informe acaba ahí (con "parado": True). Nunca lanza por
+    una comprobación que falla."""
     if "PYGAME_HIDE_SUPPORT_PROMPT" not in os.environ:
         os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"       # sin el «Hello from pygame»
     ctx = ctx or contexto_real()
     items: List[Dict[str, Any]] = []
+    parado = False
     for c in comprobaciones(red):
+        if parar is not None and parar():
+            parado = True
+            break
         try:
             ok, detalle = c.funcion(ctx)
         except Exception as e:      # ImportError, OSError de una DLL, lo que sea: se apunta
@@ -367,8 +565,11 @@ def comprobar(red: bool = False, *, ctx: Optional[Contexto] = None,
         items.append(item)
         if al_avanzar is not None:
             al_avanzar(item)
-    return {"ok": all(i["ok"] is not False for i in items), "version": _version_app(),
-            "modo": _modo(), "items": items}
+    resultado = {"ok": all(i["ok"] is not False for i in items), "version": _version_app(),
+                 "modo": _modo(), "items": items}
+    if parado:
+        resultado["parado"] = True
+    return resultado
 
 
 # ── Informe legible (patata --comprobar) ─────────────────────────────────────────
@@ -390,10 +591,38 @@ def resumen(resultado: Dict[str, Any]) -> str:
     items = resultado.get("items", [])
     fallan = [i for i in items if i.get("ok") is False]
     cuentan = [i for i in items if i.get("ok") is not None]
+    if resultado.get("parado"):
+        return f"Lo dejé a medias: comprobé {len(items)} cosas y {len(fallan)} fallaban."
     if not fallan:
         return f"Todo en orden ({len(cuentan)} de {len(cuentan)}): estoy lista."
     nombres = ", ".join(i["nombre"] for i in fallan)
     return f"Me falla{'n' if len(fallan) > 1 else ''} {len(fallan)} de {len(cuentan)}: {nombres}."
+
+
+# ── Para la interfaz (la señal `diagnostico` del puente y ui/pruebas_qt.py) ────────
+
+def evento_inicio(red: bool = True) -> Dict[str, Any]:
+    """Lo primero que se manda: versión, modo y los nombres de las secciones, en orden."""
+    secciones = list(dict.fromkeys(c.seccion for c in comprobaciones(red)))
+    return {"tipo": "inicio", "version": _version_app(), "modo": _modo(),
+            "secciones": [{"id": s, "nombre": SECCIONES.get(s, s)} for s in secciones],
+            "total": len(comprobaciones(red))}
+
+
+def evento_item(item: Dict[str, Any]) -> Dict[str, Any]:
+    """Un item tal cual sale de comprobar(), con el nombre de su sección."""
+    return {"tipo": "item", **item, "seccion_nombre": SECCIONES.get(item.get("seccion"), item.get("seccion"))}
+
+
+def evento_fin(resultado: Dict[str, Any]) -> Dict[str, Any]:
+    """El resumen del final: {tipo: fin, ok, resumen, fallan, cuentan, no_aplica, …}."""
+    items = resultado.get("items", [])
+    return {"tipo": "fin", "ok": bool(resultado.get("ok")), "version": resultado.get("version", "?"),
+            "modo": resultado.get("modo", ""), "resumen": resumen(resultado),
+            "fallan": sum(1 for i in items if i.get("ok") is False),
+            "cuentan": sum(1 for i in items if i.get("ok") is not None),
+            "no_aplica": sum(1 for i in items if i.get("ok") is None),
+            "parado": bool(resultado.get("parado"))}
 
 
 def informe(resultado: Dict[str, Any]) -> str:
@@ -432,5 +661,6 @@ def main(como_json: bool = False, red: bool = False, *, escribir: Callable[[str]
     return 0 if resultado["ok"] else 1
 
 
-__all__ = ("Comprobacion", "Contexto", "COMPROBACIONES_RED", "SECCIONES", "comprobar",
-           "comprobaciones", "modulos_empaquetados", "informe", "main")
+__all__ = ("Comprobacion", "Contexto", "COMPROBACIONES_RED", "EQUIPO", "SECCIONES", "comprobar",
+           "comprobaciones", "modulos_empaquetados", "informe", "main", "evento_inicio", "evento_item",
+           "evento_fin", "contexto_real", "contexto_en_app", "importar_sin_cargar")

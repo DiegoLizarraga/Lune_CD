@@ -82,6 +82,35 @@ TIMEOUT_CONECTAR_S = 5.0
 TXT_OTRA_LUNE = "Otra Lune ya publica en Discord."
 TXT_RECHAZADO = "Discord rechazó el Application ID."
 
+
+def motivo(estado: Any) -> str:
+    """Por qué no está conectada, en una frase con el siguiente paso ("" si lo está). Lo
+    enseñan el «Reconectar» de Ajustes (web y nativa) y el estado de la tarjeta."""
+    from servicios import discord_ipc as ipc
+    e = estado if isinstance(estado, dict) else {}
+    if e.get("conectado"):
+        return ""
+    if not e.get("activo"):
+        return "La presencia está apagada: enciéndela primero."
+    if e.get("sin_id"):
+        return "Falta el Application ID: crea una app en discord.com/developers y pega aquí su ID."
+    error = str(e.get("error") or "").strip()
+    if error == TXT_OTRA_LUNE:
+        return ("Otra Lune ya publica en Discord (otra ventana o la terminal): ciérrala o apágale "
+                "Discord allí y vuelvo a probar sola.")
+    if error in (TXT_RECHAZADO, TXT_ID_NO_VALIDO):
+        return ("Discord no acepta ese Application ID: cópialo otra vez de discord.com/developers (tu "
+                "app, «Application ID»).")
+    if error == ipc.TXT_SIN_DISCORD:
+        return "Discord no está abierto: abre la app de escritorio de Discord (la web no vale) y pulsa Reconectar."
+    if error == ipc.TXT_NO_RESPONDE:
+        return "Discord no responde: espera a que acabe de abrir (o reinícialo) y pulsa Reconectar."
+    if error == ipc.TXT_CORTADA:
+        return "Discord cerró la conexión: vuelvo a intentarlo yo sola en un momento."
+    if error:
+        return f"Sin conectar: {error}"
+    return "Todavía no conecto: espero a que Discord conteste."
+
 # (clave, texto fijo) en orden de prioridad. El juego no está: con juego, null.
 ESTADOS: Tuple[Tuple[str, str], ...] = (
     ("alarma", "Con una alarma sonando"),
@@ -323,6 +352,7 @@ class Presencia:
         self._t_cambio = 0.0
         self._t_pendiente: Optional[float] = None
         self._t_sondeo = -1e18
+        self._reintentar_ya = False             # reconectar(): el paso siguiente olvida las esperas
         self._estado: Dict[str, Any] = self._estado_base()
 
     # ── API (cualquier hilo; no bloquea salvo cerrar) ──────────────────────────
@@ -335,6 +365,15 @@ class Presencia:
     def actualizar(self) -> None:
         """El estado de Lune cambió (o la config): mirar ya, sin esperar al sondeo."""
         with self._lock:
+            self._sucio = True
+        self._despertar()
+
+    def reconectar(self) -> None:
+        """«Reconectar» de Ajustes: el próximo paso olvida la espera entre intentos (15 s,
+        30 s, 60 s) y un Application ID rechazado (por si lo arreglaste en Discord) y lo
+        intenta ya. No bloquea: lo hace el hilo de la presencia."""
+        with self._lock:
+            self._reintentar_ya = True
             self._sucio = True
         self._despertar()
 
@@ -418,6 +457,11 @@ class Presencia:
         with self._lock:
             habilitada = self._habilitada
             sucio, self._sucio = self._sucio, False
+            reintentar, self._reintentar_ya = self._reintentar_ya, False
+        if reintentar:                          # reconectar(): sin esperas ni ID rechazado
+            self._fallos = 0
+            self._proximo_intento = 0.0
+            self._id_rechazado = ""
         cid = client_id(self.config)
 
         if not habilitada:
@@ -652,4 +696,4 @@ _CONECTADO = object()
 
 __all__ = ("ESTADOS", "NOMBRE_MUTEX", "ETIQUETA_BOTON", "ANTIRREBOTE_S", "INTERVALO_MIN_S",
            "REINTENTOS_S", "REINTENTO_OTRA_LUNE_S", "clave_estado", "cabe", "construir_actividad", "actividad_de",
-           "url_boton", "client_id", "detalle", "render_visible", "es_patata", "Presencia")
+           "url_boton", "client_id", "detalle", "render_visible", "es_patata", "Presencia", "motivo")

@@ -81,7 +81,10 @@ ABS_AUTOHIDE = 1
 CLASES_BARRA = ("Shell_TrayWnd", "Shell_SecondaryTrayWnd")
 CLASES_ESCRITORIO = frozenset({"Progman", "WorkerW", "Shell_TrayWnd", "Shell_SecondaryTrayWnd"})
 HIJOS_DE_LUNE = ("qtwebengineprocess",)       # prefijo del nombre, en minúsculas
-TTL_PIDS_S = 5.0
+# Los QtWebEngineProcess casi no cambian: cada 30 s basta (antes 5 s: una instantánea de
+# todos los procesos cada ~6 s entre el modo juego y el detector de música). Al crear,
+# cerrar, enseñar u ocultar la asistente, invalidar_pids() fuerza el recálculo.
+TTL_PIDS_S = 30.0
 
 _MASCARA_32 = 0xFFFFFFFF
 
@@ -537,8 +540,20 @@ def _es_hijo_de_lune(nombre: str) -> bool:
     return any(n.startswith(p) for p in HIJOS_DE_LUNE)
 
 
+_gen_pids = 0       # sube con invalidar_pids(): todos los PidsLune recalculan sus hijos
+
+
+def invalidar_pids() -> None:
+    """La asistente se creó, se cerró o cambió de visibilidad (una página nueva o
+    descartada es un QtWebEngineProcess que aparece o se va): la próxima consulta de
+    cualquier PidsLune (modo juego, música, recorte de RAM) vuelve a listar los hijos."""
+    global _gen_pids
+    _gen_pids += 1
+
+
 class PidsLune:
-    """El pid propio más los hijos QtWebEngineProcess, recalculados cada `ttl` s."""
+    """El pid propio más los hijos QtWebEngineProcess, recalculados cada `ttl` s
+    o tras invalidar_pids()."""
 
     def __init__(self, api=None, ttl: float = TTL_PIDS_S, reloj: Callable[[], float] = time.monotonic):
         self.api = api or api_defecto()
@@ -546,16 +561,19 @@ class PidsLune:
         self._reloj = reloj
         self._hijos: Set[int] = set()
         self._t: Optional[float] = None
+        self._gen = _gen_pids
 
     def pids(self) -> Set[int]:
         ahora = self._reloj()
-        if self._t is None or ahora - self._t >= self.ttl:
+        gen = _gen_pids
+        if self._t is None or ahora - self._t >= self.ttl or gen != self._gen:
             try:
                 hijos = self.api.hijos(self.api.pid_propio())
             except Exception:
                 hijos = []
             self._hijos = {int(pid) for pid, nombre in hijos if _es_hijo_de_lune(nombre)}
             self._t = ahora
+            self._gen = gen
         return {int(self.api.pid_propio())} | self._hijos
 
     def contiene(self, pid: int) -> bool:

@@ -59,6 +59,9 @@ const aDataURL = (src) => 'data:text/javascript;base64,' + Buffer.from(src, 'utf
 const SRC_MOTOR = reescribirImports(readFileSync(URL_MOTOR, 'utf8'), URL_MOTOR);
 const DATA_MOTOR = aDataURL(SRC_MOTOR);
 const motor = await import(DATA_MOTOR);
+// Aquí los frames los simula el test a 60 Hz: en reposo, rAF y no el temporizador de la espera
+// (11.2; ese camino lo prueba tests/js/vrm_fps.test.mjs con un temporizador falso).
+motor.PARAMS.esperaTemporizador = false;
 const DEFECTOS = Object.fromEntries(Object.entries(RANGOS).map(([k, r]) => [k, r.defecto]));
 
 function lienzoFalso(extra = {}) {
@@ -494,6 +497,7 @@ test('un módulo opcional roto (404 o error de sintaxis) no tumba el avatar', as
       './lune_idles.js': noExiste('idles'),
     })));
   } finally { console.warn = warn; }
+  sinNada.PARAMS.esperaTemporizador = false; sinIdles.PARAMS.esperaTemporizador = false;   // frames simulados
   assert.deepEqual({ ...sinNada.MODULOS_OPCIONALES }, { gestos: false, idles: false, movimiento: false, params: false });
   for (const f of ['lune_gestos.js', 'lune_idles.js', 'lune_movimiento.js', 'lune_params.js']) {
     assert.ok(avisos.some((a) => a.includes(f)), `avisa en consola de ${f}`);

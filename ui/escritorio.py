@@ -64,6 +64,17 @@ from nucleo.estado_asistente import BusEstado, Cesion, EstadoAsistente, Resultad
 _log = logging.getLogger("lune.escritorio")
 
 
+def _invalidar_pids() -> None:
+    """Los procesos de Lune cambian con la asistente (cada página es un QtWebEngineProcess):
+    que el modo juego, la música y el recorte de RAM los vuelvan a listar (PidsLune
+    guarda la lista 30 s). Nunca lanza."""
+    try:
+        from servicios import win_pantalla
+        win_pantalla.invalidar_pids()
+    except Exception:
+        pass
+
+
 def crear_asistente(cls: Any, *args, **kw) -> Any:
     """Crea la asistente flotante (CompanionFlotante, AvatarOverlay…) SIN su propio
     icono de bandeja: desde el corte 4 la bandeja es una sola (ui/bandeja.BandejaLune,
@@ -344,6 +355,7 @@ class ServiciosEscritorio(QObject):
         """
         if ventana is self._asistente:
             return
+        _invalidar_pids()
         self._soltar_asistente()
         self._asistente = ventana
         if ventana is None:
@@ -391,6 +403,7 @@ class ServiciosEscritorio(QObject):
 
     @pyqtSlot(bool)
     def _on_visibilidad(self, visible: bool) -> None:
+        _invalidar_pids()            # su página pudo descartarse o volver a cargarse
         self.estado.actualizar(visible=bool(visible))
 
     @pyqtSlot(str, dict)
@@ -400,6 +413,7 @@ class ServiciosEscritorio(QObject):
             _llamar(ctl, "evento_asistente", tipo, datos)
 
     def _on_asistente_destruida(self, *_args) -> None:
+        _invalidar_pids()
         self._soltar_asistente(destruida=True)
         # Como en set_asistente(None): pensando=False apaga solo la fuente de la asistente
         # (comentar la pantalla); el chat de la ventana sigue pensando si lo estaba.

@@ -34,6 +34,11 @@
  *   m.drag(on, vx, vy)            vx/vy en px/ms (px de pantalla, Y hacia abajo)
  *   m.dormir(on) · m.tocar() · m.encuadrar('retrato'|'cuerpo') · m.cargar(url)
  *   m.setFPS(n) · m.meta() · m.destruir() → bool (true la primera vez)
+ *                                  Ritmo (11.2): fpsActivo con algo en marcha, fpsReposo (24) sin nada
+ *                                  (mover el cursor no cuenta) y fpsDormida (12) dormida del todo; en
+ *                                  reposo el frame siguiente lo da un temporizador y no un rAF en cada
+ *                                  refresco (PARAMS.esperaTemporizador); setFPS(0) para el bucle.
+ *                                  crearAsistente acepta además {temporizador, ahoraMs} (tests).
  *   m.luneParams(json) → JSON     calibración del modelo con la lista blanca de
  *                                  lune_params.js (luz, altura, pesos, invertir*, sway*)
  *   m.mod(nombre, metodo, ...args)  API de un módulo del bus (window.luneMod en la página)
@@ -207,6 +212,11 @@ export const PARAMS = {
   // ve igual a 24 fps) baja a fpsReposo, y dormida del todo a fpsDormida: la ventana es
   // translúcida y Qt copia cada frame de la GPU a la CPU.
   fov: 24, fpsActivo: 60, fpsReposo: 24, fpsDormida: 12, reposoTras: 4, alfaHit: 26, hitCadaMs: 33,
+  // En reposo y dormida el frame siguiente se espera con un temporizador y no con un
+  // requestAnimationFrame en cada refresco del monitor: medido en la asistente (11.2), ese bucle
+  // a 60/s sin pintar nada costaba él solo un 7-10 % de CPU. Con algo en marcha (o esperas más
+  // cortas que esperaMinMs), rAF como siempre. false = siempre rAF (los tests que simulan frames).
+  esperaTemporizador: true, esperaMinMs: 20,
   // Los gestos con tiempo (saludo, "no", mareo) vuelven solos al idle; el resto SE
   // QUEDA hasta el siguiente estado (si la haces reír, sigue riéndose). gestoWatchdog
   // (ms) los devolvería a neutral pasado ese tiempo; 0 = nunca.
@@ -328,7 +338,12 @@ function peso01(clave) {
   return Number.isFinite(v) ? clamp(v, 0, 1) : 1;
 }
 
-export function crearAsistente({ canvas, src, encuadre = 'retrato', onEvento = () => {} }) {
+export function crearAsistente({ canvas, src, encuadre = 'retrato', onEvento = () => {}, temporizador = null, ahoraMs = null }) {
+  // Temporizador y reloj (ms, la base de tiempo de requestAnimationFrame) de la espera entre frames
+  // en reposo: inyectables para los tests (tests/js/vrm_fps.test.mjs).
+  const tm = temporizador && typeof temporizador.poner === 'function' ? temporizador
+    : { poner: (fn, ms) => setTimeout(fn, ms), quitar: (id) => clearTimeout(id) };
+  const relojMs = typeof ahoraMs === 'function' ? ahoraMs : () => performance.now();
   // ── Escena ───────────────────────────────────────────────────────────────────
   const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, powerPreference: 'low-power' });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
@@ -369,6 +384,7 @@ export function crearAsistente({ canvas, src, encuadre = 'retrato', onEvento = (
   let cargaGen = 0;                       // dos cargas solapadas: solo cuenta la última
   let lookAtOn = true, encuadreFijo = modoEncuadre;   // encuadreFijo: el del usuario (no el temporal)
   let destruido = false, rafId = 0;       // destruir(): sin bucle ni cargas que lleguen tarde
+  let esperaId = null;                    // temporizador del frame siguiente en reposo (o null)
 
   // ── Bus de módulos ───────────────────────────────────────────────────────────
   // `est` es UN objeto que se actualiza cada frame (sin basura). Los campos baile,
@@ -425,7 +441,7 @@ export function crearAsistente({ canvas, src, encuadre = 'retrato', onEvento = (
     } catch (e) { /* sin cola: la página sigue igual */ }
   }
 
-  function actividad() { ultimaActividad = ahora; }
+  function actividad() { ultimaActividad = ahora; cortarEspera(); }
 
   // ── Parámetros por modelo (window.luneParams) ────────────────────────────────
   function aplicarLuz() {
@@ -721,30 +737,56 @@ export function crearAsistente({ canvas, src, encuadre = 'retrato', onEvento = (
   // vuelve a arrancar, sin salto: el primer dt cuenta desde aquí.
   function setFPS(n) {
     fpsObj = Math.max(0, Number(n) || 0);
-    if (fpsObj <= 0 || destruido) return;
+    if (fpsObj <= 0 || destruido) { quitarEspera(); return; }
     clock.getDelta();
-    if (!rafId) rafId = requestAnimationFrame(tick);
+    if (!rafId && esperaId === null) rafId = requestAnimationFrame(tick);
   }
 
-  // fps de este frame: fpsObj con algo en marcha; si no, fpsReposo; dormida del todo, fpsDormida.
-  function fpsObjetivo() {
-    if (ocupado()) return fpsObj;
+  // fps de este frame: fpsObj con algo en marcha (`activa`); si no, fpsReposo; dormida del todo, fpsDormida.
+  function fpsObjetivo(activa = ocupado()) {
+    if (activa) return fpsObj;
     const reposo = Math.min(fpsObj, PARAMS.fpsReposo);
     return durmiendo && sleepBlend > 0.99 ? Math.min(reposo, PARAMS.fpsDormida) : reposo;
   }
 
+  // ── Frame siguiente: rAF con algo en marcha; en reposo, un temporizador que pinta él mismo ──────
+  // (sin requestAnimationFrame entre medias). Con la página oculta, rAF: Chromium no lo llama y el
+  // bucle se queda quieto hasta que se vuelva a ver, como siempre.
+  function quitarEspera() {
+    if (esperaId === null) return;
+    try { tm.quitar(esperaId); } catch (_) { /* ya salió */ }
+    esperaId = null;
+  }
+  function siguiente(esperaMs) {
+    if (destruido || fpsObj <= 0 || rafId || esperaId !== null) return;
+    const oculta = typeof document !== 'undefined' && document && document.hidden === true;
+    if (PARAMS.esperaTemporizador !== false && !oculta && esperaMs > PARAMS.esperaMinMs) {
+      esperaId = tm.poner(() => { esperaId = null; if (!rafId) tick(relojMs()); }, esperaMs);
+    } else {
+      rafId = requestAnimationFrame(tick);
+    }
+  }
+  // Algo la despierta (actividad(), una llamada a un módulo): no espera al temporizador, frame ya.
+  function cortarEspera() {
+    if (esperaId === null) return;
+    quitarEspera();
+    if (!destruido && fpsObj > 0 && !rafId) rafId = requestAnimationFrame(tick);
+  }
+
   function tick(now) {
-    if (destruido) return;
-    if (fpsObj <= 0) { rafId = 0; return; }       // parado hasta el próximo setFPS(n > 0)
-    rafId = requestAnimationFrame(tick);
-    const objetivo = fpsObjetivo();
+    rafId = 0;
+    if (destruido || fpsObj <= 0) return;         // parado hasta el próximo setFPS(n > 0)
+    const activa = ocupado();
+    const objetivo = fpsObjetivo(activa);
     const intervalo = 1000 / objetivo;
     const pasado = now - ultimoFrame;
-    if (pasado < intervalo - 0.5) return;
+    if (pasado < intervalo - 0.5) { siguiente(activa ? 0 : intervalo - pasado); return; }
     // Lo que sobra del intervalo se descuenta (sin deriva). Si el frame llegó un pelín antes, dentro
     // de la tolerancia, no sobra nada: con `pasado % intervalo` quedaba entero y el frame siguiente
     // se pintaba también (el doble de fps de lo pedido, justo cuando el monitor es múltiplo).
     ultimoFrame = pasado > 2 * intervalo ? now : now - (pasado >= intervalo ? pasado - intervalo : 0);
+    // El siguiente se pide ANTES de pintar: si este frame lanza, el bucle sigue.
+    siguiente(activa ? 0 : intervalo - (now - ultimoFrame));
     const dt = Math.min(clock.getDelta(), 0.1);
     ahora += dt;
     avanzarArrastre(dt);                          // también sin modelo: luneDrag(false) siempre suelta
@@ -943,6 +985,7 @@ export function crearAsistente({ canvas, src, encuadre = 'retrato', onEvento = (
     fpsObj = 0;
     try { if (rafId && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(rafId); } catch (_) { /* sigue */ }
     rafId = 0;
+    quitarEspera();
     try { window.removeEventListener('resize', alRedimensionar); } catch (_) { /* sin ventana */ }
     try { descargar(); } catch (e) { console.warn('destruir: descargar', e); }   // alDescargar de los módulos con el modelo vivo
     for (const n of bus.lista()) { try { bus.quitar(n); } catch (_) { /* sigue */ } }
@@ -963,8 +1006,9 @@ export function crearAsistente({ canvas, src, encuadre = 'retrato', onEvento = (
     // Calibración del modelo (window.luneParams en la página; vrm_barra.js la usa si existe)
     luneParams,
     // Bus de módulos: m.mod('baileProc', 'play', …) = window.luneMod(…) en la página
-    mod: (nombre, metodo, ...args) => bus.api(nombre, metodo, ...args),
-    registrar: (modulo) => bus.registrar(modulo),
+    // (una llamada a un módulo puede ponerlo en marcha: el frame, ya, sin esperar al temporizador)
+    mod: (nombre, metodo, ...args) => { const r = bus.api(nombre, metodo, ...args); cortarEspera(); return r; },
+    registrar: (modulo) => { const r = bus.registrar(modulo); cortarEspera(); return r; },
     bus, ctx,
     get listo() { return listo; }, get estado() { return estado; }, get durmiendo() { return durmiendo; },
     get destruido() { return destruido; },

@@ -86,11 +86,21 @@ Asistente y VRM (corte 3):
     en /vrm/actual.vrm; `modelo_vrm_cambio` (personaje, modelo o render cambiaron)
     y `vrm_params_cambio` (calibración del modelo actual) avisan a web_shell para
     que republique y recargue la barra.
+
+Probar cada apartado (extra/diagnostico.jsx; la lógica, sin Qt, en servicios/pruebas.py):
+`openrouter_probar(json)`, `ollama_probar(url)` y `telegram_probar(json)` prueban lo ESCRITO
+en Ajustes (la máscara = lo guardado) fuera del hilo de Qt y nunca devuelven la clave ni el
+token; `dictado_probar(json)` graba ~3 s y lo transcribe (señal `dictado_prueba`);
+`diagnostico_iniciar()` es «Comprobar que todo funciona» (servicios/diagnostico con red, item
+a item por la señal `diagnostico`, ui/pruebas_qt.DiagnosticoWorker; `diagnostico_parar()` lo
+corta). Al cerrar, los hilos de prueba se paran y se retienen. Mientras «Probar dictado»
+graba, el micrófono del chat, la llamada y «Probar micrófono» esperan.
 """
 from __future__ import annotations
 
 import json
 import threading
+import time
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -133,6 +143,13 @@ ESPERA_UI_S = 5.0                 # herramientas de la asistente: espera máxima
 # _esperar_en_hilo con otra espera en curso: no se anida, se contesta esto al momento.
 OCUPADO = object()
 MENSAJE_OCUPADO = "Estoy terminando otra prueba; inténtalo de nuevo en unos segundos."
+# Vista «Optimizar» (sistema_info): la CPU medida desde la llamada anterior vale si esa
+# llamada fue hace poco (la vista pide cada 3 s); los procesos se cuentan en un hilo.
+SISTEMA_CPU_CEBADA_S = 30.0
+SISTEMA_PROCESOS_CADA_S = 2.5
+# Stream del chat: como mucho un `chunk` (y un eco en la burbuja de la asistente) cada
+# tantos ms; el acumulado definitivo sale siempre antes de `done`.
+CHUNK_CADA_MS = 40
 
 
 def nombre_modelo_seguro(nombre: Any) -> str:
@@ -201,6 +218,15 @@ def _clave_nueva(valor: Any):
     if _CARACTER_MASCARA in v:
         return None
     return v
+
+
+def _objeto_json(payload: Any) -> dict:
+    """El JSON que manda la página como dict ({} si no es un objeto)."""
+    try:
+        c = json.loads(payload or "{}")
+    except (TypeError, ValueError):
+        return {}
+    return c if isinstance(c, dict) else {}
 
 
 def _provider_id(web_provider: str) -> str:
@@ -287,6 +313,14 @@ class LuneBridge(QObject):
     llamada_estado = pyqtSignal(bool, str)  # modo llamada: (activa, estado/aviso)
     usuario_dijo = pyqtSignal(str)          # en llamada: lo que dijo el usuario → el JS lo envía
     mic_prueba = pyqtSignal(str)            # resultado json de «Probar micrófono»
+    # Pruebas de Ajustes (extra/diagnostico.jsx; servicios/pruebas.py y servicios/diagnostico.py):
+    # «Comprobar que todo funciona»: json {tipo: inicio|item|fin, …} (un item por comprobación,
+    # al final el resumen) · «Probar dictado»: json {fase, ok, texto, mensaje}.
+    diagnostico = pyqtSignal(str)
+    dictado_prueba = pyqtSignal(str)
+    # Ajustes → Sistema → Actualizaciones (extra/actualizaciones.jsx; ui/actualizacion_qt.py):
+    # json {fase: buscando|hay|al_dia|descargando|lista|instalando|error, version, notas, bytes, total, pct, mensaje}
+    actualizacion = pyqtSignal(str)
     # Acciones del modelo que piden permiso (modal de la página, AprobacionHost):
     aprobacion_pedida = pyqtSignal(str)     # json de la petición {id, herramienta, args, resumen…}
     aprobacion_resuelta = pyqtSignal(str)   # id: ya no hace falta enseñarla (caducó o se canceló)
@@ -348,6 +382,8 @@ class LuneBridge(QObject):
         self._grabadora = None
         self._transcriptor = None
         self._probador = None               # hilo de «Probar micrófono»
+        self._diag_worker = None            # hilo de «Comprobar que todo funciona»
+        self._dictado_prueba = None         # hilo de «Probar dictado»
         self._llamada = None                # LlamadaWorker mientras el modo llamada está activo
         self._oido_llamada = ""             # lo último transcrito en la llamada (la página lo envía)
         # En modo llamada, la respuesta final la habla el worker (bloqueando) y
@@ -371,6 +407,9 @@ class LuneBridge(QObject):
         self._timers_plan = []              # expresiones programadas (sin voz, sin stream)
         self._gen = 0                       # generación del envío: ignora señales de workers viejos
         self._eco_texto = ""                # lo último que salió en la burbuja de la asistente (este turno)
+        self._chunk_pend = None             # (gen, acumulado) del stream aún sin emitir (_on_chunk)
+        self._chunk_t = 0.0                 # time.monotonic() del último `chunk` emitido
+        self._chunk_timer = None            # QTimer single-shot del agrupado (_timer_chunk)
         self._esperando_hilo = False        # _esperar_en_hilo en curso (no se anidan)
         # Aburrimiento: si pasas N minutos sin escribirle, Lune se aburre y te dice
         # algo (una sola vez por racha; se rearma con tu siguiente mensaje).
@@ -414,6 +453,13 @@ class LuneBridge(QObject):
         """Al salir: ninguna pregunta «¿Lo hago?» colgada, servicios de escritorio parados
         y los avisos de la voz desenganchados (el hilo de audio ya no llama a este puente)."""
         self._soltar_voz()
+        self._soltar_pruebas()
+        act = getattr(self, "_act", None)
+        if act is not None:
+            try:
+                act.detener()                        # la descarga en curso se corta
+            except Exception:
+                pass
         acc = getattr(self, "acciones", None)
         if acc is not None:
             try:
@@ -1225,6 +1271,7 @@ class LuneBridge(QObject):
                 p.cancel_flag = True
         except Exception:
             pass
+        self._soltar_chunk()                # lo que ya llegó se queda a la vista, antes del `done`
         self._gen += 1                      # lo que emita el worker en curso ya no cuenta
         self._cancelar_plan()
         try:
@@ -1259,6 +1306,40 @@ class LuneBridge(QObject):
             for act in self._seguidor.nuevos(acumulado):
                 self._expresado_en_stream = True
                 self._expresar(EMOCION_A_ASISTENTE.get(act.get("emotion"), "happy"))
+        # Agrupado: con cada `chunk` la página vuelve a pintar el chat entero y el eco hace un
+        # runJavaScript en la asistente. Como mucho uno cada CHUNK_CADA_MS: el primero sale
+        # ya y lo que llegue dentro de esa ventana se queda en el último acumulado, que sale
+        # al vencer el temporizador o, como muy tarde, justo antes de `done` (_soltar_chunk).
+        self._chunk_pend = (self._gen, acumulado)
+        timer = self._timer_chunk()
+        if timer.isActive():
+            return
+        espera_ms = CHUNK_CADA_MS - (time.monotonic() - getattr(self, "_chunk_t", 0.0)) * 1000
+        if espera_ms <= 0:
+            self._soltar_chunk()
+        else:
+            timer.start(max(1, int(espera_ms)))
+
+    def _timer_chunk(self) -> QTimer:
+        t = getattr(self, "_chunk_timer", None)
+        if t is None:
+            t = self._chunk_timer = QTimer(self)
+            t.setSingleShot(True)
+            t.timeout.connect(self._soltar_chunk)
+        return t
+
+    def _soltar_chunk(self) -> None:
+        """Emite el acumulado pendiente del envío vigente: `chunk` y, si el turno salió del
+        chat de la asistente, el eco en su burbuja. Lo llaman el temporizador y, antes de
+        `done` (fin, error o Detener), quien termina: el texto final y el orden no cambian."""
+        t = getattr(self, "_chunk_timer", None)
+        if t is not None:
+            t.stop()
+        pend, self._chunk_pend = getattr(self, "_chunk_pend", None), None
+        if pend is None or pend[0] != self._gen:
+            return                                   # de un envío ya cortado
+        self._chunk_t = time.monotonic()
+        acumulado = pend[1]
         self.chunk.emit(acumulado)
         if (self._turno or {}).get("asistente"):   # el turno salió del chat de la asistente
             self._eco_asistente(limpiar_texto(marcadores.limpiar_para_mostrar(acumulado)))
@@ -1294,6 +1375,7 @@ class LuneBridge(QObject):
     def _on_done(self, respuesta: str, gen=None):
         if gen is not None and gen != self._gen:
             return                                   # respuesta (parcial) de un envío ya detenido
+        self._soltar_chunk()                         # el último acumulado, siempre antes de `done`
         # Acciones del modelo: el Ejecutor saca las <|CALL …|> del texto (y borra el
         # formato antiguo sin ejecutarlo). Se ejecutan más abajo, al terminar.
         turno = self._turno or {}
@@ -1379,6 +1461,7 @@ class LuneBridge(QObject):
     def _on_error(self, msg: str, gen=None):
         if gen is not None and gen != self._gen:
             return
+        self._soltar_chunk()                         # lo que ya llegó se ve antes del error
         self.estado.emit("error")
         self.done.emit(f"Error: {msg}", "error")
         self._asistente_estado("nervous", 6000)
@@ -1790,7 +1873,7 @@ class LuneBridge(QObject):
                 if v == str(self.config.get("avatar", "vrm_archivo", "") or "").strip():
                     pass                             # sin cambios: ni aviso (aunque ya no exista)
                 elif v and not self._modelo_de_la_carpeta(v):
-                    self.aviso.emit(f"No encuentro el modelo «{v}» en modelo_vrm/; sigo con el anterior.")
+                    self.aviso.emit(f"No encuentro el modelo «{v}» en {vrm.CARPETA}; sigo con el anterior.")
                 else:
                     self.config.set("avatar", "vrm_archivo", v)
                     cambio_vrm = True
@@ -2131,6 +2214,152 @@ class LuneBridge(QObject):
         hilo.join(0.05)
         return caja.get("r")
 
+    # ── Probar cada apartado y «Comprobar que todo funciona» (Ajustes) ───────────
+    # Lo de verdad vive en servicios/pruebas.py (sin Qt: lo mismo usan la nativa y patata).
+    # Las pruebas cortas (la clave, Ollama, el bot) van por _esperar_en_hilo; el diagnóstico y
+    # el dictado, en su QThread con señal (pueden tardar minutos). Ni la clave ni el token
+    # salen nunca en lo que vuelve a la página.
+    def _probar_en_hilo(self, fn, timeout_s: float) -> str:
+        r = self._esperar_en_hilo(fn, timeout_s)
+        if r is OCUPADO:
+            r = {"ok": False, "mensaje": MENSAJE_OCUPADO}
+        elif not isinstance(r, dict):
+            # Nunca str(r): una excepción podría llevar la URL (y la de Telegram, el token).
+            r = {"ok": False, "mensaje": "No respondió a tiempo: prueba otra vez." if r is None
+                 else "No pude probarlo; prueba otra vez."}
+        return json.dumps(r, ensure_ascii=False, default=str)
+
+    @pyqtSlot(str, result=str)
+    def openrouter_probar(self, payload: str) -> str:
+        """«Probar clave» de OpenRouter con lo ESCRITO (aún sin guardar; la máscara = la clave
+        guardada): GET /api/v1/key (no gasta tokens) y que el modelo exista en /api/v1/models.
+        → {ok, mensaje, modelo_ok, gratis, ms}."""
+        from servicios import pruebas
+        c = _objeto_json(payload)
+        clave = _clave_nueva(c.get("openrouter_key")) if "openrouter_key" in c else None
+        if clave is None:
+            clave = datos.openrouter_key()
+        modelo = str(c.get("openrouter_model", datos.openrouter_model()) or "").strip()
+        return self._probar_en_hilo(lambda: pruebas.probar_openrouter(clave, modelo), 20.0)
+
+    @pyqtSlot(str, result=str)
+    def ollama_probar(self, url: str) -> str:
+        """«Probar / Buscar modelos» de Ollama con la URL escrita (vacía = la guardada).
+        → {ok, mensaje, modelos, url}: la página pinta los modelos para elegir."""
+        from servicios import pruebas
+        u = str(url or "").strip() or datos.ollama_url()
+        if len(u) > 300 or "@" in u or any(ch.isspace() for ch in u):
+            return json.dumps({"ok": False, "modelos": [], "url": "",
+                               "mensaje": "Esa dirección no vale: algo como http://localhost:11434 o "
+                                          "http://192.168.1.50:11434."}, ensure_ascii=False)
+        return self._probar_en_hilo(lambda: pruebas.probar_ollama(u), 12.0)
+
+    @pyqtSlot(str, result=str)
+    def telegram_probar(self, payload: str) -> str:
+        """«Probar bot» con lo ESCRITO (la máscara = el token guardado): el token con getMe,
+        tu ID (solo números), Node 18+ y la carpeta del bot (TelegramBotWorker.preparar_carpeta).
+        → {ok, mensaje, bot, items: [{id, nombre, ok, detalle}]}."""
+        from servicios import pruebas
+        from servicios.telegram_worker import TelegramBotWorker
+        c = _objeto_json(payload)
+        token = _clave_nueva(c.get("telegram_token")) if "telegram_token" in c else None
+        if token is None:
+            token = datos.telegram_token()
+        admin = str(c.get("telegram_admin_id", datos.telegram_admin_id()) or "").strip()
+        return self._probar_en_hilo(
+            lambda: pruebas.probar_telegram(token, admin, carpeta=TelegramBotWorker.preparar_carpeta), 30.0)
+
+    @pyqtSlot(result=bool)
+    def diagnostico_iniciar(self) -> bool:
+        """«Comprobar que todo funciona»: arranca la comprobación con red en su hilo (False si
+        ya hay una en marcha). Cada paso llega por la señal `diagnostico`."""
+        from ui.pruebas_qt import DiagnosticoWorker
+        w = self._diag_worker
+        try:
+            if w is not None and w.isRunning():
+                return False
+        except RuntimeError:
+            pass
+        w = DiagnosticoWorker(red=True, parent=self)
+        w.evento.connect(self.diagnostico)
+        self._diag_worker = w
+        w.start()
+        return True
+
+    @pyqtSlot(result=bool)
+    def diagnostico_parar(self) -> bool:
+        """Para la comprobación en curso antes de la siguiente (el fin llega con «parado»)."""
+        w = self._diag_worker
+        try:
+            if w is not None and w.isRunning():
+                w.requestInterruption()
+                return True
+        except RuntimeError:
+            pass
+        return False
+
+    def _probando_dictado(self) -> bool:
+        h = self._dictado_prueba
+        try:
+            return h is not None and h.isRunning()
+        except RuntimeError:
+            return False
+
+    def _dictado_error(self, mensaje: str) -> bool:
+        self.dictado_prueba.emit(json.dumps({"fase": "error", "ok": False, "texto": "", "mensaje": mensaje},
+                                            ensure_ascii=False))
+        return False
+
+    @pyqtSlot(str, result=bool)
+    def dictado_probar(self, payload: str) -> bool:
+        """«Probar dictado»: graba ~3 s del micrófono elegido en Ajustes (aún sin guardar) y lo
+        transcribe con el modelo de Whisper elegido; cada paso por `dictado_prueba`. La primera
+        vez el modelo se descarga (lo avisa). False si el micrófono está ocupado o no existe."""
+        from servicios import voz_entrada
+        from ui.audio_prueba import ProbadorDictado
+        c = _objeto_json(payload)
+        for h in (self._dictado_prueba, self._probador):
+            try:
+                if h is not None and h.isRunning():
+                    return self._dictado_error("Ya estoy probando el micrófono: espera a que acabe.")
+            except RuntimeError:
+                pass
+        if self._grabadora is not None or self._llamada is not None:
+            return self._dictado_error("Ahora mismo el micrófono está en uso (dictado o llamada): termina y "
+                                       "vuelve a probar.")
+        faltan = voz_entrada.dependencias_faltantes()
+        if faltan:
+            return self._dictado_error(f"El dictado necesita {', '.join(faltan)} ({_como_instalar(*faltan)}).")
+        nombre = str(c.get("dispositivo_entrada", self.config.get("voz", "dispositivo_entrada", "")) or "").strip()
+        idx = voz_entrada.resolver_entrada(nombre) if nombre else None
+        if nombre and idx is None:
+            return self._dictado_error(f"No encuentro «{nombre}». ¿Está conectado?")
+        modelo = str(c.get("modelo_whisper") or self.config.get("voz", "modelo_whisper", "base") or "base")
+        if modelo not in voz_entrada.MODELOS:
+            modelo = "base"
+        idioma = str(c.get("voz_idioma", self.config.get("voz", "idioma", "es")) or "").strip()
+        p = ProbadorDictado(idx, modelo, idioma, parent=self)
+        p.progreso.connect(self.dictado_prueba)
+        self._dictado_prueba = p
+        p.start()
+        return True
+
+    def _soltar_pruebas(self) -> None:
+        """Al cerrar: «Comprobar que todo funciona» y «Probar dictado» en marcha se paran, se
+        desconectan y, si aún corren, se retienen hasta que acaben (Qt aborta el proceso si se
+        borra un QThread vivo)."""
+        try:
+            from ui.pruebas_qt import soltar
+        except Exception:
+            return
+        for nombre, espera in (("_diag_worker", 300), ("_dictado_prueba", 0)):
+            h = getattr(self, nombre, None)
+            setattr(self, nombre, None)
+            try:
+                soltar(h, espera_ms=espera)
+            except Exception:
+                pass
+
     # ── Toggles ──────────────────────────────────────────────────────────────────
     @pyqtSlot(result=bool)
     def voz_toggle(self) -> bool:
@@ -2353,7 +2582,7 @@ class LuneBridge(QObject):
             if not ruta:
                 return json.dumps({"ok": False, "cancelado": True})
             nombre = vrm.importar_modelo(ruta)
-            self.aviso.emit(f"Modelo «{nombre}» listo en modelo_vrm/")
+            self.aviso.emit(f"Modelo «{nombre}» listo en {vrm.CARPETA}")
             self._asistente_recargar_modelo()
             self._vrm_modelo_cambio()                # puede ser el primero de la carpeta
             return json.dumps({"ok": True, "archivo": nombre, "modelos": vrm.listar_modelos()}, ensure_ascii=False)
@@ -2377,7 +2606,7 @@ class LuneBridge(QObject):
         modelos de modelo_vrm/ por su nombre de archivo."""
         archivo = str(archivo or "").strip()
         if archivo and not self._modelo_de_la_carpeta(archivo):
-            error = "Elige un modelo de la carpeta modelo_vrm/ (solo el nombre del archivo .vrm)."
+            error = f"Elige un modelo de la carpeta {vrm.CARPETA} (solo el nombre del archivo .vrm)."
             self.aviso.emit(f"No pude asignar el modelo: {error}")
             return json.dumps({"ok": False, "error": error}, ensure_ascii=False)
         try:
@@ -2426,7 +2655,7 @@ class LuneBridge(QObject):
         except ValueError as e:
             return json.dumps({"ok": False, "error": str(e)}, ensure_ascii=False)
         if vrm._en_carpeta(archivo) is None:
-            return json.dumps({"ok": False, "error": f"No encuentro «{archivo}» en modelo_vrm/."},
+            return json.dumps({"ok": False, "error": f"No encuentro «{archivo}» en {vrm.CARPETA}."},
                               ensure_ascii=False)
         r = vrm.guardar_ajustes_json(archivo, cambios, self.config)
         try:
@@ -2553,20 +2782,48 @@ class LuneBridge(QObject):
     # ── Optimizar (info del sistema) ─────────────────────────────────────────────
     @pyqtSlot(result=str)
     def sistema_info(self) -> str:
+        """Vista «Optimizar» (panels.jsx la pide cada 3 s mientras está abierta). Nada
+        bloquea el hilo de Qt: la CPU es cpu_percent(None) (la media desde la llamada
+        anterior, siempre desde este hilo; tras un rato sin pedirla se ceba y sale «—»),
+        RAM y disco son lecturas al momento y los procesos (process_iter de TODO el
+        sistema) los cuenta un hilo: se devuelve la última lista y, si ya es vieja, se
+        pide otra. Con la vista cerrada nadie llama y no se mide nada."""
         info = {"cpu": None, "ram": None, "disco": None, "procesos": []}
+        ahora = time.monotonic()
         try:
             import psutil
-            info["cpu"] = psutil.cpu_percent(interval=0.2)
+            previa = getattr(self, "_sis_cpu_t", None)
+            cpu = psutil.cpu_percent(interval=None)
+            self._sis_cpu_t = ahora
+            if previa is not None and ahora - previa <= SISTEMA_CPU_CEBADA_S:
+                info["cpu"] = cpu
             info["ram"] = psutil.virtual_memory().percent
             info["disco"] = psutil.disk_usage("/").percent
         except Exception:
             pass
-        try:
-            from servicios.optimizador import Optimizador
-            info["procesos"] = Optimizador().procesos_pesados(top=6)
-        except Exception:
-            pass
+        info["procesos"] = list(getattr(self, "_sis_procesos", None) or [])
+        self._pedir_procesos(ahora)
         return json.dumps(info, ensure_ascii=False, default=str)
+
+    def _pedir_procesos(self, ahora: float) -> None:
+        """Los procesos más pesados en un hilo (uno a la vez, como mucho cada
+        SISTEMA_PROCESOS_CADA_S). Deja la lista en `_sis_procesos` para la próxima llamada."""
+        hilo = getattr(self, "_sis_hilo", None)
+        if hilo is not None and hilo.is_alive():
+            return
+        if ahora - float(getattr(self, "_sis_procesos_t", -1e9)) < SISTEMA_PROCESOS_CADA_S:
+            return
+        self._sis_procesos_t = ahora
+
+        def contar():
+            try:
+                from servicios.optimizador import Optimizador
+                self._sis_procesos = Optimizador().procesos_pesados(top=6)
+            except Exception:
+                pass
+
+        self._sis_hilo = threading.Thread(target=contar, name="lune-procesos", daemon=True)
+        self._sis_hilo.start()
 
     # ── Herramientas de escritorio (Tools) ───────────────────────────────────────
     @pyqtSlot(result=str)
@@ -2673,8 +2930,8 @@ class LuneBridge(QObject):
         from ui.audio_prueba import ProbadorMic
         if self._probador is not None and self._probador.isRunning():
             return False
-        if self._grabadora is not None or self._llamada is not None:
-            self.aviso.emit("Ahora mismo el micrófono está en uso (dictado o llamada).")
+        if self._grabadora is not None or self._llamada is not None or self._probando_dictado():
+            self.aviso.emit("Ahora mismo el micrófono está en uso (dictado, llamada o «Probar dictado»).")
             return False
         idx = voz_entrada.resolver_entrada(nombre) if nombre else None
         if nombre and idx is None:
@@ -2728,6 +2985,9 @@ class LuneBridge(QObject):
         if self._llamada is not None:
             self.aviso.emit("Estás en llamada: Lune ya te escucha.")
             return json.dumps({"grabando": False, "error": "en llamada"})
+        if self._probando_dictado():
+            self.aviso.emit("Estoy probando el dictado en Ajustes: espera unos segundos.")
+            return json.dumps({"grabando": False, "error": "probando"})
         idx = self._microfono_elegido()
         hay, detalle = voz_entrada.hay_microfono(idx)
         if not hay:
@@ -2763,6 +3023,8 @@ class LuneBridge(QObject):
             return False
         if self._grabadora is not None:
             self.llamada_estado.emit(False, "Termina el dictado antes de llamar."); return False
+        if self._probando_dictado():
+            self.llamada_estado.emit(False, "Estoy probando el dictado: espera unos segundos."); return False
         idx = self._microfono_elegido()
         hay, detalle = voz_entrada.hay_microfono(idx)
         if not hay:
@@ -2872,6 +3134,69 @@ class LuneBridge(QObject):
             return True
         except Exception as e:
             self.aviso.emit(f"No pude abrir el instalador: {e}"); return False
+
+    # ── Actualizaciones (Ajustes → Sistema; ui/actualizacion_qt.ControlActualizacion) ──
+    # Instalada: el último release de GitHub (descarga con SHA-256, el Setup en silencio y me
+    # cierro con el «Salir» de la ventana). Desde el código: git (commits, pull + pip y
+    # reiniciar). Copia sin git: solo el enlace a Releases. Todo lo lento va en un hilo y el
+    # progreso llega por la señal `actualizacion` (como mucho ~4 veces por segundo).
+    def _actualizaciones(self):
+        act = getattr(self, "_act", None)
+        if act is None:
+            from ui.actualizacion_qt import ControlActualizacion, salir_de_verdad_de
+            act = ControlActualizacion(self.config, salir=salir_de_verdad_de(self), parent=self)
+            act.cambio.connect(self._emitir_actualizacion)
+            self._act = act
+        return act
+
+    def _emitir_actualizacion(self, estado) -> None:
+        try:
+            self.actualizacion.emit(json.dumps(estado, ensure_ascii=False))
+        except (RuntimeError, TypeError):
+            pass
+
+    def avisar_actualizacion(self, res: dict) -> None:
+        """Versión nueva al abrir Lune (ui/actualizacion_qt.AvisoInicio; NO es un slot): la
+        tarjeta la resalta al abrir Ajustes y sale el aviso (toast con la ventana a la vista;
+        si no, el globo de la bandeja)."""
+        from servicios import actualizador
+        from ui.actualizacion_qt import notificar
+        self._actualizaciones().recibir(res)
+        texto = actualizador.texto_aviso(res)
+        if not notificar(self._ventana(), texto):
+            self.aviso.emit(texto)
+
+    @pyqtSlot(result=str)
+    def actualizacion_info(self) -> str:
+        """{version, modo: instalada|git|carpeta, al_iniciar, ultima_comprobacion, omitir_version,
+        pagina, ocupado, descargado, estado: lo último de `actualizacion`} (sin red)."""
+        return json.dumps(self._actualizaciones().info(), ensure_ascii=False)
+
+    @pyqtSlot(result=bool)
+    def actualizacion_buscar(self) -> bool:
+        return bool(self._actualizaciones().buscar())
+
+    @pyqtSlot(result=bool)
+    def actualizacion_descargar(self) -> bool:
+        return bool(self._actualizaciones().descargar())
+
+    @pyqtSlot(result=bool)
+    def actualizacion_cancelar(self) -> bool:
+        return bool(self._actualizaciones().cancelar())
+
+    @pyqtSlot(result=bool)
+    def actualizacion_instalar(self) -> bool:
+        """«Instalar y reiniciar» (la página ya lo confirmó): descarga si falta, lanza el Setup y
+        me cierro; desde el código, git pull + pip y reinicio."""
+        return bool(self._actualizaciones().instalar())
+
+    @pyqtSlot(str, result=bool)
+    def actualizacion_omitir(self, version: str) -> bool:
+        return bool(self._actualizaciones().omitir(version))
+
+    @pyqtSlot(bool, result=bool)
+    def actualizacion_al_iniciar(self, on: bool) -> bool:
+        return bool(self._actualizaciones().al_iniciar(bool(on)))
 
     def _rearmar_aburrimiento(self):
         """(Re)arma el temporizador con los minutos de config; 0 = apagado. En pausa

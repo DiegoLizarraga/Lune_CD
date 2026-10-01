@@ -86,6 +86,11 @@ Comandos:
   /juego [on|off|auto]          modo juego: con un juego delante Lune baja su prioridad (se ve
                                 en el título de la consola); on/off lo fuerzan, auto lo detecta
   /ram                          libera la memoria que Lune no está usando ahora
+  /probar [nube|ollama|telegram|salida|todo]   pruebo de verdad lo que tienes guardado: tu clave de
+                                OpenRouter, Ollama y su modelo, tu bot de Telegram (token, ID, Node.js y
+                                carpeta) o un tono por la salida de audio (sin nada, todo)
+  /diagnostico                  compruebo que todo funcione: lo que traigo, tus carpetas, las librerías,
+                                tu equipo y los servicios que usas (internet incluido); tus claves no salen
   /alarma HH:MM [lmxjvsd|todos] [texto]   alarma (sin días: una sola vez) · /alarma probar
   /alarmas [on|off]             lista de alarmas y temporizadores (con su id) o encenderlas/apagarlas
   /borrar_alarma <id|n>         quita una alarma o un temporizador (id o número de /alarmas)
@@ -105,6 +110,10 @@ Comandos:
   /autoinicio [on|off|estado|como bandeja|asistente|ventana|espera N]   arrancar con Windows (aquí:
                                 esta terminal, minimizada) y cómo abre la app de ventanas
   /interfaz [web|nativo]        vuelve a las ventanas (completa o bajos recursos) y cierra la terminal
+  /version                      mi versión, si estoy instalada o desde el código y dónde guardo tus cosas
+  /actualizar [buscar|instalar|omitir [versión|ninguna]|cancelar]   ¿hay una versión nueva de mí?
+                                (instalada: GitHub; desde el código: git). instalar la descarga
+                                comprobada, me cierra, se instala sola y vuelvo a abrirme
   /salir
   (La terminal no tiene bandeja, menú radial ni atajos globales: eso es de las ventanas.
   Tampoco pantalla grande: el salvapantallas es el título, con salvapantallas.activo.
@@ -269,9 +278,85 @@ def ayuda() -> str:
     return texto
 
 
+def _version_banner() -> str:
+    """«v11.2 · » para el banner de bienvenida (version.APP_VERSION); "" si no se sabe."""
+    try:
+        from version import APP_VERSION
+        return f"v{APP_VERSION} · " if APP_VERSION else ""
+    except Exception:
+        return ""
+
+
 def _en_hilo(fn: Callable[[], None]) -> None:
     """Lo que sigue a una aprobación sale del hilo lector de la consola (tiene que ser rápido)."""
     threading.Thread(target=fn, name="lune-accion", daemon=True).start()
+
+
+# ── /probar y /diagnostico (11.3) ────────────────────────────────────────────────
+# /probar: lo mismo que los «Probar» de Ajustes (servicios/pruebas.py, sin Qt), con lo guardado.
+PRUEBAS = {"nube": "Nube (OpenRouter)", "ollama": "Ollama (modelo local)", "telegram": "Bot de Telegram",
+           "salida": "Salida de audio"}
+ALIAS_PRUEBA = {"openrouter": "nube", "cloud": "nube", "clave": "nube", "local": "ollama", "tg": "telegram",
+                "bot": "telegram", "audio": "salida", "sonido": "salida", "altavoces": "salida",
+                "": "todo", "todas": "todo", "todos": "todo"}
+
+
+def probar_apartado(que: str, voice: Any = None, *, todo: bool = False) -> Dict[str, Any]:
+    """`/probar <que>` con lo guardado en datos.json. → {ok, mensaje[, items]}. Con `todo`, lo que no
+    tienes configurado (sin modelo de Ollama, sin token de Telegram) sale como «no aplica»."""
+    from servicios import pruebas
+    if que == "nube":
+        return pruebas.probar_openrouter(datos.openrouter_key(), datos.openrouter_model())
+    if que == "ollama":
+        if todo and not datos.ollama_model():
+            return {"ok": None, "mensaje": "No uso Ollama: no hay modelo local elegido (/modelo con /local)."}
+        return pruebas.probar_ollama(datos.ollama_url(), datos.ollama_model())
+    if que == "telegram":
+        token = str(datos.telegram_token() or "").strip()
+        if todo and (not token or "TU_TOKEN" in token):
+            return {"ok": None, "mensaje": "Sin token de Telegram: no uso el bot."}
+        return pruebas.probar_telegram(token, datos.telegram_admin_id())
+    if que == "salida":
+        return pruebas.probar_salida(voice)
+    return {"ok": None, "mensaje": f"No sé probar «{una_linea(que, 30)}»."}
+
+
+def lineas_prueba(nombre: str, r: Dict[str, Any]) -> str:
+    """«  [ok]    Nube (OpenRouter): …» y, si es el bot, debajo lo que falla de cada parte."""
+    from servicios.diagnostico import MARCAS
+    r = r if isinstance(r, dict) else {}
+    mensaje = una_linea(r.get("mensaje"), 300)
+    lineas = [f"  {MARCAS.get(r.get('ok'), MARCAS[None])} {nombre}: {mensaje}"]
+    for i in r.get("items") or []:
+        if isinstance(i, dict) and i.get("ok") is False and una_linea(i.get("detalle"), 300) != mensaje:
+            lineas.append(f"           · {una_linea(i.get('nombre'), 40)}: {una_linea(i.get('detalle'), 240)}")
+    return "\n".join(lineas)
+
+
+def diagnostico_en_otro_proceso(escribir: Callable[[str], Any], *, popen: Optional[Callable[..., Any]] = None,
+                                orden: Optional[list] = None) -> int:
+    """`/diagnostico`: `--comprobar --red` en OTRO proceso (esta terminal no carga Qt ni el dictado
+    solo para mirarlos y, si algo revienta, revienta allí) y sus líneas según salen. → su código."""
+    import subprocess
+    from nucleo import rutas
+    orden = list(orden or rutas.orden_patata("--comprobar", "--red"))
+    extra = {"creationflags": _CREATE_NO_WINDOW} if os.name == "nt" else {}
+    try:
+        p = (popen or subprocess.Popen)(orden, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                        stderr=subprocess.STDOUT, text=True, encoding="utf-8",
+                                        errors="replace", env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+                                        **extra)
+    except Exception as e:                       # noqa: BLE001
+        escribir(f"No pude lanzar la comprobación ({type(e).__name__}).")
+        return -1
+    for linea in p.stdout:
+        linea = linea.rstrip()
+        if linea:
+            escribir(linea)
+    try:
+        return int(p.wait(timeout=30))
+    except Exception:                            # noqa: BLE001
+        return -1
 
 
 def _config_por_defecto():
@@ -369,6 +454,7 @@ class Patata:
                  alarmas: Any = _AUTO, baile: Any = _AUTO, salvapantallas: Any = _AUTO,
                  comida: Any = _AUTO, sistema: Any = _AUTO, con_windows: bool = False,
                  bailes: Any = _AUTO, minecraft: Any = _AUTO, bienvenida: Any = _AUTO,
+                 actualizaciones: Any = _AUTO,
                  **opciones_ejecutor):
         self.c = _colores(color)
         self._c_base = dict(self.c)                          # /tema parte de aquí cada vez
@@ -444,6 +530,10 @@ class Patata:
                     pieza.registrar_herramientas(self.tools)
                 except Exception:
                     pass
+        # 11.3 (sin Qt): /version y /actualizar (servicios/actualizar_terminal: GitHub Releases en
+        # la instalada, git desde el código). El aviso al iniciar lo arranca main(). None = sin ellos.
+        self.actualizaciones = (self._crear_actualizaciones() if actualizaciones is _AUTO
+                                else actualizaciones)
         self._reclamos: Dict[str, Callable[[], None]] = {}   # aprobación → cancelar()
         self._lock = threading.Lock()
         self.ejecutor = None
@@ -590,6 +680,41 @@ class Patata:
                                      pensando=lambda: bool(getattr(self, "_pensando", False)))
         except Exception:
             return None
+
+    def _crear_actualizaciones(self):
+        """/version y /actualizar (servicios/actualizar_terminal). Lo que dice sale con
+        consola.aviso (no rompe lo que escribes); tras lanzar el instalador, patata se cierra."""
+        try:
+            from servicios.actualizar_terminal import ActualizacionesTerminal
+            return ActualizacionesTerminal(self.config, decir=self._decir_actualizacion,
+                                           salir=self._salir_para_instalar, en_juego=self._en_juego)
+        except Exception:
+            return None
+
+    def _decir_actualizacion(self, texto: str) -> None:
+        try:
+            self.consola.aviso(self._lune("o/", str(texto)))
+        except Exception:
+            pass
+
+    def _salir_para_instalar(self) -> None:
+        """El instalador ya está en marcha y espera a que me vaya: la entrada se da por
+        terminada y correr() sale como con /salir (el instalador me vuelve a abrir)."""
+        try:
+            self.consola.detener()
+        except Exception:
+            pass
+
+    def iniciar_aviso_actualizacion(self) -> bool:
+        """El aviso de versión nueva (~45 s después, una vez al día, nunca en modo juego).
+        Lo llama main(), no correr(): los tests que corren patata no miran GitHub."""
+        act = getattr(self, "actualizaciones", None)
+        if act is None:
+            return False
+        try:
+            return bool(act.iniciar_aviso())
+        except Exception:
+            return False
 
     def _discord_al_dia(self) -> None:
         """Algo que Discord publica cambió (pensando, juego): que lo vea ya."""
@@ -1148,9 +1273,11 @@ class Patata:
         # Cortes 7/8: /comer y /discord, /autoinicio, /sentarse.
         # Cortes 9/10: /bailes (ANTES que el baile: con una canción puesta, su /parar la para
         # con el baile del título; sin canción devuelve None y sigue el /parar de siempre) y /mc.
+        # 11.3: /version y /actualizar.
         for modulo in (getattr(self, "alarmas", None), getattr(self, "bailes", None),
                        getattr(self, "baile", None), getattr(self, "comida", None),
-                       getattr(self, "sistema", None), getattr(self, "minecraft", None)):
+                       getattr(self, "sistema", None), getattr(self, "minecraft", None),
+                       getattr(self, "actualizaciones", None)):
             if modulo is None:
                 continue
             try:
@@ -1184,6 +1311,8 @@ class Patata:
             "/caritas": self._cmd_caritas,
             "/juego": self._cmd_juego,
             "/ram": self._cmd_ram,
+            "/probar": self._cmd_probar,
+            "/diagnostico": self._cmd_diagnostico,
             "/tareas": self._cmd_tareas,
             "/conocernos": lambda a: self._cmd_bienvenida("/conocernos"),
             "/saltar": lambda a: self._cmd_bienvenida("/saltar"),
@@ -1505,6 +1634,40 @@ class Patata:
         except Exception as e:
             return f"No pude liberar memoria: {una_linea(e, 200)}"
         return f"Memoria de Lune: {antes:.0f} MB → {despues:.0f} MB."
+
+    # ── /probar y /diagnostico (11.3): en un hilo, las líneas con consola.aviso ───
+    def _avisar(self, texto: str) -> None:
+        try:
+            self.consola.aviso(texto)
+        except Exception:
+            pass
+
+    def _cmd_probar(self, arg: str = "") -> str:
+        a = arg.strip().lower()
+        que = ALIAS_PRUEBA.get(a, a)
+        if que != "todo" and que not in PRUEBAS:
+            return "Uso: /probar [nube|ollama|telegram|salida|todo] (sin nada, todo)."
+        lista = list(PRUEBAS) if que == "todo" else [que]
+        c = self.c
+
+        def correr() -> None:
+            for q in lista:
+                try:
+                    r = probar_apartado(q, self.voice, todo=que == "todo")
+                except Exception as e:           # noqa: BLE001
+                    r = {"ok": False, "mensaje": f"No pude probarlo ({type(e).__name__})."}
+                self._avisar(lineas_prueba(PRUEBAS[q], r))
+
+        self._p(f"{c['dim']}Probando {', '.join(PRUEBAS[q].lower() for q in lista)}…{c['reset']}")
+        _en_hilo(correr)
+        return ""
+
+    def _cmd_diagnostico(self, arg: str = "") -> str:
+        c = self.c
+        self._p(f"{c['dim']}Compruebo que todo funcione (en otro proceso; lo de la red tarda unos "
+                f"segundos)…{c['reset']}")
+        _en_hilo(lambda: diagnostico_en_otro_proceso(self._avisar))
+        return ""
 
     # Modo juego: DetectorJuego (servicios/modo_juego.py, sin Qt) en un hilo cada 2 s.
     def _detector(self):
@@ -1851,6 +2014,12 @@ class Patata:
             self.detener_juego()                     # hilo del modo juego y prioridad de antes
         except Exception:
             pass
+        act = getattr(self, "actualizaciones", None)
+        if act is not None:
+            try:
+                act.detener()                        # sin aviso pendiente; la descarga se corta
+            except Exception:
+                pass
         if self.ejecutor is not None:
             self.ejecutor.nueva_conversacion()       # nada pendiente al salir
         if self.voice is not None:
@@ -1872,12 +2041,12 @@ class Patata:
             # Arrancó con Windows (consola minimizada): una línea y listo (la pregunta, si
             # toca, queda escrita para cuando abras la consola; sin voz).
             self._p(f"{c['bold']}{c['cyan']}月 {nombre} — modo patata{c['reset']} "
-                    f"{c['dim']}(arrancó con Windows · /ayuda){c['reset']}\n")
+                    f"{c['dim']}({_version_banner()}arrancó con Windows · /ayuda){c['reset']}\n")
             if pregunta:
                 self._p(self._lune("o/", pregunta) + "\n")
         else:
             self._p(f"{c['bold']}{c['cyan']}月 {nombre} — modo patata{c['reset']} "
-                    f"{c['dim']}({self._describir_proveedor()}){c['reset']}")
+                    f"{c['dim']}({_version_banner()}{self._describir_proveedor()}){c['reset']}")
             self._p(f"{c['dim']}Solo texto y caritas, sin asistente en escritorio. /ayuda para los comandos, "
                     f"/salir para irte.{c['reset']}\n")
             self._p(self._lune("o/", pregunta or "Lune en línea. Dime qué necesitas.") + "\n")
@@ -1990,7 +2159,8 @@ Me abre en la terminal (modo patata) con tu configuración, tu memoria y tus cha
                  interfaz ya no es patata, abre la app de ventanas
   --comprobar    compruebo que no me falte nada (recursos, tus carpetas y
                  librerías) y salgo: 0 si todo va bien, 1 si algo falla
-                 (con --json, el informe en JSON)
+                 (con --json, el informe en JSON; con --red, además internet y
+                 los servicios que uses: OpenRouter, Ollama, Telegram y Node.js)
   -h, --help     esta ayuda (no abro nada ni toco tus archivos)"""
 
 
@@ -2007,8 +2177,11 @@ def _comprobar(argv) -> int:
     except Exception:
         pass
     from servicios import diagnostico
-    como_json = any(str(a).strip().lower() == "--json" for a in argv)
-    return diagnostico.main(como_json=como_json)
+    banderas = {str(a).strip().lower() for a in argv}
+    kw = {"como_json": "--json" in banderas}
+    if "--red" in banderas:                     # /diagnostico (y quien lo quiera a mano)
+        kw["red"] = True
+    return diagnostico.main(**kw)
 
 
 def _argumentos_raros(argv) -> Optional[int]:
@@ -2097,6 +2270,10 @@ def main(argv=None, *, instancia: Any = None, esperar: Callable[[float], Any] = 
         al_frente = getattr(p, "traer_al_frente", None)
         if callable(al_frente):
             inst.escuchar(al_frente)
+        # Versión nueva: ~45 s después, una vez al día y nunca con un juego delante (una línea).
+        aviso = getattr(p, "iniciar_aviso_actualizacion", None)
+        if callable(aviso):
+            aviso()
         return p.correr()
     except KeyboardInterrupt:
         # Ctrl+C mientras arranca o se despide: se sale sin traceback.

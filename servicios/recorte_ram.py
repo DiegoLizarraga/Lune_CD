@@ -14,6 +14,10 @@ si se activa `sistema.recorte_ram_auto`, con `ProgramadorRecorte`.
 hilo podría destruir objetos de Qt fuera de su hilo. Quien lo llame desde un
 hilo aparte debe recolectar antes en el suyo (ui/modo_juego_qt lo hace).
 
+Antes de vaciar, suelta el modelo de dictado (Whisper, servicios/voz_entrada.soltar_modelo:
+de ~200 MB a varios GB) si estaba cargado y no hay un dictado ni una llamada en curso.
+Solo si voz_entrada ya se importó: si nadie dictó, no hay modelo y no se carga nada.
+
 Fuera de Windows solo recolecta y mide.
 """
 from __future__ import annotations
@@ -66,6 +70,19 @@ def _rss_total(pids, ps) -> float:
     return total / MB
 
 
+def soltar_whisper(recolectar=None) -> bool:
+    """Suelta el modelo de dictado si voz_entrada ya está importado (sin importarlo) y
+    nadie dicta ni está en llamada. True si soltó uno."""
+    ve = sys.modules.get("servicios.voz_entrada")
+    f = getattr(ve, "soltar_modelo", None) if ve is not None else None
+    if not callable(f):
+        return False
+    try:
+        return bool(f(recolectar=recolectar))
+    except Exception:
+        return False
+
+
 def recortar(*, pids=None, psapi=None, kernel32=None, psutil_mod=None,
              recolectar: Optional[bool] = None) -> Tuple[float, float]:
     """
@@ -87,6 +104,8 @@ def recortar(*, pids=None, psapi=None, kernel32=None, psutil_mod=None,
     antes = _rss_total(objetivos, ps) if ps is not None else 0.0
     if recolectar is None:
         recolectar = threading.current_thread() is threading.main_thread()
+    soltar_whisper(recolectar=False)              # el gc.collect, justo abajo
+
     if recolectar:
         try:
             gc.collect()

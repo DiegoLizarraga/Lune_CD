@@ -8,6 +8,8 @@
  * DiscordCard         la presencia (activa), el Application ID (17–20 cifras; sin él no hace nada), enseñar el
  *                     modelo 3D, el enlace del botón (https), el estado de la conexión, la nota de privacidad y
  *                     la línea «Discord ve: …» (solo los textos fijos: nunca títulos de ventana ni el chat).
+ *                     Sin conectar: «Reconectar» (luneVida.discord_reconectar) y el `motivo` con el siguiente
+ *                     paso (Discord cerrado, sin Application ID, otra Lune ya publica…).
  * AutoinicioOpciones  ({activo}) bajo el interruptor «Arrancar con Windows» de settings.jsx: en la bandeja / con
  *                     la asistente en escritorio / con la ventana, esperar N s (0–120) y el estado de la entrada (desactivada
  *                     desde el Administrador de tareas, carpeta movida…).
@@ -120,7 +122,7 @@
     asistente: false, juego: false, arrastrando: false, cedida: false };
   const COMIDA_DEFECTO = { activa: false, id: '', variante: '', color: '', tipo: '', nombre: '', vista: '',
     disponible: true, servicio: false };
-  const DISCORD_DEFECTO = { activo: false, conectado: false, usuario: '', error: '', client_id_ok: false, sin_id: false,
+  const DISCORD_DEFECTO = { activo: false, conectado: false, usuario: '', error: '', motivo: '', client_id_ok: false, sin_id: false,
     publicando: null, vista_previa: null, servicio: false, config: { client_id: '', mostrar_modelo: false, boton_url: '' } };
   const AUTO_DEFECTO = { activo: false, registrado: false, aprobado: false, ruta_ok: false, modo_ok: false,
     como: 'bandeja', retraso_s: 20, disponible: false };
@@ -194,6 +196,7 @@
     const conectado = r.conectado === true;
     return {
       activo: r.activo === true, conectado, usuario: conectado ? txt(r.usuario, 40) : '', error: txt(r.error, 160),
+      motivo: conectado ? '' : txt(r.motivo, 200),       // por qué no conecta, con el siguiente paso
       client_id_ok: r.client_id_ok === true, sin_id: r.sin_id === true,
       publicando: conectado ? publicacionSegura(r.publicando) : null, vista_previa: publicacionSegura(r.vista_previa),
       servicio: r.servicio === true,
@@ -218,6 +221,7 @@
     if (d.sin_id || !d.config.client_id) return 'Falta el Application ID: sin él no se publica nada.';
     if (!d.servicio) return 'Se conecta con la app abierta (y Discord abierto).';
     if (d.conectado) return d.usuario ? `Conectado como ${d.usuario}.` : 'Conectado.';
+    if (d.motivo) return d.motivo;
     return d.error ? `Sin conectar: ${d.error}` : 'Sin conectar (esperando a Discord).';
   }
   function normalizarAutoinicio(o) {
@@ -349,6 +353,8 @@
       comida_config_guardar(j) { const o = leer(j, {}); if (typeof o.activa === 'boolean') cfg.comida = o.activa; return ok(comida()); },
       discord_estado: () => JSON.stringify(discord()),
       discord_alternar() { cfg.discord.activo = !cfg.discord.activo; return cfg.discord.activo; },
+      discord_reconectar: () => JSON.stringify({ ok: false, texto: 'Demo: me conecto a Discord con la app abierta.',
+        estado: discord() }),
       discord_config_guardar(j) {
         const o = leer(j, {});
         if (typeof o.client_id === 'string' && !idDiscordValido(o.client_id)) {
@@ -609,6 +615,18 @@
       });
       if (!via) setMsg({ texto: 'Esto no está disponible en esta versión de la app.', error: true });
     };
+    // «Reconectar»: lo intenta ya; si ni se puede (apagada, sin ID…), el motivo. Lo que pase después
+    // (conectada, o por qué no: Discord cerrado, otra Lune ya publica…) llega por discord_cambio.
+    const reconectar = () => {
+      const via = pedir('discord_reconectar', [], (j) => {
+        const r = leer(j, {});
+        if (!vivo.current) return;
+        if (r && r.estado) setE(normalizar(r.estado));
+        setMsg({ texto: txt(r && r.texto, 200) || (r && r.ok ? 'Lo intento ahora…' : 'No pude reconectar.'),
+          ok: !!(r && r.ok), error: !(r && r.ok) });
+      });
+      if (!via) setMsg({ texto: 'Esto no está disponible en esta versión de la app.', error: true });
+    };
     const idLimpio = id.trim();
     const idMal = !idDiscordValido(idLimpio);
     const urlLimpia = url.trim();
@@ -625,6 +643,7 @@
         <div className={`ln-vd-estado${e.conectado ? ' is-on' : ''}`}>
           <Badge variant={e.conectado ? 'yellow' : 'ink'} outline={!e.conectado}>{e.conectado ? 'CONECTADO' : (e.activo ? 'sin conectar' : 'apagado')}</Badge>
           <span className="ln-vd-estado-tx">{textoEstadoDiscord(e)}</span>
+          {e.activo && !e.conectado && <Button size="sm" variant="secondary" onClick={reconectar}>Reconectar</Button>}
         </div>
         <div className="ln-toggle-row" style={{ marginTop: 12 }}>
           <Switch label="Enseñar en Discord lo que hace Lune" checked={e.activo} accent="blue"

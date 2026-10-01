@@ -28,7 +28,9 @@
  *   tocar()            minirrebote (salta ~5 px y aplasta un poco) y despierta.
  *   dormir(on)         clase .lune-dormida en el stage + zzz + capa 'dormir'
  *                      ('sleeping': lune_anim_video.js pone el clip o el sustituto)
- *                      + respiración lenta. Eventos 'dormir' / 'despertar'.
+ *                      + respiración lenta. Eventos 'dormir' / 'despertar'. Las «z» las
+ *                      mueve tick() (poseZzz, al ritmo del registro), no una animación CSS
+ *                      infinita (11.2: dormida obligaba a 60 frames por segundo).
  *
  * Mismas reglas que el VRM: arrastrar o tocar despierta; setEmocion('sleeping')
  * duerme y cualquier emoción que no sea 'normal' despierta (hook alEmocion).
@@ -76,6 +78,46 @@ export const PARAMS_FISICA = Object.freeze({
   dormirEntrada: 1.0, dormirSalida: 0.45,
   respiracion: 0.006, respiracionPeriodo: 4,
 });
+
+/**
+ * «z z z» dormida (11.2): las mueve este módulo en cada tick del registro (a su fpsReposo, 15 por
+ * segundo) en vez de una animación CSS infinita, que obligaba a Chromium a sacar 60 frames por
+ * segundo y en esta ventana translúcida costaba casi el doble de CPU dormida que despierta. Mismo
+ * recorrido que tenía la animación lune-zzz de asistente_anim.css: 3 s, desfasadas 1 s.
+ */
+export const ZZZ = Object.freeze({ periodo: 3, desfases: [0, 1, 2] });
+
+const _suave = (x) => (x < 0.5 ? 2 * x * x : 1 - 2 * (1 - x) * (1 - x));   // ease-in-out
+const _r = (v, n = 1) => Number(v.toFixed(n));
+
+/** Pose de una «z» a los `t` s con su `desfase` (s): {transform, opacity}, la de la animación de antes. */
+export function poseZzz(t, desfase = 0) {
+  const per = ZZZ.periodo;
+  const f = ((((num(t) - num(desfase)) % per) + per) % per) / per;
+  const k = _suave(f);
+  // opacidad 0 → 1 (20 %) → .85 (75 %) → 0, suavizada por tramos
+  let o;
+  if (f < 0.2) o = _suave(f / 0.2);
+  else if (f < 0.75) o = 1 - 0.15 * _suave((f - 0.2) / 0.55);
+  else o = 0.85 * (1 - _suave((f - 0.75) / 0.25));
+  const x = 18 * k, y = 4 - 44 * k, s = 0.7 + 0.4 * k, g = -8 + 18 * k;
+  return { transform: `translate(${_r(x)}px, ${_r(y)}px) scale(${_r(s, 3)}) rotate(${_r(g)}deg)`, opacity: String(_r(o, 3)) };
+}
+
+/** Escribe la pose de cada «z» del contenedor (los <span> de asegurarZzz) a los `t` s. → cuántas. */
+export function moverZzz(zzz, t) {
+  const hijos = zzz && zzz.children ? zzz.children : [];
+  let n = 0;
+  for (let i = 0; i < hijos.length && i < ZZZ.desfases.length; i++) {
+    const st = hijos[i] && hijos[i].style;
+    if (!st) continue;
+    const p = poseZzz(t, ZZZ.desfases[i]);
+    st.transform = p.transform;
+    st.opacity = p.opacity;
+    n++;
+  }
+  return n;
+}
 
 const finito = Number.isFinite;
 const num = (v, d = 0) => (finito(v) ? v : d);
@@ -228,6 +270,7 @@ export function instalar(ctx = {}, opciones = {}) {
   let mareo = { t0: -Infinity, hasta: -Infinity };
   let toqueT = -Infinity;
   let dormida = false, sueno = 0;
+  let zzz = null;                        // contenedor de las «z» (asegurarZzz), dormida
 
   function dormir(on) {
     on = !!on;
@@ -237,7 +280,8 @@ export function instalar(ctx = {}, opciones = {}) {
     e.dormida = on;
     clase(stage, 'lune-dormida', on);
     if (on) {
-      asegurarZzz(stage, doc);
+      zzz = asegurarZzz(stage, doc);
+      moverZzz(zzz, ahora);
       fijarCapa(e, 'dormir', 'sleeping');
       emitir('dormir', {});
     } else {
@@ -317,6 +361,7 @@ export function instalar(ctx = {}, opciones = {}) {
     sueno = clamp(sueno + (dormida ? 1 / p.dormirEntrada : -1 / p.dormirSalida) * d, 0, 1);
     e.drag = drag.on;
     e.dormida = dormida;
+    if (dormida && zzz) moverZzz(zzz, ahora);   // solo dormida (despierta están ocultas)
   }
 
   function pose(out) {
@@ -346,7 +391,7 @@ export function instalar(ctx = {}, opciones = {}) {
     nombre: NOMBRE,
     orden: ORDEN,
 
-    alIniciar() { if (dormida) asegurarZzz(stage, doc); },
+    alIniciar() { if (dormida) zzz = asegurarZzz(stage, doc); },
 
     // Igual que setEstado del VRM.
     alEmocion(nombre) {

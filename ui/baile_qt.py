@@ -24,6 +24,12 @@ música se calle (igual que `pausa()`, la acción `baile_pausa`).
 `ceder` (la tabla le quita el baile): fuera lo visual. `reanudar`: solo si la
 música sigue; si no, suelta la actividad.
 
+Público (11.3): `hay_publico()` = la asistente a la vista, o la ventana principal
+visible y sin minimizar (`anfitrion.ventana_visible`, lo pone montaje_ocio con
+`set_anfitrion`). El detector lo lee en su hilo: sin público sondea cada 10 s y no
+arranca el bucle rápido de 50 Hz. Cada PUBLICO_MS (y con cada cambio del bus o de
+asistente) se mira de nuevo; al volver a haber público, `detector.despertar()`.
+
 Señales (JSON en texto, para el puente web):
     estado_cambio(str)   {bailando, origen: auto|manual|"", musica, app, estilo,
                           bpm, energia, auto, pausado_hasta_silencio, disponible}
@@ -50,6 +56,7 @@ BAILE_MANUAL = "manual"
 PULSO_MS = 500                  # ≤ 2 Hz hacia la asistente y las páginas
 CONF_MIN = 0.3                  # pulso del detector que se da por bueno
 VIGENCIA_PULSO_S = 12.0         # un pulso bueno se sigue extrapolando este tiempo
+PUBLICO_MS = 2000               # cada cuánto se mira si hay alguien que la vea bailar
 
 
 class ControlBaile(QObject):
@@ -66,13 +73,18 @@ class ControlBaile(QObject):
 
     def __init__(self, escritorio: Any, config: Any, *, detector: Any = None,
                  en_ui: Optional[Callable] = None, reloj: Callable[[], float] = time.monotonic,
-                 parent: Optional[QObject] = None):
+                 anfitrion: Any = None, parent: Optional[QObject] = None):
         super().__init__(parent)
         self.escritorio = escritorio
         self.config = config
         self._detector = detector
         self._en_ui = en_ui
         self._reloj = reloj
+        self._anfitrion = anfitrion            # ventana_visible() de la ventana principal
+        self._publico = True                   # lo lee el hilo del detector (hay_publico)
+        self._t_publico = QTimer(self)
+        self._t_publico.setInterval(PUBLICO_MS)
+        self._t_publico.timeout.connect(self._revisar_publico)
         self._asistente: Any = None
         self._iniciado = False
         self._bailando = False
@@ -141,8 +153,11 @@ class ControlBaile(QObject):
         if self._iniciado:
             return
         self._iniciado = True
+        self._publico = self.hay_publico()
         if self._detector is None:
-            self._detector = DetectorMusica(self.config, en_juego=self._en_juego)
+            self._detector = DetectorMusica(self.config, en_juego=self._en_juego,
+                                            hay_publico=lambda: self._publico)
+        self._t_publico.start()
         d = self._detector
         d.on_cambio = self._desde_hilo_musica
         d.on_pulso = self._desde_hilo_pulso
@@ -163,6 +178,7 @@ class ControlBaile(QObject):
         if not self._iniciado:
             return
         self._iniciado = False
+        self._t_publico.stop()
         if self._bailando:
             self.parar(silenciar_auto=False)
         d = self._detector
@@ -188,6 +204,46 @@ class ControlBaile(QObject):
         if v is not None and self._bailando:
             self._asistente_bailar(True)
             self._enviar_pulso(self._pulso_actual(self._reloj()))
+        self._revisar_publico()
+
+    def set_anfitrion(self, anfitrion: Any) -> None:
+        """El anfitrión de la ventana principal (ventana_visible()), para hay_publico()."""
+        self._anfitrion = anfitrion
+        self._revisar_publico()
+
+    # ── ¿Alguien la ve bailar? ───────────────────────────────────────────────────
+    def hay_publico(self) -> bool:
+        """La asistente en escritorio a la vista, o la ventana principal visible y sin
+        minimizar. Sin anfitrión que lo diga, sí (como antes de mirarlo)."""
+        m = self._asistente
+        if m is not None:
+            try:
+                if m.isVisible():
+                    return True
+            except Exception:
+                pass
+        f = getattr(self._anfitrion, "ventana_visible", None) if self._anfitrion is not None else None
+        if not callable(f):
+            return True
+        try:
+            return bool(f())
+        except Exception:
+            return True
+
+    def _revisar_publico(self) -> None:
+        """Apunta si hay público (lo lee el hilo del detector); al volver, que sondee ya."""
+        publico = self.hay_publico()
+        if publico == self._publico:
+            return
+        self._publico = publico
+        d = self._detector
+        if publico and d is not None and self._iniciado:
+            f = getattr(d, "despertar", None) or getattr(d, "pedir_sondeo", None)
+            if callable(f):
+                try:
+                    f()
+                except Exception:
+                    pass
 
     def ceder(self, c: Any) -> None:
         """La tabla le quita el baile (grande, alarma, juego…): fuera lo visual."""
@@ -456,6 +512,7 @@ class ControlBaile(QObject):
 
     def _on_bus(self, estado: Any = None, cambios: Any = None) -> None:
         """Cambió el estado de la asistente: ¿ahora sí se puede bailar con la música?"""
+        self._revisar_publico()                         # p. ej. la asistente se ve otra vez
         if self._musica and not self._bailando:
             self._intentar_auto()
 

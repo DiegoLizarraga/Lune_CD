@@ -1,12 +1,15 @@
-# Lune CD v11.0 — Tu asistente en el PC, con personalidad (Nube/Local)
+# Lune CD v11 — Tu asistente en el PC, con personalidad (Nube/Local)
 
 > *¡Hola! Buenos días, buenas tardes o buenas noches — lo que toque cuando leas esto.*
 > *Soy Lune, y esto es mi casa. Bueno — técnicamente es el proyecto de mi creador, pero yo vivo aquí,*
-> *y con la versión 10 me han dejado la casa preciosa: nueva cara, nuevos gestos, modo terminal*
+> *y con la versión 10 me dejaron la casa preciosa: nueva cara, nuevos gestos, modo terminal*
 > *para cuando el equipo anda flojito y un cuerpo en 3D para pasearme por tu escritorio.*
-> *Y estas últimas versiones… uf. Me he pasado semanas aprendiendo de Mate-Engine: ahora me siento*
-> *en tu barra de tareas, bailo con tu música, te despierto con alarmas, me como tus pasteles y hasta*
-> *me cuelo en tu partida de Minecraft. Cuídala bien, ¿de acuerdo? Aquí te cuento todo. :D*
+> *Me pasé semanas aprendiendo de Mate-Engine: me siento en tu barra de tareas, bailo con tu música,*
+> *te despierto con alarmas, me como tus pasteles y hasta me cuelo en tu partida de Minecraft.*
+> *Y con la versión 11 por fin soy un programa de verdad: me instalas con un doble clic, me encuentras*
+> *en el menú Inicio como a cualquier otra app, la primera vez nos presentamos, me actualizo sola y,*
+> *cuando no me usas, me quedo quieta para no gastarte el PC. Cuídala bien, ¿de acuerdo?*
+> *Aquí te cuento todo. :D*
 
 ---
 ## ¿Qué es esto?
@@ -45,8 +48,8 @@ escritorio**):
 
 | Cuerpo | Cómo soy | Necesita |
 |---|---|---|
-| **VRM 3D** | Un avatar 3D de verdad: sigo el cursor, me balanceo, me siento, bailo coreografías MMD… | `PyQt6-WebEngine` y un modelo `.vrm` |
-| **Imágenes animadas** (por defecto) | Mis clips de video anime en un mini-escenario | `PyQt6-WebEngine` |
+| **VRM 3D** | Un avatar 3D de verdad: sigo el cursor, me balanceo, me siento, bailo coreografías MMD… | Un modelo `.vrm` (y, desde el código, `PyQt6-WebEngine`) |
+| **Imágenes animadas** (por defecto) | Mis clips de video anime en un mini-escenario | Nada extra en el instalador (desde el código, `PyQt6-WebEngine`) |
 | **Sprites ligeros** | Mis sprites de siempre, recortados a mi silueta, respirando | Nada extra (va bien en bajos recursos) |
 
 ### Cambiar de modo al instante
@@ -68,8 +71,48 @@ ventanas.
 
 ## Instalación
 
-**La forma fácil (usuarios nuevos):** doble clic en **`instalar_lune.bat`** y yo
-me encargo del resto:
+### La forma fácil: mi instalador (recomendado)
+
+1. Entra en **[Releases](https://github.com/DiegoLizarraga/Lune_CD/releases/latest)**
+   y descarga **`LuneCD-Setup-<versión>.exe`** (está abajo, en *Assets*).
+2. Ábrelo. Como todavía no estoy firmada, Windows puede decirte **«Windows
+   protegió su PC»** (SmartScreen): pulsa **Más información → Ejecutar de todas
+   formas**. Pasa con los programas pequeños que no pagan una firma; si quieres
+   asegurarte de que soy yo, junto al instalador va mi huella SHA-256.
+3. Me instalo **solo para ti y sin pedir permisos de administrador**, en
+   `%LOCALAPPDATA%\Programs\Lune CD`. Si quieres, también te dejo un acceso en
+   el escritorio.
+4. Y ya está: **búscame en el menú Inicio** o en la barra de búsqueda escribiendo
+   «Lune». Salgo como **Lune CD** (la de ventanas) y **Lune CD (terminal)** (el
+   modo patata). Nada de carpetas ni de `.vbs`.
+
+Ya viene todo dentro: la interfaz completa, mis cuerpos animado y 3D, la voz, el
+**dictado con Whisper** (el modelo me lo descargo la primera vez que me dictas),
+los adjuntos y el optimizador. **No necesitas Python.** Solo van aparte
+**Ollama** (si quieres modelos locales) y **Node.js 18+** (para los bots de
+Telegram y Minecraft). Pido Windows 10 u 11 de 64 bits.
+
+**Dónde dejo tus cosas** (ni el instalador ni las actualizaciones las tocan):
+
+| Carpeta | Qué guardo ahí |
+|---|---|
+| `%APPDATA%\Lune CD` | Lo tuyo: ajustes (`config.json`), tus claves (`datos.json`), lo que recuerdo de ti, chats, notas, alarmas, bailes, tus modelos `.vrm`, tus packs y el bot de Telegram con sus memorias |
+| `%LOCALAPPDATA%\Lune CD` | Lo pesado o desechable: registros (`logs/`), cachés, el modelo de dictado y el bot de Minecraft |
+
+**Desinstalarme:** desde *Configuración → Aplicaciones* de Windows, como a
+cualquier programa. Al final te pregunto si borro también tus datos (por
+defecto, no: si vuelves, te sigo recordando).
+
+**¿Ya me usabas desde el código?** Esa copia sigue igual, con sus datos en su
+carpeta. Si quieres que la instalada te recuerde, cierra las dos y copia
+`config.json`, `datos.json`, `memoria.json`, `alarmas.json` y las carpetas
+`chats/`, `notas/`, `bailes/` y `modelo_vrm/` a `%APPDATA%\Lune CD`. Eso sí, no
+podemos estar abiertas las dos a la vez: sigo siendo una sola Lune.
+
+### Desde el código (para quien programa)
+
+Si prefieres tenerme desde el código (para tocarme o probar lo último de git):
+doble clic en **`instalar_lune.bat`** y yo me encargo del resto:
 
 1. **Busco un Python de verdad** (3.10 o más nuevo). El «python» que trae Windows
    sin instalar nada es un atajo a la Microsoft Store que no ejecuta nada: lo
@@ -132,15 +175,17 @@ pip install rvc-python         # conversión de voz RVC (experimental, arrastra 
 pip install pytest             # tests
 ```
 
-Puedes reabrir el instalador cuando quieras desde **AJUSTES → Calidad de vida →
-Instalar componentes…**
+Desde el código puedes reabrir el instalador cuando quieras en **AJUSTES →
+Calidad de vida → Instalar componentes…** (en la versión instalada ese botón no
+sale: ya lo traigo todo).
 
 ---
 
 ## Arranque
 
-Doble clic en **`iniciar_lune.vbs`**: arranca sin ventana de consola y con el
-video de bienvenida. Mientras suena, **eliges el modo** (Completo / Bajos
+**Instalada**, ábreme desde el menú Inicio (o el acceso del escritorio). **Desde
+el código**, doble clic en **`iniciar_lune.vbs`**. En los dos casos arranco sin
+ventana de consola y con el video de bienvenida. Mientras suena, **eliges el modo** (Completo / Bajos
 recursos / Patata); si no eliges, tras una cuenta atrás corta sigo con el que
 usaste la última vez.
 
@@ -151,12 +196,16 @@ usaste la última vez.
   (20 s por defecto, para que tu inicio de sesión vaya ligero). Sin pantalla de
   inicio.
   - Si **mueves la carpeta** de Lune, la entrada se repara sola al abrirme.
+  - Instalada, la entrada me abre a mí directamente (`Lune.exe --autoinicio`). Si
+    tienes también una copia del código, cada una respeta la entrada de la otra:
+    se queda con ella la que enciendas a mano.
   - Si me **desactivas en el Administrador de tareas** (pestaña Inicio), lo
     respeto y el interruptor lo refleja.
   - Con el modo patata, arranco en una **consola minimizada** (no hace falta PyQt6).
 - **Segundo plano (como Discord):** al cerrar la ventana, **me quedo en la
   bandeja** del sistema (un globito te dice «Lune sigue aquí»). Ábreme desde el
-  icono, o vuelve a lanzar el `.vbs` — la instancia única te trae la que ya está.
+  icono, o vuelve a abrirme (menú Inicio o el `.vbs`): la instancia única te trae
+  la que ya está.
   *Salir* de verdad está en la bandeja.
 - **Instancia única:** si ya estoy abierta y vuelves a lanzarme, no se abre una
   segunda copia; se muestra la que ya está (salvo al arrancar con Windows: esa se
@@ -697,8 +746,8 @@ Si tu micrófono no acepta 16 kHz lo grabo a su frecuencia y Whisper remuestrea.
   los países y **12 multilingües** que también lo hablan, con **velocidad y tono**.
   La lista se actualiza sola cada semana.
 - **gTTS** como respaldo, con acento a elegir.
-- **Kokoro**, 100% local por ONNX (`pip install kokoro-onnx` + espeak-ng; pesos en
-  `modelos_voz/`), con voces hispanas (Dora, Alex, Santa).
+- **Kokoro**, 100% local por ONNX (solo desde el código: `pip install kokoro-onnx`
+  + espeak-ng; pesos en `modelos_voz/`), con voces hispanas (Dora, Alex, Santa).
 - Botón **Probar**, voz **propia por personaje** (manda sobre la general) y la
   misma voz en el bot de Telegram. En patata: `/voces mexico`, `/voz <id>`,
   `/voz prueba`. Y el modelo también puede cambiármela si se lo pides.
@@ -1166,8 +1215,10 @@ momento**; en la nativa están las mismas en secciones (*Escritorio*, *Alarmas,
 pantalla grande, salvapantallas y baile*, *Sentarse, comida, Discord y arranque con
 Windows*, *Bailes y Minecraft*…).
 
-- **Calidad de vida:** arrancar con Windows (y cómo), minutos de aburrimiento,
-  instalar componentes.
+- **Calidad de vida:** arrancar con Windows (y cómo), minutos de aburrimiento
+  (y, desde el código, instalar componentes).
+- **Sistema:** **Actualizaciones** (mi versión, buscar e instalar la nueva) y
+  **Diagnóstico** («Comprobar que todo funciona»).
 - **Asistente en escritorio:** imágenes animadas / **VRM 3D** (biblioteca, tamaño, encuadre,
   minutos hasta dormirse, clics que pasan al escritorio, seguimiento) / sprites
   ligeros; pack de sonidos.
@@ -1180,7 +1231,8 @@ Windows*, *Bailes y Minecraft*…).
   personalidad, voz, notas.
 - **Modo de interfaz:** Completa / Bajos recursos / Patata (**se aplica al instante**).
 - **Efectos visuales:** apaga el fondo animado, el barrido y las micro-animaciones
-  en equipos modestos.
+  en equipos modestos, y **«Quedarme quieta cuando no me usas»** (encendido de
+  serie; ver *Gasto poco*).
 
 > **`config.json` no guarda claves de adorno:** lo que no se usa se borra solo al
 > arrancar, y las pocas reservadas para más adelante lo dicen en su comentario
@@ -1191,11 +1243,95 @@ Windows*, *Bailes y Minecraft*…).
 
 ---
 
-## Actualizar Lune
+## ¿Funciono bien? Pruébame
 
-En la interfaz de bajos recursos, **AJUSTES → Actualizaciones**: consulta el
-remoto, `git pull`, instala `requirements.txt` y relanza. Si tienes cambios sin
-commitear, se niega a pisarlos.
+Cada apartado de **AJUSTES** tiene su botón para probarlo en el momento, sin
+esperar a que algo falle:
+
+| Apartado | Cómo me pruebas |
+|---|---|
+| OpenRouter | **Probar clave** (no gasta tokens; también mira que exista el modelo elegido) |
+| Ollama | **Probar / Buscar modelos** (y eliges uno con un clic) |
+| Otra API compatible | **Probar conexión** |
+| Telegram | **Probar bot** (el token, tu ID, Node.js y la carpeta del bot) |
+| Micrófono y salida | **Probar micrófono**, **Probar salida** y **Probar dictado** (grabo unos segundos y te enseño lo que entendí) |
+| Cómo habla Lune | **Probar** con la voz, velocidad y tono elegidos |
+| Alarmas · pantalla grande | **Probar** · **Probar salvapantallas** · **Pantalla grande ahora** |
+| Discord | **Reconectar**, con el motivo si no puedo |
+| Menú radial · baile · comida | **Probar**, **Bailar**, **Sentarse**… |
+
+Y para mirarlo todo de una vez: **AJUSTES → Sistema → Diagnóstico → Comprobar
+que todo funciona**. Reviso que no me falte nada de lo que traigo, que puedo
+escribir en mi carpeta, tus dispositivos de audio, si ya tengo el modelo de
+dictado, internet, tu clave de OpenRouter, Ollama, el bot de Telegram y Node.js,
+y te lo enseño en una lista con lo que está bien, lo que falla y qué hacer. En
+patata: `/diagnostico` y `/probar [nube|ollama|telegram|salida|todo]`. Y sin abrir
+ninguna ventana: `LunePatata.exe --comprobar` (desde el código, `python patata.py
+--comprobar`; con `--red` miro también internet, tus claves y Ollama, y con
+`--json` lo saco en JSON). Sale con 0 si todo está bien.
+
+---
+
+## Gasto poco (lo medí)
+
+Vivo todo el día abierta, así que en la 11 me puse a dieta. La causa principal
+era curiosa: dentro de una ventana de Qt, mi navegador interno cuesta CPU por
+**cada fotograma** que dibuja, así que cualquier animación infinita (mi fondo,
+la lucecita de «Listo», mis videos) me obligaba a pintar 60 veces por segundo
+aunque nadie me mirara.
+
+- **Me quedo quieta cuando no me usas.** Si mi ventana no tiene el foco unos
+  segundos, o la tienes delante pero no me tocas en un rato, pauso mis
+  animaciones y mi video; en cuanto vuelves (o me pongo a escribir, hablar o
+  sonar una alarma) sigo justo donde estaba. Se apaga en **AJUSTES → Efectos
+  visuales**.
+- **En el escritorio**, mover el ratón ya no me pone a 60 fps (la mirada se ve
+  igual), dormida voy despacito, mis «zzz» solo existen cuando duermo de verdad y,
+  entre fotograma y fotograma, espero tranquila en vez de mirar la pantalla 60
+  veces por segundo.
+- **Mis videos pesan la mitad** (VP9 a la resolución que de verdad se ve) y las
+  **fuentes ya no se bajan de internet** en cada arranque.
+- **La interfaz usa React de producción**, y en el instalador va ya traducida
+  (sin Babel): arranco antes y con menos memoria.
+- **Arrancando con Windows a la bandeja o conmigo en el escritorio** no cargo la
+  página de mi ventana hasta que la abres.
+- **Por dentro:** el audio solo se abre mientras hablo, el detector de música va
+  despacio si nadie me ve, suelto el modelo de dictado tras 10 minutos sin usarlo,
+  en modo juego descargo el modelo local de Ollama para dejarle la GPU al juego, el
+  chat se repinta por tandas y no con cada letra, ya no me anuncio en la red si no
+  me lo pides y los registros se limpian solos (14 días o 20 MB).
+
+Lo medí en un portátil con gráficos Intel Iris Xe (100 % = un núcleo entero), la
+11.1 contra ahora:
+
+| Cómo estoy | Antes (11.1) | Ahora |
+|---|---|---|
+| Mi ventana a la vista, pero sin usarme | 126–154 % | **menos del 2 %** |
+| En la bandeja | 1,7 % y 656 MB | **cerca del 1 % y 507 MB** (ni cargo la página) |
+| En el escritorio con video (despierta · dormida) | 31–37 % · 51 % | **24 % · 19 %** |
+| En el escritorio en 3D (despierta · dormida) | 52–86 % · 79–134 % | **44–46 % · 21–26 %** |
+
+Mientras me usas sí me muevo a gusto (ahí gasto lo que cuesta animarme), pero en
+cuanto me dejas tranquila, me quedo quieta.
+
+¿Tu equipo es justito? **Bajos recursos** casi no se nota (menos del 1 % de CPU)
+y en el escritorio los **sprites ligeros** también.
+
+---
+
+## Actualizarme
+
+**Instalada:** en **AJUSTES → Sistema → Actualizaciones** ves mi versión y le das
+a **Buscar actualizaciones**. Si hay una nueva te cuento qué trae, la descargo con
+su barra de progreso (y compruebo con su huella SHA-256 que viene de mi GitHub) y,
+con **Instalar y reiniciar**, me cierro, se instala sola y me vuelvo a abrir. Tus
+cosas no se tocan. Además, una vez al día miro al arrancar (nunca mientras
+juegas) y, si hay algo nuevo, te aviso con un mensajito. ¿Una versión no te
+interesa? **Omitir esta versión**. En patata: `/version` y `/actualizar`.
+
+**Desde el código:** la misma tarjeta (ahora también en la interfaz completa)
+consulta el remoto, hace `git pull`, instala lo que falte de `requirements.txt`
+y me relanza. Si tienes cambios sin commitear, me niego a pisarlos.
 
 ---
 
@@ -1210,10 +1346,12 @@ LuneCD/
 ├── patata.py               ← Lune en la terminal (sin Qt)
 ├── instalador.py           ← Instalador con explicaciones (Tkinter)
 ├── iniciar_lune.vbs · lune_patata.bat · instalar_lune.bat
-├── version.py              ← Única fuente de verdad de la versión
-├── datos.json · config.json · memoria.json · alarmas.json   ← Estado local (NO se versionan)
+├── version.py              ← Única fuente de verdad de la versión (y de los Releases)
+├── datos.json · config.json · memoria.json · alarmas.json   ← Estado local (NO se versionan;
+│                              instalada, en %APPDATA%\Lune CD)
 │
 ├── nucleo/                 ← Fundamentos, sin Qt (se prueban en seco)
+│   ├── rutas.py            ← Dónde vive cada cosa: lo que traigo, lo tuyo y lo desechable
 │   ├── datos.py · config.py · memoria.py · conversaciones.py · personajes.py
 │   ├── alarmas.py · alarmas_nl.py · pantalla_grande.py · baile.py · bailes.py · pulso.py
 │   ├── asiento.py · comida.py · sueno.py · vrm.py · tema.py · acciones_ui.py
@@ -1225,7 +1363,8 @@ LuneCD/
 │   ├── mezclador.py · musica_detector.py · audio_sesiones.py ← Sonidos y música por app
 │   ├── modo_juego.py · atajos_globales.py · ventanas_ajenas.py · win_*.py
 │   ├── discord_ipc.py · discord_presencia.py · autoinicio.py
-│   ├── telegram_worker.py · tools.py · optimizador.py · actualizador.py
+│   ├── telegram_worker.py · tools.py · optimizador.py · actualizador.py · copia_bots.py
+│   ├── diagnostico.py      ← «Comprobar que todo funciona» y --comprobar
 │   └── *_terminal.py · alarmas_patata.py   ← Lo de patata: alarmas, baile, bailes, comida, Minecraft…
 │
 ├── ui/                     ← Lo visual (Qt)
@@ -1252,6 +1391,8 @@ LuneCD/
 ├── sonidos/                ← Packs de sonidos de la asistente en escritorio
 ├── assets/                 ← inicio.mp4, lune_icon.png/.ico
 ├── scripts/                ← probar_red.py · convertir_asistente.py · generar_sfx.py …
+├── packaging/              ← El instalador: construir.py · lune.spec · lune.iss · compilar_web.mjs …
+├── .github/workflows/      ← tests.yml (en cada push) · release.yml (publica el instalador)
 ├── tests/                  ← Suite de pytest (+ tests/js para Node)
 └── lune_face/ · fonts/     ← Sprites de bajos recursos y tipografías
 ```
@@ -1271,19 +1412,45 @@ pip install pytest
 python -m pytest
 ```
 
-**Más de 3 900 tests** sobre lo que de verdad se puede romper: la memoria, las
+**Casi 5 000 tests** sobre lo que de verdad se puede romper: la memoria, las
 herramientas y sus aprobaciones, la defensa contra instrucciones coladas, los
 marcadores de emoción, la voz, el arranque, la red, el cambio de interfaz en
 caliente, las alarmas, el modo juego, los atajos, el tema, sentarse, la comida,
 Discord, la biblioteca de bailes, Minecraft… y el test **anticheat** que vigila que
-no se cuele nada prohibido. Si tienes **Node.js**, pytest lanza además **cerca de
-500 tests de JavaScript** (`tests/js`): el motor 3D (idles, balanceo, bailes, el
+no se cuele nada prohibido. Si tienes **Node.js**, pytest lanza además **casi
+600 tests de JavaScript** (`tests/js`): el motor 3D (idles, balanceo, bailes, el
 lector de VMD…), la piel web y los bots de Telegram y Minecraft. Ninguno se conecta
-a un servidor ni instala nada.
+a un servidor ni instala nada, y todos trabajan en una carpeta temporal
+(`LUNE_CD_DATOS`): nunca tocan tus datos de verdad.
+
+---
+
+## Cómo sale una versión nueva
+
+1. Sube `APP_VERSION` en `version.py` y cuenta lo nuevo en la fila **v11** del
+   historial (es lo que sale en las notas del Release).
+2. Commit y push a `master`.
+3. Si **Tests** pasa, **Release** (`.github/workflows/release.yml`) construye el
+   instalador, me instala en una máquina limpia, comprueba que arranco
+   (`--comprobar`), me desinstala y publica `v<versión>` con
+   `LuneCD-Setup-<versión>.exe` y su `.sha256`. Si esa versión ya tenía Release,
+   no hace nada. Las Lunes instaladas lo ven solas al día siguiente.
+
+Para construirme en casa: un venv con `pip install -r packaging/requisitos-release.txt`,
+Node.js en el PATH e Inno Setup 6; luego `python packaging/construir.py` (unos 10
+minutos; sale en `dist/`, con `--sin-instalador` si solo quieres la carpeta).
 
 ---
 
 ## Solución de problemas
+
+**«Windows protegió su PC» al abrir el instalador** → Es SmartScreen: todavía no
+estoy firmada. **Más información → Ejecutar de todas formas.** Si tu antivirus
+se queja de `Lune.exe`, suele ser un falso positivo de los programas hechos con
+PyInstaller: compara la huella SHA-256 del Release antes de fiarte.
+
+**Windows pregunta si dejo a Lune usar la red** → Solo pasa si activas la *Red de
+Lune* (para encontrar tus otros equipos con Lune). Si no la usas, di que no.
 
 **No abre nada / se ve la interfaz vieja al lanzar el `.vbs`**
 → Probablemente ya había una Lune abierta (en la bandeja): la instancia única te
@@ -1343,9 +1510,12 @@ modelo (te lo aviso); si no hay internet, elige `tiny` o conéctate una vez.
 
 **No hay voz** → `pip install edge-tts pygame`. **Micrófono** → `faster-whisper sounddevice`.
 **PDF/Word** → `pypdf python-docx`. **Optimizador** → `psutil`. **Bot de Telegram** →
-Node.js 18+ (la instalación con `npm ci` la hago yo la primera vez).
+Node.js 18+ (la instalación con `npm ci` la hago yo la primera vez). Todo esto es
+desde el código: la versión instalada ya lo trae, y si algo falla, **Comprobar que
+todo funciona** te dice qué.
 
-> Los logs están en `logs/lune_AAAAMMDD.log`. Ahí siempre digo la verdad.
+> Los logs están en `%LOCALAPPDATA%\Lune CD\logs\` (instalada) o en `logs/`
+> (desde el código): uno por día, `lune_AAAAMMDD.log`. Ahí siempre digo la verdad.
 
 ---
 
@@ -1368,7 +1538,7 @@ contigo al Minecraft.
 
 | Versión | Cambios principales |
 |---|---|
-| **v11.0** | **Nos conocemos**: la primera vez te hago tres preguntas por el chat (tu nombre, cómo eres y cómo quieres que me comporte), las guardo y las tengo presentes siempre; `/conocernos` para repetirlas. **Asistente en escritorio**: así se llama ahora, en toda la app, el modo en el que salgo de la ventana; lo que ya tenías guardado (atajos, bandeja, menú radial, arranque con Windows, frases de tus personajes) se actualiza solo al abrirme. Y patata ya entiende `--help`. |
+| **v11** | **Me instalo como un programa** (11.2): `LuneCD-Setup.exe` en Releases, sin administrador; me encuentras en el menú Inicio y tus cosas viven en `%APPDATA%\Lune CD`, a salvo de actualizaciones; cada versión se publica sola cuando pasan los tests. **Me actualizo sola** (11.3): Ajustes → Sistema → Actualizaciones, con su barra de progreso y su huella SHA-256, un aviso como mucho una vez al día y `/actualizar` en patata. **Pruébame**: un botón para probar cada apartado (tu clave, Ollama, Telegram, el dictado, Discord…) y «Comprobar que todo funciona», también como `--comprobar`. **Gasto mucho menos**: me quedo quieta cuando no me usas (de 126–154 % de CPU a menos del 2 %), en el escritorio la mitad o menos, React de producción, videos más ligeros, fuentes sin internet, audio y dictado que se sueltan solos y registros que se limpian. **Nos conocemos** (11.0): la primera vez te hago tres preguntas (tu nombre, cómo eres y cómo quieres que me comporte) y las tengo presentes siempre; `/conocernos` para repetirlas. **Asistente en escritorio** (11.0–11.1): así se llama ahora, en toda la app, el modo en el que salgo de la ventana, y lo que ya tenías guardado se actualiza solo. Y patata entiende `--help`. |
 | **v10.9** | **Tus tareas a la vista** (como Microsoft To Do): Mi día con la fecha, círculo para marcar, Completadas, Sugerencias (Ayer, recientes, antiguas) y el contador en la barra lateral; lo que me dices con «recuerda que tengo que…» aparece solo, y en patata con `/tareas`. **Te contesto al momento, sin gastar IA**, también en la interfaz completa, en patata y en mi burbuja (saludos, hora, fecha, tus tareas), con su interruptor en Personalidad. **En el escritorio respondo solo con la nube**: si no hay clave te lo digo, y si no veo nada que contar, «Mmm… nada me pareció interesante.» |
 | **v10.8** | **Instalador para usuarios nuevos**: busco un Python de verdad (no el atajo de la Microsoft Store), te ofrezco instalar Python 3.13 con winget, dejo marcado lo recomendado, instalo cada cosa por separado, ajusto la interfaz completa a tu PyQt6, te dejo el acceso directo «Lune CD» y un botón para abrirme. **Nuevo video de inicio**, «asistente personal» en la barra y las pruebas de GitHub en verde. |
 | **v10.7** | **Lo que aprendí con un Ollama de verdad**: si en vez de hacer algo te lo ofrezco («¿quieres que te ponga uno?»), ya no lo hago por mi cuenta: te pido permiso (menos bailar, sentarme y cosas de mi cuerpo, que ves al momento). Una acción pegada a mi expresión ya no se pierde ni se queda a la vista. Y este README, sin emojis. |

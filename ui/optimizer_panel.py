@@ -2,6 +2,11 @@
 optimizer_panel.py — Centro de optimización estilo Stacer (UI + worker).
 Monitorea CPU/RAM/Disco, libera espacio (temporales, caché, papelera) y
 permite cerrar procesos pesados, todo sin congelar la interfaz.
+
+El panel se construye al arrancar (main.py) aunque nunca lo abras: el monitor
+solo mide con el panel A LA VISTA (showEvent/hideEvent; minimizar u ocultar la
+ventana en la bandeja también lo esconde). La CPU se lee sin dormir el hilo de
+Qt (cpu_percent(None), cebada al abrir) y la lista de procesos va en un hilo.
 """
 from PyQt6.QtWidgets import (
     QFrame, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
@@ -14,6 +19,9 @@ from nucleo.config import Config
 from ui.theme import COLORS, FONT_DISPLAY, FONT_MONO
 from servicios.optimizador import Optimizador, formatear_bytes
 from nucleo.utils import log_error
+
+STATS_CADA_MS = 3000            # refresco del monitor mientras se ve
+PRIMERA_LECTURA_MS = 400        # tras cebar la CPU: la primera media útil
 
 
 class OptimizadorWorker(QThread):
@@ -54,10 +62,26 @@ class OptimizadorPanel(QFrame):
         self._checks = {}        # clave -> (QCheckBox, CategoriaLimpieza)
         self.setStyleSheet("QFrame{background:transparent;}")
         self._build()
+        # Monitor: arranca en showEvent y se para en hideEvent (oculto no mide nada).
         self._stats_timer = QTimer(self)
+        self._stats_timer.setInterval(STATS_CADA_MS)
         self._stats_timer.timeout.connect(self._refrescar_stats)
-        self._stats_timer.start(3000)
-        QTimer.singleShot(200, self._refrescar_stats)
+        self._primera = QTimer(self)
+        self._primera.setSingleShot(True)
+        self._primera.timeout.connect(self._refrescar_stats)
+
+    # ── Visibilidad: el monitor solo corre a la vista ──────────────────────────
+    def showEvent(self, event):
+        super().showEvent(event)
+        if not self._stats_timer.isActive():
+            self.opt.cebar_cpu()                 # la primera media cuenta desde aquí
+            self._stats_timer.start()
+            self._primera.start(PRIMERA_LECTURA_MS)
+
+    def hideEvent(self, event):
+        self._stats_timer.stop()
+        self._primera.stop()
+        super().hideEvent(event)
 
     # ── Construcción ───────────────────────────────────────────────────────────
     def _build(self):
@@ -144,6 +168,9 @@ class OptimizadorPanel(QFrame):
 
     # ── Monitor ────────────────────────────────────────────────────────────────
     def _refrescar_stats(self):
+        if not self.isVisible():                 # un tic que llegó justo al esconderse
+            self._stats_timer.stop()
+            return
         s = self.opt.estadisticas_sistema()
         if not s.get("disponible"):
             self.bar_cpu["val"].setText("psutil no instalado"); return
@@ -218,10 +245,15 @@ class OptimizadorPanel(QFrame):
 
     # ── Procesos ───────────────────────────────────────────────────────────────
     def _ver_procesos(self):
+        # process_iter de todo el sistema: en su hilo (y en su propio atributo, para no
+        # soltar un escaneo o una limpieza que sigan corriendo).
+        w = getattr(self, "_worker_procs", None)
+        if w is not None and w.isRunning():
+            return
         self.btn_procs.setEnabled(False); self.btn_procs.setText("Cargando…")
-        self._worker = OptimizadorWorker(self.opt, "procs")
-        self._worker.procesos_listos.connect(self._mostrar_procesos)
-        self._worker.start()
+        self._worker_procs = OptimizadorWorker(self.opt, "procs")
+        self._worker_procs.procesos_listos.connect(self._mostrar_procesos)
+        self._worker_procs.start()
 
     def _mostrar_procesos(self, procs):
         self.btn_procs.setEnabled(True); self.btn_procs.setText("Actualizar procesos")
@@ -252,4 +284,4 @@ class OptimizadorPanel(QFrame):
         if ok: self._ver_procesos()
 
     def closeEvent(self, event):
-        self._stats_timer.stop(); event.accept()
+        self._stats_timer.stop(); self._primera.stop(); event.accept()

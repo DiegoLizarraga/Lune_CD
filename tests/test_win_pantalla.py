@@ -233,6 +233,37 @@ def test_los_hijos_se_cachean_y_caducan():
     assert api.llamadas_hijos == 2
 
 
+def test_ttl_de_los_hijos_es_de_30_s():
+    """Los QtWebEngineProcess casi no cambian: la instantánea de procesos, cada 30 s."""
+    assert P.TTL_PIDS_S == 30.0
+    reloj = [0.0]
+    api = ApiFalsa(hijos=[(1001, "QtWebEngineProcess.exe")])
+    ids = PidsLune(api, reloj=lambda: reloj[0])
+    ids.contiene(4242)
+    reloj[0] = 29.9
+    ids.contiene(4242)
+    assert api.llamadas_hijos == 1
+    reloj[0] = 30.0
+    ids.contiene(4242)
+    assert api.llamadas_hijos == 2
+
+
+def test_invalidar_pids_fuerza_el_recalculo_en_todos():
+    """Crear o cerrar la asistente cambia los hijos: todos los PidsLune vuelven a listar."""
+    api = ApiFalsa(hijos=[(1001, "QtWebEngineProcess.exe")])
+    a = PidsLune(api, reloj=lambda: 0.0)
+    b = PidsLune(api, reloj=lambda: 0.0)
+    assert a.contiene(1001) and b.contiene(1001)
+    assert api.llamadas_hijos == 2
+    api._hijos.append((1007, "QtWebEngineProcess.exe"))
+    assert a.contiene(1007) is False                  # dentro del TTL: la lista vieja
+    P.invalidar_pids()
+    assert a.contiene(1007) is True and b.contiene(1007) is True
+    assert api.llamadas_hijos == 4
+    a.contiene(1007)
+    assert api.llamadas_hijos == 4                    # y vuelve a la caché
+
+
 def test_el_pid_propio_no_necesita_listar_hijos():
     api = ApiFalsa()
     assert PidsLune(api).contiene(1000) is True

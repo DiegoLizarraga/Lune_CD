@@ -6,8 +6,9 @@ packaging/notas_release.py — Las notas del Release de GitHub, en español.
     python packaging/notas_release.py 11.2 --sha256 <hash | archivo .sha256>
 
 Lo que dice:
-  · la fila de esa versión en «Historial de versiones» del README (la misma que escribes al
-    cerrar cada versión); si todavía no hay, un texto genérico;
+  · la fila de esa versión en «Historial de versiones» del README; si no hay fila propia, la
+    general de su serie («v11.x» o «v11»: desde la 11 el README lleva una fila por serie y no
+    una por versión); si tampoco, un texto genérico;
   · cómo instalar (el Setup.exe, el aviso de SmartScreen porque no está firmado, y dónde
     encontrarme en el menú Inicio);
   · dónde quedan tus datos;
@@ -48,6 +49,22 @@ def fila_historial(readme: str, version: str) -> Optional[str]:
     return None
 
 
+def candidatas(version: str) -> list:
+    """Las filas que valen para `version`, de la más concreta a la más general: 11.3 → 11.3, 11.x, 11."""
+    v = str(version or "").strip().lstrip("vV")
+    mayor = v.split(".", 1)[0]
+    return [x for x in dict.fromkeys([v, f"{mayor}.x", mayor]) if x]
+
+
+def fila_para(readme: str, version: str) -> Optional[str]:
+    """La fila exacta de `version` o, si no hay, la general de su serie."""
+    for v in candidatas(version):
+        texto = fila_historial(readme, v)
+        if texto:
+            return texto
+    return None
+
+
 def leer_sha256(valor: Optional[str], version: str, raiz: Path = RAIZ) -> Optional[str]:
     """El hash: tal cual si es uno, o la primera palabra del archivo .sha256 indicado (o del de dist/)."""
     if valor and _RE_HASH.match(valor.strip()):
@@ -62,7 +79,7 @@ def leer_sha256(valor: Optional[str], version: str, raiz: Path = RAIZ) -> Option
 
 def notas(version: str, readme: str, sha: Optional[str] = None) -> str:
     setup = nombre_setup(version)
-    cambios = fila_historial(readme, version) or (
+    cambios = fila_para(readme, version) or (
         "Una versión nueva de Lune. Los detalles están en el «Historial de versiones» del README.")
     if sha:
         verificacion = (f"```\n{sha}  {setup}\n```\n\n"
@@ -86,8 +103,8 @@ Si ya me tenías instalada, este mismo instalador me actualiza y tus cosas se qu
 
 ### Dónde quedan tus cosas
 
-- **Tus datos** (ajustes, chats, lo que recuerdo de ti, notas, alarmas, bailes, modelos VRM y tus API keys): `%APPDATA%\\Lune CD`. Ni el instalador ni las actualizaciones los tocan; si me desinstalas, te pregunto si los borro (por defecto, no).
-- **Lo pesado o desechable** (registros, cachés y los bots de Telegram y Minecraft): `%LOCALAPPDATA%\\Lune CD`.
+- **Tus datos** (ajustes, chats, lo que recuerdo de ti, notas, alarmas, bailes, modelos VRM, tus API keys y el bot de Telegram con sus memorias): `%APPDATA%\\Lune CD`. Ni el instalador ni las actualizaciones los tocan; si me desinstalas, te pregunto si los borro (por defecto, no).
+- **Lo pesado o desechable** (registros, cachés, el modelo de dictado que descargo la primera vez y el bot de Minecraft): `%LOCALAPPDATA%\\Lune CD`.
 - Si me usas desde el código (git), esa copia sigue igual que siempre, con sus datos en la carpeta del repo.
 
 ### Comprobar la descarga (SHA-256)

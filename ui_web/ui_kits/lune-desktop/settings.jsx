@@ -162,14 +162,14 @@ function VrmOpciones({ c, set, setBl, setCfg }) {
     <div style={{ marginTop: 14 }}>
       {modelos.length === 0 && !c.vrm_archivo && (
         <p style={{ ...nota, color:'var(--yellow-500)', margin:'0 0 10px' }}>
-          No hay ningún modelo: pon un archivo .vrm en la carpeta <b>modelo_vrm/</b> o impórtalo aquí.
+          No hay ningún modelo: impórtame un archivo .vrm aquí (o suéltalo en mi carpeta de modelos 3D: la ves en la Biblioteca de modelos 3D).
         </p>
       )}
       <div className="ln-settings-grid">
         <div className="lune-field">
           <label className="lune-field-label" htmlFor="f-vrm-archivo">Modelo por defecto</label>
           <select id="f-vrm-archivo" className="lune-input" value={c.vrm_archivo || ''} onChange={set('vrm_archivo')}>
-            <option value="">El primero de modelo_vrm/</option>
+            <option value="">El primero de mi carpeta de modelos</option>
             {modelos.map((m) => <option key={m} value={m}>{m}</option>)}
             {c.vrm_archivo && !modelos.includes(c.vrm_archivo) && <option value={c.vrm_archivo}>{c.vrm_archivo}</option>}
           </select>
@@ -178,7 +178,7 @@ function VrmOpciones({ c, set, setBl, setCfg }) {
         <div>
           <div className="lune-overline" style={{ marginBottom: 6 }}>Añadir modelo</div>
           <Button variant="ghost" size="sm" onClick={importar}>Importar .vrm…</Button>
-          <p style={nota}>Se copia a modelo_vrm/. Hay modelos gratuitos en VRoid Hub y Booth (respeta su licencia).</p>
+          <p style={nota}>Se copia a mi carpeta de modelos 3D. Hay modelos gratuitos en VRoid Hub y Booth (respeta su licencia).</p>
         </div>
       </div>
       <div style={{ height: 12 }} />
@@ -295,14 +295,29 @@ function SettingsPanel({ voiceOn, onVoice, fx = { bg:true, sweep:true, micro:tru
     try { window.lune.mic_prueba.connect(onPrueba); } catch (e) {}
     return () => { try { window.lune.mic_prueba.disconnect(onPrueba); } catch (e) {} };
   }, []);
+  const HABLA_AHORA = 'Habla ahora… (1.5 s)';
   const probarMic = () => {
     if (!window.lune) { setMicMsg('Demo · sin backend'); return; }
-    setProbando(true); setMicMsg('Habla ahora… (1.5 s)'); setMicNivel(0);
-    window.lune.probar_microfono(c.dispositivo_entrada || '', (ok) => { if (!ok) setProbando(false); });
+    setProbando(true); setMicMsg(HABLA_AHORA); setMicNivel(0);
+    // False: el micrófono está ocupado (dictado, llamada o «Probar dictado») o no se encontró; si la
+    // señal ya trajo el motivo se queda, si no, este (antes se quedaba en «Habla ahora…»).
+    window.lune.probar_microfono(c.dispositivo_entrada || '', (ok) => {
+      if (ok) return;
+      setProbando(false);
+      setMicMsg((m) => (m === HABLA_AHORA
+        ? 'Ahora no puedo probarlo: el micrófono está en uso (dictado, llamada o «Probar dictado»). Termina y vuelve a probar.'
+        : m));
+    });
   };
+  // «Probar salida» con respuesta a la vista: «Sonando…» o por qué no.
+  const [salidaMsg, setSalidaMsg] = React.useState('');
   const probarSalida = () => {
-    if (!window.lune) { setMsg('Demo · sin backend'); setTimeout(()=>setMsg(''),2500); return; }
-    window.lune.probar_salida(c.dispositivo_salida || '', () => {});
+    if (!window.lune) { setSalidaMsg('Demo · sin backend'); return; }
+    setSalidaMsg('Probando la salida…');
+    window.lune.probar_salida(c.dispositivo_salida || '', (ok) => {
+      setSalidaMsg(ok ? `Sonando un tono por «${c.dispositivo_salida || 'la salida del sistema'}»… ¿me oyes?`
+        : 'No pude sonar: no tengo motor de voz o esa salida no está.');
+    });
   };
   const micDef = (audio.entradas.find((e) => e.defecto) || {}).nombre;
 
@@ -320,6 +335,8 @@ function SettingsPanel({ voiceOn, onVoice, fx = { bg:true, sweep:true, micro:tru
             <CampoClaveAjustes id="f-or-key" label="API Key de OpenRouter" value={c.openrouter_key||''} onChange={set('openrouter_key')} hint="Se guarda localmente en datos.json" />
             <Input label="Modelo" value={c.openrouter_model||''} onChange={set('openrouter_model')} hint="openrouter/auto enruta solo" />
           </div>
+          {/* 11.3 (extra/diagnostico.jsx): «Probar clave» con lo escrito. */}
+          {window.ProbarOpenRouter && <window.ProbarOpenRouter cfg={c} />}
         </Card>
 
         <Card eyebrow={<><window.IconCpu width={13} height={13}/> Red Neuronal · Local
@@ -330,6 +347,8 @@ function SettingsPanel({ voiceOn, onVoice, fx = { bg:true, sweep:true, micro:tru
             <Input label="Servidor" value={c.ollama_url||''} onChange={set('ollama_url')} hint="http://localhost:11434 o la IP de otro equipo de tu red" />
             <Input label="Modelo local" value={c.ollama_model||''} onChange={set('ollama_model')} hint="p. ej. qwen2.5:7b" />
           </div>
+          {/* 11.3 (extra/diagnostico.jsx): «Probar / Buscar modelos»; los modelos salen como chips para elegir. */}
+          {window.ProbarOllama && <window.ProbarOllama cfg={c} set={set} />}
           <p className="ln-modal-nota" style={{margin:'10px 0 0'}}>¿Ollama en otra computadora? Pulsa el <b>?</b> de arriba: Lune te explica paso a paso.</p>
         </Card>
         {ayudaOllama && <AyudaOllama onClose={()=>setAyudaOllama(false)} />}
@@ -353,6 +372,8 @@ function SettingsPanel({ voiceOn, onVoice, fx = { bg:true, sweep:true, micro:tru
             Escribe <code>/pc abre youtube</code> en tu Telegram y Lune lo hace aquí solo si lo apruebas en el PC.
             Requiere tu ID de Telegram y reiniciar el bot para aplicarse.
           </p>
+          {/* 11.3 (extra/diagnostico.jsx): «Probar bot»: token, tu ID, Node.js y la carpeta del bot. */}
+          {window.ProbarTelegram && <window.ProbarTelegram cfg={c} />}
         </Card>
 
         <Card eyebrow={<><window.IconBrain width={13} height={13}/> Comportamiento</>} title="Personalidad">
@@ -410,6 +431,7 @@ function SettingsPanel({ voiceOn, onVoice, fx = { bg:true, sweep:true, micro:tru
             <Button variant="ghost" size="sm" onClick={probarSalida}><window.IconVolume width={13} height={13}/> Probar salida</Button>
           </div>
           {micMsg && <p className="ln-modal-nota" style={{ margin:'8px 0 0' }}>{micMsg}</p>}
+          {salidaMsg && <p className="ln-modal-nota" style={{ margin:'8px 0 0' }} role="status">{salidaMsg}</p>}
           <div style={{height:14}} />
           <div className="ln-settings-grid">
             <div className="lune-field">
@@ -423,6 +445,8 @@ function SettingsPanel({ voiceOn, onVoice, fx = { bg:true, sweep:true, micro:tru
             </div>
             <Input label="Idioma del dictado" value={c.voz_idioma ?? 'es'} onChange={set('voz_idioma')} hint="es, en, fr… vacío = detectar solo" />
           </div>
+          {/* 11.3 (extra/diagnostico.jsx): «Probar dictado», 3 s con el micrófono y el modelo elegidos. */}
+          {window.ProbarDictado && <window.ProbarDictado cfg={c} descargados={audio.modelos_descargados} />}
         </Card>
 
         <Card eyebrow={<><window.IconBolt width={13} height={13}/> Sistema</>} title="Calidad de vida" tone="blue">
@@ -447,6 +471,12 @@ function SettingsPanel({ voiceOn, onVoice, fx = { bg:true, sweep:true, micro:tru
             )}
           </div>
         </Card>
+
+        {/* 11.3 (extra/actualizaciones.jsx): mi versión, buscar e instalar las nuevas; guarda al momento por window.lune. */}
+        {window.ActualizacionesCard && <window.ActualizacionesCard />}
+
+        {/* 11.3 (extra/diagnostico.jsx): «Comprobar que todo funciona», item a item por window.lune. */}
+        {window.DiagnosticoCard && <window.DiagnosticoCard />}
 
         <Card eyebrow={<><window.IconMoon width={13} height={13}/> Escritorio</>} title="Asistente en escritorio" tone="cyan">
           <p style={{margin:'0 0 12px', font:'var(--text-data)', fontSize:12, color:'var(--text-dim)'}}>

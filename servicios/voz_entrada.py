@@ -12,8 +12,13 @@ botón del micrófono explica qué instalar:
 con el modelo «base». En el PC potente, con GPU, sube a «small» o «medium» desde
 Configuración y notarás la diferencia.
 
-El modelo se carga UNA vez y se queda en memoria: la primera transcripción tarda
-unos segundos (descarga y carga) y las siguientes son casi instantáneas.
+El modelo se carga al primer uso y se queda en memoria mientras lo uses: la primera
+transcripción tarda unos segundos (descarga y carga) y las siguientes son casi
+instantáneas. `soltar_modelo()` lo suelta (base son ~200 MB de RAM; large-v3, varios
+GB de RAM o VRAM): solo tras `INACTIVIDAD_SOLTAR_S` sin transcribir, al entrar en modo
+juego y con «Liberar memoria» (servicios/recorte_ram), y NUNCA con un dictado o una
+llamada en curso (`ocupar()`/`desocupar()`, que usan la Grabadora y la llamada; la
+transcripción también lo marca). El siguiente uso lo vuelve a cargar.
 
 DISPOSITIVOS (v10)
 ------------------
@@ -28,10 +33,12 @@ Cada dispositivo aparece repetido una vez por API (MME, DirectSound, WASAPI,
 WDM-KS). Se listan solo los de la API preferida (MME en Windows: es la que usa
 PortAudio por defecto y la que remuestrea sola a 16 kHz).
 """
+import gc
 import importlib.util
 import queue
 import tempfile
 import threading
+import time
 import wave
 from array import array
 from pathlib import Path
@@ -46,6 +53,13 @@ _modelo_cargado = None
 _modelo_nombre = None
 _modelo_dispositivo = None   # "cuda" | "cpu" con el que se cargó
 _lock_modelo = threading.Lock()
+
+# Soltar el modelo: sin transcribir este rato, se suelta solo (temporizador).
+INACTIVIDAD_SOLTAR_S = 600.0
+_lock_uso = threading.Lock()
+_usos = 0                    # dictados, llamadas y transcripciones en curso
+_ultimo_uso = 0.0            # time.monotonic() del último fin de uso
+_temporizador = None         # threading.Timer de la inactividad
 
 
 # ── Disponibilidad ─────────────────────────────────────────────────────────────
@@ -257,6 +271,7 @@ class Grabadora:
     WAV sale a la frecuencia REAL con la que se abrió el stream: faster-whisper
     remuestrea solo, así que no importa que no sea 16 kHz.
     """
+    _ocupada = False
 
     def __init__(self, dispositivo: Optional[int] = None):
         self._cola: queue.Queue = queue.Queue()
@@ -264,6 +279,7 @@ class Grabadora:
         self.grabando = False
         self.dispositivo = dispositivo
         self.samplerate = FRECUENCIA
+        self._ocupada = False        # ocupar() hecho: el modelo no se suelta mientras dictas
 
     def iniciar(self):
         import sounddevice as sd
@@ -282,12 +298,22 @@ class Grabadora:
                 channels=CANALES, device=self.dispositivo, callback=callback))
         self._stream.start()
         self.grabando = True
+        if not self._ocupada:
+            self._ocupada = True
+            ocupar()
+
+    def _soltar_uso(self) -> None:
+        if self._ocupada:
+            self._ocupada = False
+            desocupar()
 
     def detener(self) -> Optional[Path]:
         """Cierra el stream y vuelca lo grabado a un WAV temporal."""
         if not self.grabando:
+            self._soltar_uso()
             return None
         self.grabando = False
+        self._soltar_uso()                   # la transcripción que sigue marca el suyo
         try:
             self._stream.stop(); self._stream.close()
         except Exception:
@@ -322,6 +348,7 @@ class Grabadora:
                 pass
             self._stream = None
         self.grabando = False
+        self._soltar_uso()
 
 
 # ── Transcripción ──────────────────────────────────────────────────────────────
@@ -374,6 +401,97 @@ def cargar_modelo(nombre: str = "base", forzar_cpu: bool = False):
         return modelo
 
 
+# ── Soltar el modelo (inactividad, modo juego, «Liberar memoria») ───────────────
+
+def modelo_en_memoria() -> bool:
+    return _modelo_cargado is not None
+
+
+def en_uso() -> bool:
+    """¿Hay un dictado, una llamada o una transcripción en curso?"""
+    with _lock_uso:
+        return _usos > 0
+
+
+def ocupar() -> None:
+    """Empieza un dictado o una llamada (o una transcripción): el modelo no se suelta."""
+    global _usos, _temporizador
+    with _lock_uso:
+        _usos += 1
+        t, _temporizador = _temporizador, None
+    if t is not None:
+        t.cancel()
+
+
+def desocupar() -> None:
+    """Termina lo que marcó `ocupar()`. Sin nada más en curso, la cuenta de inactividad
+    empieza de cero (si hay modelo que soltar)."""
+    global _usos, _ultimo_uso
+    with _lock_uso:
+        _usos = max(0, _usos - 1)
+        _ultimo_uso = time.monotonic()
+        libre = _usos == 0
+    if libre and _modelo_cargado is not None:
+        _armar_temporizador()
+
+
+def _armar_temporizador(espera_s: float = None) -> None:
+    global _temporizador
+    t = threading.Timer(INACTIVIDAD_SOLTAR_S if espera_s is None else espera_s, _por_inactividad)
+    t.daemon = True
+    t.name = "lune-whisper-inactividad"
+    with _lock_uso:
+        viejo, _temporizador = _temporizador, t
+    if viejo is not None:
+        viejo.cancel()
+    t.start()
+
+
+def _por_inactividad() -> None:
+    with _lock_uso:
+        quedan = INACTIVIDAD_SOLTAR_S - (time.monotonic() - _ultimo_uso)
+        ocupado = _usos > 0
+    if ocupado:
+        return                          # al desocupar se vuelve a armar
+    if quedan > 1.0:                    # alguien lo usó mientras tanto
+        _armar_temporizador(quedan)
+        return
+    soltar_modelo()
+
+
+def soltar_modelo(recolectar=None) -> bool:
+    """
+    Suelta el modelo de Whisper (el global a None; la próxima transcripción lo vuelve
+    a cargar). NUNCA con un dictado, una llamada o una transcripción en curso, ni
+    mientras se está cargando: entonces no hace nada. True si soltó uno. `recolectar`
+    (None = solo desde el hilo principal, como servicios/recorte_ram): gc.collect
+    después; en otro hilo basta con soltar la referencia (el modelo no tiene ciclos).
+    """
+    global _modelo_cargado, _modelo_nombre, _modelo_dispositivo, _temporizador
+    if en_uso():
+        return False
+    if not _lock_modelo.acquire(blocking=False):
+        return False                    # cargando: es que alguien lo va a usar
+    try:
+        if en_uso() or _modelo_cargado is None:
+            return False
+        _modelo_cargado, _modelo_nombre, _modelo_dispositivo = None, None, None
+    finally:
+        _lock_modelo.release()
+    with _lock_uso:
+        t, _temporizador = _temporizador, None
+    if t is not None and t is not threading.current_thread():
+        t.cancel()
+    if recolectar is None:
+        recolectar = threading.current_thread() is threading.main_thread()
+    if recolectar:
+        try:
+            gc.collect()
+        except Exception:
+            pass
+    return True
+
+
 def _mensaje_error_modelo(e: Exception, modelo: str) -> str:
     """Traduce los fallos típicos de faster-whisper a algo que se entienda."""
     texto = str(e)
@@ -404,6 +522,7 @@ def transcribir(ruta_wav: Path, modelo: str = "base", idioma: str = "es") -> str
         )
         return " ".join(s.text.strip() for s in segmentos).strip()
 
+    ocupar()                            # mientras transcribe, el modelo no se suelta
     try:
         try:
             return _correr(cargar_modelo(modelo))
@@ -418,6 +537,7 @@ def transcribir(ruta_wav: Path, modelo: str = "base", idioma: str = "es") -> str
     except Exception as e:
         raise RuntimeError(_mensaje_error_modelo(e, modelo))
     finally:
+        desocupar()                     # la cuenta de inactividad empieza aquí
         try:
             Path(ruta_wav).unlink(missing_ok=True)
         except OSError:

@@ -15,8 +15,13 @@ AL ENTRAR (en este orden; al salir se deshace al revés):
      el modo juego (si el usuario la saca a mano durante la partida, gana él).
   3. `voice.silenciar(True)` si `juego.silenciar` (y solo si no lo estaba ya).
   4. `aplicar_prioridad(True)`: BELOW_NORMAL a Lune y sus QtWebEngineProcess.
-  5. `recortar()` 1.5 s después, en un hilo (gc.collect antes, en este hilo).
-  6. log «[juego] entra: <motivo>» y `cambio(True, motivo)`: quien monta los
+  5. Suelta los modelos (11.3): Whisper si no dictas ni hay llamada
+     (servicios/voz_entrada.soltar_modelo) y, si el chat usa Ollama EN ESTE PC y el bot
+     de Minecraft no piensa mientras juegas (minecraft.pensar_en_juego con el bot vivo),
+     `ai.descargar_modelo()` (keep_alive 0) en un hilo: es lo que más GPU le quita al
+     juego. No se deshace al salir: el siguiente mensaje lo vuelve a cargar.
+  6. `recortar()` 1.5 s después, en un hilo (gc.collect antes, en este hilo).
+  7. log «[juego] entra: <motivo>» y `cambio(True, motivo)`: quien monta los
      servicios pausa ahí los atajos y el aburrimiento.
 AL SALIR: lo anterior al revés y `prioridad.terminar("juego")` (reanuda lo que
 cedió), log «[juego] sale» y `cambio(False, "")`. `detener()` también sale.
@@ -40,6 +45,42 @@ from servicios import win_pantalla as wp
 _log = logging.getLogger("lune.juego")
 
 RETRASO_RECORTE_MS = 1500
+HOSTS_LOCALES = ("localhost", "127.0.0.1", "::1", "0.0.0.0")
+
+
+def proveedor_activo(escritorio: Any) -> str:
+    """El proveedor del chat de la ventana ('ollama', 'openrouter', 'compat'; "" si no
+    se sabe): el que eligió la página (web: bridge._provider_web) o el de la ventana
+    nativa (current_provider, la dueña de ServiciosEscritorio)."""
+    puente = getattr(escritorio, "bridge", None)
+    p = getattr(puente, "_provider_web", None) if puente is not None else None
+    if p:
+        p = str(p).strip().lower()
+        return "ollama" if p in ("local", "ollama") else ("compat" if p == "compat" else "openrouter")
+    dueno = None
+    try:
+        f = getattr(escritorio, "parent", None)
+        dueno = f() if callable(f) else None
+    except Exception:
+        dueno = None
+    p = getattr(dueno, "current_provider", None) if dueno is not None else None
+    return str(p or "")
+
+
+def ollama_es_local(url: Optional[str] = None) -> bool:
+    """¿Ollama corre en este PC? (con uno en otro equipo, descargarlo no libera nada aquí)."""
+    if url is None:
+        try:
+            from nucleo import datos
+            url = datos.ollama_url()
+        except Exception:
+            return False
+    try:
+        from urllib.parse import urlparse
+        host = (urlparse(str(url or "")).hostname or "").lower()
+    except Exception:
+        return False
+    return host in HOSTS_LOCALES or host.startswith("127.")
 
 
 def _log_info(msg: str) -> None:
@@ -223,6 +264,7 @@ class ControlModoJuego(QObject):
         if plan.prioridad_baja:
             self._llamar_prioridad(True)
             self._deshacer.append(lambda: self._llamar_prioridad(False))
+        self._soltar_modelos()
         if plan.recortar_ram:
             self._timer_recorte.start(RETRASO_RECORTE_MS)
             self._deshacer.append(self._timer_recorte.stop)
@@ -251,6 +293,53 @@ class ControlModoJuego(QObject):
             self._prioridad(baja)
         except Exception:
             _log.exception("modo juego: no pude cambiar la prioridad")
+
+    # ── Modelos: Whisper y Ollama fuera al entrar ──────────────────────────────
+    def _soltar_modelos(self) -> None:
+        try:
+            rr.soltar_whisper()                      # no hace nada con un dictado o una llamada
+        except Exception:
+            _log.exception("modo juego: no pude soltar el modelo de dictado")
+        if not self._ollama_descargable():
+            return
+        ai = getattr(self.escritorio, "ai", None)
+
+        def descargar():
+            try:
+                if ai.descargar_modelo():
+                    _log_info("[juego] modelo de Ollama descargado de la memoria")
+            except Exception:
+                _log.exception("modo juego: no pude descargar el modelo de Ollama")
+
+        threading.Thread(target=descargar, name="lune-ollama-descargar", daemon=True).start()
+
+    def _ollama_descargable(self) -> bool:
+        """¿Descargar el modelo de Ollama? Solo si el chat lo usa, corre en este PC y el
+        bot de Minecraft no lo está usando (pensar_en_juego con el bot vivo)."""
+        ai = getattr(self.escritorio, "ai", None)
+        if ai is None or not callable(getattr(ai, "descargar_modelo", None)):
+            return False
+        if proveedor_activo(self.escritorio) != "ollama" or not ollama_es_local():
+            return False
+        return not self._minecraft_piensa()
+
+    def _minecraft_piensa(self) -> bool:
+        if not bool(self._cfg("minecraft", "pensar_en_juego", False)):
+            return False
+        obtener = getattr(self.escritorio, "obtener", None)
+        try:
+            mc = obtener("minecraft") if callable(obtener) else None
+        except Exception:
+            return True                              # no se sabe: mejor no quitárselo
+        if mc is None:
+            return False                             # sin bot montado, nadie piensa
+        vivo = getattr(mc, "_bot_vivo", None)
+        try:
+            if callable(vivo):
+                return bool(vivo())
+            return bool(getattr(getattr(mc, "proceso", None), "vivo", False))
+        except Exception:
+            return True
 
     # ── Recorte de RAM ──────────────────────────────────────────────────────────
     def _recortar_ahora(self) -> None:

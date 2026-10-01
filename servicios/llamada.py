@@ -62,6 +62,9 @@ class LlamadaWorker(QThread):
     # ── Bucle ────────────────────────────────────────────────────────────────────
     def run(self):
         from servicios import voz_entrada
+        # Mientras dure la llamada, Whisper no se suelta (ni por inactividad, ni en modo
+        # juego, ni con «Liberar memoria»): voz_entrada.ocupar()/desocupar().
+        voz_entrada.ocupar()
         try:
             while not self._parar.is_set():
                 self.estado.emit("escuchando")
@@ -89,6 +92,7 @@ class LlamadaWorker(QThread):
                     self.estado.emit("hablando")
                     self._hablar(self._respuesta)
         finally:
+            voz_entrada.desocupar()
             self.estado.emit("off")
             self.terminado.emit()
 

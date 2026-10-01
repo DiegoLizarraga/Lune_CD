@@ -44,6 +44,7 @@ import sys
 import os
 import json
 import threading
+import time
 from collections.abc import Mapping
 from datetime import datetime
 
@@ -115,6 +116,9 @@ from ui.cambio_interfaz import (GestorInterfaz, bot_minecraft_de, callar_voz, ce
                                 quitar_bandeja, reconectar_bot_minecraft, retomar_sesion, soltar_hilos)
 
 logger = Logger()
+
+# Punto de estado de los proveedores: cada cuánto se sondea con la ventana a la vista.
+SONDEO_PROVEEDORES_MS = 60000
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -357,16 +361,18 @@ class LuneCDWindow(QMainWindow):
         self._timer_bienvenida.timeout.connect(self._arrancar_bienvenida)
         self._timer_bienvenida.start(0)
 
-        # Punto de estado de cada proveedor: se sondea al arrancar y cada 60 s,
-        # para no enterarte de que Ollama está caído al mandar un mensaje.
+        # Punto de estado de cada proveedor, para no enterarte de que Ollama está caído al
+        # mandar un mensaje: cada 60 s, pero SOLO con la ventana a la vista (showEvent lo
+        # arranca y sondea; oculta en la bandeja o minimizada se para: pedía /api/tags a
+        # Ollama y /models a la API compatible, que puede ser remota, sin que nadie lo viera)
+        # y antes de enviar si el último sondeo es viejo (_sondear_si_viejo).
         self._timer_estado = QTimer(self)
+        self._timer_estado.setInterval(SONDEO_PROVEEDORES_MS)
         self._timer_estado.timeout.connect(self._sondear_proveedores)
-        self._timer_estado.start(60000)
-        QTimer.singleShot(800, self._sondear_proveedores)
+        self._sondeo_prov_t = None       # time.monotonic() del último sondeo lanzado
 
-        if self.config.get("actualizaciones", "comprobar_al_iniciar", False):
-            QTimer.singleShot(4000, self._comprobar_updates_silencioso)
-
+        # El aviso de versión nueva al abrir (ui/actualizacion_qt.AvisoInicio) lo programa
+        # main() para las dos interfaces de ventanas: llega por avisar_actualizacion.
         log_info(f"Lune CD v{APP_VERSION} iniciado")
 
     def _cerrandose(self) -> bool:
@@ -382,31 +388,32 @@ class LuneCDWindow(QMainWindow):
             self.red.anunciar()
 
     # ── Actualizaciones ───────────────────────────────────────────────────────
-    def _comprobar_updates_silencioso(self):
-        """
-        Mira si hay versión nueva al arrancar, sin interrumpir.
-        Solo avisa si hay algo; si no, ni se entera el usuario.
-        """
-        from ui.settings_panel import GitWorker
-        self._git_check = GitWorker("comprobar", self.config.get("actualizaciones", "rama", "master"))
-        self._git_check.listo.connect(self._on_update_disponible)
-        self._git_check.start()
-
-    def _on_update_disponible(self, res):
-        if not res.get("ok") or not res.get("hay_novedades"):
+    def avisar_actualizacion(self, res):
+        """Versión nueva (o commits nuevos, desde el código) al abrir Lune: lo llama
+        ui/actualizacion_qt.AvisoInicio (~45 s después, una vez al día, nunca en modo
+        juego). El globo de la bandeja o, sin bandeja, la burbuja; Ajustes la enseña."""
+        if not isinstance(res, dict) or not res.get("hay_novedades"):
             return
-        n = res.get("pendientes", 0)
-        log_info(f"Hay {n} actualización(es) disponibles")
+        from servicios import actualizador
+        texto = actualizador.texto_aviso(res)
+        log_info(f"[actualizaciones] {texto}")
+        panel = getattr(self, "settings_panel", None)
+        recibir = getattr(panel, "recibir_novedad", None)
+        if callable(recibir):
+            try:
+                recibir(res)
+            except Exception as e:
+                log_error(f"[actualizaciones] Ajustes no pudo enseñarla: {e}")
+        bandeja = getattr(getattr(self, "_servicios_c4", None), "bandeja", None)
+        try:
+            if bandeja is not None and bandeja.mostrar_aviso("Lune CD", texto, 8000):
+                return
+        except Exception:
+            pass
         if self.tray is not None:
-            self.tray.showMessage(
-                "Lune CD", f"Hay {n} actualización(es). Ve a Ajustes → Actualizaciones.",
-                QSystemTrayIcon.MessageIcon.Information, 6000,
-            )
+            self.tray.showMessage("Lune CD", texto, QSystemTrayIcon.MessageIcon.Information, 8000)
         else:
-            self._burbuja_bot(
-                f"Por cierto: hay **{n} actualización(es)** esperando. "
-                "Cuando quieras, entra en ⚙️ Ajustes → Actualizaciones."
-            )
+            self._burbuja_bot(f"Por cierto: {texto}")
 
     # ── Red de Lune (hub) ─────────────────────────────────────────────────────
     def _configurar_red(self):
@@ -558,9 +565,48 @@ class LuneCDWindow(QMainWindow):
     def _sondear_proveedores(self):
         if self._sondeo_prov and self._sondeo_prov.isRunning():
             return
+        self._sondeo_prov_t = time.monotonic()
         self._sondeo_prov = SondeoProveedoresWorker(self.ai_manager.providers)
         self._sondeo_prov.listo.connect(self._on_estado_proveedores)
         self._sondeo_prov.start()
+
+    def _sondear_si_viejo(self):
+        """Antes de enviar (o al volver a verse): sondea si el último tiene más de un
+        intervalo (o nunca hubo), para que el punto de estado no mienta."""
+        t = getattr(self, "_sondeo_prov_t", None)
+        if t is None or time.monotonic() - t >= SONDEO_PROVEEDORES_MS / 1000:
+            self._sondear_proveedores()
+
+    def _ventana_se_ve(self) -> bool:
+        try:
+            return bool(self.isVisible() and not self.isMinimized())
+        except RuntimeError:
+            return False
+
+    def _al_cambiar_visibilidad(self):
+        """showEvent/hideEvent/minimizar: el sondeo periódico solo con la ventana a la vista."""
+        timer = getattr(self, "_timer_estado", None)
+        if timer is None or self._cerrandose():
+            return
+        if self._ventana_se_ve():
+            if not timer.isActive():
+                timer.start()
+                self._sondear_si_viejo()
+        else:
+            timer.stop()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._al_cambiar_visibilidad()
+
+    def hideEvent(self, event):
+        super().hideEvent(event)
+        self._al_cambiar_visibilidad()
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.WindowStateChange:
+            self._al_cambiar_visibilidad()
 
     def _on_estado_proveedores(self, estados):
         for pid, disponible in (estados or {}).items():
@@ -1445,6 +1491,11 @@ class LuneCDWindow(QMainWindow):
             self._esperando_corte = True
             self._set_status("ESPERA · CORTANDO LO ANTERIOR", COLORS["warning"])
             return
+        # El punto de estado del proveedor, fresco al enviar: el sondeo periódico solo corre
+        # con la ventana a la vista (los dobles de test sin él no sondean).
+        sondear = getattr(self, "_sondear_si_viejo", None)
+        if callable(sondear):
+            sondear()
         self._turno = {"origen": ORIGEN_REMOTO if remoto else ORIGEN_USUARIO, "ctx": None,
                        "asistente": bool(desde_asistente), "proveedor": self.current_provider}
         if remoto:
@@ -2949,11 +3000,13 @@ def _lanzar_patata(autoinicio: bool = False) -> bool:
         return False
 
 
-def _crear_ventana_principal(autoinicio: bool = False):
+def _crear_ventana_principal(autoinicio: bool = False, oculta: bool = False):
     """
     Ventana principal. Por defecto la piel web "Shibuya Punk" (QWebEngineView);
     con interfaz.modo="nativo" en config.json, o si la web falla, la PyQt clásica.
     En modo patata abre la terminal (minimizada si `autoinicio`) y devuelve None.
+    `oculta` (arranque con Windows a la bandeja o con la asistente fuera): la web no
+    carga su página hasta que la ventana se enseñe (VentanaWeb cargar_al_mostrar, 11.2).
     """
     try:
         from nucleo.config import Config
@@ -2970,7 +3023,7 @@ def _crear_ventana_principal(autoinicio: bool = False):
     if modo == "web":
         try:
             from ui.web_shell import VentanaWeb
-            return VentanaWeb()
+            return VentanaWeb(cargar_al_mostrar=bool(oculta))
         except Exception as e:
             log_error(f"[ui] no pude abrir la piel web ({e}); uso la interfaz nativa")
     return LuneCDWindow()
@@ -3162,6 +3215,24 @@ def _esperar_a_la_anterior(opc, esperar=None) -> bool:
     return ok
 
 
+def _programar_aviso_actualizacion(gestor, config=None, *, fabrica=None):
+    """El aviso de versión nueva al abrir Lune (ui/actualizacion_qt.AvisoInicio), uno por
+    proceso y colgado del GestorInterfaz: ~45 s después, como mucho una vez cada 24 h
+    (actualizaciones.ultima_comprobacion) y nunca en modo juego. Instalada mira GitHub
+    Releases; desde el código, git. Devuelve el AvisoInicio (None si no toca). Nunca lanza."""
+    try:
+        if fabrica is None:
+            from ui.actualizacion_qt import AvisoInicio as fabrica
+        if config is None:
+            from nucleo.config import Config
+            config = Config()
+        aviso = fabrica(config, ventana=lambda: getattr(gestor, "ventana", None), parent=gestor)
+        return aviso if aviso.iniciar() else None
+    except Exception as e:
+        log_error(f"[actualizaciones] no pude programar el aviso al iniciar: {e}")
+        return None
+
+
 def _marcar_abierta() -> int:
     """El mutex «Lune está abierta» (servicios/mutex_win.marcar_abierta): el instalador
     espera a que desaparezca antes de reemplazar archivos. Vive hasta salir. Nunca lanza."""
@@ -3236,7 +3307,9 @@ def main():
         if ventanas.get("abierta"):
             return
         ventanas["abierta"] = True
-        ventana = _crear_ventana_principal(autoinicio=opc.autoinicio)
+        # Nace oculta (bandeja o asistente fuera) si nadie la pidió: la página web, al enseñarla.
+        ventana = _crear_ventana_principal(autoinicio=opc.autoinicio,
+                                           oculta=not (mostrar or plan.mostrar_ventana))
         if ventana is None:
             # Modo patata: Lune ya vive en la terminal; esta app Qt se retira.
             QApplication.instance().quit()
@@ -3244,6 +3317,9 @@ def main():
         gestor.adoptar(ventana)
         # A la vista, o (arranque con Windows) en la bandeja o con la asistente fuera.
         _presentar_principal(ventana, plan, mostrar=mostrar)
+        # Versión nueva: ~45 s después, una vez al día y nunca en modo juego (a la ventana
+        # que haya entonces, aunque cambies de interfaz en medio).
+        ventanas["actualizaciones"] = _programar_aviso_actualizacion(gestor)
 
         # Si intentas abrir Lune otra vez, se trae al frente la ventana ACTUAL
         # (también después de un cambio de modo).

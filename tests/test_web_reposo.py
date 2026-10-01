@@ -4,6 +4,8 @@ Tests de «Lune en reposo» y del consumo de la piel web (11.2):
 - ui/web_shell.py: VentanaWeb le dice a la página si es la ventana activa
   (window.luneFoco) al activarse o no, al enseñarse, al ocultarse y al cargar la página
   (la lógica de quedarse quieta es de ui_web/lune_reposo.js: tests/js/reposo.test.mjs).
+- Carga perezosa: oculta al arrancar (bandeja o asistente fuera), la página llega al primer
+  showEvent; el canal, la bandeja y los servicios, igual que siempre.
 - config: efectos.pausar_sin_foco (sí por defecto), también en get_config.
 - Fuentes en local (ui_web/fonts con su OFL) y sin peticiones a Google.
 - La asistente 3D: las «z z z» solo existen dormida.
@@ -18,7 +20,10 @@ import pytest
 
 RAIZ = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RAIZ))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 UI = RAIZ / "ui_web"
+
+from test_anfitriones_corte4 import entorno, sistema  # noqa: E402,F401  (fixtures: VentanaWeb de prueba)
 
 
 # ── Config ─────────────────────────────────────────────────────────────────────
@@ -112,6 +117,84 @@ def test_al_cargar_la_pagina_se_le_repite_el_foco(ventana):
     assert v._pagina_cargada is True
 
 
+# ── Carga perezosa: oculta al arrancar, la página al primer showEvent ───────────
+def _web_de_prueba(entorno, **kw):
+    """VentanaWeb del montaje de prueba de test_anfitriones_corte4 (vista falsa que anota setUrl)."""
+    from servicios.tools import ToolManager
+    import test_anfitriones_corte4 as c4
+    return entorno.ws.VentanaWeb(config=entorno.cfg, ai_manager=c4.AIFalso(), memoria=c4.MemFalsa(),
+                                 tools=ToolManager(), **kw)
+
+
+def _soltar(v):
+    try:
+        v._liberar_todo()
+    finally:
+        v._relevada = True
+        v.deleteLater()
+
+
+def test_carga_perezosa_la_pagina_llega_al_enseñarla(entorno, sistema):
+    v = _web_de_prueba(entorno, cargar_al_mostrar=True)
+    try:
+        assert v.web.urls == [], "oculta: ni setUrl (sin proceso de render ni React)"
+        # Lo demás arrancó igual: el canal entero, la bandeja y los servicios de escritorio.
+        assert sorted(v._canal.registrados) == ["alarmas", "escenario", "escritorio", "lune", "musica",
+                                                "tareas", "vida"]
+        assert v._servicios and v.tray is not None
+        v._js("window.x = 1")                            # lo que se manda antes se pierde sin romper nada
+        v.show()
+        assert len(v.web.urls) == 1 and v.web.urls[0] == v._url_pagina
+        assert v.web.objetos_al_cargar == ["alarmas", "escenario", "escritorio", "lune", "musica", "tareas",
+                                           "vida"], "los objetos del canal, registrados ANTES de cargar"
+        v.hide()
+        v.show()
+        assert len(v.web.urls) == 1, "una sola vez"
+    finally:
+        _soltar(v)
+
+
+def test_sin_carga_perezosa_la_pagina_va_ya(entorno, sistema):
+    v = _web_de_prueba(entorno)
+    try:
+        assert len(v.web.urls) == 1
+        v.show()
+        assert len(v.web.urls) == 1
+    finally:
+        _soltar(v)
+
+
+def test_carga_perezosa_al_estar_lista_no_se_queda_esperando(entorno, sistema, qapp):
+    """Nadie espera una respuesta de la página antes de cargarla: al_estar_lista tiene su tope."""
+    import test_anfitriones_corte4 as c4
+    v = _web_de_prueba(entorno, cargar_al_mostrar=True)
+    try:
+        listo = []
+        v.al_estar_lista(lambda: listo.append(1), tope_ms=30)
+        assert c4._esperar(qapp, lambda: listo == [1])
+        assert v.web.urls == []
+    finally:
+        _soltar(v)
+
+
+def test_main_crea_la_ventana_web_oculta_con_carga_perezosa(monkeypatch):
+    import main
+    import ui.web_shell as ws
+    pedidas = []
+
+    class VentanaAnotada:
+        def __init__(self, **kw):
+            pedidas.append(kw)
+
+    monkeypatch.setattr(ws, "VentanaWeb", VentanaAnotada)
+    assert isinstance(main._crear_ventana_principal(autoinicio=True, oculta=True), VentanaAnotada)
+    assert isinstance(main._crear_ventana_principal(), VentanaAnotada)
+    assert pedidas == [{"cargar_al_mostrar": True}, {"cargar_al_mostrar": False}]
+    # abrir_principal: oculta salvo que el plan la enseñe o alguien la haya abierto a mano
+    fuente = (RAIZ / "main.py").read_text("utf-8")
+    assert "oculta=not (mostrar or plan.mostrar_ventana)" in fuente
+
+
 # ── Página: fuentes en local, sin Google ────────────────────────────────────────
 _FUENTE = re.compile(r"url\('\.\./fonts/([^']+)'\)")
 
@@ -166,9 +249,11 @@ def test_zzz_solo_existen_dormida():
     base = re.search(r"#zzz \{[^}]*\}", estilo).group(0)
     assert "display:none" in base
     assert re.search(r"#zzz\.on \{ display:block;", estilo)
-    # La animación infinita va SOLO con .on (antes giraba siempre con opacity 0)
-    assert re.search(r"#zzz\.on span \{ animation:zzz 2\.4s linear infinite; \}", estilo)
-    assert not re.search(r"#zzz span \{[^}]*animation", estilo)
+    # Sin animación CSS infinita (antes giraban siempre con opacity 0, y dormida a 60 fps): las mueve
+    # el módulo 'zzz' en los frames del avatar (tests/js/vrm_fps.test.mjs).
+    assert "infinite" not in estilo
+    assert not re.search(r"#zzz[^{]*span \{[^}]*animation", estilo)
+    assert "nombre: 'zzz'" in html and "trasUpdate(dt, t)" in html
 
 
 # ── Vídeos de la asistente ──────────────────────────────────────────────────────

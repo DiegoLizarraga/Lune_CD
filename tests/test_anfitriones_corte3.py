@@ -560,8 +560,10 @@ def test_web_shell_conecta_las_senales_del_puente():
     src = (RAIZ / "ui" / "web_shell.py").read_text("utf-8")
     assert "modelo_vrm_cambio.connect(self._publicar_vrm)" in src
     assert "vrm_params_cambio.connect(self._vrm_params)" in src
-    # se publica antes de cargar la página (la página lo pide con vrm_barra())
-    assert src.index("self._publicar_vrm()") < src.index("self.web.setUrl(")
+    # se publica antes de cargar la página (la página lo pide con vrm_barra()). Desde la 11.2 setUrl va en
+    # _cargar_pagina (ya en __init__ o, con la carga perezosa, al primer showEvent: siempre después).
+    assert src.index("self._publicar_vrm()") < src.index("self._cargar_pagina()")
+    assert "web.setUrl(url)" in src[src.index("def _cargar_pagina"):]
 
 
 # ── Nativa (main.py) ─────────────────────────────────────────────────────────────

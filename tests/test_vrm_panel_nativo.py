@@ -101,6 +101,9 @@ def test_sin_modelos(qapp, tmp_path, monkeypatch, almacen):
     p = VrmPanelNativo(None)
     assert p.modelo == "" and not p.combo.isEnabled()
     assert "No hay modelos" in p.combo.currentText()
+    # La carpeta de verdad (en la instalada, %APPDATA%), no un «modelo_vrm/» relativo.
+    assert str(vacia) in p.combo.currentText() and "modelo_vrm/" not in p.combo.currentText()
+    assert str(vacia) in p.btn_importar.toolTip()
     assert not p.btn_asignar.isEnabled()
     assert p.btn_importar.isEnabled()
     assert all(not s.isEnabled() for s in p.sliders.values())
