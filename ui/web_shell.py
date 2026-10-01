@@ -73,13 +73,20 @@ falla, queda la bandeja de siempre como respaldo. Al arrancar (no en un cambio d
 la última conversación sigue en el chat si chat.restaurar_ultima. El modo juego forzado a
 mano (bandeja) pasa a la ventana nueva: estado_para_cambio lleva "juego_forzado"
 (None|True|False) e iniciar_servicios lo vuelve a forzar.
+
+LUNE EN REPOSO (11.2): en QtWebEngine dentro de un QWidget cada frame de Chromium pasa por
+Qt, y con una sola animación infinita viva la ventana a la vista gastaba 1-3 núcleos sin que
+nadie la usara. La ventana le dice a la página si es la activa (window.luneFoco(bool): en
+changeEvent de ActivationChange/WindowStateChange, showEvent, hideEvent y al cargar) y la
+página decide (ui_web/lune_reposo.js): sin foco 20 s o sin tocarla 90 s, body.lune-quieta
+congela las animaciones y la barra pausa su vídeo y su avatar 3D. Opción efectos.pausar_sin_foco.
 """
 from __future__ import annotations
 
 import json
 import sys
 
-from PyQt6.QtCore import Qt, QTimer, QUrl, pyqtSignal
+from PyQt6.QtCore import QEvent, Qt, QTimer, QUrl, pyqtSignal
 from PyQt6.QtWidgets import QApplication, QMainWindow, QSystemTrayIcon, QMenu
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineSettings
@@ -89,6 +96,7 @@ from PyQt6.QtGui import QColor, QDesktopServices, QIcon, QAction
 # El servidor http vive en ui/servidor_web.py (sin WebEngine) para que la
 # asistente lo comparta; aquí se conservan los nombres antiguos por compatibilidad.
 from ui.servidor_web import RAIZ, DIR_WEB, ServidorEstatico as _ServidorEstatico, HandlerSilencioso as _HandlerSilencioso  # noqa: F401
+from nucleo import rutas
 from ui.cambio_interfaz import (PROVEEDOR_A_WEB, PROVEEDOR_DESDE_WEB, TOPE_CARGA_MS, bot_minecraft_de,
                                 callar_voz, cerrar_asistente, desmontar_servicios_c4, detener_bot,
                                 detener_hilo_ia, hilo_vivo, instantanea_sesion, ordenes_cortadas,
@@ -105,6 +113,12 @@ COLOR_FONDO = "#080B16"
 # ¿Ya pintó React? (.ln-app es la raíz de app.jsx.) Se sondea tras loadFinished.
 JS_PAGINA_PINTADA = "!!document.querySelector('.ln-app')"
 SONDEO_PINTADA_MS = 60
+
+
+def js_foco(activa: bool) -> str:
+    """JS que le dice a la página si la ventana es la activa (ui_web/lune_reposo.js: sin foco
+    un rato, Lune se queda quieta y la ventana deja de gastar CPU)."""
+    return f"window.luneFoco && window.luneFoco({'true' if activa else 'false'})"
 # Al salir de la app, lo que se espera como mucho a que corte el hilo de la IA.
 ESPERA_IA_SALIR_MS = 1500
 
@@ -298,7 +312,7 @@ class VentanaWeb(QMainWindow):
         self.resize(1280, 820)
         self._icono = QIcon()
         for ext in ("ico", "png"):
-            ruta = RAIZ / "assets" / f"lune_icon.{ext}"
+            ruta = rutas.recurso("assets", f"lune_icon.{ext}")
             if ruta.exists():
                 self._icono = QIcon(str(ruta))
                 self.setWindowIcon(self._icono)
@@ -629,6 +643,9 @@ class VentanaWeb(QMainWindow):
 
     def _al_cargar(self, _ok=True):
         self._pagina_cargada = True
+        avisar = getattr(self, "_avisar_foco", None)  # la página recién cargada no sabe si tiene el foco
+        if callable(avisar):
+            avisar(forzar=True)
         pend, self._al_cargar_pend = self._al_cargar_pend, []
         for fn in pend:
             try:
@@ -916,6 +933,36 @@ class VentanaWeb(QMainWindow):
 
     def _mostrar(self):
         self.showNormal(); self.raise_(); self.activateWindow()
+
+    # ── Lune en reposo (11.2): la página sabe si la ventana es la activa ──────────
+    def _ventana_activa(self) -> bool:
+        try:
+            return bool(self.isVisible() and not self.isMinimized() and self.isActiveWindow())
+        except RuntimeError:
+            return False
+
+    def _avisar_foco(self, forzar: bool = False):
+        """window.luneFoco(activa) si cambió (o si `forzar`: la página acaba de cargar). Con
+        efectos.pausar_sin_foco la página decide sola cuándo quedarse quieta
+        (ui_web/lune_reposo.js); aquí solo se le cuenta."""
+        activa = self._ventana_activa()
+        if not forzar and activa == getattr(self, "_foco_avisado", None):
+            return
+        self._foco_avisado = activa
+        self._js(js_foco(activa))
+
+    def changeEvent(self, ev):
+        super().changeEvent(ev)
+        if ev.type() in (QEvent.Type.ActivationChange, QEvent.Type.WindowStateChange):
+            self._avisar_foco()
+
+    def showEvent(self, ev):
+        super().showEvent(ev)
+        self._avisar_foco()
+
+    def hideEvent(self, ev):
+        super().hideEvent(ev)
+        self._avisar_foco()
 
     def salir_de_verdad(self):
         """«Salir»: suelta todo (bot, asistente, IA en curso…) y cierra la app."""

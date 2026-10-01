@@ -148,9 +148,10 @@ function App() {
   const sendRef = useRef(null);                    // send() actual, para las señales
   // Efectos: manda la config (efectos.*, por window.luneEscritorio); localStorage es solo el respaldo
   // sin backend (su origen cambia en cada arranque: el puerto del servidor local es otro).
+  // quieta: «Quedarme quieta cuando no me usas» (efectos.pausar_sin_foco, ui_web/lune_reposo.js).
   const [fx, setFx] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('lune-fx')) || { bg:true, sweep:true, micro:true }; }
-    catch(e){ return { bg:true, sweep:true, micro:true }; }
+    try { return { quieta:true, ...(JSON.parse(localStorage.getItem('lune-fx')) || { bg:true, sweep:true, micro:true }) }; }
+    catch(e){ return { bg:true, sweep:true, micro:true, quieta:true }; }
   });
   React.useEffect(() => { try { localStorage.setItem('lune-fx', JSON.stringify(fx)); } catch (e) {} }, [fx]);
   const setFxKey = (k) => (e) => {
@@ -282,6 +283,19 @@ function App() {
     return A && typeof A.conectarApp === 'function' ? A.conectarApp({ setFx, setModoJuego, setView }) : undefined;
   }, []);
   React.useEffect(() => { try { document.body.classList.toggle('modo-juego', modoJuego); } catch (e) {} }, [modoJuego]);
+  // «Lune en reposo» (ui_web/lune_reposo.js): sin foco 20 s o sin usarla 90 s se queda quieta (body.lune-quieta)
+  // y la barra pausa su vídeo y su avatar 3D. Escribiendo, hablando o en llamada, nunca.
+  const [quieta, setQuieta] = useState(false);
+  React.useEffect(() => {
+    const R = window.LuneReposo;
+    return R && typeof R.suscribir === 'function' ? R.suscribir((q) => setQuieta(!!q)) : undefined;
+  }, []);
+  React.useEffect(() => { const R = window.LuneReposo; if (R && R.activar) R.activar(fx.quieta !== false); }, [fx.quieta]);
+  React.useEffect(() => { const R = window.LuneReposo; if (R && R.ocupada) R.ocupada('escribiendo', busy || typing); }, [busy, typing]);
+  React.useEffect(() => {
+    const R = window.LuneReposo;
+    if (R && R.ocupada) R.ocupada('hablando', asistente === 'talking' || asistente === 'listening' || llamadaOn);
+  }, [asistente, llamadaOn]);
   // Cortes 5/6: 'lune-vista' ({detail: vista}) desde las tarjetas («Abrir alarmas»). Solo vistas conocidas.
   React.useEffect(() => {
     const alVista = (e) => { const v = String((e && e.detail) || ''); if (VISTAS_APP.includes(v)) setView(v); };
@@ -467,7 +481,7 @@ function App() {
       {fx.bg && <BgShards />}
       <window.Sidebar provider={provider} onProvider={setProvider} asistenteState={asistente}
         asistenteFuera={asistenteFuera} onTraer={toggleAsistente} compat={compat} modoJuego={modoJuego} baile={baile}
-        vista={view} onTareas={() => setView('tareas')} />
+        vista={view} onTareas={() => setView('tareas')} quieta={quieta} />
       <main className="ln-main">
         {provider==='cloud' && <BgNube />}
         <Topbar provider={provider} status={status} view={view} onView={setView} onMenu={() => setMenuOpen(true)} />

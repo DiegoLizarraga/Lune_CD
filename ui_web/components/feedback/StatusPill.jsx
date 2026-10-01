@@ -12,7 +12,12 @@ const CSS = `
   width:9px; height:9px; flex:none; border-radius:50%;
   background:var(--gray-400); position:relative;
 }
-.lune-status.s-live .led{ background:var(--cyan-500); box-shadow:0 0 0 0 rgb(var(--cyan-500-rgb, 0 229 255) / .6); animation:lune-pulse 1.8s var(--ease-out) infinite; }
+.lune-status.s-live .led{ background:var(--cyan-500); }
+/* El pulso es un ::after que crece y se apaga (transform + opacity: lo compone la GPU sin
+   repintar); con box-shadow el hilo principal repintaba en cada frame. */
+.lune-status.s-live .led::after{ content:""; position:absolute; inset:0; border-radius:50%;
+  background:rgb(var(--cyan-500-rgb, 0 229 255) / .55); pointer-events:none;
+  animation:lune-pulse 1.8s var(--ease-out) infinite; }
 .lune-status.s-busy .led{ background:var(--yellow-500); }
 .lune-status.s-error .led{ background:var(--red-500); }
 .lune-status.s-off .led{ background:var(--gray-500); }
@@ -20,11 +25,11 @@ const CSS = `
 .lune-status.s-busy{ color:var(--yellow-500); border-color:var(--yellow-600); }
 .lune-status.s-error{ color:var(--red-500); border-color:var(--red-600); }
 @keyframes lune-pulse{
-  0%{ box-shadow:0 0 0 0 rgb(var(--cyan-500-rgb, 0 229 255) / .55); }
-  70%{ box-shadow:0 0 0 7px rgb(var(--cyan-500-rgb, 0 229 255) / 0); }
-  100%{ box-shadow:0 0 0 0 rgb(var(--cyan-500-rgb, 0 229 255) / 0); }
+  0%{ transform:scale(1); opacity:1; }
+  70%{ transform:scale(2.6); opacity:0; }
+  100%{ transform:scale(2.6); opacity:0; }
 }
-@media (prefers-reduced-motion: reduce){ .lune-status .led{ animation:none !important; } }
+@media (prefers-reduced-motion: reduce){ .lune-status .led, .lune-status .led::after{ animation:none !important; } .lune-status .led::after{ display:none; } }
 `;
 if (typeof document !== 'undefined' && !document.getElementById('lune-status-css')) {
   const s = document.createElement('style'); s.id = 'lune-status-css'; s.textContent = CSS;

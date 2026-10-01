@@ -638,7 +638,8 @@ def test_web_respaldo_si_el_montaje_falla(entorno, sistema, monkeypatch):
     # El puente sigue en la página (sin servicios: estado por defecto, sin lanzar).
     assert v.web.objetos_al_cargar == ["alarmas", "escenario", "escritorio", "lune", "musica", "tareas", "vida"]
     assert json.loads(v._puente_esc.acciones_catalogo("radial")) == []
-    assert json.loads(v._puente_esc.efectos()) == {"fondo": True, "barrido": True, "micro": True}
+    assert json.loads(v._puente_esc.efectos()) == {"fondo": True, "barrido": True, "micro": True,
+                                                   "pausar_sin_foco": True}
 
 
 # ═══ Cambio de interfaz en caliente ═══════════════════════════════════════════

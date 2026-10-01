@@ -177,6 +177,22 @@ def _mascara(valor: Any) -> str:
     return MASCARA_CLAVE if str(valor or "").strip() else ""
 
 
+def _instalada() -> bool:
+    """¿Es la Lune instalada (Setup.exe)? nucleo/rutas.INSTALADA, leído en cada llamada."""
+    from nucleo import rutas
+    return bool(rutas.INSTALADA)
+
+
+def _como_instalar(*paquetes: str) -> str:
+    """Cómo conseguir lo que falta (nucleo/rutas.como_instalar: pip desde el código)."""
+    from nucleo import rutas
+    return rutas.como_instalar(*paquetes)
+
+
+def _sin_motor_de_voz() -> str:
+    return f"No hay motor de voz ({_como_instalar('edge-tts', 'pygame')})."
+
+
 def _clave_nueva(valor: Any):
     """Lo que la página manda en un campo de clave: None = conservar la guardada
     (la máscara sin tocar o con sus puntos: una clave real no los lleva); si no,
@@ -1622,6 +1638,9 @@ class LuneBridge(QObject):
             "asistente_fuera": self.asistente_visible(),
             "autoinicio": self.autoinicio_get(),
             "aburrimiento_min": int(self.config.get("chat", "aburrimiento_min", 10) or 0),
+            # Lune en reposo (11.2): el interruptor de «Efectos visuales» lo guarda al momento como
+            # los demás efectos (luneEscritorio.efectos_guardar); aquí va para quien lo lea con Ajustes.
+            "pausar_sin_foco": bool(self.config.get("efectos", "pausar_sin_foco", True)),
             # Audio: micrófono, salida y modelo de Whisper (nombres; "" = sistema)
             "dispositivo_entrada": str(self.config.get("voz", "dispositivo_entrada", "") or ""),
             "dispositivo_salida": str(self.config.get("voz", "dispositivo_salida", "") or ""),
@@ -1635,6 +1654,8 @@ class LuneBridge(QObject):
             "compat_key": _mascara(datos.compat_key()),
             "compat_key_configurada": bool(datos.compat_key()),
             "compat_model": datos.compat_model(),
+            # Lune instalada (Setup.exe): sin «Instalar componentes…» ni órdenes de pip.
+            "instalada": _instalada(),
         }
         cfg.update(self._config_voz(p))
         cfg.update(self._config_muestreo())
@@ -1817,6 +1838,10 @@ class LuneBridge(QObject):
                 except (TypeError, ValueError):
                     pass
                 self._rearmar_aburrimiento()
+            # Lune en reposo (efectos.pausar_sin_foco): la página lo aplica al recargar los efectos.
+            if "pausar_sin_foco" in c and bool(c["pausar_sin_foco"]) != bool(
+                    self.config.get("efectos", "pausar_sin_foco", True)):
+                self.config.set("efectos", "pausar_sin_foco", bool(c["pausar_sin_foco"]))
             # Solo si cambió de verdad (la página manda lo que tocaste, pero pudo
             # cambiarse desde la bandeja con Ajustes abierto): ni reescribe el registro
             # ni repite el aviso en cada guardado.
@@ -1984,7 +2009,7 @@ class LuneBridge(QObject):
         """«Probar»: suena con lo elegido (aún sin guardar), aunque la voz esté apagada."""
         fn = getattr(self.voice, "probar_voz", None)
         if not callable(fn):
-            self.aviso.emit("No hay motor de voz (pip install edge-tts pygame).")
+            self.aviso.emit(_sin_motor_de_voz())
             return False
         try:
             return bool(fn(payload or "{}"))
@@ -2636,6 +2661,7 @@ class LuneBridge(QObject):
             "entrada_actual": str(self.config.get("voz", "dispositivo_entrada", "") or ""),
             "salida_actual": str(self.config.get("voz", "dispositivo_salida", "") or ""),
             "faltan": voz_entrada.dependencias_faltantes(),
+            "instalar": _como_instalar(*voz_entrada.dependencias_faltantes()),
             "modelos_whisper": voz_entrada.MODELOS,
             "modelos_descargados": [m for m in voz_entrada.MODELOS if voz_entrada.modelo_descargado(m)],
         }, ensure_ascii=False)
@@ -2665,7 +2691,7 @@ class LuneBridge(QObject):
     def probar_salida(self, nombre: str = "") -> bool:
         """Suena un tono por la salida `nombre` (vacío = sistema). Cambia la salida en caliente; Guardar la fija."""
         if not getattr(self.voice, "available", False):
-            self.aviso.emit("No hay motor de voz (pip install edge-tts pygame)."); return False
+            self.aviso.emit(_sin_motor_de_voz()); return False
         nombre = (nombre or "").strip()
         if nombre != self.voice.salida_actual and not self.voice.aplicar_salida(nombre):
             self.aviso.emit(f"No encontré la salida «{nombre}»; suena por la del sistema.")
@@ -2697,8 +2723,7 @@ class LuneBridge(QObject):
             return json.dumps({"grabando": False, "transcribiendo": True})
         # Si no → empezar a grabar.
         if not voz_entrada.disponible():
-            faltan = " ".join(voz_entrada.dependencias_faltantes())
-            self.aviso.emit(f"Dictado: pip install {faltan}")
+            self.aviso.emit(f"Dictado: {_como_instalar(*voz_entrada.dependencias_faltantes())}")
             return json.dumps({"grabando": False, "error": "sin dependencias"})
         if self._llamada is not None:
             self.aviso.emit("Estás en llamada: Lune ya te escucha.")
@@ -2734,8 +2759,7 @@ class LuneBridge(QObject):
             return False
         from servicios import voz_entrada
         if not voz_entrada.disponible():
-            faltan = " ".join(voz_entrada.dependencias_faltantes())
-            self.llamada_estado.emit(False, f"Llamada: pip install {faltan}")
+            self.llamada_estado.emit(False, f"Llamada: {_como_instalar(*voz_entrada.dependencias_faltantes())}")
             return False
         if self._grabadora is not None:
             self.llamada_estado.emit(False, "Termina el dictado antes de llamar."); return False
@@ -2833,9 +2857,13 @@ class LuneBridge(QObject):
 
     @pyqtSlot(result=bool)
     def abrir_instalador(self) -> bool:
-        """Abre el instalador de componentes (ventana aparte, Tkinter)."""
+        """Abre el instalador de componentes (ventana aparte, Tkinter). Solo desde el
+        código: instalada ya viene todo y no hay pip (la página esconde el botón)."""
         import subprocess, sys
         from pathlib import Path
+        if _instalada():
+            self.aviso.emit("Esta Lune ya viene con todo instalado: no hace falta instalar componentes.")
+            return False
         ruta = Path(__file__).resolve().parent.parent / "instalador.py"
         if not ruta.exists():
             self.aviso.emit("No encontré instalador.py"); return False

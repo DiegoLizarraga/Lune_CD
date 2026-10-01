@@ -111,6 +111,7 @@ from PyQt6.QtCore import Qt, QPoint, QRect, QSize, QTimer, pyqtSignal
 from PyQt6.QtGui import QAction, QIcon, QRegion, QImage, QPixmap
 
 from lune_core.frases_asistente import frases_para
+from nucleo import rutas
 from nucleo.sueno import ReglaSueno
 from ui.chat_asistente import BurbujaQt, ChatAsistente, DesambiguadorClic, ms_lectura
 from ui.lune_face import LuneFaceWidget, estado_desde_emocion, tiene_cara
@@ -1652,7 +1653,7 @@ class AvatarOverlay(QMainWindow):
             self.tray = None
             return
         icono = QIcon()
-        ruta = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "lune_icon.png")
+        ruta = str(rutas.recurso("assets", "lune_icon.png"))
         if os.path.exists(ruta):
             icono = QIcon(ruta)
         self.tray = QSystemTrayIcon(icono, self)

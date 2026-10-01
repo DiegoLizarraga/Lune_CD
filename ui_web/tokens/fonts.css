@@ -2,8 +2,46 @@
    LUNE CD — WEBFONTS
    Shibuya Punk type system. Angular techno display (Chakra
    Petch), grotesque body (Space Grotesk), data mono (Space
-   Mono), katakana accents (Noto Sans JP).
-   NOTE: loaded from Google Fonts CDN. To ship fully offline,
-   self-host these as @font-face binaries.
+   Mono), katakana accents (Noto Sans JP). Tema "Nube": Exo 2
+   (título) y JetBrains Mono (datos).
+   EN LOCAL desde la 11.2 (ui_web/fonts/, woff2 con su licencia
+   OFL al lado): sin internet la página no espera a Google en
+   cada arranque (el perfil de QtWebEngine no guarda caché) y el
+   programa instalado no hace peticiones fuera.
+   Noto Sans JP va recortada a hiragana, katakana y los kanji que
+   usa la interfaz (月夜起動渋谷), en 700 y 900; lo demás cae a
+   "Yu Gothic UI" / "Meiryo" (tokens/typography.css).
+   Un @font-face no descarga nada hasta que algo usa la familia.
    ============================================================ */
-@import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:ital,wght@0,400;0,500;0,600;0,700;1,600;1,700&family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Noto+Sans+JP:wght@700;900&display=swap');
+@font-face { font-family: 'Chakra Petch'; font-style: normal; font-weight: 400; font-display: swap;
+  src: url('../fonts/ChakraPetch-Regular.woff2') format('woff2'); }
+@font-face { font-family: 'Chakra Petch'; font-style: normal; font-weight: 500; font-display: swap;
+  src: url('../fonts/ChakraPetch-Medium.woff2') format('woff2'); }
+@font-face { font-family: 'Chakra Petch'; font-style: normal; font-weight: 600; font-display: swap;
+  src: url('../fonts/ChakraPetch-SemiBold.woff2') format('woff2'); }
+@font-face { font-family: 'Chakra Petch'; font-style: normal; font-weight: 700; font-display: swap;
+  src: url('../fonts/ChakraPetch-Bold.woff2') format('woff2'); }
+@font-face { font-family: 'Chakra Petch'; font-style: italic; font-weight: 600; font-display: swap;
+  src: url('../fonts/ChakraPetch-SemiBoldItalic.woff2') format('woff2'); }
+@font-face { font-family: 'Chakra Petch'; font-style: italic; font-weight: 700; font-display: swap;
+  src: url('../fonts/ChakraPetch-BoldItalic.woff2') format('woff2'); }
+
+@font-face { font-family: 'Space Grotesk'; font-style: normal; font-weight: 300 700; font-display: swap;
+  src: url('../fonts/SpaceGrotesk-Variable.woff2') format('woff2'); }
+
+@font-face { font-family: 'Space Mono'; font-style: normal; font-weight: 400; font-display: swap;
+  src: url('../fonts/SpaceMono-Regular.woff2') format('woff2'); }
+@font-face { font-family: 'Space Mono'; font-style: normal; font-weight: 700; font-display: swap;
+  src: url('../fonts/SpaceMono-Bold.woff2') format('woff2'); }
+@font-face { font-family: 'Space Mono'; font-style: italic; font-weight: 400; font-display: swap;
+  src: url('../fonts/SpaceMono-Italic.woff2') format('woff2'); }
+
+@font-face { font-family: 'Noto Sans JP'; font-style: normal; font-weight: 700; font-display: swap;
+  src: url('../fonts/NotoSansJP-Bold-lune.woff2') format('woff2'); }
+@font-face { font-family: 'Noto Sans JP'; font-style: normal; font-weight: 900; font-display: swap;
+  src: url('../fonts/NotoSansJP-Black-lune.woff2') format('woff2'); }
+
+@font-face { font-family: 'Exo 2'; font-style: italic; font-weight: 100 900; font-display: swap;
+  src: url('../fonts/Exo2-Italic-Variable.woff2') format('woff2'); }
+@font-face { font-family: 'JetBrains Mono'; font-style: normal; font-weight: 100 800; font-display: swap;
+  src: url('../fonts/JetBrainsMono-Variable.woff2') format('woff2'); }

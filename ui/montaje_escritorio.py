@@ -55,18 +55,17 @@ import gc
 import logging
 import threading
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Protocol
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
-from nucleo import acciones_ui
+from nucleo import acciones_ui, rutas
 from nucleo.acciones_ui import Contexto, Despachador
 
 _log = logging.getLogger("lune.montaje")
 
-RAIZ = Path(__file__).resolve().parent.parent
-DIR_SFX = RAIZ / "ui_web" / "assets" / "sfx"
+RAIZ = rutas.RECURSOS
+DIR_SFX = rutas.recurso("ui_web", "assets", "sfx")    # lo trae Lune (solo se lee)
 ORDEN = ("despachador", "tema", "atajos", "juego", "radial", "bandeja")
 # Actividades de la tabla de prioridades (nucleo/estado_asistente.PRIORIDAD) que hace
 # físicamente cada controlador (recibe ceder/reanudar de ellas).

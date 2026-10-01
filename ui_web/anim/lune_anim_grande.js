@@ -4,8 +4,8 @@
  *
  * La ventana la pone Python del tamaño del monitor (ui/companion.py → grande_fase) y
  * el #stage crece por CSS (body.lune-grande en ui_web/css/grande.css, clase que pone
- * LunePantalla): el WebM de 720×1280 se REDUCE a la altura de la pantalla (hasta
- * 1280 px), no se estira. Aquí solo el movimiento, con las mismas fases que el VRM
+ * LunePantalla): el WebM (480×854 desde la 11.2) se ajusta a la altura de la pantalla
+ * (hasta 1280 px). Aquí solo el movimiento, con las mismas fases que el VRM
  * (window.luneGrande(fase, opts)):
  *
  *   glide  (400 ms, ventana pequeña)  el stage baja y sale por abajo (translateY 0 → 110 %)

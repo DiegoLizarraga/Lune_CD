@@ -50,10 +50,12 @@ import unicodedata
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
-from nucleo import datos, personajes
+from nucleo import datos, personajes, rutas
 
-RAIZ = Path(__file__).resolve().parent.parent
-CARPETA = RAIZ / "modelo_vrm"
+# Los .vrm los importa el usuario (Lune no trae ninguno) y a su lado se guarda la
+# calibración: todo en su carpeta de datos (desde el código, la raíz del repo).
+RAIZ = rutas.DATOS
+CARPETA = rutas.dato("modelo_vrm")
 
 # Un .vrm es un glTF binario (GLB). Mate-Engine acepta cualquier cosa que su
 # parser trague; aquí se comprueba la cabecera ANTES de servirlo al WebEngine

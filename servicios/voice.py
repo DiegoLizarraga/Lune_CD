@@ -454,7 +454,8 @@ class VoiceEngine:
         if isinstance(params, dict) and not texto:
             texto = str(params.get("texto") or "").strip() or None
         if not self._engine:
-            self._avisar("No hay motor de voz: instala edge-tts (pip install edge-tts) "
+            from nucleo import rutas
+            self._avisar(f"No hay motor de voz: instala edge-tts ({rutas.como_instalar('edge-tts')}) "
                          "o revisa la salida de audio.")
             return False
         self.cancelar()

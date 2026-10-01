@@ -43,6 +43,10 @@ DETALLES DE WINDOWS
 
 Fuera de Windows es un no-op que siempre adquiere. La API (`ApiMutexWin32`) es
 inyectable para probarlo sin kernel32.
+
+Aparte, `marcar_abierta()`: el mutex «Lune está abierta» (nucleo.rutas.MUTEX_ABIERTA)
+que crean main.py y patata.py al arrancar, sin dueño, para que el instalador sepa
+que tiene que esperar a que Lune se cierre.
 """
 from __future__ import annotations
 
@@ -330,3 +334,49 @@ class MutexNombrado:
 
     def __repr__(self) -> str:
         return f"MutexNombrado({self.nombre!r}, dueno={self.es_dueno})"
+
+
+# ── «Lune está abierta» (para el instalador) ────────────────────────────────────
+# Aquí no hay dueño: basta con que el mutex EXISTA. La app y patata lo crean al
+# arrancar SIN pedir la propiedad (así pueden tenerlo los dos a la vez) y guardan el
+# handle hasta salir; Windows lo borra cuando se cierra el último. El instalador
+# (packaging/lune.iss, CheckForMutexes con nucleo.rutas.MUTEX_ABIERTA) espera a que
+# no exista antes de reemplazar archivos.
+
+_ABIERTA = {"handle": 0, "api": None}
+_lock_abierta = threading.Lock()
+
+
+def marcar_abierta(nombre: Optional[str] = None, api=None) -> int:
+    """Crea el mutex «Lune está abierta» (una vez por proceso) y devuelve su handle.
+    0 si no se pudo o fuera de Windows. Nunca lanza."""
+    with _lock_abierta:
+        if _ABIERTA["handle"]:
+            return _ABIERTA["handle"]
+        if api is None and sys.platform != "win32":
+            return 0
+        if nombre is None:
+            try:
+                from nucleo.rutas import MUTEX_ABIERTA as nombre
+            except Exception:
+                nombre = "LuneCD_Abierta"
+        try:
+            api = api if api is not None else ApiMutexWin32()
+            h = int(api.crear(normalizar_nombre(nombre)) or 0)
+        except Exception:
+            return 0
+        if h:
+            _ABIERTA["handle"], _ABIERTA["api"] = h, api
+        return h
+
+
+def desmarcar_abierta() -> None:
+    """Cierra el handle de `marcar_abierta` (al salir lo hace Windows solo; es para los tests)."""
+    with _lock_abierta:
+        h, api = _ABIERTA["handle"], _ABIERTA["api"]
+        _ABIERTA["handle"], _ABIERTA["api"] = 0, None
+    if h and api is not None:
+        try:
+            api.cerrar(h)
+        except Exception:
+            pass

@@ -7,6 +7,8 @@ ninguno crea ni borra entradas reales de inicio de Windows.
   → `activo` False.
 - `reparar` corrige ruta y modo de una entrada que ya existe; nunca la crea ni
   toca StartupApproved.
+- Instalada (nucleo/rutas.INSTALADA, con rutas parcheadas): «Lune.exe» --autoinicio en
+  todos los modos; una instalación y una copia del código no se quitan la entrada.
 - Fuera de Windows no hace nada.
 """
 import sys
@@ -14,6 +16,7 @@ from pathlib import Path
 
 import pytest
 
+from nucleo import rutas
 from servicios import autoinicio as ai
 
 RUN = r"Software\Microsoft\Windows\CurrentVersion\Run"
@@ -223,6 +226,107 @@ def test_reparar_sin_nada_que_hacer_no_escribe():
     reg = RegFalso(run=ai.comando("web"))
     assert ai.reparar(modo="web", reg=reg) == ""
     assert reg.escrituras == []
+
+
+# ── Tipos de entrada: la del código (.vbs) y la instalada (.exe) ───────────────
+
+def test_tipo_de_cada_entrada():
+    assert ai.tipo_de('wscript.exe "C:\\x\\iniciar_lune.vbs" /autoinicio') == ai.TIPO_CODIGO
+    assert ai.tipo_de('"C:\\Windows\\System32\\wscript.exe" "C:\\x\\iniciar_lune.vbs"') == ai.TIPO_CODIGO
+    assert ai.tipo_de('"C:\\Programas\\Lune CD\\Lune.exe" --autoinicio') == ai.TIPO_INSTALADA
+    assert ai.tipo_de("algo que no reconozco") is None
+    assert ai.tipo_propio() == ai.TIPO_CODIGO                   # los tests corren desde el código
+    assert ai.lanzador() == ai.RAIZ / "iniciar_lune.vbs"
+
+
+def test_desde_el_codigo_no_se_apropia_de_la_instalada():
+    instalada = '"C:\\Users\\Diego\\AppData\\Local\\Programs\\Lune CD\\Lune.exe" --autoinicio'
+    reg = RegFalso(run=instalada)
+    assert ai.reparar(modo="patata", reg=reg) == ""
+    assert reg.escrituras == [] and reg.run() == instalada
+    assert ai.activo(reg) is False and ai.estado("web", reg)["activo"] is False
+    assert ai.desactivar(reg) is True and reg.run() == instalada     # apagarla aquí no borra la otra
+    assert ai.establecer(True, "web", reg) is True                   # encenderla a mano sí la cambia
+    assert reg.run() == ai.comando("web")
+
+
+def test_activo_exige_que_sea_de_esta_carpeta():
+    reg = RegFalso(run='wscript.exe "D:\\otra copia\\iniciar_lune.vbs" /autoinicio')
+    assert ai.activo(reg) is False
+    assert ai.reparar(modo="web", reg=reg) == "ruta"
+    assert ai.activo(reg) is True
+
+
+def test_una_entrada_que_no_reconozco_se_repara_como_siempre():
+    reg = RegFalso(run="C:\\viejo\\iniciar_lune.vbs /autoinicio")            # sin comillas
+    assert ai.reparar(modo="web", reg=reg) == "ruta"
+    assert reg.run() == ai.comando("web")
+
+
+def test_el_respaldo_del_modo_lee_el_config_de_los_datos(monkeypatch, tmp_path):
+    import nucleo.config as nc
+    monkeypatch.delattr(nc, "RUTA_CONFIG")                            # sin nucleo.config utilizable
+    monkeypatch.setattr(rutas, "DATOS", tmp_path)
+    (tmp_path / "config.json").write_text('{"interfaz": {"modo": "patata"}}', "utf-8")
+    assert ai.comando().endswith("/autoinicio /patata")
+
+
+# ── Instalada (Lune.exe) ───────────────────────────────────────────────────────
+
+@pytest.fixture
+def instalada(monkeypatch, tmp_path):
+    """Lune instalada en una carpeta temporal, con un Lune.exe de mentira."""
+    carpeta = tmp_path / "Programs" / "Lune CD"
+    carpeta.mkdir(parents=True)
+    (carpeta / "Lune.exe").write_bytes(b"")
+    monkeypatch.setattr(rutas, "INSTALADA", True)
+    monkeypatch.setattr(ai, "RAIZ", carpeta)
+    return carpeta
+
+
+def test_instalada_la_orden_es_lune_exe_en_todos_los_modos(instalada):
+    exe = instalada / "Lune.exe"
+    for modo in ("web", "nativo", "patata", None):
+        assert ai.comando(modo) == f'"{exe}" --autoinicio'
+    assert ai.tipo_propio() == ai.TIPO_INSTALADA and ai.lanzador() == exe
+
+
+def test_instalada_activar_escribe_lune_exe_tambien_en_patata(instalada):
+    reg = RegFalso()
+    assert ai.activar("patata", reg) is True
+    assert reg.run() == f'"{instalada / "Lune.exe"}" --autoinicio'
+    assert reg.aprobado() == ai.APROBADO_SI and ai.activo(reg) is True
+    e = ai.estado("patata", reg)
+    assert e["activo"] and e["ruta_ok"] and e["modo_ok"]
+
+
+def test_instalada_sin_lune_exe_no_activa_ni_repara(instalada):
+    (instalada / "Lune.exe").unlink()
+    reg = RegFalso()
+    assert ai.activar("web", reg) is False and reg.run() is None
+    reg = RegFalso(run='"C:\\Viejo\\Lune CD\\Lune.exe" --autoinicio')
+    assert ai.reparar(modo="web", reg=reg) == "" and reg.escrituras == []
+
+
+def test_instalada_repara_una_instalacion_movida_o_sin_autoinicio(instalada):
+    reg = RegFalso(run='"C:\\Viejo\\Lune CD\\Lune.exe" --autoinicio')
+    assert ai.reparar(modo="web", reg=reg) == "ruta"
+    assert reg.run() == ai.comando("web") and APROBADO not in reg.claves
+    reg = RegFalso(run=f'"{instalada / "Lune.exe"}"')
+    assert ai.reparar(modo="patata", reg=reg) == "modo"
+    assert reg.run() == ai.comando("patata")
+    assert ai.reparar(modo="patata", reg=reg) == ""                   # ya está bien: no reescribe
+
+
+def test_instalada_no_se_apropia_de_la_del_codigo(instalada):
+    del_codigo = f'wscript.exe "{VBS}" /autoinicio /patata'
+    reg = RegFalso(run=del_codigo)
+    assert ai.reparar(modo="web", reg=reg) == ""
+    assert reg.escrituras == [] and reg.run() == del_codigo
+    assert ai.activo(reg) is False
+    assert ai.desactivar(reg) is True and reg.run() == del_codigo
+    assert ai.establecer(True, "web", reg) is True
+    assert reg.run() == f'"{instalada / "Lune.exe"}" --autoinicio'
 
 
 # ── Fuera de Windows ───────────────────────────────────────────────────────────

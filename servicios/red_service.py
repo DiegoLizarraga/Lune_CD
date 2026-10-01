@@ -71,10 +71,11 @@ class RedService(QObject):
         modelo = datos.ollama_model()
         if modelo and self.rol() in (D.ROL_HOST, D.ROL_HIBRIDO):
             caps["modelo"] = modelo
-        # ¿tiene avatar VRM disponible? (hoy sprites; VRM cuando exista)
+        # ¿tiene avatar VRM disponible? En la carpeta de modelos de verdad (nucleo.vrm),
+        # no en un «modelo_vrm» relativo al directorio de trabajo.
         try:
-            from pathlib import Path
-            if any(Path("modelo_vrm").glob("*.vrm")) if Path("modelo_vrm").exists() else False:
+            from nucleo import vrm
+            if vrm.CARPETA.exists() and any(vrm.CARPETA.glob("*.vrm")):
                 caps["vrm"] = "1"
         except Exception:
             pass
@@ -85,7 +86,8 @@ class RedService(QObject):
         if not self.config.get("red", "anunciar", True):
             return
         if not D.zeroconf_disponible():
-            log_info("[red] zeroconf no instalado: este equipo no se anuncia (pip install zeroconf)")
+            from nucleo import rutas
+            log_info(f"[red] zeroconf no instalado: este equipo no se anuncia ({rutas.como_instalar('zeroconf')})")
             return
         self.detener()
         self._anuncio = D.AnuncioLune(self.nombre(), self.rol(),

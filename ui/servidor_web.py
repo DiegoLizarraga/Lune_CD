@@ -36,7 +36,12 @@ from pathlib import Path
 from typing import Dict, Mapping, Optional, Union
 from urllib.parse import unquote
 
-RAIZ = Path(__file__).resolve().parent.parent
+from nucleo import rutas
+
+# Lo que trae Lune (solo se lee). Los nombres se conservan: web_shell y companion los
+# importan. Lo del usuario (VRM, bailes, sonidos) vive en rutas.DATOS y se publica con
+# su ruta absoluta (publicar/publicar_carpeta).
+RAIZ = rutas.RECURSOS
 DIR_WEB = RAIZ / "ui_web"
 
 # Hosts con los que se acepta una petición (la página siempre usa 127.0.0.1).
@@ -161,7 +166,8 @@ class ServidorEstatico:
         Devuelve el prefijo normalizado ('/bailes/'). Las rutas extra exactas tienen
         prioridad; entre carpetas gana el prefijo más largo. ValueError si el prefijo
         no es válido o tapa algo que ya existe en ui_web/ (p. ej. '/vrm/'). Una
-        carpeta relativa se toma desde la raíz del repo, nunca desde el cwd.
+        carpeta relativa se toma desde RAIZ (lo que trae Lune), nunca desde el cwd;
+        las carpetas del usuario (rutas.DATOS) se publican siempre con ruta absoluta.
         """
         prefijo = normalizar_prefijo(prefijo_url)
         if (Path(self.directorio) / prefijo.strip("/")).exists():
@@ -199,6 +205,8 @@ class HandlerSilencioso(SimpleHTTPRequestHandler):
         ".vmd": "application/octet-stream",
         ".mp3": "audio/mpeg", ".ogg": "audio/ogg", ".opus": "audio/ogg",
         ".wav": "audio/wav", ".flac": "audio/flac",
+        # Fuentes locales de la piel web (ui_web/fonts, 11.2)
+        ".woff2": "font/woff2", ".woff": "font/woff", ".ttf": "font/ttf",
     }
 
     def __init__(self, *args, rutas_extra: Optional[Dict[str, Path]] = None,

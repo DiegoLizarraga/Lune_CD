@@ -16,40 +16,48 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+# Los datos de verdad (config.json, datos.json con las API keys, memoria.json,
+# alarmas.json, chats/, logs/, bailes/, modelo_vrm/…) no se tocan NUNCA desde los
+# tests. Antes Config() sin ruta leía y, con un cambio de esquema, REESCRIBÍA el
+# config.json del usuario, y guardar_config() de la web reescribía datos.json entero.
+# Ahora todo cuelga de nucleo/rutas.py, y LUNE_CD_DATOS lleva DATOS y LOCAL a una
+# carpeta temporal vacía por sesión. Tiene que ponerse ANTES del primer import de
+# nucleo: rutas calcula sus carpetas al importarse y nucleo.datos copia ahí la
+# plantilla (datos.example.json, sin claves) al importarse. Así todos los tests
+# arrancan con los valores por defecto, igual en cualquier equipo, y los subprocess
+# de los tests (patata, main) heredan la variable. Los que ya desvían algo con
+# monkeypatch (datos_tmp y compañía) siguen igual.
+_DATOS_TESTS = Path(tempfile.mkdtemp(prefix="lune_tests_datos_")).resolve()
+os.environ["LUNE_CD_DATOS"] = str(_DATOS_TESTS)
+
+
+def _borrar_datos_tests():
+    # El log del día sigue abierto hasta logging.shutdown (que va después): en Windows
+    # no se podría borrar la carpeta con él abierto.
+    import logging
+    for h in logging.getLogger("lune").handlers[:]:
+        try:
+            h.close()
+        except Exception:
+            pass
+    shutil.rmtree(_DATOS_TESTS, True)
+
+
+atexit.register(_borrar_datos_tests)
+
 # Igual que main.py: el runtime de C++ del sistema antes que el de PyQt6, para
 # que los tests que mezclan Qt con librerías C++ (Whisper, ONNX) no revienten.
 from nucleo.runtime_win import precargar_msvc  # noqa: E402
 
 precargar_msvc()
 
-# El config.json de verdad no se toca NUNCA desde los tests. Config() sin ruta
-# cuelga de nucleo.config.RAIZ (el repo): leía y, con un cambio de esquema,
-# REESCRIBÍA el config.json del usuario; un test que guardara un ajuste lo
-# cambiaba de verdad. Aquí RAIZ pasa a una carpeta temporal vacía por proceso:
-# los tests arrancan con los valores por defecto, igual en cualquier equipo.
-# nucleo/alarmas.py toma RAIZ de aquí, así que alarmas.json también queda a
-# salvo. (RUTA_CONFIG, la constante, se deja: hay un test que comprueba su valor.)
-from nucleo import config as _config_mod  # noqa: E402
+# Red de seguridad: si algo hubiera importado nucleo.rutas antes que este archivo, sus
+# carpetas serían las de verdad. Mejor no correr ningún test.
+from nucleo import rutas as _rutas  # noqa: E402
 
-_RAIZ_TESTS = Path(tempfile.mkdtemp(prefix="lune_tests_cfg_")).resolve()
-_config_mod.RAIZ = _RAIZ_TESTS
-atexit.register(shutil.rmtree, _RAIZ_TESTS, True)
-
-# Lo mismo con datos.json (las API keys): nucleo.datos es el único que lo toca y
-# guardar_config() de la web lo relee y lo REESCRIBE entero aunque no cambie nada; un
-# test que lo llamaba sin datos temporales reescribía el de verdad. Aquí todos los tests
-# parten de una copia de datos.example.json (sin claves). Los que ya lo desvían con
-# monkeypatch (datos_tmp y compañía) siguen igual.
-from nucleo import datos as _datos_mod  # noqa: E402
-
-_DATOS_TESTS = _RAIZ_TESTS / "datos.json"
-_ejemplo = Path(_datos_mod._EJEMPLO)
-if _ejemplo.exists():
-    shutil.copyfile(_ejemplo, _DATOS_TESTS)
-else:
-    _DATOS_TESTS.write_text("{}", encoding="utf-8")
-_datos_mod._PATH = _DATOS_TESTS
-_datos_mod.invalidar()
+if _rutas.DATOS != _DATOS_TESTS or _rutas.LOCAL != _DATOS_TESTS:
+    raise RuntimeError(f"tests: nucleo.rutas apunta a {_rutas.DATOS}, no a la carpeta temporal "
+                       f"{_DATOS_TESTS}; no toco los datos de verdad")
 
 
 @pytest.fixture(autouse=True, scope="module")

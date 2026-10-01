@@ -76,8 +76,6 @@ import numpy as np
 
 log = logging.getLogger("lune.mezclador")
 
-RAIZ = Path(__file__).resolve().parent.parent
-
 FRECUENCIA = 44100
 CANALES_SALIDA = 2
 SILENCIO_CIERRE_S = 5.0
@@ -300,9 +298,10 @@ def cargar_audio(ruta: Union[str, Path], *, ffmpeg: Optional[str] = None,
             pass                       # WAV comprimido: que lo intente ffmpeg
     exe = ffmpeg or ruta_ffmpeg()
     if not exe:
+        from nucleo import rutas
         raise ErrorAudio(
             f"Para reproducir {p.suffix or 'este audio'} hace falta ffmpeg. "
-            "Instálalo con:  pip install imageio-ffmpeg")
+            f"Instálalo con:  {rutas.como_instalar('imageio-ffmpeg')}")
     datos, sr = _decodificar_ffmpeg(exe, p, ejecutar or subprocess.run, timeout, estereo=False)
     if datos.shape[1] > CANALES_SALIDA:
         datos, sr = _decodificar_ffmpeg(exe, p, ejecutar or subprocess.run, timeout, estereo=True)
@@ -491,7 +490,7 @@ class Mezclador:
 
         m = Mezclador.instancia()
         m.set_dispositivo(cfg.get("voz", "dispositivo_salida", ""))
-        buf = cargar_wav(RAIZ / "ui_web/assets/sfx/trago_1.wav")
+        buf = cargar_wav(rutas.recurso("ui_web", "assets", "sfx", "trago_1.wav"))
         sid = m.reproducir(buf, vol=0.8, canal="sfx")
         alarma = m.reproducir(cargar_wav(...), bucle=True, canal="alarma")
         m.detener(alarma)

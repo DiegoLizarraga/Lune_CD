@@ -15,7 +15,7 @@ from typing import List, Optional, Tuple
 
 from PyQt6.QtCore import QObject, QThread, pyqtSignal
 
-from nucleo import datos
+from nucleo import datos, rutas
 
 from nucleo.utils import log_info, log_error
 
@@ -53,7 +53,10 @@ class NotasService(QObject):
         return bool(self.config.get("notas", "activo", False))
 
     def carpeta(self) -> Path:
-        return Path(self.config.get("notas", "carpeta", "notas"))
+        """notas.carpeta; si es relativa (la de serie, «notas»), cuelga de los datos del
+        usuario, nunca del directorio de trabajo (instalada, el cwd es otro)."""
+        c = Path(str(self.config.get("notas", "carpeta", "notas") or "notas")).expanduser()
+        return c if c.is_absolute() else rutas.DATOS / c
 
     def _ruta_db(self) -> Path:
         return self.carpeta() / ".indice.rag.db"

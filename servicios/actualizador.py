@@ -145,20 +145,28 @@ def estado_opcionales() -> List[Dict]:
     Qué funciones opcionales están listas y cuáles no; al final, las obligatorias
     (NUCLEO) a las que les falta algo (p. ej. numpy), para que Ajustes lo avise.
     [{funcion, disponible, faltan: [pip], comando, nota}]
+
+    `comando` es nucleo/rutas.como_instalar: desde el código, la orden de pip;
+    instalada, que eso no viene (todo lo que se puede ya va dentro). Instalada, las
+    obligatorias no salen nunca: vienen con Lune y no hay pip con que arreglarlas.
     """
+    from nucleo import rutas
     resultado = []
     for funcion, info in [*OPCIONALES.items(), *NUCLEO.items()]:
+        es_nucleo = funcion in NUCLEO and funcion not in OPCIONALES
+        if es_nucleo and rutas.INSTALADA:
+            continue
         faltan = [
             paquete for modulo, paquete in info["modulos"].items()
             if importlib.util.find_spec(modulo) is None
         ]
-        if not faltan and funcion in NUCLEO and funcion not in OPCIONALES:
+        if not faltan and es_nucleo:
             continue
         resultado.append({
             "funcion": funcion,
             "disponible": not faltan,
             "faltan": faltan,
-            "comando": f"pip install {' '.join(faltan)}" if faltan else "",
+            "comando": rutas.como_instalar(*faltan) if faltan else "",
             "nota": info["nota"],
         })
     return resultado
@@ -322,16 +330,27 @@ def actualizar(rama: Optional[str] = None, on_progreso=None) -> Dict:
 
 # ── Reinicio ───────────────────────────────────────────────────────────────────
 
-def reiniciar():
+def orden_reinicio(pid: Optional[int] = None) -> List[str]:
+    """La orden para relanzar este proceso (nucleo/rutas.orden_reinicio: desde el código
+    [python, main.py, …]; instalada [Lune.exe, …]) con `--esperar-pid <este PID>`: la
+    nueva espera a que esta muera antes de mirar la instancia única (si no, se conectaba
+    a esta, que aún no se había ido, y se cerraba). Sin el --esperar-pid de antes."""
+    from nucleo import arranque, rutas
+    pid = os.getpid() if pid is None else int(pid)
+    return [*arranque.sin_esperar_pid(rutas.orden_reinicio()), arranque.BANDERA_ESPERAR_PID, str(pid)]
+
+
+def reiniciar(popen=None, salir=None):
     """
-    Relanza la app con el mismo intérprete y argumentos.
+    Relanza la app con el mismo intérprete (o Lune.exe) y argumentos, y sale.
 
     Se usa Popen + salida en vez de os.execv: en Windows, execv con Qt vivo deja
-    la ventana colgada y el proceso zombi.
+    la ventana colgada y el proceso zombi. `popen` y `salir` son para los tests.
     """
+    from nucleo import rutas
     try:
-        subprocess.Popen([sys.executable, *sys.argv], cwd=str(RAIZ),
-                         close_fds=False, **SIN_CONSOLA)
+        (popen or subprocess.Popen)(orden_reinicio(), cwd=str(rutas.PROGRAMA),
+                                    close_fds=False, **SIN_CONSOLA)
     except Exception:
         return False
-    os._exit(0)
+    (salir or os._exit)(0)

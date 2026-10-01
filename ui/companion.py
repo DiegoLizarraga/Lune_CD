@@ -46,10 +46,13 @@ efímero: no entra en el historial que comparte con el chat.
 
 Canal de eventos página → Python (v10.3, en los dos renders): la página encola lo
 que pasa (caricia, arrastre, dormir, despertar, estado, error…) en
-window.luneEventos (ui_web/lune_eventos.js) y aquí un QTimer propio a 12 Hz la
-vacía con runJavaScript y emite `evento_js(tipo, datos)` por cada evento. Va
-aparte del sondeo del cursor, que se salta cuando el cursor está quieto fuera de
-la ventana. Se para al ocultarla o cerrarla y vuelve al mostrarla.
+window.luneEventos (ui_web/lune_eventos.js) y aquí un QTimer propio la vacía con
+runJavaScript y emite `evento_js(tipo, datos)` por cada evento. Va aparte del
+sondeo del cursor, que se salta cuando el cursor está quieto fuera de la ventana.
+Se para al ocultarla o cerrarla y vuelve al mostrarla. Ritmo adaptativo (11.2):
+cada runJavaScript despierta al renderer y al hilo de Qt, así que va a 12 Hz solo
+mientras pasa algo (arrastre, menú, chat, comida y ~2 s tras un evento o tras
+tocarla), a 4 Hz en reposo y a 1,5 Hz dormida; el cursor, a 10 Hz dormida.
 
 Estado compartido: si se le pasa un nucleo.estado_asistente.BusEstado
 (`bus_estado=` o `set_bus_estado()`), lo mantiene al día (visible, arrastrando,
@@ -168,7 +171,7 @@ from PyQt6.QtWebEngineCore import QWebEngineSettings
 
 from ui.servidor_web import ServidorEstatico, DIR_WEB, RAIZ
 from ui.chat_asistente import ChatAsistente, DesambiguadorClic, ms_lectura
-from nucleo import datos
+from nucleo import datos, rutas
 from nucleo.sueno import ReglaSueno
 from lune_core import marcadores
 from lune_core.acciones import limpiar_texto
@@ -622,7 +625,11 @@ class CompanionFlotante(QMainWindow):
 
     UMBRAL_ARRASTRE = 6                  # px: menos que esto es un CLIC, no arrastre
     CURSOR_HZ = 30                       # frecuencia con la que se le manda el cursor
-    EVENTOS_HZ = 12                      # frecuencia con la que se vacía la cola de eventos
+    CURSOR_DORMIDA_HZ = 10               # dormida no sigue al cursor: solo hace falta para el fantasma
+    EVENTOS_HZ = 12                      # cola de eventos mientras pasa algo (y EVENTOS_ACTIVA_S después)
+    EVENTOS_REPOSO_HZ = 4                # sin nada pasando: una frase de caricia sale como mucho 250 ms tarde
+    EVENTOS_DORMIDA_HZ = 1.5             # dormida
+    EVENTOS_ACTIVA_S = 2.0
 
     def __init__(self, config=None, ai_manager=None, render: str | None = None, parent=None,
                  bus_estado=None, bandeja: bool = True):
@@ -724,7 +731,7 @@ class CompanionFlotante(QMainWindow):
 
         self._icono = QIcon()
         for ext in ("ico", "png"):
-            ruta = RAIZ / "assets" / f"lune_icon.{ext}"
+            ruta = rutas.recurso("assets", f"lune_icon.{ext}")
             if ruta.exists():
                 self._icono = QIcon(str(ruta)); self.setWindowIcon(self._icono); break
 
@@ -802,6 +809,7 @@ class CompanionFlotante(QMainWindow):
         self._timer_eventos.setInterval(int(1000 / self.EVENTOS_HZ))
         self._timer_eventos.timeout.connect(self._vaciar_eventos)
         self._eventos_en_vuelo = 0.0     # monotonic de la petición sin respuesta (0 = ninguna)
+        self._actividad_t = 0.0          # monotonic del último evento o gesto (ritmo de los sondeos)
         # Lo que pasa en la página → frases, sueño y estado visual (y a quien escuche).
         self.evento_js.connect(self._on_evento_asistente)
 
@@ -958,7 +966,8 @@ class CompanionFlotante(QMainWindow):
         try:
             from nucleo import packs_sonido as ps
             if not self._sonidos_publicados and self._servidor is not None:
-                # Los packs propios viven en sonidos/ (el de por defecto, en ui_web/assets/sfx).
+                # Los packs propios viven en sonidos/ de los datos del usuario (el de por
+                # defecto, en ui_web/assets/sfx, que ya se sirve en «/»).
                 self._servidor.publicar_carpeta(ps.PREFIJO_WEB, ps.CARPETA_SONIDOS)
                 self._sonidos_publicados = True
             pack = ps.obtener_pack(self._cfg_str("pack_sonidos", ps.PACK_DEFECTO)) or ps.pack_por_defecto()
@@ -1110,10 +1119,48 @@ class CompanionFlotante(QMainWindow):
         if not self.cerrado and self.isVisible():
             self.comentar_pantalla()
 
+    # ── Ritmo de los sondeos (11.2): rápido solo mientras pasa algo ────────────────
+    def _chat_abierto(self) -> bool:
+        abierta = getattr(getattr(self, "_chat", None), "abierta", None)
+        try:
+            return bool(abierta()) if callable(abierta) else False
+        except Exception:
+            return False
+
+    def _ritmo_eventos_ms(self) -> int:
+        """Intervalo del sondeo de la cola de eventos: EVENTOS_HZ con arrastre, menú, chat o
+        comida y durante EVENTOS_ACTIVA_S tras un evento o un gesto; si no, EVENTOS_REPOSO_HZ,
+        y dormida EVENTOS_DORMIDA_HZ."""
+        if (self._arrastre is not None or self._menu_abierto or self._comida_activa or self._chat_abierto()
+                or time.monotonic() - self._actividad_t < self.EVENTOS_ACTIVA_S):
+            hz = self.EVENTOS_HZ
+        elif self._durmiendo:
+            hz = self.EVENTOS_DORMIDA_HZ
+        else:
+            hz = self.EVENTOS_REPOSO_HZ
+        return int(1000 / hz)
+
+    def _ajustar_ritmo(self):
+        """Pone a los dos sondeos (eventos y cursor) el intervalo que toca ahora. Solo toca el
+        QTimer si cambia (setInterval reinicia la cuenta)."""
+        ms = self._ritmo_eventos_ms()
+        if self._timer_eventos.interval() != ms:
+            self._timer_eventos.setInterval(ms)
+        cursor = int(1000 / (self.CURSOR_DORMIDA_HZ if self._durmiendo else self.CURSOR_HZ))
+        if self._timer_cursor.interval() != cursor:
+            self._timer_cursor.setInterval(cursor)
+
+    def _marcar_actividad(self):
+        """Pasó algo (un evento de la página, tocarla, el menú, la comida…): unos segundos a
+        todo ritmo."""
+        self._actividad_t = time.monotonic()
+        self._ajustar_ritmo()
+
     # ── Cola de eventos de la página → evento_js (los dos renders) ───────────────
     def _vaciar_eventos(self):
         if self.web is None or self.cerrado:
             return
+        self._ajustar_ritmo()
         ahora = time.monotonic()
         # Una petición a la vez; si la respuesta no llega (recarga de la página), a
         # los 1 s se vuelve a pedir.
@@ -1129,14 +1176,18 @@ class CompanionFlotante(QMainWindow):
         no la pisan (su propio aviso llega en el lote siguiente)."""
         self._eventos_en_vuelo = 0.0
         self._lote_viejo = gen is not None and gen != self._estado_gen
+        hubo = False
         try:
             for tipo, datos in _parsear_eventos(resultado):
+                hubo = True
                 try:
                     self.evento_js.emit(tipo, datos)
                 except Exception as e:               # un receptor roto no corta el resto
                     _log(f"[companion] evento {tipo} falló en un receptor: {e}")
         finally:
             self._lote_viejo = False
+        if hubo and not self.cerrado:
+            self._marcar_actividad()                 # detrás de un evento suelen venir más
 
     def _on_evento_asistente(self, tipo: str, datos: dict):
         """Lo que avisa la página (lune_vrm.js / lune_anim_fisica.js): frases de la
@@ -1448,6 +1499,7 @@ class CompanionFlotante(QMainWindow):
         self._timer_sueno.stop()
         self._estado_bus(durmiendo=True)
         self._js("window.luneSleep && window.luneSleep(true)")
+        self._ajustar_ritmo()                        # dormida: sondeos más lentos
 
     def _despertar(self, usuario: bool = False):
         """Despierta (si dormía) y rearma el sueño. `usuario`: la ha tocado o le
@@ -1464,6 +1516,7 @@ class CompanionFlotante(QMainWindow):
             self._estado_bus(durmiendo=False)
             self._js("window.luneSleep && window.luneSleep(false)")
         self._rearmar_sueno()
+        self._marcar_actividad()                     # la tocan, le hablan o aparece: a todo ritmo un rato
 
     # ── Comentario de pantalla ───────────────────────────────────────────────────
     def comentar_pantalla(self):
@@ -1990,6 +2043,7 @@ class CompanionFlotante(QMainWindow):
         if on == self._menu_abierto:
             return
         self._menu_abierto = on
+        self._marcar_actividad()
         if on:
             self._clic.cancelar()
             self._cortar_arrastre()
@@ -2462,6 +2516,7 @@ class CompanionFlotante(QMainWindow):
             return
         on = bool(on)
         self._comida_activa = on
+        self._marcar_actividad()
         self._js(f"window.luneComidaActiva && window.luneComidaActiva({'true' if on else 'false'})")
         if on:
             self._clic.cancelar()
@@ -2599,7 +2654,7 @@ class CompanionFlotante(QMainWindow):
             from nucleo import bailes as nbl
             carpetas = ((nbl.PREFIJO_WEB, nbl.CARPETA), (nbl.PREFIJO_CACHE, nbl.CACHE))
         except Exception:                            # noqa: BLE001 — sin la biblioteca, sus rutas de siempre
-            carpetas = (("/bailes/", RAIZ / "bailes"), ("/bailes_cache/", RAIZ / "cache" / "bailes"))
+            carpetas = (("/bailes/", rutas.dato("bailes")), ("/bailes_cache/", rutas.local("cache", "bailes")))
         try:
             for prefijo, carpeta in carpetas:
                 self._servidor.publicar_carpeta(prefijo, carpeta)

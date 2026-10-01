@@ -203,8 +203,10 @@ export const PARAMS = {
   // Caricia en la cabeza (PetVoiceReactionHandler.ProcessPat)
   patRadio: 0.13, patGrados: 540, patMinRadio: 12, patMinMov: 4, patReset: 0.6,
   patCooldown: 0.5, patWiggleDist: 180, patWiggleCambios: 3,
-  // Render
-  fov: 24, fpsActivo: 60, fpsReposo: 30, reposoTras: 4, alfaHit: 26, hitCadaMs: 33,
+  // Render. En reposo (nada en marcha: mover el cursor no cuenta, el seguimiento suavizado se
+  // ve igual a 24 fps) baja a fpsReposo, y dormida del todo a fpsDormida: la ventana es
+  // translúcida y Qt copia cada frame de la GPU a la CPU.
+  fov: 24, fpsActivo: 60, fpsReposo: 24, fpsDormida: 12, reposoTras: 4, alfaHit: 26, hitCadaMs: 33,
   // Los gestos con tiempo (saludo, "no", mareo) vuelven solos al idle; el resto SE
   // QUEDA hasta el siguiente estado (si la haces reír, sigue riéndose). gestoWatchdog
   // (ms) los devolvería a neutral pasado ese tiempo; 0 = nunca.
@@ -624,11 +626,13 @@ export function crearAsistente({ canvas, src, encuadre = 'retrato', onEvento = (
   }
 
   // ── Cursor global (Python lo manda a ~30 Hz; también en modo fantasma) ───────
+  // Mover el cursor NO cuenta como actividad (11.2): el seguimiento ya va suavizado (suav)
+  // y se ve igual a fpsReposo; si contara, con el ratón en marcha (casi siempre que
+  // trabajas) el bucle iría a fpsActivo todo el rato. La caricia sí cuenta (procesarCaricia).
   function cursorGlobal(nx, ny, px, py, dentro) {
     // Nunca dejar escapar una excepción: Python la ignoraría y perdería el sondeo
     // del fantasma automático, y el handler global pintaría el aviso opaco.
     try {
-      if (Math.abs(nx - cursor.nx) > 1e-3 || Math.abs(ny - cursor.ny) > 1e-3) actividad();
       cursor = { nx: clamp(nx, -1.6, 1.6), ny: clamp(ny, -1.6, 1.6), px, py, dentro: !!dentro, t: ahora };
       if (dentro && listo) procesarCaricia(px, py);
       else if (pat.hover) { pat.hover = false; pat.activo = false; reiniciarPat(); }
@@ -712,16 +716,35 @@ export function crearAsistente({ canvas, src, encuadre = 'retrato', onEvento = (
     return bus.ocupado(actualizarEst());      // un módulo en marcha (baile, grande…) tampoco baja a reposo
   }
 
-  function setFPS(n) { fpsObj = Math.max(0, Number(n) || 0); if (fpsObj > 0) clock.getDelta(); }
+  // FPS 0 (oculta, modo juego, Lune en reposo) PARA el bucle: ni un requestAnimationFrame más
+  // (antes despertaba al renderer 60-144 veces por segundo para nada). setFPS(n > 0) lo
+  // vuelve a arrancar, sin salto: el primer dt cuenta desde aquí.
+  function setFPS(n) {
+    fpsObj = Math.max(0, Number(n) || 0);
+    if (fpsObj <= 0 || destruido) return;
+    clock.getDelta();
+    if (!rafId) rafId = requestAnimationFrame(tick);
+  }
+
+  // fps de este frame: fpsObj con algo en marcha; si no, fpsReposo; dormida del todo, fpsDormida.
+  function fpsObjetivo() {
+    if (ocupado()) return fpsObj;
+    const reposo = Math.min(fpsObj, PARAMS.fpsReposo);
+    return durmiendo && sleepBlend > 0.99 ? Math.min(reposo, PARAMS.fpsDormida) : reposo;
+  }
 
   function tick(now) {
     if (destruido) return;
+    if (fpsObj <= 0) { rafId = 0; return; }       // parado hasta el próximo setFPS(n > 0)
     rafId = requestAnimationFrame(tick);
-    if (fpsObj <= 0) { clock.getDelta(); return; }
-    const objetivo = ocupado() ? fpsObj : Math.min(fpsObj, PARAMS.fpsReposo);
+    const objetivo = fpsObjetivo();
     const intervalo = 1000 / objetivo;
-    if (now - ultimoFrame < intervalo - 0.5) return;
-    ultimoFrame = (now - ultimoFrame > 2 * intervalo) ? now : now - ((now - ultimoFrame) % intervalo);
+    const pasado = now - ultimoFrame;
+    if (pasado < intervalo - 0.5) return;
+    // Lo que sobra del intervalo se descuenta (sin deriva). Si el frame llegó un pelín antes, dentro
+    // de la tolerancia, no sobra nada: con `pasado % intervalo` quedaba entero y el frame siguiente
+    // se pintaba también (el doble de fps de lo pedido, justo cuando el monitor es múltiplo).
+    ultimoFrame = pasado > 2 * intervalo ? now : now - (pasado >= intervalo ? pasado - intervalo : 0);
     const dt = Math.min(clock.getDelta(), 0.1);
     ahora += dt;
     avanzarArrastre(dt);                          // también sin modelo: luneDrag(false) siempre suelta

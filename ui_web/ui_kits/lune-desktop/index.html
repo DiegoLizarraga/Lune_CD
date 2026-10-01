@@ -19,9 +19,8 @@
 }
 </script>
 <link rel="stylesheet" href="../../styles.css" />
-<!-- Fuentes del tema "Nube" (cielo nocturno): Exo 2 para el título, JetBrains Mono para datos. -->
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link href="https://fonts.googleapis.com/css2?family=Exo+2:ital,wght@1,700;1,800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+<!-- Las fuentes (también Exo 2 y JetBrains Mono del tema "Nube") van en local desde la 11.2:
+     ui_web/fonts/ con sus @font-face en tokens/fonts.css. Sin peticiones a Google al arrancar. -->
 <style>
   html, body { margin:0; height:100%; background:var(--ink-950); }
   #root { height:100vh; }
@@ -316,6 +315,12 @@
   @keyframes ln-rise{ from{ opacity:0; transform:translateY(26px) skewX(-4deg); } to{ opacity:1; transform:translateY(0) skewX(0); } }
   /* ── FX KILL-SWITCHES (ajustes · rendimiento) ── */
   .fx-no-bg .p3-bg{ display:none; }
+  /* Tema Nube sin fondo animado: el cielo se queda quieto (degradado, luna y estrellas fijas) y sin nubes. */
+  .fx-no-bg .nube-stars{ animation:none; }
+  .fx-no-bg .nube-cloud{ display:none; }
+  .fx-no-micro .nube-avatar-wrap{ animation:none; }
+  /* El pulso del LED de «Listo» (StatusPill) es una micro-animación. */
+  .fx-no-micro .lune-status .led::after{ animation:none; display:none; }
   .fx-no-sweep .ln-view{ animation:none; }
   .fx-no-sweep .ln-view::before{ display:none; }
   .fx-no-micro .ln-stream-inner .lune-msg, .fx-no-micro .ln-toolrow, .fx-no-micro .ln-typing,
@@ -516,6 +521,13 @@
      final (visibles) y el fondo, quieto. El avatar 3D y el vídeo de la barra se pausan en sidebar.jsx. ── */
   body.modo-juego *, body.modo-juego *::before, body.modo-juego *::after{
     animation-duration:0s !important; animation-delay:0s !important; animation-iteration-count:1 !important; transition:none !important; }
+
+  /* ── LUNE EN REPOSO (clase en <body> que pone ui_web/lune_reposo.js: sin foco 20 s o sin usarla 90 s).
+     En QtWebEngine cada frame de Chromium pasa por Qt: con una sola animación infinita viva (el fondo,
+     las nubes, el LED) la ventana a la vista gasta de 1 a 3 núcleos sin que nadie la use. Todo se
+     congela sin saltos y, al volver, sigue donde estaba. El vídeo y el avatar 3D de la barra se pausan
+     en sidebar.jsx. Lo que aparece mientras tanto se ve en su estado final (lune_reposo.js). ── */
+  body.lune-quieta *, body.lune-quieta *::before, body.lune-quieta *::after{ animation-play-state:paused !important; }
 </style>
 </head>
 <body>
@@ -530,11 +542,17 @@
 
   <!-- React, ReactDOM y Babel van EN LOCAL (ui_web/vendor, mismos bytes que el CDN:
        los hashes SRI coinciden). Así Lune abre sin internet y no espera 3 MB del
-       CDN en cada arranque. Si alguien borra vendor/, se cae al CDN. -->
-  <script src="../../vendor/react.development.js"></script>
-  <script>window.React || document.write('<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"><\/script>');</script>
-  <script src="../../vendor/react-dom.development.js"></script>
-  <script>window.ReactDOM || document.write('<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"><\/script>');</script>
+       CDN en cada arranque. Si alguien borra vendor/, se cae al CDN.
+       Desde la 11.2, React en su build de PRODUCCIÓN (cada render cuesta de 2 a 5 veces
+       menos que el de desarrollo; el chat se vuelve a pintar con cada trozo de respuesta).
+       Para depurar la interfaz con los avisos de React, cambia estas dos líneas a
+       vendor/react.development.js y vendor/react-dom.development.js (siguen ahí).
+       El instalador (packaging/compilar_web.mjs) además traduce los .jsx al construir
+       y no carga Babel. -->
+  <script src="../../vendor/react.production.min.js"></script>
+  <script>window.React || document.write('<script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" integrity="sha384-DGyLxAyjq0f9SPpVevD6IgztCFlnMF6oW/XQGmfe+IsZ8TqEiDrcHkMLKI6fiB/Z" crossorigin="anonymous"><\/script>');</script>
+  <script src="../../vendor/react-dom.production.min.js"></script>
+  <script>window.ReactDOM || document.write('<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" integrity="sha384-gTGxhz21lVGYNMcdJOyq01Edg0jhn/c22nsx0kyqP0TxaV5WVdsSH1fSDUf5YJj1" crossorigin="anonymous"><\/script>');</script>
   <script src="../../vendor/babel.min.js"></script>
   <script>window.Babel || document.write('<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"><\/script>');</script>
   <script src="../../_ds_bundle.js"></script>
@@ -542,6 +560,9 @@
   <!-- Tema de color (corte 4): window.luneTema(mapa|json|null) redefine los tokens (cian, azul y, si se
        pide, amarillo y fondos) con el mapa que calcula Python (nucleo/tema.py). -->
   <script src="../../tema.js"></script>
+  <!-- «Lune en reposo» (11.2): body.lune-quieta sin foco 20 s o sin usarla 90 s; window.luneFoco(bool) lo
+       llama ui/web_shell.py y window.LuneReposo lo usa app.jsx (ocupada escribiendo o hablando, y la barra). -->
+  <script src="../../lune_reposo.js"></script>
   <!-- Efectos de sonido (WebAudio): sonidos del menú radial SVG y «Escuchar» de los packs. -->
   <script src="../../lune_sfx.js"></script>
   <!-- Ritmo (cortes 5/6): LuneRitmo (reloj del pulso) y LuneNotas (notas ♪), script clásico en globalThis. -->

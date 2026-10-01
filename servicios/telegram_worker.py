@@ -63,6 +63,8 @@ from typing import Callable, List, Optional
 
 from PyQt6.QtCore import QThread, pyqtSignal
 
+from nucleo import rutas
+
 # Sin ventana de consola en Windows: npm abría una terminal negra encima de la app.
 SIN_CONSOLA = {}
 if os.name == "nt":
@@ -198,7 +200,12 @@ def matar_arbol(p, espera_s: float = 3.0) -> None:
 class TelegramBotWorker(QThread):
     log_signal = pyqtSignal(str); stopped = pyqtSignal()
     orden_recibida = pyqtSignal(str, str)       # (id, texto) de una orden /pc
-    BOT_DIR = Path(__file__).parent.parent / "telegram-bot-or"
+    # Donde corre el bot (npm ci, data/): en los datos del usuario, para que su «..» sea
+    # DATOS (datos.json, memoria.json, config.json). BOT_ORIGEN es el código que trae
+    # Lune; instalada se copia de uno a otro (servicios/copia_bots.py). Desde el código
+    # son la misma carpeta del repo. BOT_DIR se puede asignar (los tests lo hacen).
+    BOT_DIR = rutas.dato("telegram-bot-or")
+    BOT_ORIGEN = rutas.recurso("telegram-bot-or")
 
     def __init__(self, ordenes: bool = False):
         """ordenes: True solo si `ordenes_activas(config)` (función encendida y admin)."""
@@ -216,6 +223,21 @@ class TelegramBotWorker(QThread):
     def _parado(self) -> bool:
         return self._parar.is_set() or self.isInterruptionRequested()
 
+    @classmethod
+    def preparar_carpeta(cls) -> bool:
+        """Deja el código del bot al día en BOT_DIR (instalada lo copia de BOT_ORIGEN; desde
+        el código no hace nada) y dice si la carpeta está."""
+        if cls.BOT_ORIGEN is not None:
+            from servicios import copia_bots
+            copia_bots.sincronizar(cls.BOT_ORIGEN, cls.BOT_DIR)
+        return Path(cls.BOT_DIR).exists()
+
+    def _sincronizar(self) -> None:
+        """preparar_carpeta() antes de instalar o lanzar. Un BOT_DIR asignado en la
+        instancia (los tests) se usa tal cual: no se copia nada encima."""
+        if "BOT_DIR" not in vars(self):
+            type(self).preparar_carpeta()
+
     @property
     def ordenes(self) -> bool:
         """¿Este bot se lanzó con el canal de órdenes abierto?"""
@@ -224,13 +246,17 @@ class TelegramBotWorker(QThread):
     def _entorno(self, hijo: bool = True) -> dict:
         """Entorno del hijo SIN NODE_OPTIONS ni LUNE_* de fuera (nunca un token heredado;
         NODE_OPTIONS haría cargar código ajeno a npm o al bot). `hijo`: el bot (con
-        LUNE_BOT_HIJO y, con órdenes, su token); False para npm."""
+        LUNE_BOT_HIJO y, con órdenes, su token); False para npm.
+        Instalada no hay Python: las notas de voz (voz.js, `$PYTHON -m edge_tts` si no
+        encuentra edge-tts) usan LunePatata.exe, que atiende `-m edge_tts` (patata.main)."""
         env = {k: v for k, v in os.environ.items()
                if not k.upper().startswith("LUNE_") and k.upper() != "NODE_OPTIONS"}
         if hijo:
             env[ENV_HIJO] = "1"
             if self._token:
                 env[ENV_TOKEN] = self._token
+            if rutas.INSTALADA:
+                env["PYTHON"] = str(rutas.PROGRAMA / rutas.EXE_PATATA)
         return env
 
     # ── Instalar (la primera vez) ─────────────────────────────────────────────
@@ -302,6 +328,7 @@ class TelegramBotWorker(QThread):
         return False
 
     def run(self):
+        self._sincronizar()
         if not self.BOT_DIR.exists():
             self.log_signal.emit(f"No encontré la carpeta: {self.BOT_DIR}"); self.stopped.emit(); return
         node = self._ruta_node()

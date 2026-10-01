@@ -366,10 +366,14 @@ def test_senal_de_tema_se_reemite_y_cerrar_la_suelta(qapp, config):
 # ── Efectos ────────────────────────────────────────────────────────────────────
 def test_efectos_en_config_efectos(qapp, config):
     p, _ = montar(config)
-    assert json.loads(p.efectos()) == {"fondo": True, "barrido": True, "micro": True}
+    assert json.loads(p.efectos()) == {"fondo": True, "barrido": True, "micro": True, "pausar_sin_foco": True}
     r = json.loads(p.efectos_guardar('{"barrido": false, "micro": false}'))
-    assert r["ok"] and r["estado"] == {"fondo": True, "barrido": False, "micro": False}
-    assert disco(config)["efectos"] == {"fondo": True, "barrido": False, "micro": False}
+    assert r["ok"] and r["estado"] == {"fondo": True, "barrido": False, "micro": False, "pausar_sin_foco": True}
+    assert disco(config)["efectos"] == {"fondo": True, "barrido": False, "micro": False, "pausar_sin_foco": True}
+    # Lune en reposo (11.2): «Quedarme quieta cuando no me usas» se guarda igual que los demás
+    r = json.loads(p.efectos_guardar('{"pausar_sin_foco": false}'))
+    assert r["ok"] and r["estado"]["pausar_sin_foco"] is False
+    assert Config(config_path=str(config.config_path)).get("efectos", "pausar_sin_foco") is False
     assert Config(config_path=str(config.config_path)).get("efectos", "barrido") is False
     for malo in ('{"fondo": "no"}', '{"otra": true}', "[]", "{}", "x"):
         assert json.loads(p.efectos_guardar(malo))["ok"] is False

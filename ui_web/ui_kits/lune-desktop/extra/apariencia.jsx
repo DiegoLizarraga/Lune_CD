@@ -22,7 +22,7 @@
  *   conectarApp({setFx, setModoJuego, setView}) → limpiar   efectos desde la config (localStorage solo de
  *        respaldo), tema_estado → window.luneTema al arrancar y en tema_cambio, juego_estado → modo juego,
  *        navegar → vista (#sección = desplazarse a la tarjeta id="aj-<sección>").
- *   guardarEfecto('bg'|'sweep'|'micro', bool)              efectos_guardar({fondo|barrido|micro: bool})
+ *   guardarEfecto('bg'|'sweep'|'micro'|'quieta', bool)     efectos_guardar({fondo|barrido|micro|pausar_sin_foco: bool})
  *
  * Puente (todo opcional; sin él, demo local en el navegador): ver ui/puente_escritorio.py.
  * Se registra solo (Object.assign(window, …)) dentro de una IIFE: Babel (preset env) convertiría los
@@ -487,10 +487,12 @@
   }
 
   // ── Enlace con app.jsx ─────────────────────────────────────────────────────
-  const FX_A_CFG = { bg: 'fondo', sweep: 'barrido', micro: 'micro' };
-  /** {fondo, barrido, micro} de la config → {bg, sweep, micro} de app.jsx (lo que falte, como estaba). */
+  // quieta: «Lune en reposo» (11.2, ui_web/lune_reposo.js).
+  const FX_A_CFG = { bg: 'fondo', sweep: 'barrido', micro: 'micro', quieta: 'pausar_sin_foco' };
+  /** {fondo, barrido, micro, pausar_sin_foco} de la config → {bg, sweep, micro, quieta} de app.jsx (lo que
+   *  falte, como estaba). */
   function fxDesdeCfg(o, previo) {
-    const base = { bg: true, sweep: true, micro: true, ...(previo || {}) };
+    const base = { bg: true, sweep: true, micro: true, quieta: true, ...(previo || {}) };
     if (!o || typeof o !== 'object') return base;
     Object.keys(FX_A_CFG).forEach((k) => { if (typeof o[FX_A_CFG[k]] === 'boolean') base[k] = o[FX_A_CFG[k]]; });
     return base;

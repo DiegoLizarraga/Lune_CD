@@ -80,7 +80,7 @@ function Welcome({ provider, onEjemplo }) {
     return (
       <div className="nube-hero">
         <div className="nube-avatar-wrap">
-          <img className="nube-avatar" src="../../assets/asistente/anime/lune_inicio.png" alt="Lune" />
+          <img className="nube-avatar" src="../../assets/asistente/anime/lune_inicio_ui.png" alt="Lune" />
           {Nube && <Nube className="nube-avatar-cloud" width={150} fill="#f3f8ff" opacity="0.95" />}
         </div>
         <div className="nube-kanji">ルネ起動</div>
@@ -94,7 +94,7 @@ function Welcome({ provider, onEjemplo }) {
     <div className="ln-welcome">
       <div className="ln-welcome-giant" aria-hidden="true">LUNE</div>
       <div className="ln-welcome-mark">
-        <img src="../../assets/asistente/anime/lune_inicio.png" alt="Lune" />
+        <img src="../../assets/asistente/anime/lune_inicio_ui.png" alt="Lune" />
       </div>
       <div className="ln-welcome-jp lune-jp">ルネ起動</div>
       <h1 className="ln-welcome-title">LUNE EN LÍNEA</h1>
@@ -107,8 +107,31 @@ function Welcome({ provider, onEjemplo }) {
   );
 }
 
-function ChatStream({ messages, typing, provider, onEjemplo }) {
+/* Un mensaje del chat. Con React.memo solo se vuelve a pintar el que cambia: cada trozo de la
+   respuesta cambia el texto de la última burbuja y el resto del chat no se toca (antes se repintaba
+   entero con cada trozo, y el coste crecía con la conversación). app.jsx conserva el mismo objeto
+   para los mensajes que no cambian. */
+function burbujaIgual(antes, ahora) {
+  const a = antes.m, b = ahora.m;
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return a.id === b.id && a.text === b.text && a.streaming === b.streaming && a.role === b.role
+    && a.provider === b.provider && a.time === b.time && a.kind === b.kind && a.tool === b.tool;
+}
+function MensajeChat({ m }) {
   const { ChatBubble, Avatar } = window.LUNE;
+  if (m.kind === 'tool') return <ToolCard tool={m.tool} />;
+  if (m.role === 'user') return <ChatBubble role="user" time={m.time}>{m.text}</ChatBubble>;
+  return (
+    <ChatBubble role="bot" provider={m.provider} time={m.time} streaming={m.streaming}
+      avatar={<Avatar src={`../../assets/asistente/anime/lune-${m.provider==='cloud'?'happy':'composed'}.png`} size="md" ring={m.provider==='cloud'?'blue':'cyan'} />}>
+      {m.text}
+    </ChatBubble>
+  );
+}
+const Mensaje = typeof React.memo === 'function' ? React.memo(MensajeChat, burbujaIgual) : MensajeChat;
+
+function ChatStream({ messages, typing, provider, onEjemplo }) {
   const endRef = React.useRef(null);
   React.useEffect(() => { if (endRef.current) endRef.current.scrollTop = endRef.current.scrollHeight; }, [messages, typing]);
   if (messages.length === 0) {
@@ -117,17 +140,7 @@ function ChatStream({ messages, typing, provider, onEjemplo }) {
   return (
     <div className="ln-stream" ref={endRef}>
       <div className="ln-stream-inner">
-        {messages.map((m) => {
-          if (m.kind === 'tool') return <ToolCard key={m.id} tool={m.tool} />;
-          if (m.role === 'user')
-            return <ChatBubble key={m.id} role="user" time={m.time}>{m.text}</ChatBubble>;
-          return (
-            <ChatBubble key={m.id} role="bot" provider={m.provider} time={m.time} streaming={m.streaming}
-              avatar={<Avatar src={`../../assets/asistente/anime/lune-${m.provider==='cloud'?'happy':'composed'}.png`} size="md" ring={m.provider==='cloud'?'blue':'cyan'} />}>
-              {m.text}
-            </ChatBubble>
-          );
-        })}
+        {messages.map((m) => <Mensaje key={m.id} m={m} />)}
         {typing && <TypingIndicator provider={provider} />}
       </div>
     </div>
@@ -164,3 +177,4 @@ function InputBar({ value, onChange, onSend, onStop, busy, onAttach, onMic, adju
 }
 
 Object.assign(window, { ChatStream, InputBar });
+window.LuneChat = { Mensaje, burbujaIgual };   // para los tests (tests/js/chat_web.test.mjs)

@@ -13,10 +13,12 @@ from __future__ import annotations
 
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
 from typing import Optional
 
-_HTML = Path(__file__).parent / "web" / "terminal.html"
+from nucleo import rutas
+
+# Lo trae Lune (solo se lee).
+_HTML = rutas.recurso("lune_core", "web", "terminal.html")
 
 
 def _pagina(puerto_ws: int) -> bytes:

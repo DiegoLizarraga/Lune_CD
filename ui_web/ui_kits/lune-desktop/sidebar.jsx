@@ -10,6 +10,8 @@
  *   · Lune fuera (asistente en escritorio): la barra no la dibuja dos veces. El vídeo se desmonta y el
  *     avatar 3D se pausa (FPS 0 y contexto WebGL liberado) y se oculta bajo el aviso.
  *   · Modo juego (corte 4): el avatar 3D y el vídeo se pausan mientras hay un juego delante.
+ *   · Lune en reposo (11.2, ui_web/lune_reposo.js → `quieta`): el vídeo se pausa y el avatar 3D baja a 0 fps
+ *     SIN soltar su contexto WebGL (h.reposar), así al volver sigue al momento donde estaba.
  *   · Clic derecho sobre la asistente → menú radial SVG (window.LuneRadial, extra/apariencia.jsx).
  *   · Baile (cortes 5/6): app.jsx pasa `baile` = window.LuneBaileWeb.useBaile() (extra/baile.jsx). En VRM, el
  *     módulo baileProc (ui_web/vrm/lune_baile_proc.js) se registra en el avatar de la barra (h.usarModulo) y
@@ -114,6 +116,15 @@ function AsistenteVideo({ state, pausado = false, baile = null }) {
     const v = video.current;
     if (!v) return;
     try { if (pausado) v.pause(); else { const p = v.play(); if (p && p.catch) p.catch(() => {}); } } catch (e) { /* sin vídeo */ }
+  }, [pausado, src]);
+  // En pausa manda la pausa: Chromium reanuda solo el vídeo que paró al minimizar la ventana cuando
+  // vuelve a verse, aunque entretanto Lune se haya quedado quieta o haya empezado un juego.
+  React.useEffect(() => {
+    const v = video.current;
+    if (!v || !pausado || typeof v.addEventListener !== 'function') return undefined;
+    const alReproducir = () => { try { v.pause(); } catch (e) { /* sin vídeo */ } };
+    v.addEventListener('play', alReproducir);
+    return () => { try { v.removeEventListener('play', alReproducir); } catch (e) { /* ya no está */ } };
   }, [pausado, src]);
   // Baile: transform del <video> al pulso (reloj de extra/baile.jsx), ≤ 30 fps y solo mientras baila.
   const bailando = !!(baile && baile.estado && baile.estado.bailando) && !pausado;
@@ -220,7 +231,7 @@ function useLibVrm() {
 
 /** El <canvas> con el avatar. Se crea al montar y se destruye al desmontar (un canvas
  *  con el contexto destruido no se reutiliza: para reintentar, React monta otro). */
-function AsistenteVrm({ info, state, pausado, onFallo, baile = null }) {
+function AsistenteVrm({ info, state, pausado, onFallo, baile = null, reposo = false }) {
   const lienzo = React.useRef(null);
   const handle = React.useRef(null);
   const fallo = React.useRef(onFallo);
@@ -245,6 +256,11 @@ function AsistenteVrm({ info, state, pausado, onFallo, baile = null }) {
   }, []);
   React.useEffect(() => { const h = handle.current; if (h) { try { h.setEstado(state || 'normal'); } catch (e) { /* sigue */ } } }, [state]);
   React.useEffect(() => { const h = handle.current; if (h) { try { h.pausar(!!pausado); } catch (e) { /* sigue */ } } }, [pausado]);
+  // Lune en reposo: 0 fps sin soltar el contexto (pausar() manda sobre esto).
+  React.useEffect(() => {
+    const h = handle.current;
+    if (h && typeof h.reposar === 'function') { try { h.reposar(!!reposo); } catch (e) { /* sigue */ } }
+  }, [reposo]);
   // Cortes 7/8: la cabeza para la comida de la web (en pausa, Lune está fuera o hay un juego: nada).
   React.useEffect(() => (pausado ? undefined : publicarCabeza(() => cabezaVrm(handle.current, lienzo.current))), [pausado]);
   // Baile: módulo baileProc en el bus del avatar de la barra (se carga la primera vez que baila).
@@ -283,7 +299,7 @@ function RotuloBaile({ baile, visible }) {
   return t ? <div className="ln-baile-rotulo" aria-live="polite">{t}</div> : null;
 }
 
-function AsistenteStage({ state, asistenteFuera = false, modoJuego = false, baile = null }) {
+function AsistenteStage({ state, asistenteFuera = false, modoJuego = false, baile = null, quieta = false }) {
   const [info, personaje] = useVrmBarra();
   const lib = useLibVrm();
   const [fallida, setFallida] = React.useState('');    // clave (url|v) del modelo que falló
@@ -300,9 +316,10 @@ function AsistenteStage({ state, asistenteFuera = false, modoJuego = false, bail
   // Un modelo nuevo (otra versión) se vuelve a intentar aunque el anterior fallara.
   const usarVrm = !!(info && info.render === 'vrm' && info.url && lib && fallida !== claveVrm(info));
   const rotulo = <RotuloBaile baile={baile} visible={!asistenteFuera && !modoJuego} />;
-  if (usarVrm) return <>{rotulo}<AsistenteVrm info={info} state={state} pausado={asistenteFuera || modoJuego} onFallo={onFallo} baile={baile} /></>;
+  if (usarVrm) return <>{rotulo}<AsistenteVrm info={info} state={state} pausado={asistenteFuera || modoJuego} onFallo={onFallo} baile={baile}
+    reposo={quieta} /></>;
   if (asistenteFuera) return null;
-  return <>{rotulo}<AsistenteVideo state={state} pausado={modoJuego} baile={baile} /></>;
+  return <>{rotulo}<AsistenteVideo state={state} pausado={modoJuego || quieta} baile={baile} /></>;
 }
 
 // Lune está fuera (asistente en escritorio): el escenario no la dibuja dos veces.
@@ -380,7 +397,7 @@ function TareasAcceso({ activo = false, onAbrir }) {
 }
 
 function Sidebar({ provider, onProvider, asistenteState, asistenteFuera = false, onTraer, compat = null, modoJuego = false, baile = null,
-  vista = '', onTareas }) {
+  vista = '', onTareas, quieta = false }) {
   const { ProviderTab } = window.LUNE;
   // Tercera pestaña: API compatible con OpenAI (LM Studio, Groq…), solo si está configurada.
   const conCompat = !!(compat && compat.on);
@@ -429,7 +446,7 @@ function Sidebar({ provider, onProvider, asistenteState, asistenteFuera = false,
           onMouseDown={centralAbajo} onMouseUp={centralArriba}>
           {/* El avatar 3D sigue montado (en pausa y oculto) mientras Lune está fuera. */}
           {asistenteFuera ? <AsistenteFuera onTraer={onTraer} /> : null}
-          <AsistenteStage state={asistenteState} asistenteFuera={asistenteFuera} modoJuego={modoJuego} baile={baile} />
+          <AsistenteStage state={asistenteState} asistenteFuera={asistenteFuera} modoJuego={modoJuego} baile={baile} quieta={quieta} />
         </div>
       </div>
     </aside>

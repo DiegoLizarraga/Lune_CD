@@ -106,7 +106,8 @@ def cargar_cancion(ruta: Any, *, ffmpeg: Optional[str] = None, ejecutar: Optiona
             return cargar_wav(p, cachear=False)
         except ErrorAudio as e:
             raise ErrorCancion(str(e)) from e
-    raise ErrorCancion("Para esta canción hace falta ffmpeg (pip install imageio-ffmpeg).")
+    from nucleo import rutas
+    raise ErrorCancion(f"Para esta canción hace falta ffmpeg ({rutas.como_instalar('imageio-ffmpeg')}).")
 
 
 class ReproductorCancion:

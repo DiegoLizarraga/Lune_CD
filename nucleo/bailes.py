@@ -1,7 +1,7 @@
 """
 nucleo/bailes.py — La biblioteca de bailes del usuario (reproductor MMD/VRMA, corte 9).
 
-Carpeta `RAIZ/bailes/` (contenido del usuario; va a .gitignore). Dos maneras de
+Carpeta `bailes/` de los datos del usuario (rutas.DATOS; va a .gitignore). Dos maneras de
 organizarla:
 
 - una subcarpeta por baile: `bailes/<carpeta>/` con un `.vrma` o uno o más
@@ -61,12 +61,15 @@ from urllib.parse import quote
 import numpy as np
 
 from nucleo import baile as _nb
+from nucleo import rutas
 
 _log = logging.getLogger("lune.bailes")
 
-RAIZ = Path(__file__).resolve().parent.parent
-CARPETA = RAIZ / "bailes"
-CACHE = RAIZ / "cache" / "bailes"
+# Los bailes son del usuario (rutas.DATOS) y las conversiones de ffmpeg, desechables
+# (rutas.LOCAL). Desde el código las dos cuelgan de la raíz del repo, como siempre.
+RAIZ = rutas.DATOS
+CARPETA = rutas.dato("bailes")
+CACHE = rutas.local("cache", "bailes")
 PREFIJO_WEB = "/bailes/"
 PREFIJO_CACHE = "/bailes_cache/"
 
@@ -1382,7 +1385,7 @@ class Biblioteca:
     def _exe(self) -> str:
         exe = self._ffmpeg or _ffmpeg_defecto()
         if not exe:
-            raise ErrorBailes("Hace falta ffmpeg (pip install imageio-ffmpeg).")
+            raise ErrorBailes(f"Hace falta ffmpeg ({rutas.como_instalar('imageio-ffmpeg')}).")
         return exe
 
     def _convertir(self, origen: Path, destino: Path) -> None:

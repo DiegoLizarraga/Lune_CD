@@ -24,6 +24,15 @@ más viejo, Qt no arrancaría, y eso es peor que no poder dictar.
 
 Uso: llamar a `precargar_msvc()` como PRIMERA cosa en main.py, antes de
 cualquier `import PyQt6`. Es inofensivo fuera de Windows.
+
+INSTALADA (PyInstaller, 11.2)
+-----------------------------
+Ahí main.py llega tarde: el runtime hook de PyQt6 importa QtCore antes que main.py.
+Por eso packaging/rth_msvc.py llama a precargar_msvc() antes que ese hook, el build
+quita las msvcp140*/vcruntime140* de PyQt6/Qt6/bin y deja en _internal una sola copia
+nueva (la de System32 del equipo que construye, ≥ 14.40). Si la de System32 de TU
+equipo es más vieja que esa (o no hay), se carga la de _internal. Una DLL que ya está
+cargada desde otra ruta no se vuelve a cargar (serían dos copias del runtime).
 """
 from __future__ import annotations
 
@@ -96,10 +105,38 @@ def carpeta_qt_bin() -> Optional[Path]:
     return None
 
 
+def carpeta_propia() -> Optional[Path]:
+    """Instalada, la carpeta _internal (trae su propia copia nueva del runtime); desde el
+    código, None."""
+    meipass = getattr(sys, "_MEIPASS", None) if getattr(sys, "frozen", False) else None
+    return Path(meipass) if meipass else None
+
+
+def _ya_cargada(nombre: str) -> Optional[str]:
+    """Ruta de la DLL `nombre` si ya está en el proceso (sin cargarla); None si no."""
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        k32 = ctypes.WinDLL("kernel32")
+        k32.GetModuleHandleW.argtypes = [wintypes.LPCWSTR]
+        k32.GetModuleHandleW.restype = wintypes.HMODULE
+        k32.GetModuleFileNameW.argtypes = [wintypes.HMODULE, wintypes.LPWSTR, wintypes.DWORD]
+        k32.GetModuleFileNameW.restype = wintypes.DWORD
+        h = k32.GetModuleHandleW(nombre)
+        if not h:
+            return None
+        buf = ctypes.create_unicode_buffer(1024)
+        return buf.value if k32.GetModuleFileNameW(h, buf, 1024) else None
+    except Exception:
+        return None
+
+
 def precargar_msvc() -> List[str]:
     """
-    Carga el runtime de C++ de System32 antes que el de PyQt6. Devuelve los
-    nombres precargados (vacío si no aplica). Nunca lanza.
+    Carga el runtime de C++ de System32 antes que el de PyQt6 (instalada, el más
+    nuevo entre System32 y el de _internal). Devuelve los nombres precargados
+    (vacío si no aplica). Nunca lanza.
     """
     global ultimo_informe
     if sys.platform != "win32":
@@ -114,9 +151,14 @@ def precargar_msvc() -> List[str]:
         return []
     sysdir = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32"
     qt_bin = carpeta_qt_bin()
+    propia = carpeta_propia()
     cargados, motivos = [], []
     for nombre in DLLS:
         sistema = sysdir / nombre
+        empaquetada = propia / nombre if propia else None
+        if empaquetada is not None and empaquetada.exists() and (
+                not sistema.exists() or version_dll(str(sistema)) < version_dll(str(empaquetada))):
+            sistema = empaquetada
         if not sistema.exists():
             continue
         de_qt = qt_bin / nombre if qt_bin else None
@@ -125,9 +167,15 @@ def precargar_msvc() -> List[str]:
             if v_sis < v_qt:
                 motivos.append(f"{nombre}: el del sistema ({'.'.join(map(str, v_sis))}) es más viejo que el de Qt")
                 continue
+        otra = _ya_cargada(nombre)
+        if otra and os.path.normcase(os.path.abspath(otra)) != os.path.normcase(os.path.abspath(str(sistema))):
+            motivos.append(f"{nombre}: ya estaba cargada ({otra})")
+            continue
         try:
             ctypes.WinDLL(str(sistema))
             cargados.append(nombre)
+            if sistema.parent != sysdir:
+                motivos.append(f"{nombre}: la de _internal (la de System32 es más vieja o no está)")
         except OSError as e:
             motivos.append(f"{nombre}: {e}")
     ultimo_informe = ("precargados de System32: " + ", ".join(cargados)) if cargados else "nada precargado"

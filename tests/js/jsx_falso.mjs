@@ -81,6 +81,9 @@ export function crearReact() {
       return s[i].v;
     },
     useCallback(fn, deps) { return React.useMemo(() => fn, deps); },
+    // React.memo: aquí no memoriza (cada pase vuelve a dibujar todo); guarda el componente y el
+    // comparador para que los tests los prueben (chat_web.test.mjs).
+    memo(tipo, igual) { const Memo = (props) => tipo(props); Memo.tipo = tipo; Memo.igual = igual; return Memo; },
     useEffect(fn, deps) {
       const [s, i] = slot();
       const previo = s[i];

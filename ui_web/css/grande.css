@@ -5,8 +5,8 @@
    body.lune-grande       la ventana ocupa el monitor (Qt la mueve):
                           sin márgenes, la burbuja flota arriba y, en la
                           animada, el #stage crece hasta el alto de la
-                          pantalla (máx. 1280 px: el WebM de 720×1280 se
-                          reduce, no se estira)
+                          pantalla (máx. 1280 px; desde la 11.2 el WebM es
+                          de 480×854 y ahí se amplía un poco)
    body.lune-salva        salvapantallas (Lune duerme dentro)
    body.lune-salva-fondo  + escritorio oscurecido detrás de ella
    .lune-reloj            la hora (HH:MM y el día)

@@ -29,8 +29,9 @@ cargar el modelo y la voz pedida se valida contra ellos; si no se puede leer,
 se valida contra estas listas. Una voz que no vale cae a VOZ_POR_DEFECTO.
 El fonemizador sigue al idioma del TEXTO (voz.idioma, «es» en Lune), no al de
 la voz: una voz inglesa leyendo español suena a acento, no a otro idioma.
-Las carpetas relativas se anclan a la raíz del proyecto, no al directorio de
-trabajo, para que la app, patata y los tests encuentren los mismos pesos.
+Las carpetas relativas se anclan a la carpeta de datos del usuario (rutas.DATOS:
+la raíz del proyecto desde el código), no al directorio de trabajo, para que la
+app, patata y los tests encuentren los mismos pesos.
 """
 from __future__ import annotations
 
@@ -41,7 +42,10 @@ import wave
 from pathlib import Path
 from typing import Dict, List, Optional
 
-RAIZ = Path(__file__).resolve().parents[2]
+from nucleo import rutas
+
+# Los pesos los descarga el usuario: van con sus datos (desde el código, la raíz del repo).
+RAIZ = rutas.DATOS
 
 # Kokoro genera audio a 24 kHz.
 SAMPLE_RATE = 24000
@@ -114,7 +118,7 @@ def mensaje_instalacion(carpeta: Optional[str] = None) -> str:
     faltan = dependencias_faltantes()
     partes = ["Para hablar con voz 100% local (Kokoro) necesito:"]
     if faltan:
-        partes.append(f"\n    pip install {' '.join(faltan)}")
+        partes.append(f"\n    {rutas.como_instalar(*faltan)}")
         partes.append("    (y espeak-ng del sistema, para el español)")
     if not modelos_presentes(carpeta):
         onnx, voces = _rutas(carpeta)

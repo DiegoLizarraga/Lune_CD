@@ -437,7 +437,7 @@ class SettingsPanel(QFrame):
         layout.addWidget(self._create_section_title("Modelo visual de Lune (avatar pack)"))
         frame_av = self._create_group_frame()
         fl_av = QVBoxLayout(frame_av); fl_av.setSpacing(8)
-        info_av = QLabel("Elige el set de expresiones. Suelta nuevos packs en lune_face/packs/. "
+        info_av = QLabel(f"Elige el set de expresiones. Suelta nuevos packs en {lune_face.PACKS_DIR}. "
                          "Los uso cuando me sacas al escritorio (tile ESCRITORIO).")
         info_av.setWordWrap(True); info_av.setFont(QFont("Segoe UI", 9)); info_av.setStyleSheet(f"color:{COLORS['text_muted']};border:none;")
         fl_av.addWidget(info_av)
@@ -718,18 +718,20 @@ class SettingsPanel(QFrame):
         self.autoinicio_check.setChecked(_auto.activo())
         self.autoinicio_check.setStyleSheet(f"QCheckBox{{color:{COLORS['text']};border:none;spacing:8px;}}QCheckBox::indicator{{width:16px;height:16px;}}")
         fl.addWidget(self.autoinicio_check)
-        btn_inst = QPushButton("INSTALAR COMPONENTES…")
-        btn_inst.setToolTip("Abre el instalador: explica para qué sirve cada cosa (voz, dictado, interfaz animada…) y lo instala.")
-        btn_inst.setCursor(Qt.CursorShape.PointingHandCursor); btn_inst.setFont(QFont(FONT_DISPLAY, 10, QFont.Weight.Bold)); btn_inst.setFixedHeight(36)
-        btn_inst.setStyleSheet(f"QPushButton{{background:transparent;color:{COLORS['text_muted']};border:2px solid {COLORS['border']};border-radius:2px;letter-spacing:1px;}}QPushButton:hover{{color:{COLORS['accent']};border-color:{COLORS['cyan_dark']};}}")
-        def _abrir_instalador():
-            import subprocess, sys
-            from pathlib import Path
-            ruta = Path(__file__).resolve().parent.parent / "instalador.py"
-            try: subprocess.Popen([sys.executable, str(ruta)], cwd=str(ruta.parent))
-            except Exception as e: QMessageBox.warning(self, "Instalador", f"No pude abrir el instalador:\n{e}")
-        btn_inst.clicked.connect(_abrir_instalador)
-        fl.addWidget(btn_inst)
+        from nucleo import rutas as _rutas
+        if not _rutas.INSTALADA:          # instalada ya viene todo y no hay pip: sin botón
+            btn_inst = QPushButton("INSTALAR COMPONENTES…")
+            btn_inst.setToolTip("Abre el instalador: explica para qué sirve cada cosa (voz, dictado, interfaz animada…) y lo instala.")
+            btn_inst.setCursor(Qt.CursorShape.PointingHandCursor); btn_inst.setFont(QFont(FONT_DISPLAY, 10, QFont.Weight.Bold)); btn_inst.setFixedHeight(36)
+            btn_inst.setStyleSheet(f"QPushButton{{background:transparent;color:{COLORS['text_muted']};border:2px solid {COLORS['border']};border-radius:2px;letter-spacing:1px;}}QPushButton:hover{{color:{COLORS['accent']};border-color:{COLORS['cyan_dark']};}}")
+            def _abrir_instalador():
+                import subprocess, sys
+                from pathlib import Path
+                ruta = Path(__file__).resolve().parent.parent / "instalador.py"
+                try: subprocess.Popen([sys.executable, str(ruta)], cwd=str(ruta.parent))
+                except Exception as e: QMessageBox.warning(self, "Instalador", f"No pude abrir el instalador:\n{e}")
+            btn_inst.clicked.connect(_abrir_instalador)
+            fl.addWidget(btn_inst)
 
         hub = self.datos_data.get("hub", {})
 
@@ -814,7 +816,8 @@ class SettingsPanel(QFrame):
     def _buscar_dispositivos(self):
         from lune_core import descubrimiento as _D
         if not _D.zeroconf_disponible():
-            self.lbl_disp.setText("Instala zeroconf para descubrir dispositivos:  pip install zeroconf")
+            from nucleo import rutas
+            self.lbl_disp.setText(f"Instala zeroconf para descubrir dispositivos:  {rutas.como_instalar('zeroconf')}")
             self.lbl_disp.setStyleSheet(f"color:{COLORS['warning']};border:none;")
             return
         self.btn_buscar_disp.setEnabled(False); self.btn_buscar_disp.setText("BUSCANDO…")
@@ -880,9 +883,10 @@ class SettingsPanel(QFrame):
 
         faltan = voz_entrada.dependencias_faltantes()
         if faltan:
+            from nucleo import rutas
             aviso = QLabel(
                 "El dictado necesita librerías que no tienes:\n"
-                f"    pip install {' '.join(faltan)}\n\n"
+                f"    {rutas.como_instalar(*faltan)}\n\n"
                 "La transcripción es 100% local: el audio no sale de tu equipo. "
                 "En el PC con GPU podrás usar modelos más grandes."
             )
@@ -1420,18 +1424,19 @@ class SettingsPanel(QFrame):
             webengine = True
         except Exception:
             webengine = False
-        from pathlib import Path
-        hay_vrm = Path("modelo_vrm").exists() and any(Path("modelo_vrm").glob("*.vrm"))
+        from nucleo import vrm
+        hay_vrm = bool(vrm.listar_modelos())      # la carpeta de verdad, no una relativa al cwd
         if webengine and hay_vrm:
             lbl = QLabel("Avatar 3D listo: elige «Avatar VRM 3D» y sácame al escritorio con el tile ESCRITORIO. "
                          "Cada personaje puede traer su propio .vrm (campo «vrm» en datos.json).")
             lbl.setStyleSheet(f"color:{COLORS['success']};border:none;")
         elif not webengine:
-            lbl = QLabel("El avatar 3D (VRM) necesita:\n    pip install PyQt6-WebEngine\n"
+            from nucleo import rutas
+            lbl = QLabel(f"El avatar 3D (VRM) necesita:\n    {rutas.como_instalar('PyQt6-WebEngine')}\n"
                          "(usa la versión que coincida con tu PyQt6). Mientras, se usan sprites.")
             lbl.setStyleSheet(f"color:{COLORS['warning']};border:none;")
         else:
-            lbl = QLabel("Falta un modelo: pon un archivo .vrm en la carpeta modelo_vrm/.")
+            lbl = QLabel(f"Falta un modelo: pon un archivo .vrm en la carpeta {vrm.CARPETA}.")
             lbl.setStyleSheet(f"color:{COLORS['warning']};border:none;")
         return lbl
 

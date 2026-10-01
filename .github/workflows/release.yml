@@ -1,0 +1,139 @@
+name: Release
+
+# Qué es esto: cuando subes a master y los Tests pasan, GitHub mira version.py.
+# Si esa versión todavía no tiene Release (v11.2, v11.3…), construye Lune
+# instalable en una máquina Windows limpia, prueba el instalador de verdad
+# (instalar, «LunePatata.exe --comprobar», desinstalar) y publica el Release con
+# LuneCD-Setup-<versión>.exe y su .sha256. Si la versión ya tiene Release, no hace
+# nada (sale en verde): para sacar otro, sube APP_VERSION en version.py.
+#
+# También se puede lanzar a mano: pestaña Actions → Release → Run workflow.
+# Lo mismo en tu PC: python packaging/construir.py (ver packaging/).
+#
+# Las versiones exactas de todo lo que se empaqueta están en
+# packaging/requisitos-release.txt (las que probamos en casa).
+
+on:
+  workflow_run:
+    workflows: [Tests]
+    types: [completed]
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: write          # para crear el tag y el Release
+
+concurrency:
+  group: release           # nunca dos publicaciones a la vez
+  cancel-in-progress: false
+
+jobs:
+  publicar:
+    # Solo tras unos Tests en verde de un push (no de un pull request), o a mano.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    runs-on: windows-latest
+    timeout-minutes: 90
+    env:
+      PYTHONIOENCODING: utf-8
+      GH_TOKEN: ${{ github.token }}
+      # El commit exacto que pasó los Tests (con workflow_run, github.sha sería el último de master).
+      SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: ¿Toca publicar? (version.py y los Releases que ya hay)
+        id: version
+        run: |
+          $m = Select-String -Path version.py -Pattern '^APP_VERSION\s*=\s*["'']([^"'']+)["'']'
+          if (-not $m) { throw "version.py no tiene APP_VERSION" }
+          $ver = $m.Matches[0].Groups[1].Value
+          "version=$ver" >> $env:GITHUB_OUTPUT
+          gh release view "v$ver" --repo "$env:GITHUB_REPOSITORY" *> $null
+          if ($LASTEXITCODE -eq 0) {
+            "existe=true" >> $env:GITHUB_OUTPUT
+            Write-Host "El Release v$ver ya existe: no hay nada que hacer (sube version.py para sacar otro)."
+          } else {
+            "existe=false" >> $env:GITHUB_OUTPUT
+            Write-Host "Toca publicar Lune CD $ver."
+          }
+          exit 0
+
+      - uses: actions/setup-python@v5
+        if: steps.version.outputs.existe == 'false'
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: packaging/requisitos-release.txt
+
+      - name: Instalar lo necesario para construir (versiones exactas)
+        if: steps.version.outputs.existe == 'false'
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r packaging/requisitos-release.txt
+
+      # node ya viene en la máquina de GitHub (precompila la piel web). Inno Setup a veces
+      # también; si no, se instala con choco. construir.py lo busca en el PATH y en Program Files.
+      - name: Inno Setup
+        if: steps.version.outputs.existe == 'false'
+        run: |
+          node --version
+          $rutas = @("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:ProgramFiles\Inno Setup 6\ISCC.exe")
+          $hay = (Get-Command iscc -ErrorAction SilentlyContinue) -or ($rutas | Where-Object { Test-Path $_ })
+          if (-not $hay) { choco install innosetup -y --no-progress }
+          exit 0
+
+      # Copia limpia (git ls-files, sin datos de nadie), piel web precompilada, PyInstaller,
+      # «LunePatata.exe --comprobar» sobre la carpeta y el Setup.exe con su .sha256.
+      - name: Construir
+        if: steps.version.outputs.existe == 'false'
+        run: python packaging/construir.py
+
+      - name: Probar el instalador de verdad (instalar, comprobar, desinstalar)
+        if: steps.version.outputs.existe == 'false'
+        run: |
+          $ver = '${{ steps.version.outputs.version }}'
+          $setup = (Resolve-Path "dist\LuneCD-Setup-$ver.exe").Path
+          $dir = Join-Path $env:RUNNER_TEMP 'LuneInstalada'
+          $datos = Join-Path $env:RUNNER_TEMP 'LuneDatos'
+          $log = Join-Path $env:RUNNER_TEMP 'instalacion.log'
+          $clave = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{CA44A144-89E1-4002-9BF6-D6EBE2578EE7}_is1'
+          $acceso = Join-Path ([Environment]::GetFolderPath('Programs')) 'Lune CD.lnk'
+
+          $p = Start-Process -FilePath $setup -Wait -PassThru -ArgumentList @(
+            '/VERYSILENT', '/SUPPRESSMSGBOXES', '/CURRENTUSER', '/NORESTART', "/DIR=`"$dir`"", "/LOG=`"$log`"")
+          if ($p.ExitCode -ne 0) { Get-Content $log -Tail 40; throw "El instalador salió con $($p.ExitCode)" }
+          foreach ($f in @("$dir\Lune.exe", "$dir\LunePatata.exe", "$dir\unins000.exe", $acceso)) {
+            if (-not (Test-Path $f)) { throw "Tras instalar falta $f" }
+          }
+          if (-not (Test-Path $clave)) { throw "No quedó la entrada de Programas y características" }
+
+          # La comprobación con una carpeta de datos temporal (como en construir.py).
+          $env:LUNE_CD_DATOS = $datos
+          & "$dir\LunePatata.exe" --comprobar
+          if ($LASTEXITCODE -ne 0) { throw "--comprobar falló en la versión instalada" }
+          Remove-Item Env:LUNE_CD_DATOS
+
+          # El desinstalador se copia a TEMP y sigue desde ahí: espero a que termine de verdad.
+          Start-Process -FilePath "$dir\unins000.exe" -Wait -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART')
+          $limite = (Get-Date).AddMinutes(3)
+          while (((Test-Path $clave) -or (Test-Path "$dir\Lune.exe")) -and (Get-Date) -lt $limite) { Start-Sleep -Seconds 2 }
+          if (Test-Path $clave) { throw "Tras desinstalar sigue la entrada de Programas y características" }
+          if (Test-Path "$dir\Lune.exe") { throw "Tras desinstalar sigue Lune.exe" }
+          if (Test-Path $acceso) { throw "Tras desinstalar sigue el acceso del menú Inicio" }
+          Write-Host "Instalar, comprobar y desinstalar: todo bien."
+
+      - name: Publicar el Release
+        if: steps.version.outputs.existe == 'false'
+        run: |
+          $ver = '${{ steps.version.outputs.version }}'
+          $notas = Join-Path $env:RUNNER_TEMP 'notas.md'
+          python packaging/notas_release.py $ver -o $notas
+          gh release create "v$ver" "dist\LuneCD-Setup-$ver.exe" "dist\LuneCD-Setup-$ver.exe.sha256" `
+            --repo "$env:GITHUB_REPOSITORY" --target "$env:SHA" --title "Lune CD $ver" --notes-file $notas

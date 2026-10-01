@@ -814,3 +814,39 @@ test('se publica en window.LuneVRMBarra y avisa con el evento lune-vrm-barra', a
   }
   assert.equal(LuneVRMBarra.RUTA_MODELO, '/vrm/actual.vrm');
 });
+
+test('reposar (Lune en reposo, 11.2): FPS 0 SIN soltar el contexto; pausar manda y al volver sigue', async () => {
+  const { h, motor } = montar({ fps: 24 });
+  await microtareas();
+  const ext = motor.ext;
+  assert.equal(h.reposar(true), true);
+  assert.deepEqual(motor.ultima('setFPS'), ['setFPS', 0]);
+  assert.equal(ext.lose, 0, 'el contexto WebGL se queda: al volver no se re-sube nada');
+  assert.equal(h.contexto, 'vivo');
+  assert.equal(h.reposando, true);
+  assert.equal(h.reposar(false), false);
+  assert.deepEqual(motor.ultima('setFPS'), ['setFPS', 24]);
+  // En reposo y en pausa: al quitar la pausa sigue en reposo (0 fps) hasta que se despierte
+  h.reposar(true);
+  h.pausar(true);
+  const antes = motor.de('setFPS').length;
+  h.reposar(false);
+  assert.equal(motor.de('setFPS').length, antes, 'en pausa, reposar no toca los fps');
+  h.reposar(true);
+  h.pausar(false);
+  assert.deepEqual(motor.ultima('setFPS'), ['setFPS', 0], 'sale de la pausa aún en reposo');
+  h.reposar(false);
+  assert.deepEqual(motor.ultima('setFPS'), ['setFPS', 24]);
+  h.destruir();
+  assert.equal(h.reposar(true), false, 'destruido: nada');
+});
+
+test('reposar antes de que haya motor: el motor nace a 0 fps', async () => {
+  const { h, motor } = montar({ fps: 30 });
+  h.reposar(true);
+  await microtareas();
+  assert.deepEqual(motor.ultima('setFPS'), ['setFPS', 0]);
+  h.reposar(false);
+  assert.deepEqual(motor.ultima('setFPS'), ['setFPS', 30]);
+  h.destruir();
+});

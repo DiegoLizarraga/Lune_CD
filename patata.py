@@ -294,35 +294,58 @@ def python_sin_consola(exe: Optional[str] = None) -> str:
     return str(exe)
 
 
-def lanzar_app_qt(modo: str = "", *, raiz: Path = RAIZ, popen: Optional[Callable[..., Any]] = None,
-                  espera_s: float = ESPERA_ARRANQUE_S, extra: tuple = ()) -> bool:
-    """Abre la app de ventanas (main.py) sin consola y desacoplada de esta terminal:
-    si cierras la consola, la app sigue. Lee el modo de config (interfaz.modo).
-
-    Sin importar Qt aquí: se comprueba que PyQt6 esté instalado buscándolo, no
-    importándolo. Si la app se cierra con error en los primeros segundos (le falta
-    algo), lanza RuntimeError con el motivo para que patata no se vaya. True si
-    quedó abierta (o terminó bien: otra Lune ya estaba abierta y se trajo al frente).
-    `extra`: argumentos para main.py (p. ej. ("--autoinicio",))."""
+def _orden_app_qt(raiz: Path, extra: tuple) -> tuple:
+    """(orden, cwd, sin_consola) para abrir la app de ventanas. Instalada, Lune.exe
+    (nucleo/rutas.orden_app; no se busca PyQt6: en LunePatata.exe find_spec daría un
+    paquete vacío aunque no hubiera nada). Desde el código, main.py con pythonw."""
     import importlib.util
-    import subprocess
+    from nucleo import rutas
+    extra = [str(a) for a in (extra or ())]
+    if rutas.INSTALADA:
+        orden = rutas.orden_app(*extra)
+        if not Path(orden[0]).exists():
+            raise RuntimeError(f"no encuentro {Path(orden[0]).name} (reinstala Lune)")
+        return orden, str(rutas.PROGRAMA), True
     script = Path(raiz) / "main.py"
     if not script.exists():
         raise RuntimeError(f"no encuentro {script.name}")
     if importlib.util.find_spec("PyQt6") is None:
         raise RuntimeError("este Python no tiene PyQt6 (ejecuta instalar_lune.bat o "
-                           "pip install -r requirements.txt)")
+                           f"{rutas.como_instalar('-r requirements.txt')})")
     exe = python_sin_consola()
-    kw: Dict[str, Any] = {"cwd": str(raiz), "stdin": subprocess.DEVNULL,
+    return [exe, str(script), *extra], str(raiz), Path(exe).name.lower() == "pythonw.exe"
+
+
+def _pista_si_no_arranca() -> str:
+    """Qué mirar si la app de ventanas se cierra nada más abrir."""
+    from nucleo import rutas
+    if rutas.INSTALADA:
+        return f"mira los registros en {rutas.local('logs')} o reinstala Lune"
+    return "mira logs/ o ejecuta instalar_lune.bat"
+
+
+def lanzar_app_qt(modo: str = "", *, raiz: Path = RAIZ, popen: Optional[Callable[..., Any]] = None,
+                  espera_s: float = ESPERA_ARRANQUE_S, extra: tuple = ()) -> bool:
+    """Abre la app de ventanas (main.py, o Lune.exe instalada) sin consola y desacoplada
+    de esta terminal: si cierras la consola, la app sigue. Lee el modo de config
+    (interfaz.modo).
+
+    Sin importar Qt aquí: desde el código se comprueba que PyQt6 esté instalado
+    buscándolo, no importándolo. Si la app se cierra con error en los primeros segundos
+    (le falta algo), lanza RuntimeError con el motivo para que patata no se vaya. True si
+    quedó abierta (o terminó bien: otra Lune ya estaba abierta y se trajo al frente).
+    `extra`: argumentos para la app (p. ej. ("--autoinicio",))."""
+    import subprocess
+    orden, cwd, sin_consola = _orden_app_qt(raiz, extra)
+    kw: Dict[str, Any] = {"cwd": cwd, "stdin": subprocess.DEVNULL,
                           "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL,
                           "close_fds": True}
     if os.name == "nt":
-        sin_consola = Path(exe).name.lower() == "pythonw.exe"
         kw["creationflags"] = _CREATE_NEW_PROCESS_GROUP | (
             _DETACHED_PROCESS if sin_consola else _CREATE_NO_WINDOW)
     else:
         kw["start_new_session"] = True
-    proc = (popen or subprocess.Popen)([exe, str(script), *[str(a) for a in (extra or ())]], **kw)
+    proc = (popen or subprocess.Popen)(orden, **kw)
     if espera_s and espera_s > 0:
         try:
             codigo = proc.wait(timeout=espera_s)
@@ -332,7 +355,7 @@ def lanzar_app_qt(modo: str = "", *, raiz: Path = RAIZ, popen: Optional[Callable
             return True
         if codigo not in (0, None):
             raise RuntimeError(f"la interfaz se cerró al arrancar (código {codigo}); "
-                               "mira logs/ o ejecuta instalar_lune.bat")
+                               f"{_pista_si_no_arranca()}")
     return True
 
 
@@ -1965,7 +1988,27 @@ Me abre en la terminal (modo patata) con tu configuración, tu memoria y tus cha
   --sin-color    sin colores (para consolas que no los entienden)
   --autoinicio   lo usa el arranque con Windows: repara su entrada y, si la
                  interfaz ya no es patata, abre la app de ventanas
+  --comprobar    compruebo que no me falte nada (recursos, tus carpetas y
+                 librerías) y salgo: 0 si todo va bien, 1 si algo falla
+                 (con --json, el informe en JSON)
   -h, --help     esta ayuda (no abro nada ni toco tus archivos)"""
+
+
+def _comprobar(argv) -> int:
+    """`--comprobar [--json]`: ¿me falta algo? (servicios/diagnostico). Va antes que la
+    validación de argumentos y que el mutex de instancia: es la prueba de humo del build y
+    del instalador, y tiene que poder correr con otra Lune abierta."""
+    try:
+        if sys.stdout.isatty():
+            sys.stdout.reconfigure(errors="replace")    # una consola en cp850 no rompe el informe
+        else:
+            # A un archivo o a otro programa (construir.py, GitHub), en UTF-8 como el JSON.
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+    from servicios import diagnostico
+    como_json = any(str(a).strip().lower() == "--json" for a in argv)
+    return diagnostico.main(como_json=como_json)
 
 
 def _argumentos_raros(argv) -> Optional[int]:
@@ -1973,17 +2016,65 @@ def _argumentos_raros(argv) -> Optional[int]:
     dos casos se sale ANTES de cargar nada (config.json, memoria.json…). None = adelante."""
     normales = [str(a).strip().lower() for a in argv]
     if any(a in _BANDERAS_AYUDA for a in normales):
-        print(TXT_USO, flush=True)
+        print(_uso(), flush=True)
         return 0
     raros = [str(a) for a, n in zip(argv, normales) if n not in _BANDERAS_CONOCIDAS]
     if raros:
-        print("No conozco " + ", ".join(f"«{a}»" for a in raros) + ".\n\n" + TXT_USO, flush=True)
+        print("No conozco " + ", ".join(f"«{a}»" for a in raros) + ".\n\n" + _uso(), flush=True)
         return 2
     return None
 
 
+def _uso() -> str:
+    """TXT_USO; instalada, con el nombre del exe (ahí no hay «python patata.py»)."""
+    from nucleo import rutas
+    return TXT_USO.replace("python patata.py", rutas.EXE_PATATA) if rutas.INSTALADA else TXT_USO
+
+
+def _modulo_edge_tts(argv, *, ejecutar: Optional[Callable[..., Any]] = None) -> Optional[int]:
+    """`LunePatata.exe -m edge_tts …`: instalada no hay Python, así que el bot de Telegram
+    (telegram-bot-or/voz.js, con PYTHON = LunePatata.exe: servicios/telegram_worker._entorno)
+    genera sus notas de voz así. Corre edge_tts como `python -m edge_tts` y devuelve su
+    código de salida. None = no es eso (solo se atiende edge_tts, nada más)."""
+    args = [str(a) for a in argv]
+    if len(args) < 2 or args[0] != "-m" or args[1] != "edge_tts":
+        return None
+    import runpy
+    antes = sys.argv
+    sys.argv = ["edge_tts", *args[2:]]
+    try:
+        (ejecutar or runpy.run_module)("edge_tts", run_name="__main__", alter_sys=True)
+    except SystemExit as e:
+        codigo = e.code
+        if codigo is None:
+            return 0
+        return codigo if isinstance(codigo, int) else 1
+    finally:
+        sys.argv = antes
+    return 0
+
+
+def _marcar_abierta() -> None:
+    """El mutex «Lune está abierta» (servicios/mutex_win.marcar_abierta): el instalador
+    espera a que desaparezca antes de reemplazar archivos. Vive hasta salir."""
+    try:
+        from servicios.mutex_win import marcar_abierta
+        marcar_abierta()
+    except Exception:
+        pass
+
+
 def main(argv=None, *, instancia: Any = None, esperar: Callable[[float], Any] = time.sleep) -> int:
+    # Instalada (LunePatata.exe), antes que nada: freeze_support, HF_HOME y carpeta de
+    # trabajo en tus datos (nucleo/arranque.preparar_instalada). Desde el código, nada.
+    from nucleo import arranque
+    arranque.preparar_instalada()
     argv = sys.argv[1:] if argv is None else argv
+    r = _modulo_edge_tts(argv)
+    if r is not None:
+        return r
+    if any(str(a).strip().lower() == "--comprobar" for a in argv):
+        return _comprobar(argv)
     r = _argumentos_raros(argv)
     if r is not None:
         return r
@@ -2000,6 +2091,7 @@ def main(argv=None, *, instancia: Any = None, esperar: Callable[[float], Any] = 
         if not con_windows:
             esperar(ESPERA_YA_ABIERTA_S)
         return 0
+    _marcar_abierta()
     try:
         p = Patata(color="--sin-color" not in argv, con_windows=con_windows)
         al_frente = getattr(p, "traer_al_frente", None)

@@ -23,7 +23,10 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Optional
 
-CHATS_DIR = Path(__file__).parent.parent / "chats"
+from nucleo import rutas
+
+# En la carpeta de datos del usuario (desde el código, la raíz del repo).
+CHATS_DIR = rutas.dato("chats")
 
 
 _ultimo_instante = None

@@ -82,9 +82,10 @@ def _leer_pdf(ruta: Path) -> str:
     try:
         from pypdf import PdfReader
     except ImportError:
+        from nucleo import rutas
         raise ValueError(
             "Para leer PDF necesito la librería pypdf.\n\n"
-            "Instálala con:  pip install pypdf"
+            f"Instálala con:  {rutas.como_instalar('pypdf')}"
         )
     try:
         lector = PdfReader(str(ruta))
@@ -118,9 +119,10 @@ def _leer_docx(ruta: Path) -> str:
     try:
         import docx
     except ImportError:
+        from nucleo import rutas
         raise ValueError(
             "Para leer .docx necesito la librería python-docx.\n\n"
-            "Instálala con:  pip install python-docx"
+            f"Instálala con:  {rutas.como_instalar('python-docx')}"
         )
     try:
         documento = docx.Document(str(ruta))

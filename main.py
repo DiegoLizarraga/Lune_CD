@@ -72,7 +72,7 @@ from servicios.ai_manager import AIManager
 from nucleo.conversaciones import GestorConversaciones
 from ui.historial_panel import HistorialPanel
 from nucleo.utils import Logger, log_info, log_error
-from nucleo import datos
+from nucleo import datos, rutas
 
 from nucleo.memoria import MemoriaManager
 from nucleo.bienvenida import Bienvenida, ya_preguntada
@@ -585,7 +585,7 @@ class LuneCDWindow(QMainWindow):
         self.setStyleSheet(f"QMainWindow,QWidget{{background:{COLORS['bg']};}}")
 
         for ext in ("ico","png"):
-            icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", f"lune_icon.{ext}")
+            icon_path = str(rutas.recurso("assets", f"lune_icon.{ext}"))
             if os.path.exists(icon_path):
                 self.setWindowIcon(QIcon(icon_path)); break
 
@@ -603,7 +603,7 @@ class LuneCDWindow(QMainWindow):
         # ── MARCA: logo en caja + "LUNE CD" (CD en cyan) ──
         logo_row = QHBoxLayout(); logo_row.setSpacing(11)
         mark = QLabel(); mark.setFixedSize(42, 42)
-        icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "lune_icon.png")
+        icon_path = str(rutas.recurso("assets", "lune_icon.png"))
         if os.path.exists(icon_path):
             pm = QPixmap(icon_path).scaled(40, 40, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
             mark.setPixmap(pm); mark.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -785,7 +785,7 @@ class LuneCDWindow(QMainWindow):
             self._set_telegram_btn_style(False); return
         if not datos.telegram_token() or "TU_TOKEN" in datos.telegram_token():
             QMessageBox.warning(self,"Token faltante","Configura tu token de Telegram en la Configuración General."); return
-        if not TelegramBotWorker.BOT_DIR.exists():
+        if not TelegramBotWorker.preparar_carpeta():
             QMessageBox.warning(self,"Carpeta no encontrada",f"No encontré la carpeta del bot en:\n{TelegramBotWorker.BOT_DIR}"); return
         # Órdenes desde Telegram (/pc): el canal solo se abre si está activado y hay tu ID.
         self._tg_worker = TelegramBotWorker(ordenes=ordenes_activas(self.config)); self._tg_worker.log_signal.connect(self._on_telegram_log); self._tg_worker.stopped.connect(self._on_telegram_stopped)
@@ -1081,7 +1081,7 @@ class LuneCDWindow(QMainWindow):
 
         # Marca de bienvenida: logo/月 en un escenario enmarcado (estilo del UI kit)
         mark = QLabel(); mark.setFixedSize(140, 140); mark.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        wicon = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "lune_icon.png")
+        wicon = str(rutas.recurso("assets", "lune_icon.png"))
         if os.path.exists(wicon):
             mark.setPixmap(QPixmap(wicon).scaled(118, 118, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
         else:
@@ -2756,7 +2756,7 @@ class LuneCDWindow(QMainWindow):
 def _cargar_fuentes():
     """Registra las fuentes Shibuya Punk empaquetadas en fonts/ para esta app."""
     import glob
-    fonts_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts")
+    fonts_dir = str(rutas.recurso("fonts"))
     if not os.path.isdir(fonts_dir):
         return
     for ttf in glob.glob(os.path.join(fonts_dir, "*.ttf")):
@@ -2917,30 +2917,25 @@ def _patata_ya_abierta(mostrar: bool = True) -> bool:
 
 
 def _lanzar_patata(autoinicio: bool = False) -> bool:
-    """Abre patata.py (Lune en terminal) en una consola NUEVA y devuelve si pudo.
-    Desde el .vbs corremos con pythonw (sin consola): se busca el python.exe
-    hermano para que la terminal sí tenga ventana. Con `autoinicio` (arranque con
-    Windows y la entrada aún en su variante de ventanas) va con --autoinicio y la
-    consola se abre minimizada, sin quitar el foco (D3).
+    """Abre la terminal (patata) en una consola NUEVA y devuelve si pudo: desde el
+    código, patata.py con el python.exe hermano (desde el .vbs corremos con pythonw,
+    sin consola); instalada, LunePatata.exe (nucleo/rutas.orden_patata). Con
+    `autoinicio` (arranque con Windows y la entrada aún en su variante de ventanas)
+    va con --autoinicio y la consola se abre minimizada, sin quitar el foco (D3).
     Si ya hay una patata viva (la del arranque con Windows, u otra), no se abre otra
     terminal: se trae al frente la que hay (con `autoinicio`, ni eso) y cuenta como hecho."""
     import subprocess
     if _patata_ya_abierta(mostrar=not autoinicio):
         log_info("[ui] modo patata: Lune ya estaba en una terminal; no abro otra")
         return True
-    raiz = os.path.dirname(os.path.abspath(__file__))
-    script = os.path.join(raiz, "patata.py")
-    if not os.path.exists(script):
+    orden = rutas.orden_patata(*(["--autoinicio"] if autoinicio else []))
+    lanzador = orden[0] if rutas.INSTALADA else orden[1]     # LunePatata.exe o patata.py
+    if not os.path.exists(lanzador):
+        log_error(f"[ui] no encuentro {os.path.basename(lanzador)}")
         return False
-    exe = sys.executable
-    if exe.lower().endswith("pythonw.exe"):
-        candidato = os.path.join(os.path.dirname(exe), "python.exe")
-        if os.path.exists(candidato):
-            exe = candidato
     try:
         flags = getattr(subprocess, "CREATE_NEW_CONSOLE", 0) if os.name == "nt" else 0
-        orden = [exe, script] + (["--autoinicio"] if autoinicio else [])
-        kw = {"cwd": raiz, "creationflags": flags}
+        kw = {"cwd": str(rutas.PROGRAMA), "creationflags": flags}
         if autoinicio and os.name == "nt" and hasattr(subprocess, "STARTUPINFO"):
             si = subprocess.STARTUPINFO()
             si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
@@ -2950,7 +2945,7 @@ def _lanzar_patata(autoinicio: bool = False) -> bool:
         log_info("[ui] modo patata: Lune abierta en la terminal")
         return True
     except Exception as e:
-        log_error(f"[ui] no pude lanzar patata.py: {e}")
+        log_error(f"[ui] no pude lanzar {os.path.basename(lanzador)}: {e}")
         return False
 
 
@@ -3137,7 +3132,53 @@ def _instalar_red_de_excepciones():
     return gancho
 
 
+def _fijar_aumid(shell32=None) -> bool:
+    """AppUserModelID fijo (nucleo/rutas.AUMID, el mismo que el acceso directo del menú
+    Inicio): con uno por versión, el icono anclado a la barra de tareas dejaba de ser
+    Lune tras cada actualización. Antes de enseñar ninguna ventana. Nunca lanza."""
+    try:
+        if shell32 is None:
+            import ctypes
+            shell32 = ctypes.windll.shell32
+        shell32.SetCurrentProcessExplicitAppUserModelID(rutas.AUMID)
+        return True
+    except Exception:
+        return False
+
+
+def _esperar_a_la_anterior(opc, esperar=None) -> bool:
+    """Tras un reinicio (servicios/actualizador.reiniciar llega con --esperar-pid N):
+    espera a que la Lune de antes termine de cerrarse ANTES de mirar la instancia
+    única; si no, esta se conectaba al servidor de la vieja y se iba sin abrir nada."""
+    pid = int(getattr(opc, "esperar_pid", 0) or 0)
+    if pid <= 0:
+        return True
+    if esperar is None:
+        from nucleo import arranque
+        esperar = arranque.esperar_a_que_muera
+    ok = bool(esperar(pid))
+    if not ok:
+        log_info(f"[arranque] la Lune anterior (PID {pid}) tarda en cerrarse; sigo igual")
+    return ok
+
+
+def _marcar_abierta() -> int:
+    """El mutex «Lune está abierta» (servicios/mutex_win.marcar_abierta): el instalador
+    espera a que desaparezca antes de reemplazar archivos. Vive hasta salir. Nunca lanza."""
+    try:
+        from servicios.mutex_win import marcar_abierta
+        return marcar_abierta()
+    except Exception as e:
+        log_error(f"[arranque] no pude marcar Lune como abierta: {e}")
+        return 0
+
+
 def main():
+    # Instalada (Lune.exe): freeze_support, HF_HOME, carpeta de trabajo en tus datos y
+    # stdout/stderr (nucleo/arranque.preparar_instalada). Desde el código no hace nada.
+    from nucleo import arranque
+    arranque.preparar_instalada()
+    _fijar_aumid()
     # QtWebEngine (avatar VRM) necesita compartir el contexto OpenGL; hay que
     # pedirlo ANTES de crear QApplication. Inofensivo si no se usa el VRM.
     try:
@@ -3148,11 +3189,14 @@ def main():
     app.setApplicationName("Lune CD")
     _instalar_red_de_excepciones()
 
-    # A mano o con Windows (--autoinicio desde iniciar_lune.vbs /autoinicio).
+    # A mano o con Windows (--autoinicio desde iniciar_lune.vbs /autoinicio o Lune.exe
+    # --autoinicio). Tras un reinicio, primero que la Lune de antes acabe de irse.
     opc, plan, cfg = _preparar_arranque(sys.argv[1:])
+    _esperar_a_la_anterior(opc)
     if _ya_hay_una_instancia(silencioso=plan.silencioso):
         log_info("Lune ya estaba abierta: no abro una segunda")
         return
+    _marcar_abierta()
     # La entrada de arranque con Windows sigue a la carpeta y al modo de interfaz.
     _reparar_autoinicio(cfg)
 
@@ -3163,15 +3207,8 @@ def main():
         QFont.insertSubstitution(familia, fallback)
     app.setFont(QFont(FONT_BODY, 10))
 
-    try:
-        import ctypes
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(f"LuneCD.v{APP_VERSION}")
-    except Exception:
-        pass
-
-    base_dir = os.path.dirname(os.path.abspath(__file__))
     for ext in ("ico","png"):
-        icon_path = os.path.join(base_dir, "assets", f"lune_icon.{ext}")
+        icon_path = str(rutas.recurso("assets", f"lune_icon.{ext}"))
         if os.path.exists(icon_path):
             app.setWindowIcon(QIcon(icon_path))
             break

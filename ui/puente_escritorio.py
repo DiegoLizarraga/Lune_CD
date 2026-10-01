@@ -32,7 +32,7 @@ Ranuras (JS: los resultados llegan por callback, `escritorio.x(args…, cb)`):
     tema_previsualizar(json)        sin disco: ControlTema.previsualizar(cfg)
     tema_guardar(json) → str        {ok, error, estado: tema_estado}
     tema_restablecer() → str        {ok, error, estado}
-    efectos() → str                 {fondo, barrido, micro} (config.efectos)
+    efectos() → str                 {fondo, barrido, micro, pausar_sin_foco} (config.efectos)
     efectos_guardar(json) → str     {ok, error, estado: efectos}
     atajos_estado() → str           {lista:[{id, etiqueta, combo, texto, error, aviso, disponible, siempre}],
                                      activo, pausar_en_juegos}
@@ -93,7 +93,7 @@ SATURACION = (0.0, 2.0)
 ACCIONES_JUEGO = ("ocultar", "fondo", "nada")
 VISTAS = ("chat", "settings", "personajes", "memoria", "historial", "optimizar", "tools", "alarmas")
 TIPOS_CATALOGO = ("radial", "secundario", "expresiones", "todas")
-EFECTOS = ("fondo", "barrido", "micro")
+EFECTOS = ("fondo", "barrido", "micro", "pausar_sin_foco")   # pausar_sin_foco: Lune en reposo (11.2)
 
 _ID = re.compile(r"^[a-z][a-z0-9_]{0,39}$")
 _ARG = re.compile(r"^[A-Za-z0-9_.:\-]{0,40}$")

@@ -60,7 +60,8 @@ test('utilidades: limitador ≤ 1 cada 50 ms (la última llega), retardo, combos
   assert.equal(c({ code: 'Digit3', metaKey: true, shiftKey: true }).combo, 'shift+win+Digit3');
   assert.equal(c({ code: 'AltRight', ctrlKey: true, altKey: true }).completo, false, 'AltGr solo no es un atajo');
   assert.equal(c({ code: 'F9' }).combo, 'F9');
-  assert.deepEqual(plano(A.fxDesdeCfg({ fondo: false, micro: 'x' }, { bg: true, sweep: false, micro: true })), { bg: false, sweep: false, micro: true });
+  assert.deepEqual(plano(A.fxDesdeCfg({ fondo: false, micro: 'x' }, { bg: true, sweep: false, micro: true })), { bg: false, sweep: false, micro: true, quieta: true });
+  assert.deepEqual(plano(A.fxDesdeCfg({ pausar_sin_foco: false }, null)), { bg: true, sweep: true, micro: true, quieta: false });
   assert.deepEqual(plano(A.vistaDe('settings#atajos')), { vista: 'settings', seccion: 'atajos' });
   assert.equal(A.vistaDe('javascript:x'), null);
   assert.deepEqual(plano(A.vistaDe('alarmas')), { vista: 'alarmas', seccion: '' });

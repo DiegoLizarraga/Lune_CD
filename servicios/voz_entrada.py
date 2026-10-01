@@ -68,8 +68,9 @@ def mensaje_instalacion() -> str:
     faltan = dependencias_faltantes()
     if not faltan:
         return ""
+    from nucleo import rutas
     return ("Para dictar por voz necesito:\n\n"
-            f"    pip install {' '.join(faltan)}\n\n"
+            f"    {rutas.como_instalar(*faltan)}\n\n"
             "Es transcripción 100% local: el audio no sale de tu equipo.")
 
 
@@ -215,8 +216,9 @@ def probar_microfono(dispositivo: Optional[int] = None, segundos: float = 1.5) -
     """
     faltan = dependencias_faltantes()
     if "sounddevice" in faltan:
+        from nucleo import rutas
         return {"ok": False, "nivel": 0, "pico": 0, "nombre": "", "sr": 0,
-                "error": "sounddevice no está instalado (pip install sounddevice)."}
+                "error": f"sounddevice no está instalado ({rutas.como_instalar('sounddevice')})."}
     import sounddevice as sd
     nombre = nombre_dispositivo(dispositivo)
     bloques: List[bytes] = []

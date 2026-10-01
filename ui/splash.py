@@ -18,7 +18,6 @@ esta clase. Así en ningún momento existen dos ventanas a la vez en la barra de
 tareas, y la pantalla de inicio se destruye limpiamente.
 """
 import random
-from pathlib import Path
 
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QFrame, QLabel, QPushButton,
@@ -26,6 +25,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QTimer, QUrl
 from PyQt6.QtGui import QColor, QPainter
 
+from nucleo import rutas
 from nucleo.config import Config
 from nucleo.utils import log_info, log_error
 
@@ -36,7 +36,7 @@ try:
 except ImportError:
     _MULTIMEDIA_OK = False
 
-RUTA_VIDEO = Path(__file__).parent.parent / "assets" / "inicio.mp4"
+RUTA_VIDEO = rutas.recurso("assets", "inicio.mp4")
 
 # Si el video no arranca en este tiempo, se entra a la app igualmente para no
 # dejar al usuario mirando un marco negro.

@@ -71,7 +71,9 @@
   const KOKORO_RESPALDO = [['ef_dora', 'Dora (femenina)'], ['em_alex', 'Alex (masculina)'], ['em_santa', 'Santa (masculina)']];
   // Kokoro v1.0: la primera letra del id es el idioma (e = español, a = EE. UU., b = Reino Unido…).
   const IDIOMAS_KOKORO = { e: 'Español', a: 'Inglés (EE. UU.)', b: 'Inglés (Reino Unido)' };
-  const KOKORO_INSTALAR = 'Para la voz 100 % local (Kokoro) hace falta:\n    pip install kokoro-onnx\n' +
+  // Solo sin backend (demo): con Lune, el mensaje lo manda servicios/voces.py (kokoro_backend.mensaje_instalacion:
+  // la orden de pip desde el código; instalada, sin ella).
+  const KOKORO_INSTALAR = 'Para la voz 100 % local (Kokoro) hace falta el paquete kokoro-onnx\n' +
     '    (y espeak-ng del sistema, para el español)\ny los pesos en «modelos_voz/»:\n' +
     '    kokoro-v1.0.onnx y voices-v1.0.bin\n    https://github.com/thewh1teagle/kokoro-onnx/releases';
   const MOTORES = [

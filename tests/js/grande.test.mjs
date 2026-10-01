@@ -104,7 +104,9 @@ test('secuencia completa: glide → entrar (cara) → activa → salir → volve
     ts.push(cam.position.y - base);
   });
   assert.ok(primero > 0.45, `empieza 0.5 m por encima (${primero})`);
-  cerca(yMedio, 0.25, 0.06, 'mitad del fundido con smoothstep');
+  // A 30 fps de verdad (11.2: el limitador del motor ya no pinta de más cuando el frame llega un pelín
+  // antes) la cámara va hasta un frame de 30 fps por detrás del reloj de 60 Hz del test.
+  cerca(yMedio, 0.25, 0.09, 'mitad del fundido con smoothstep');
   for (let i = 1; i < ts.length; i++) assert.ok(ts[i] <= ts[i - 1] + 1e-9, 'baja sin rebotes');
   const hc = cabeza(vrm);
   cerca(cam.position.y, hc.y + 0.08, 1e-3, 'camY = head.y + 0.08');

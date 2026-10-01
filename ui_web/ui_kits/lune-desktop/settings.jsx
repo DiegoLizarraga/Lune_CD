@@ -212,7 +212,7 @@ function VrmOpciones({ c, set, setBl, setCfg }) {
   );
 }
 
-function SettingsPanel({ voiceOn, onVoice, fx = { bg:true, sweep:true, micro:true }, setFxKey = () => () => {} }) {
+function SettingsPanel({ voiceOn, onVoice, fx = { bg:true, sweep:true, micro:true, quieta:true }, setFxKey = () => () => {} }) {
   const { Card, Input, Switch, Button, Badge } = window.LUNE;
   const [cfg, setCfg] = React.useState(null);
   const [msg, setMsg] = React.useState('');
@@ -377,9 +377,13 @@ function SettingsPanel({ voiceOn, onVoice, fx = { bg:true, sweep:true, micro:tru
             Para dictar (🎙 en el chat) y para el modo llamada. Windows suele traer varios micrófonos (el de la laptop, el headset,
             «Steam Streaming»…): elige el que tienes puesto y pruébalo antes de llamar.
           </p>
+          {/* audio.instalar lo escribe el backend (nucleo/rutas.como_instalar): la orden de pip desde el
+              código; instalada, que eso no viene (ahí no hay pip ni «Instalar componentes…»). */}
           {audio.faltan && audio.faltan.length > 0 && (
             <p className="ln-modal-nota" style={{ margin:'0 0 12px', color:'var(--yellow-500)' }}>
-              Falta instalar: <code>pip install {audio.faltan.join(' ')}</code> — o usa «Instalar componentes…» más abajo.
+              {c.instalada
+                ? <>Falta {audio.faltan.join(', ')}. {audio.instalar}</>
+                : <>Falta instalar: <code>{audio.instalar || audio.faltan.join(' ')}</code> — o usa «Instalar componentes…» más abajo.</>}
             </p>
           )}
           <div className="ln-settings-grid">
@@ -431,13 +435,16 @@ function SettingsPanel({ voiceOn, onVoice, fx = { bg:true, sweep:true, micro:tru
           <div className="ln-settings-grid">
             <Input label="Lune se aburre tras (minutos sin escribirle)" type="number" min="0" value={c.aburrimiento_min ?? 10}
               onChange={set('aburrimiento_min')} hint="0 = nunca. Te dice algo una vez por racha; tu siguiente mensaje la rearma." />
-            <div>
-              <div className="lune-overline" style={{marginBottom:6}}>Componentes</div>
-              <Button variant="ghost" size="sm" onClick={()=>{ if (window.lune) window.lune.abrir_instalador(()=>{}); else setMsg('Demo · sin backend'); }}>
-                Instalar componentes…
-              </Button>
-              <p className="ln-modal-nota" style={{margin:'6px 0 0'}}>Abre el instalador: explica para qué sirve cada cosa (voz, dictado, interfaz animada…) y lo instala.</p>
-            </div>
+            {/* Solo desde el código: la Lune instalada ya trae todo y no tiene pip. */}
+            {!c.instalada && (
+              <div>
+                <div className="lune-overline" style={{marginBottom:6}}>Componentes</div>
+                <Button variant="ghost" size="sm" onClick={()=>{ if (window.lune) window.lune.abrir_instalador(()=>{}); else setMsg('Demo · sin backend'); }}>
+                  Instalar componentes…
+                </Button>
+                <p className="ln-modal-nota" style={{margin:'6px 0 0'}}>Abre el instalador: explica para qué sirve cada cosa (voz, dictado, interfaz animada…) y lo instala.</p>
+              </div>
+            )}
           </div>
         </Card>
 
@@ -448,7 +455,8 @@ function SettingsPanel({ voiceOn, onVoice, fx = { bg:true, sweep:true, micro:tru
           <div className="ln-seg-row">
             <Button variant={c.asistente_render==='animado'?'primary':'ghost'} size="sm" onClick={()=>set('asistente_render')('animado')}>Imágenes animadas</Button>
             <Button variant={c.asistente_render==='vrm'?'primary':'ghost'} size="sm" disabled={!c.vrm_webengine}
-              title={c.vrm_webengine ? 'Avatar 3D con un modelo VRM' : 'Necesita PyQt6-WebEngine (Sistema → Instalar componentes…)'}
+              title={c.vrm_webengine ? 'Avatar 3D con un modelo VRM'
+                : (c.instalada ? 'No pude cargar QtWebEngine: reinstala Lune' : 'Necesita PyQt6-WebEngine (Sistema → Instalar componentes…)')}
               onClick={()=>set('asistente_render')('vrm')}>VRM 3D</Button>
             <Button variant={c.asistente_render==='sprites'?'primary':'ghost'} size="sm" onClick={()=>set('asistente_render')('sprites')}>Sprites ligeros</Button>
           </div>
@@ -503,7 +511,12 @@ function SettingsPanel({ voiceOn, onVoice, fx = { bg:true, sweep:true, micro:tru
             <Switch label="Fondo animado (fragmentos y grid)" checked={fx.bg} onChange={setFxKey('bg')} />
             <Switch label="Barrido al cambiar de vista" checked={fx.sweep} onChange={setFxKey('sweep')} accent="blue" />
             <Switch label="Micro-animaciones (burbujas, hover)" checked={fx.micro} onChange={setFxKey('micro')} />
+            {/* Lune en reposo (11.2, ui_web/lune_reposo.js): efectos.pausar_sin_foco */}
+            <Switch label="Quedarme quieta cuando no me usas" checked={fx.quieta !== false} onChange={setFxKey('quieta')} accent="blue" />
           </div>
+          <p className="ln-modal-nota" style={{margin:'10px 0 0'}}>
+            Sin el foco 20 s, o 90 s sin tocar nada, el fondo, las animaciones y mi vídeo se detienen donde estaban y vuelven al moverte.
+          </p>
         </Card>
 
         <div className="ln-settings-foot">

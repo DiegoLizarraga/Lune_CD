@@ -307,6 +307,10 @@ class BotFalso(QObject):
         self.ordenes, self.enviados = ordenes, []
         BotFalso.creados.append(self)
 
+    @classmethod
+    def preparar_carpeta(cls):              # como el de verdad (main.py lo mira antes de lanzarlo)
+        return cls.BOT_DIR.exists()
+
     def start(self):
         pass
 

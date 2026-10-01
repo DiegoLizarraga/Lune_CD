@@ -10,12 +10,14 @@ Sentada (corte 7) usa `sitting` (lune_sitting.png) como cara de reposo SOLO si e
 la trae (`tiene_cara`): `set_reposo('sitting')` hace que las vueltas a normal caigan
 ahí; sin archivo, la de siempre.
 """
+import shutil
 from pathlib import Path
 
 from PyQt6.QtWidgets import QFrame, QVBoxLayout, QLabel
 from PyQt6.QtCore import Qt, QTimer, QUrl, pyqtSignal
 from PyQt6.QtGui import QFont, QPixmap
 
+from nucleo import rutas
 from ui.theme import COLORS, FONT_MONO, FONT_JP
 
 # Etiqueta de estado que se muestra en el escenario de la asistente (月 EN LÍNEA)
@@ -33,7 +35,8 @@ try:
 except ImportError:
     _MULTIMEDIA_OK = False
 
-FACE_DIR = Path(__file__).parent.parent / "lune_face"
+# Las caras de serie las trae Lune (solo se leen).
+FACE_DIR = rutas.recurso("lune_face")
 
 FACE_FILES = {
     "normal":    ("lune_normal.png",    "image"),
@@ -61,9 +64,10 @@ FACE_FALLBACK_STATE = {
 }
 
 # ── Avatar packs (base para "modelos" intercambiables estilo Mate-Engine) ───────
-# Un pack es una subcarpeta en lune_face/packs/<nombre> con los mismos archivos.
-# "default" usa directamente lune_face/.
-PACKS_DIR = FACE_DIR / "packs"
+# Un pack es una subcarpeta en lune_face/packs/<nombre> con los mismos archivos, en la
+# carpeta de datos del usuario (desde el código, la del repo). "default" usa
+# directamente lune_face/ de Lune.
+PACKS_DIR = rutas.dato("lune_face", "packs")
 _ACTIVE_PACK = "default"
 _ANIM_VIDEO = True   # se ajusta desde config.json (features.animaciones_video)
 
@@ -78,8 +82,23 @@ def set_anim_video(activo: bool):
     _ANIM_VIDEO = bool(activo)
 
 
+def asegurar_carpeta_packs() -> Path:
+    """Crea la carpeta de packs del usuario con el README de Lune la primera vez
+    (instalada no existe hasta entonces). Sin errores: si no se puede, se sigue."""
+    try:
+        PACKS_DIR.mkdir(parents=True, exist_ok=True)
+        leeme = PACKS_DIR / "README.md"
+        original = FACE_DIR / "packs" / "README.md"
+        if not leeme.exists() and original.is_file() and original.resolve() != leeme.resolve():
+            shutil.copyfile(original, leeme)
+    except OSError:
+        pass
+    return PACKS_DIR
+
+
 def listar_packs() -> list:
     packs = ["default"]
+    asegurar_carpeta_packs()
     if PACKS_DIR.exists():
         packs += sorted(p.name for p in PACKS_DIR.iterdir() if p.is_dir())
     return packs

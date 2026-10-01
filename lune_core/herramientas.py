@@ -24,6 +24,7 @@ cuatro.
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
 import uuid
@@ -174,6 +175,44 @@ class Politica:
 
 # ── Sesión: pendientes, presupuesto y auditoría ─────────────────────────────────
 
+# audit.jsonl no crece sin fin: al pasar de AUDIT_MAX_BYTES se aparta como
+# audit.1.jsonl (la .1 pasa a .2…) y se guardan AUDIT_COPIAS. Rotar es renombrar,
+# no copiar: el archivo se abre y se cierra en cada entrada, así que nadie lo
+# tiene abierto entre una y otra (la app y patata escriben en el mismo).
+AUDIT_MAX_BYTES = 1024 * 1024
+AUDIT_COPIAS = 3
+
+
+def rotar_audit(ruta: Path, maximo: Optional[int] = None, copias: Optional[int] = None) -> bool:
+    """Si `ruta` pasa de `maximo` bytes la aparta (audit.jsonl → audit.1.jsonl…) y borra
+    la más vieja. True si rotó. Nunca lanza: si Windows no deja renombrar, se sigue
+    escribiendo en la misma y se reintenta con la próxima entrada."""
+    maximo = AUDIT_MAX_BYTES if maximo is None else maximo
+    copias = AUDIT_COPIAS if copias is None else copias
+    ruta = Path(ruta)
+    try:
+        if ruta.stat().st_size <= maximo:
+            return False
+    except OSError:
+        return False
+
+    def copia(n: int) -> Path:
+        return ruta.with_name(f"{ruta.stem}.{n}{ruta.suffix}")
+
+    try:
+        if copias < 1:
+            ruta.unlink()
+            return True
+        copia(copias).unlink(missing_ok=True)
+        for n in range(copias - 1, 0, -1):
+            if copia(n).exists():
+                os.replace(copia(n), copia(n + 1))
+        os.replace(ruta, copia(1))
+        return True
+    except OSError:
+        return False
+
+
 @dataclass
 class Pendiente:
     id: str
@@ -206,6 +245,7 @@ class Sesion:
         if self.audit_path:
             try:
                 self.audit_path.parent.mkdir(parents=True, exist_ok=True)
+                rotar_audit(self.audit_path)
                 with open(self.audit_path, "a", encoding="utf-8") as f:
                     f.write(json.dumps(entrada, ensure_ascii=False) + "\n")
             except OSError:

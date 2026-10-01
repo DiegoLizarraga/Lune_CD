@@ -24,11 +24,12 @@ import threading
 from pathlib import Path
 from typing import Any, Dict
 
-from nucleo import nombres_antiguos
+from nucleo import nombres_antiguos, rutas
 
-_ROOT = Path(__file__).parent.parent
-_PATH = _ROOT / "datos.json"
-_EJEMPLO = _ROOT / "datos.example.json"
+# datos.json es del usuario (rutas.DATOS); la plantilla la trae Lune (rutas.RECURSOS).
+# Desde el código las dos cuelgan de la raíz del repo, como siempre.
+_PATH = rutas.dato("datos.json")
+_EJEMPLO = rutas.recurso("datos.example.json")
 
 # Caché en memoria: evita releer el disco en cada llamada. Se invalida sola
 # cuando datos.json cambia por fuera (mtime) y explícitamente al guardar.
@@ -47,6 +48,7 @@ def _bootstrap():
     if _PATH.exists() or not _EJEMPLO.exists():
         return
     try:
+        _PATH.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(_EJEMPLO, _PATH)
     except OSError:
         pass

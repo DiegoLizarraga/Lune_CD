@@ -51,10 +51,35 @@ def test_pack_por_defecto_valido_y_apunta_a_los_sfx():
 
 
 def test_rutas_ancladas_a_la_raiz(monkeypatch, tmp_path):
+    from nucleo import rutas
     monkeypatch.chdir(tmp_path)                      # otro cwd no cambia nada
-    assert ps.CARPETA_SONIDOS == RAIZ / "sonidos"
+    assert ps.CARPETA_SONIDOS == rutas.DATOS / "sonidos"          # los del usuario
+    assert ps.CARPETA_SONIDOS_APP == RAIZ / "sonidos"             # el de Lune
+    assert ps.DIR_SFX == RAIZ / "ui_web" / "assets" / "sfx"
     assert [p.id for p in ps.listar_packs()][:1] == ["default"]
     assert ps.obtener_pack("default") is not None
+
+
+def test_packs_del_usuario_y_default_de_lune(monkeypatch, tmp_path):
+    """Instalada son dos carpetas: el default que trae Lune (solo lectura) y los packs del
+    usuario. Sin carpeta explícita se juntan; un «default» del usuario no tapa al de Lune."""
+    app, usuario = tmp_path / "app", tmp_path / "usuario"
+    _pack(app / "default", {"base": "ui_web/assets/sfx", "eventos": {"beber": ["trago_1.wav"]}})
+    _pack(usuario / "gata", {"nombre": "Gata", "eventos": {"beber": ["a.wav"]}}, ["a.wav"])
+    _pack(usuario / "default", {"nombre": "Falso", "eventos": {"beber": ["a.wav"]}}, ["a.wav"])
+    monkeypatch.setattr(ps, "CARPETA_SONIDOS_APP", app)
+    monkeypatch.setattr(ps, "CARPETA_SONIDOS", usuario)
+    packs = ps.listar_packs()
+    assert [p.id for p in packs] == ["default", "gata"]
+    assert packs[0].carpeta == app / "default" and packs[0].nombre != "Falso"
+    assert ps.obtener_pack("gata").carpeta == usuario / "gata"
+    assert ps.obtener_pack("default").carpeta == app / "default"
+    assert ps.pack_por_defecto().carpeta == app / "default"
+    # el pack del usuario completa con el default de Lune, no con su «default»
+    assert ps._defecto_para(ps.obtener_pack("gata")).carpeta == app / "default"
+    # con carpeta explícita, solo esa (como siempre)
+    assert [p.id for p in ps.listar_packs(usuario)] == ["default", "gata"]
+    assert ps.listar_packs(tmp_path / "vacia") == []
 
 
 # ── Validación ────────────────────────────────────────────────────────────────

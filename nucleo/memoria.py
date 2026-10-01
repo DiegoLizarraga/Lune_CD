@@ -88,6 +88,8 @@ from pathlib import Path
 from datetime import datetime
 from typing import Any, Callable, Optional
 
+from nucleo import rutas
+
 _log = logging.getLogger("lune.memoria")
 
 _REINTENTOS_REEMPLAZO = 5           # os.replace con el archivo abierto por el otro proceso (Windows)
@@ -124,7 +126,8 @@ def limpiar_dato_perfil(texto: Any, maximo: int = MAX_TEXTO_PERFIL) -> str:
     return s[:maximo].rstrip()
 
 
-MEMORIA_PATH = Path(__file__).parent.parent / "memoria.json"
+# En la carpeta de datos del usuario (rutas.DATOS; desde el código, la raíz del repo).
+MEMORIA_PATH = rutas.dato("memoria.json")
 
 TIPOS_RECUERDO = {
     "hecho":        "·",
@@ -343,6 +346,7 @@ class MemoriaManager:
         tmp = None
         try:
             carpeta = self.path.parent
+            carpeta.mkdir(parents=True, exist_ok=True)
             fd, tmp = tempfile.mkstemp(prefix=f".{self.path.name}.", suffix=".tmp", dir=str(carpeta))
             with os.fdopen(fd, "w", encoding="utf-8") as f:
                 f.write(texto)

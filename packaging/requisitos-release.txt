@@ -1,0 +1,91 @@
+# packaging/requisitos-release.txt — Lo que instala GitHub para construir el Setup.exe.
+#
+# Versiones EXACTAS: las del venv limpio en el que se construyó y probó la 11.2 en casa
+# (pip freeze). Así el instalador que sale de GitHub lleva lo mismo que probamos aquí.
+# Para subir algo: cámbialo en el venv de build, construye y prueba (python
+# packaging/construir.py), y copia aquí la versión nueva. PyQt6 y PyQt6-WebEngine
+# tienen que ir a la par (misma 6.x).
+#
+# No es el requirements.txt de siempre: ese es para usar Lune desde el código (con >=)
+# y no trae faster-whisper ni PyInstaller.
+
+# ── Para construir ────────────────────────────────────────────────
+pyinstaller==6.22.3
+pyinstaller-hooks-contrib==2026.8
+altgraph==0.17.5
+pefile==2024.8.26
+pywin32-ctypes==0.2.3
+setuptools==84.0.0
+packaging==26.3
+
+# ── Interfaz (Qt) ─────────────────────────────────────────────────
+PyQt6==6.11.0
+PyQt6-Qt6==6.11.2
+PyQt6_sip==13.12.0
+PyQt6-WebEngine==6.11.0
+PyQt6-WebEngine-Qt6==6.11.2
+
+# ── Lo de requirements.txt ────────────────────────────────────────
+requests==2.34.2
+websockets==17.1
+zeroconf==0.151.5
+psutil==7.2.2
+pywin32==312
+comtypes==1.4.17
+numpy==2.5.3
+sounddevice==0.5.6
+imageio-ffmpeg==0.6.0
+edge-tts==7.2.8
+gTTS==2.5.4
+pygame==2.6.1
+pypdf==6.19.0
+python-docx==1.2.0
+pillow==12.3.0
+
+# ── Dictado (va dentro del instalador) ────────────────────────────
+faster-whisper==1.2.1
+ctranslate2==4.8.2
+onnxruntime==1.30.0
+av==19.0.0
+tokenizers==0.23.2
+huggingface_hub==1.16.1
+hf-xet==1.6.0
+
+# ── Lo que arrastran los de arriba ────────────────────────────────
+aiohappyeyeballs==2.7.1
+aiohttp==3.14.3
+aiosignal==1.4.0
+annotated-doc==0.0.5
+anyio==4.15.1
+attrs==26.1.0
+certifi==2026.7.22
+cffi==2.1.1
+charset-normalizer==3.5.2
+click==8.1.8
+colorama==0.4.6
+filelock==4.0.7
+flatbuffers==25.12.19
+frozenlist==1.8.0
+fsspec==2026.9.0
+h11==0.16.0
+httpcore==1.0.9
+httpx==0.28.1
+idna==3.20
+ifaddr==0.2.0
+lxml==6.1.3
+markdown-it-py==4.2.0
+mdurl==0.1.2
+multidict==6.9.1
+propcache==0.5.4
+protobuf==7.36.2
+pycparser==3.0
+Pygments==2.21.0
+PyYAML==6.0.3
+rich==15.0.0
+shellingham==1.5.4
+tabulate==0.10.0
+tqdm==4.70.1
+typer==0.27.2
+typing_extensions==4.16.0
+urllib3==2.8.0
+yarl==1.25.1

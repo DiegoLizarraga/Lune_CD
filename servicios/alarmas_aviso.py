@@ -37,12 +37,13 @@ from collections import deque
 from pathlib import Path
 from typing import Any, Callable, Deque, List, Optional, Tuple
 
+from nucleo import rutas
 from nucleo.alarmas import Disparo
 
 _log = logging.getLogger("lune.alarmas")
 
-RAIZ = Path(__file__).resolve().parent.parent
-DIR_SFX = RAIZ / "ui_web" / "assets" / "sfx"
+RAIZ = rutas.RECURSOS
+DIR_SFX = rutas.recurso("ui_web", "assets", "sfx")    # lo trae Lune (solo se lee)
 SONIDOS = ("alarma_1", "alarma_2", "alarma_3")
 CANAL = "alarma"
 

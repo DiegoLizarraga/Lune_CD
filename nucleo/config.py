@@ -27,9 +27,10 @@ Varios escritores (la app, patata, el tema con guardado diferido, el bot):
 - Un config.json corrupto NO se pisa con los valores por defecto: se aparta
   como config.json.corrupto-AAAAMMDD-HHMMSS y se avisa en el log.
 
-La ruta por defecto se ancla a la raíz del repo (no al directorio de trabajo),
-para que la app, patata y el bot usen el mismo archivo aunque se lancen desde
-otra carpeta. Una ruta relativa también se ancla a la raíz.
+La ruta por defecto se ancla a la carpeta de datos (rutas.DATOS: la raíz del repo
+desde el código, %APPDATA%\\Lune CD instalada), no al directorio de trabajo, para que
+la app, patata y el bot usen el mismo archivo aunque se lancen desde otra carpeta.
+Una ruta relativa también se ancla ahí.
 
 Las APIs, modelos y personalidad viven en datos.json (ver datos.py).
 """
@@ -47,9 +48,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from nucleo import nombres_antiguos
+from nucleo import nombres_antiguos, rutas
 
-RAIZ = Path(__file__).resolve().parent.parent
+# El nombre RAIZ se conserva (alarmas.py lo importa y los tests lo parchean): ahora es
+# la carpeta de datos del usuario, que desde el código sigue siendo la raíz del repo.
+RAIZ = rutas.DATOS
 RUTA_CONFIG = RAIZ / "config.json"
 
 _log = logging.getLogger("lune.config")
@@ -66,7 +69,7 @@ _FALTA = object()
 
 
 def _anclar(config_path) -> Path:
-    """Ruta absoluta del config: vacía → RAIZ/config.json; relativa → bajo RAIZ."""
+    """Ruta absoluta del config: vacía → RAIZ/config.json; relativa → bajo RAIZ (DATOS)."""
     if config_path is None or str(config_path) == "":
         return RUTA_CONFIG
     p = Path(config_path).expanduser()
@@ -423,6 +426,9 @@ class Config:
             "fondo": True,                       # fondo animado
             "barrido": True,                     # barrido al cambiar de pantalla
             "micro": True,                       # microinteracciones
+            # Lune en reposo (11.2): sin foco 20 s o sin usarla 90 s, la ventana deja de animar
+            # (ui_web/lune_reposo.js); con una animación viva, Qt compone 60 frames por segundo.
+            "pausar_sin_foco": True,
         },
         # Botones del menú radial de la asistente en escritorio (P10).
         "menu_radial": {

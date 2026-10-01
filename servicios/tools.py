@@ -54,9 +54,12 @@ except ImportError:
 
 from lune_core.herramientas import ALIAS_APPS, resolver_app
 
-RAIZ = Path(__file__).resolve().parent.parent
-# Auditoría de las acciones del modelo (lune_core/herramientas.Sesion).
-AUDIT_POR_DEFECTO = RAIZ / "logs" / "audit.jsonl"
+from nucleo import rutas
+
+# Auditoría de las acciones del modelo (lune_core/herramientas.Sesion): con los logs,
+# en la carpeta local (desde el código, la raíz del repo).
+RAIZ = rutas.LOCAL
+AUDIT_POR_DEFECTO = rutas.local("logs", "audit.jsonl")
 _DEFECTO = object()
 
 

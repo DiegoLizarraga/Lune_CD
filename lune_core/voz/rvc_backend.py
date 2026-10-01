@@ -46,7 +46,8 @@ def mensaje_instalacion() -> str:
     faltan = dependencias_faltantes()
     partes = ["Conversión de voz (RVC) — experimental:"]
     if faltan:
-        partes.append(f"\n    pip install {' '.join(faltan)}")
+        from nucleo import rutas
+        partes.append(f"\n    {rutas.como_instalar(*faltan)}")
     partes.append("\nAdemás necesitas un modelo de voz .pth (con su .index) y")
     partes.append("apuntarlo en Configuración. Sin él, Lune usa la voz de Kokoro tal cual.")
     return "\n".join(partes)

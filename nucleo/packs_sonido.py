@@ -4,8 +4,8 @@ packs» de Mate-Engine, versión Lune).
 
 QUÉ ES UN PACK
 --------------
-Una carpeta dentro de `sonidos/` (anclada a la raíz del repo, nunca al cwd) con
-un `pack.json`:
+Una carpeta dentro de `sonidos/` (la de los datos del usuario, rutas.DATOS; nunca
+relativa al cwd) con un `pack.json`:
 
     {
       "nombre": "Gatita",                    # lo que ve el usuario (≤ 60)
@@ -44,9 +44,12 @@ EL PACK POR DEFECTO
 -------------------
 `sonidos/default/pack.json` no trae archivos propios: `"base":
 "ui_web/assets/sfx"` hace que sus rutas se lean en la carpeta de los WAV que
-genera `scripts/generar_sfx.py`. `base` solo puede valer lo que hay en
-`BASES_PERMITIDAS`: un pack descargado no puede hacer que Lune lea ni publique
-otra carpeta del disco.
+genera `scripts/generar_sfx.py`. Lo trae Lune: vive en `sonidos/` de RECURSOS
+(`CARPETA_SONIDOS_APP`) y los packs del usuario en `sonidos/` de DATOS
+(`CARPETA_SONIDOS`). Sin carpeta explícita se juntan las dos; si el usuario tiene
+otro `default`, gana el de Lune. Desde el código las dos son la misma carpeta.
+`base` solo puede valer lo que hay en `BASES_PERMITIDAS`: un pack descargado no
+puede hacer que Lune lea ni publique otra carpeta del disco.
 
 USO
 ---
@@ -73,11 +76,16 @@ from pathlib import Path
 from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union
 from urllib.parse import quote
 
+from nucleo import rutas
+
 log = logging.getLogger("lune.packs_sonido")
 
-RAIZ = Path(__file__).resolve().parent.parent
-CARPETA_SONIDOS = RAIZ / "sonidos"
-DIR_WEB = RAIZ / "ui_web"
+# Las carpetas relativas cuelgan de los datos del usuario (nunca del cwd).
+RAIZ = rutas.DATOS
+# Los packs del usuario (se escriben) y el pack por defecto que trae Lune (solo se lee).
+CARPETA_SONIDOS = rutas.dato("sonidos")
+CARPETA_SONIDOS_APP = rutas.recurso("sonidos")
+DIR_WEB = rutas.recurso("ui_web")
 DIR_SFX = DIR_WEB / "assets" / "sfx"
 
 PACK_DEFECTO = "default"
@@ -180,11 +188,29 @@ class PackSonido:
 # ── Utilidades ────────────────────────────────────────────────────────────────
 
 def _anclar(carpeta: Optional[Union[str, Path]]) -> Path:
-    """Carpeta de packs anclada a la raíz del repo (nunca al cwd)."""
+    """Carpeta de packs anclada a los datos del usuario (nunca al cwd)."""
     if carpeta is None:
         return CARPETA_SONIDOS
     c = Path(carpeta)
     return c if c.is_absolute() else RAIZ / c
+
+
+def _raices(carpeta: Optional[Union[str, Path]]) -> List[Path]:
+    """Dónde buscar packs. Con carpeta explícita, solo esa. Sin ella, primero la de Lune
+    (el pack por defecto) y luego la del usuario; desde el código son la misma."""
+    if carpeta is not None:
+        return [_anclar(carpeta)]
+    raices = [CARPETA_SONIDOS_APP]
+    if not _misma_carpeta(CARPETA_SONIDOS, CARPETA_SONIDOS_APP):
+        raices.append(CARPETA_SONIDOS)
+    return raices
+
+
+def _misma_carpeta(a: Path, b: Path) -> bool:
+    try:
+        return a.resolve() == b.resolve()
+    except OSError:
+        return a == b
 
 
 def _texto(valor, maximo: int) -> str:
@@ -343,47 +369,54 @@ def _id_valido(id_pack: str) -> bool:
 
 def listar_packs(carpeta: Optional[Union[str, Path]] = None, *,
                  incluir_invalidos: bool = False) -> List[PackSonido]:
-    """Packs de `carpeta` (por defecto sonidos/): el de por defecto primero y luego por nombre.
+    """Packs de `carpeta` (por defecto, los de Lune y los del usuario): el de por defecto
+    primero y luego por nombre.
 
     Cada subcarpeta con pack.json es un pack; se saltan las que empiezan por «.» o «_».
+    Si dos se llaman igual (un `default` del usuario), vale el primero: el de Lune.
     """
-    raiz = _anclar(carpeta)
     packs: List[PackSonido] = []
-    try:
-        hijos = sorted(p for p in raiz.iterdir() if p.is_dir())
-    except OSError:
-        return packs
-    for hijo in hijos:
-        if not _id_valido(hijo.name) or not (hijo / ARCHIVO_PACK).exists():
+    vistos = set()
+    for raiz in _raices(carpeta):
+        try:
+            hijos = sorted(p for p in raiz.iterdir() if p.is_dir())
+        except OSError:
             continue
-        pack = cargar_pack(hijo)
-        if pack.valido or incluir_invalidos:
-            packs.append(pack)
+        for hijo in hijos:
+            if hijo.name in vistos or not _id_valido(hijo.name) or not (hijo / ARCHIVO_PACK).exists():
+                continue
+            vistos.add(hijo.name)
+            pack = cargar_pack(hijo)
+            if pack.valido or incluir_invalidos:
+                packs.append(pack)
     packs.sort(key=lambda p: (p.id != PACK_DEFECTO, p.nombre.casefold(), p.id))
     return packs
 
 
 def obtener_pack(id_pack: str, carpeta: Optional[Union[str, Path]] = None) -> Optional[PackSonido]:
-    """El pack `id_pack` (nombre de su carpeta) si existe y es válido; None si no."""
+    """El pack `id_pack` (nombre de su carpeta) si existe y es válido; None si no.
+    Sin carpeta se busca como en listar_packs: primero lo de Lune y luego lo del usuario."""
     if not _id_valido(id_pack):
         return None
-    raiz = _anclar(carpeta)
-    destino = raiz / id_pack
-    try:
-        if not _dentro(destino.resolve(), raiz.resolve()) or not (destino / ARCHIVO_PACK).is_file():
-            return None
-    except OSError:
-        return None
-    pack = cargar_pack(destino)
-    return pack if pack.valido else None
+    for raiz in _raices(carpeta):
+        destino = raiz / id_pack
+        try:
+            if not _dentro(destino.resolve(), raiz.resolve()) or not (destino / ARCHIVO_PACK).is_file():
+                continue
+        except OSError:
+            continue
+        pack = cargar_pack(destino)
+        return pack if pack.valido else None
+    return None
 
 
 _cache_defecto: Dict[Path, Tuple[int, PackSonido]] = {}
 
 
 def pack_por_defecto(carpeta: Optional[Union[str, Path]] = None) -> Optional[PackSonido]:
-    """El pack `default` de `carpeta` (sonidos/ si no se dice). En caché hasta que cambie su pack.json."""
-    destino = _anclar(carpeta) / PACK_DEFECTO
+    """El pack `default` de `carpeta` (si no se dice, el que trae Lune). En caché hasta que
+    cambie su pack.json."""
+    destino = (CARPETA_SONIDOS_APP if carpeta is None else _anclar(carpeta)) / PACK_DEFECTO
     archivo = destino / ARCHIVO_PACK
     try:
         marca = archivo.stat().st_mtime_ns
@@ -412,10 +445,13 @@ def _como_pack(pack: RutaPack) -> Optional[PackSonido]:
 
 def _defecto_para(pack: PackSonido) -> Optional[PackSonido]:
     """El pack por defecto que acompaña a `pack`: el `default` de su misma carpeta de
-    packs si existe; si no, el de sonidos/."""
+    packs si existe; si no (o si es la del usuario, donde manda el de Lune), el de Lune."""
     if pack.id == PACK_DEFECTO:
         return pack
-    return pack_por_defecto(pack.carpeta.parent) or pack_por_defecto()
+    carpeta = pack.carpeta.parent
+    if _misma_carpeta(carpeta, CARPETA_SONIDOS):
+        return pack_por_defecto()
+    return pack_por_defecto(carpeta) or pack_por_defecto()
 
 
 # ── Resolución ────────────────────────────────────────────────────────────────

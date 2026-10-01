@@ -524,7 +524,9 @@
           </p>
           {!bib.webengine && (
             <p className="ln-vrm-aviso">
-              La asistente 3D necesita PyQt6-WebEngine (Sistema → Instalar componentes…). Puedes preparar los modelos igual.
+              {cfg && cfg.instalada
+                ? 'No pude cargar QtWebEngine y la asistente 3D lo necesita: reinstala Lune. Puedes preparar los modelos igual.'
+                : 'La asistente 3D necesita PyQt6-WebEngine (Sistema → Instalar componentes…). Puedes preparar los modelos igual.'}
             </p>
           )}
           {cargando && bib.modelos.length === 0 && <p className="ln-x-estado">Cargando modelos…</p>}

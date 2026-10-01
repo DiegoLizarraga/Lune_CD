@@ -21,7 +21,7 @@
  *           onEvento(tipo, dato), alListo(meta), alError(motivo),
  *           liberarAlPausar (true), clicToca (true), alturaCara (0.35),
  *           alcance (1), params (json inicial para luneParams), validarParams(json)
- *   h.setEstado(e) · h.setHablando(on) · h.pausar(on) · h.cargar(url, v)
+ *   h.setEstado(e) · h.setHablando(on) · h.pausar(on) · h.reposar(on) · h.cargar(url, v)
  *   h.luneParams(json) · h.encuadrar(modo) · h.cursor(clientX, clientY) · h.destruir()
  *   h.registrar(instalar) → módulo | null   módulo del bus de lune_vrm.js (lune_modulos.js);
  *                           antes de que haya motor se encola y se registra al crearlo
@@ -45,6 +45,9 @@
  * Recursos: pausar(true) pone FPS 0 y, con liberarAlPausar, suelta el contexto
  * WebGL (WEBGL_lose_context) para no tener dos avatares en la GPU cuando Lune sale
  * al escritorio; pausar(false) lo restaura (three.js re-sube texturas y shaders).
+ * reposar(true) (Lune en reposo, ui_web/lune_reposo.js: la ventana sin foco o sin usar) solo
+ * pone FPS 0, SIN soltar el contexto: al volver sigue al momento, sin re-subir nada; pausar()
+ * manda sobre él.
  * destruir() libera el modelo y el contexto (con m.destruir() del motor, que además
  * para su bucle y descarta una carga en vuelo); el <canvas> ya no se puede
  * reutilizar (en React, que se monte uno nuevo).
@@ -317,7 +320,7 @@ export function crear(canvas, urlModelo, opts = {}) {
   let m = null;                     // la asistente de lune_vrm.js
   let url = String(urlModelo || '');
   let version = opts.version !== undefined ? opts.version : null;
-  let estado = 'normal', hablando = false, pausado = !!opts.pausado;
+  let estado = 'normal', hablando = false, pausado = !!opts.pausado, reposando = false;
   let destruido = false, listo = false, arrancando = false;
   const paramsPend = [];
   if (opts.params) paramsPend.push(opts.params);
@@ -372,7 +375,7 @@ export function crear(canvas, urlModelo, opts = {}) {
       const nueva = crearAsistente({ canvas, src: urlConVersion(url, version), encuadre: cfg.encuadre, onEvento: alEventoMotor });
       if (destruido) { liberarAsistente(nueva); return; }
       m = nueva;
-      try { m.setFPS(cfg.fps); } catch (e) { /* sigue */ }
+      try { m.setFPS(reposando ? 0 : cfg.fps); } catch (e) { /* sigue */ }
       if (paramsGlobales) aplicarParams(paramsGlobales);
       while (paramsPend.length) aplicarParams(paramsPend.shift());
       // Módulos del bus y llamadas a su API que llegaron antes que el motor, en ese orden.
@@ -612,12 +615,21 @@ export function crear(canvas, urlModelo, opts = {}) {
       } else if (!m) {
         arrancar();
       } else {
-        try { m.setFPS(cfg.fps); } catch (err) { /* sigue */ }
+        try { m.setFPS(reposando ? 0 : cfg.fps); } catch (err) { /* sigue */ }
         programarEncuadre();
         enviarCursor();
       }
       sincronizarContexto();
       return pausado;
+    },
+    /** Lune en reposo: FPS 0 SIN soltar el contexto WebGL (al volver sigue al momento).
+     *  En pausa no toca nada (pausar(false) ya lo tiene en cuenta). → bool */
+    reposar(on = true) {
+      on = !!on;
+      if (destruido || on === reposando) return reposando;
+      reposando = on;
+      if (m && !pausado) { try { m.setFPS(on ? 0 : cfg.fps); } catch (err) { /* sigue */ } }
+      return reposando;
     },
     /** Otro modelo en el mismo contexto (cambio de personaje). `v` = versión (?v=). → bool */
     cargar(nuevaUrl, v) {
@@ -696,6 +708,7 @@ export function crear(canvas, urlModelo, opts = {}) {
     },
     get listo() { return listo; },
     get pausado() { return pausado; },
+    get reposando() { return reposando; },
     get destruido() { return destruido; },
     get estado() { return estado; },
     get url() { return url; },

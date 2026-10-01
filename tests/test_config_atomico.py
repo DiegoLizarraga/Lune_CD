@@ -330,8 +330,11 @@ def test_la_ruta_por_defecto_no_depende_del_directorio_de_trabajo(tmp_path, monk
     monkeypatch.chdir(tmp_path)
     assert modulo_config._anclar("config.json") == modulo_config.RAIZ / "config.json"
     assert modulo_config._anclar(None) == modulo_config.RUTA_CONFIG
-    assert modulo_config.RUTA_CONFIG == RAIZ / "config.json"
-    # una ruta relativa cuelga de la raíz del repo, no del cwd
+    # cuelga de la carpeta de datos (rutas.DATOS: el repo desde el código; en los tests,
+    # la temporal de LUNE_CD_DATOS), nunca del cwd
+    from nucleo import rutas
+    assert modulo_config.RUTA_CONFIG == rutas.DATOS / "config.json"
+    # una ruta relativa cuelga de RAIZ (los datos), no del cwd
     raiz_falsa = tmp_path / "repo"
     raiz_falsa.mkdir()
     monkeypatch.setattr(modulo_config, "RAIZ", raiz_falsa)

@@ -255,7 +255,7 @@ check('formato crudo: Alvaro M de España', crudo.edge[0].genero === 'M' && crud
 check('formato crudo: Ava multilingüe', crudo.edge[1].multi === true && crudo.edge[1].nombre === 'Ava');
 check('descarta ids inválidos y duplicados', !crudo.edge.some((v) => /[<>]/.test(v.id)));
 check('gTTS por defecto: com.mx, es, us', resp0.gtts.map((p) => p[0]).join(',') === 'com.mx,es,us');
-check('Kokoro por defecto: no disponible con instrucciones', resp0.kokoro.disponible === false && /pip install kokoro-onnx/.test(resp0.kokoro.mensaje));
+check('Kokoro por defecto: no disponible con instrucciones', resp0.kokoro.disponible === false && /kokoro-onnx/.test(resp0.kokoro.mensaje) && !/pip install/.test(resp0.kokoro.mensaje));
 const packs0 = V.normalizarPacks(null);
 check('packs: siempre «default»', packs0.length === 1 && packs0[0].id === 'default');
 const packs1 = V.normalizarPacks('{"packs":[{"id":"gatos","nombre":"Gatos","autor":"D","eventos":["a","b"]},"default","gatos"]}');

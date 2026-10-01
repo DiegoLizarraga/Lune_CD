@@ -44,8 +44,12 @@ from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, NamedTuple, Optional
 
-RAIZ = Path(__file__).resolve().parent.parent
-RUTA_CACHE = RAIZ / "cache" / "voces_edge.json"
+from nucleo import rutas
+
+# La lista de voces es una caché desechable: va a la carpeta local (desde el código,
+# la raíz del repo, como siempre).
+RAIZ = rutas.LOCAL
+RUTA_CACHE = rutas.local("cache", "voces_edge.json")
 TTL_CACHE_S = 7 * 24 * 3600          # la lista de Microsoft cambia muy de vez en cuando
 REINTENTO_S = 600                    # tras un fallo de red, no volver a intentar en 10 min
 

@@ -49,6 +49,12 @@ wheels/
 .pytest_cache/
 .ruff_cache/
 
+# ─── Empaquetado (packaging/construir.py) ───────────────────────
+# build/: la copia limpia (build/fuente) y el trabajo de PyInstaller.
+# dist/: «Lune CD/» con los .exe y LuneCD-Setup-<versión>.exe (+ .sha256) de Inno.
+/build/
+/dist/
+
 # Entorno virtual
 venv/
 ENV/

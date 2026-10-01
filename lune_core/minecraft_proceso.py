@@ -39,6 +39,13 @@ y no lanza otro npm ci. Si Lune muere, el sistema suelta el cerrojo solo (sin mi
 PIDs de nadie: un PID reciclado no puede dejarla «instalando» para siempre). Con el
 bot en marcha no se instala (npm ci borra node_modules, que el bot está usando).
 
+Dónde vive: BOT_DIR (rutas.local("minecraft-bot"); desde el código, la carpeta del
+repo). Instalada, el código viene en BOT_ORIGEN (dentro del programa) y se copia a
+BOT_DIR antes de instalar o arrancar (servicios/copia_bots.py: src/ y package*.json,
+nunca node_modules ni .instalando). Tras un npm ci que sale bien se guarda el sha256
+del package-lock.json en node_modules/ (ARCHIVO_HASH_LOCK): si una actualización trae
+otro lockfile, `instalado()` da False y el botón vuelve a pedir instalar.
+
 Hardening: con un Node que tenga el modelo de permisos (`--permission`, Node
 22.13+/23.5+) el hijo solo puede LEER su carpeta: no escribe en disco ni crea
 procesos o workers. Se detecta mirando `node --help`; si ese Node no lo tiene,
@@ -49,6 +56,7 @@ Anticheat: el bot es un cliente de red; nada aquí abre handles al proceso del j
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -63,10 +71,16 @@ import unicodedata
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from nucleo import rutas
+
 _log = logging.getLogger("lune.minecraft")
 
-RAIZ = Path(__file__).resolve().parent.parent
-BOT_DIR = RAIZ / "minecraft-bot"
+RAIZ = rutas.RECURSOS
+# Donde corre el bot (npm ci, ~400 MB): lo local del usuario. BOT_ORIGEN es el código que
+# trae Lune. Desde el código las dos son minecraft-bot/ del repo.
+BOT_DIR = rutas.local("minecraft-bot")
+BOT_ORIGEN = rutas.recurso("minecraft-bot")
+ARCHIVO_HASH_LOCK = ".lune-package-lock.sha256"     # dentro de node_modules/: npm ci lo borra con todo
 MARCA = "@@LUNE"
 MAX_LINEA = 8192                    # bot → Lune
 MAX_ENTRADA = 32768                 # Lune → bot (igual que canal.js)
@@ -519,12 +533,19 @@ class ProcesoBot:
     hilo lector «lune-mc-stdout»: quien los use en Qt tiene que pasarlos a su hilo.
     """
 
-    def __init__(self, carpeta: Any = BOT_DIR, *, node: Optional[str] = None, npm: Any = None,
+    def __init__(self, carpeta: Any = None, *, origen: Any = None, node: Optional[str] = None, npm: Any = None,
                  popen: Callable[..., Any] = subprocess.Popen, ejecutar: Callable[..., Any] = subprocess.run,
                  on_evento: Optional[Callable[[dict], None]] = None, on_log: Optional[Callable[[str], None]] = None,
                  on_fin: Optional[Callable[[Optional[int]], None]] = None,
                  which: Callable[[str], Optional[str]] = shutil.which):
+        # Sin carpeta: BOT_DIR, con el código traído de BOT_ORIGEN (si no son la misma).
+        # Con una carpeta explícita (los tests) se usa tal cual, salvo que se dé `origen`.
+        if carpeta is None:
+            carpeta = BOT_DIR
+            origen = BOT_ORIGEN if origen is None else origen
         self.carpeta = Path(carpeta)
+        self.origen: Optional[Path] = Path(origen) if origen is not None else None
+        self._preparado = False
         self._node = node
         self._npm = npm
         self._popen = popen
@@ -574,8 +595,50 @@ class ProcesoBot:
         w = self._which("npm")
         return [w] if w else None
 
+    def preparar(self, forzar: bool = False) -> bool:
+        """Trae el código del bot de `origen` a la carpeta (instalada: del programa a LOCAL).
+        Una vez por instancia, salvo `forzar` (antes de instalar y de arrancar). Sin origen,
+        o si es la misma carpeta, no hace nada. → False si algo no se pudo copiar."""
+        if self.origen is None or (self._preparado and not forzar):
+            return True
+        self._preparado = True
+        from servicios import copia_bots
+        ok = copia_bots.sincronizar(self.origen, self.carpeta)
+        if not ok:
+            _log.warning("minecraft: no pude dejar al día el código del bot en %s", self.carpeta)
+        return ok
+
+    def _hash_lock(self) -> Optional[str]:
+        try:
+            return hashlib.sha256((self.carpeta / "package-lock.json").read_bytes()).hexdigest()
+        except OSError:
+            return None
+
+    def _anotar_lock(self, valor: Optional[str] = None) -> None:
+        valor = valor or self._hash_lock()
+        if not valor:
+            return
+        try:
+            (self.carpeta / "node_modules" / ARCHIVO_HASH_LOCK).write_text(valor, encoding="ascii")
+        except OSError:
+            pass
+
     def instalado(self) -> bool:
-        return (self.carpeta / "node_modules" / "mineflayer" / "package.json").is_file()
+        """mineflayer en node_modules y del MISMO package-lock.json con el que se instaló.
+        Una instalación de antes de la 11.2 (sin la marca) adopta el lockfile de ahora."""
+        self.preparar()
+        nm = self.carpeta / "node_modules"
+        if not (nm / "mineflayer" / "package.json").is_file():
+            return False
+        actual = self._hash_lock()
+        if actual is None:
+            return True                         # sin lockfile legible no hay con qué comparar
+        try:
+            guardado = (nm / ARCHIVO_HASH_LOCK).read_text(encoding="ascii").strip()
+        except OSError:
+            self._anotar_lock(actual)
+            return True
+        return guardado == actual
 
     def requisitos(self, refrescar: bool = False) -> dict:
         """{node: 'v24.19.0'|None, node_ok (≥18), npm: bool, instalado: bool}."""
@@ -632,6 +695,7 @@ class ProcesoBot:
             return False, "Ya se está instalando."
         if self.vivo:
             return False, AVISO_BOT_VIVO
+        self.preparar(forzar=True)
         req = self.requisitos(refrescar=True)
         if not req["node_ok"]:
             return False, AVISO_SIN_NODE
@@ -687,6 +751,8 @@ class ProcesoBot:
         if self._cancelada:
             return False, "Instalación cancelada."
         codigo = getattr(p, "returncode", 1)
+        if codigo == 0:
+            self._anotar_lock()                 # instalado con ESTE lockfile
         if codigo == 0 and self.instalado():
             return True, "Bot de Minecraft instalado."
         texto = (str(errores or "") + "\n" + str(salida or "")).strip()
@@ -734,6 +800,7 @@ class ProcesoBot:
         node = self.ruta_node()
         if not node:
             return False, AVISO_SIN_NODE
+        self.preparar(forzar=True)
         if not (self.carpeta / "src" / "bot.js").is_file():
             return False, "Falta minecraft-bot/src/bot.js."
         if not probar and not self.instalado():
@@ -957,6 +1024,6 @@ class ProcesoBot:
 
 
 __all__ = ("ProcesoBot", "config_bot", "config_llm", "nick_valido", "validar_host", "nick_desde_nombre",
-           "version_node", "largo_utf16", "matar_arbol", "BOT_DIR", "MARCA", "MAX_LINEA", "TIPOS_BOT",
+           "version_node", "largo_utf16", "matar_arbol", "BOT_DIR", "BOT_ORIGEN", "ARCHIVO_HASH_LOCK", "MARCA", "MAX_LINEA", "TIPOS_BOT",
            "AVISO_INSTALAR", "AVISO_SIN_NODE", "AVISO_SIN_DUENO", "AVISO_BOT_VIVO", "ARGS_NPM_CI",
            "MARCA_INSTALANDO")

@@ -33,14 +33,20 @@
   #stage { position:relative; flex:1; min-height:0; width:100%; }
   #c { display:block; width:100%; height:100%; }
 
-  /* "z z z" mientras duerme */
-  #zzz { position:absolute; top:6%; right:14%; pointer-events:none; opacity:0; transition:opacity .6s;
+  /* "z z z" mientras duerme. Solo existen (y se animan) dormida: con opacity 0 sus tres animaciones
+     infinitas seguían vivas y obligaban a Chromium a sacar 60 frames por segundo, que en esta ventana
+     translúcida Qt copia de la GPU a la CPU uno a uno. */
+  #zzz { position:absolute; top:6%; right:14%; pointer-events:none; display:none;
     font-family:var(--font-display, var(--font-mono, monospace)); font-weight:700; color:var(--cyan-400,#36ECFF);
     text-shadow:0 0 10px rgb(var(--cyan-400-rgb, 54 236 255) / .6); }
-  #zzz.on { opacity:1; }
-  #zzz span { position:absolute; right:0; animation:zzz 2.4s linear infinite; font-size:14px; }
-  #zzz span:nth-child(2) { animation-delay:-.8s; font-size:18px; right:10px; }
-  #zzz span:nth-child(3) { animation-delay:-1.6s; font-size:22px; right:22px; }
+  #zzz.on { display:block; animation:zzz-in .6s ease-out; }
+  #zzz span { position:absolute; right:0; font-size:14px; }
+  #zzz.on span { animation:zzz 2.4s linear infinite; }
+  #zzz.on span:nth-child(2) { animation-delay:-.8s; }
+  #zzz.on span:nth-child(3) { animation-delay:-1.6s; }
+  #zzz span:nth-child(2) { font-size:18px; right:10px; }
+  #zzz span:nth-child(3) { font-size:22px; right:22px; }
+  @keyframes zzz-in { from{ opacity:0; } to{ opacity:1; } }
   @keyframes zzz { 0%{ transform:translate(0,0) rotate(0); opacity:0; } 15%{ opacity:.9; } 100%{ transform:translate(14px,-46px) rotate(18deg); opacity:0; } }
 
   #aviso { position:absolute; inset:0; display:none; place-content:center; text-align:center;

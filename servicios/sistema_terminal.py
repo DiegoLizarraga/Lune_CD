@@ -198,7 +198,7 @@ class SistemaTerminal:
                 return f"No pude cambiarlo: {e}"
             self._guardar("sistema", "autoinicio", nuevo)
             if quiere and not nuevo:
-                return "No pude activarlo (¿no es Windows, o no encuentro iniciar_lune.vbs?)."
+                return f"No pude activarlo (¿no es Windows, o no encuentro {_lanzador_de(m)}?)."
             return ("Lune arrancará con Windows (aquí, en la terminal, minimizada)." if nuevo
                     else "Lune ya no arranca con Windows.")
         if a0 == "como":
@@ -294,6 +294,15 @@ def _seguro(fn: Callable[[], Any]) -> bool:
         return bool(fn())
     except Exception:
         return False
+
+
+def _lanzador_de(mod: Any) -> str:
+    """Lo que lanza la entrada de arranque (servicios/autoinicio.lanzador): Lune.exe
+    instalada o iniciar_lune.vbs desde el código."""
+    try:
+        return str(mod.lanzador().name) or "el lanzador de Lune"
+    except Exception:
+        return "el lanzador de Lune"
 
 
 __all__ = ("SistemaTerminal", "AYUDA", "ESPERA_MAX_S")
