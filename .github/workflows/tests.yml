@@ -41,9 +41,29 @@ jobs:
           pip install -r requirements.txt pytest numpy PyQt6-WebEngine
 
       # Sin -q aquí: pytest.ini ya trae -q y con dos el resumen no sale (por eso un fallo
-      # solo decía «exit code 1»). -rfE lista al final los que fallan.
+      # solo decía «exit code 1»). -rfE lista al final los que fallan. La salida se copia a
+      # salida_tests.txt, el código de salida a codigo_tests.txt y cada test se apunta al
+      # empezar y al acabar (LUNE_CI_RASTRO, tests/conftest.py): si el proceso muere a mitad,
+      # el paso siguiente dice en qué test fue.
       - name: Tests
-        run: python -m pytest -rfE --junitxml=junit.xml
+        shell: python
+        env:
+          LUNE_CI_RASTRO: rastro_tests.txt
+        run: |
+          import os, subprocess, sys
+          with open("salida_tests.txt", "w", encoding="utf-8") as copia:
+              # Sin búfer: si el proceso muere, sus últimas líneas no se pierden.
+              p = subprocess.Popen([sys.executable, "-m", "pytest", "-rfE", "--junitxml=junit.xml"],
+                                   stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                   text=True, encoding="utf-8", errors="replace",
+                                   env={**os.environ, "PYTHONUNBUFFERED": "1"})
+              for linea in p.stdout:
+                  sys.stdout.write(linea)
+                  copia.write(linea)
+              codigo = p.wait()
+          with open("codigo_tests.txt", "w", encoding="utf-8") as f:
+              f.write(str(codigo))
+          sys.exit(0 if codigo == 0 else 1)
 
       # Si algo falla, el nombre del test y su error salen arriba, en la página del commit
       # (anotaciones de GitHub), sin tener que abrir el log entero.
@@ -57,10 +77,38 @@ jobs:
               texto = texto.replace("%", "%25").replace("\r", "").replace("\n", " ")
               print(f"::error title={titulo}::{texto}")
 
+          def leer(nombre):
+              try:
+                  with open(nombre, encoding="utf-8", errors="replace") as f:
+                      return f.read()
+              except OSError:
+                  return ""
+
+          codigo = leer("codigo_tests.txt").strip()
+          try:
+              c = int(codigo)
+              avisar("Tests", f"pytest salió con el código {c} (0x{c & 0xFFFFFFFF:08X}).")
+          except ValueError:
+              avisar("Tests", "pytest no llegó a apuntar su código de salida.")
           try:
               raiz = ET.parse("junit.xml").getroot()
           except Exception as e:
-              avisar("Tests", f"No hay junit.xml ({e}): la suite se cayó antes de terminar. Mira el log.")
+              empezados = {}
+              for linea in leer("rastro_tests.txt").splitlines():
+                  que, _, nodo = linea.partition(" ")
+                  if que == "empieza":
+                      empezados[nodo] = True
+                  elif que == "acaba":
+                      empezados.pop(nodo, None)
+              if empezados:
+                  avisar("Se cayó durante", list(empezados)[-1])
+              else:
+                  ultimos = [l for l in leer("rastro_tests.txt").splitlines() if l.startswith("acaba ")]
+                  avisar("Se cayó después de", ultimos[-1][6:] if ultimos else "(ningún test llegó a empezar)")
+              cola = [l.strip() for l in leer("salida_tests.txt").splitlines() if l.strip()][-6:]
+              for i, l in enumerate(cola, 1):
+                  avisar(f"Últimas líneas ({i}/{len(cola)})", l[:400])
+              avisar("Tests", f"No hay junit.xml ({e}): la suite se cayó antes de terminar.")
               raise SystemExit(0)
           n = 0
           for caso in raiz.iter("testcase"):

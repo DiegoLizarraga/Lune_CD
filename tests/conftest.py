@@ -80,3 +80,18 @@ def qapp():
 
     app = QApplication.instance() or QApplication([])
     yield app
+
+
+# ── Rastro para GitHub Actions ────────────────────────────────────────────────
+# tests.yml pone LUNE_CI_RASTRO=<archivo>: cada test se apunta al empezar y al acabar. Si el
+# proceso muere a mitad (sin junit.xml ni resumen), el último «empieza» sin su «acaba» dice en
+# qué test fue, y el paso «Qué test falló» lo publica como aviso. En casa no se activa.
+_RASTRO = os.environ.get("LUNE_CI_RASTRO", "").strip()
+if _RASTRO:
+    _rastro = open(_RASTRO, "a", encoding="utf-8")
+
+    def pytest_runtest_logstart(nodeid, location):
+        print(f"empieza {nodeid}", file=_rastro, flush=True)
+
+    def pytest_runtest_logfinish(nodeid, location):
+        print(f"acaba {nodeid}", file=_rastro, flush=True)
