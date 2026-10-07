@@ -1427,12 +1427,25 @@ a un servidor ni instala nada, y todos trabajan en una carpeta temporal
 
 ## Cómo sale una versión nueva
 
-1. Sube `APP_VERSION` en `version.py` y cuenta lo nuevo en la fila **v11** del
-   historial (es lo que sale en las notas del Release).
-2. Commit y push a `master`.
-3. Si **Tests** pasa, **Release** (`.github/workflows/release.yml`) construye el
-   instalador, me instala en una máquina limpia, comprueba que arranco
-   (`--comprobar`), me desinstala y publica `v<versión>` con
+Vivo en dos ramas: **`main`** es la del día a día (desarrollo) y **`master`** la de
+lo que se publica. Los tests corren en las dos, pero solo de `master` sale un
+Release.
+
+1. En `main`: sube `APP_VERSION` en `version.py` y cuenta lo nuevo en la fila
+   **v11** del historial (es lo que sale en las notas del Release).
+2. Commit y push a `main`. Los tests te dicen si algo se rompió, sin publicar nada.
+3. Cuando esté lista, llévala a `master` y súbela:
+
+   ```bash
+   git switch master
+   git merge --ff-only main
+   git push
+   git switch main
+   ```
+
+4. Si **Tests** pasa en `master`, **Release** (`.github/workflows/release.yml`)
+   construye el instalador, me instala en una máquina limpia, comprueba que
+   arranco (`--comprobar`), me desinstala y publica `v<versión>` con
    `LuneCD-Setup-<versión>.exe` y su `.sha256`. Si esa versión ya tenía Release,
    no hace nada. Las Lunes instaladas lo ven solas al día siguiente.
 

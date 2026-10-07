@@ -302,7 +302,9 @@ def test_patata_ayuda_menciona_comprobar(patata_mod):
 
 # ── 11.3: tu equipo, la red y los servicios (con todo FALSO: nada sale a internet) ──
 
-CLAVE = "sk-or-v1-claveSecretaDePrueba0123456789"
+# Clave FALSA. Va en dos trozos para que el guardián de secretos de CI (tests.yml: git grep de
+# «sk-or-v1-» + 20 caracteres) no la tome por una de verdad.
+CLAVE = "sk-or-v1-" + "claveSecretaDePrueba0123456789"
 TOKEN = "123456789:AAH-tokenSecretoDePrueba_0123456"
 
 

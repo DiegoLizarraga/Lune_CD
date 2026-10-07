@@ -1,6 +1,8 @@
 name: Release
 
 # Qué es esto: cuando subes a master y los Tests pasan, GitHub mira version.py.
+# master es la rama de las publicaciones; en main (desarrollo) los Tests corren igual
+# pero de ahí nunca sale un Release. Para publicar, se lleva main a master.
 # Si esa versión todavía no tiene Release (v11.2, v11.3…), construye Lune
 # instalable en una máquina Windows limpia, prueba el instalador de verdad
 # (instalar, «LunePatata.exe --comprobar», desinstalar) y publica el Release con
@@ -29,10 +31,12 @@ concurrency:
 
 jobs:
   publicar:
-    # Solo tras unos Tests en verde de un push (no de un pull request), o a mano.
+    # Solo tras unos Tests en verde de un push a master (no de un pull request ni de main),
+    # o a mano desde master.
     if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master') ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'master')
     runs-on: windows-latest
     timeout-minutes: 90
     env:

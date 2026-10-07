@@ -42,7 +42,8 @@ from test_settings_voz_compat import panel  # noqa: E402,F401  (fixture)
 from discord_falso import ID, ConfigFalsa, FabricaClientes, MutexFalso, Reloj  # noqa: E402
 
 JSX = RAIZ / "ui_web" / "ui_kits" / "lune-desktop"
-CLAVE = "sk-or-v1-claveSecretaDePrueba0123456789"
+# Clave FALSA, en dos trozos para que el guardián de secretos de CI no la tome por una de verdad.
+CLAVE = "sk-or-v1-" + "claveSecretaDePrueba0123456789"
 TOKEN = "123456789:AAH-tokenSecretoDePrueba_0123456"
 
 

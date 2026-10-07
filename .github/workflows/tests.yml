@@ -1,7 +1,7 @@
 name: Tests
 
-# Qué es esto: cada vez que subes a master, GitHub arranca una máquina limpia,
-# instala Lune y corre los tests. Si algo falla te llega el aviso "Tests
+# Qué es esto: cada vez que subes a main (desarrollo) o a master (publicaciones),
+# GitHub arranca una máquina limpia, instala Lune y corre los tests. Si algo falla te llega el aviso "Tests
 # workflow run failed". No hace falta para usar Lune: es solo el chequeo
 # automático. Si no lo quieres, borra la carpeta .github/ y se acabó.
 #
@@ -12,9 +12,12 @@ name: Tests
 # instalador y la usan la piel web, la asistente animada y el VRM. Sin él fallaban
 # ~100 tests (la cruz roja «1 / 2» de cada commit hasta 10.7).
 
+# Dos ramas (desde la 11.3): en main se trabaja día a día y en master solo entra lo
+# que se publica. Los tests corren en las dos; el Release (release.yml) solo sale de
+# master.
 on:
   push:
-    branches: [master]
+    branches: [master, main]
   pull_request:
 
 jobs:
