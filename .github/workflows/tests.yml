@@ -40,8 +40,39 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt pytest numpy PyQt6-WebEngine
 
+      # Sin -q aquí: pytest.ini ya trae -q y con dos el resumen no sale (por eso un fallo
+      # solo decía «exit code 1»). -rfE lista al final los que fallan.
       - name: Tests
-        run: python -m pytest -q
+        run: python -m pytest -rfE --junitxml=junit.xml
+
+      # Si algo falla, el nombre del test y su error salen arriba, en la página del commit
+      # (anotaciones de GitHub), sin tener que abrir el log entero.
+      - name: Qué test falló
+        if: failure()
+        shell: python
+        run: |
+          import xml.etree.ElementTree as ET
+
+          def avisar(titulo, texto):
+              texto = texto.replace("%", "%25").replace("\r", "").replace("\n", " ")
+              print(f"::error title={titulo}::{texto}")
+
+          try:
+              raiz = ET.parse("junit.xml").getroot()
+          except Exception as e:
+              avisar("Tests", f"No hay junit.xml ({e}): la suite se cayó antes de terminar. Mira el log.")
+              raise SystemExit(0)
+          n = 0
+          for caso in raiz.iter("testcase"):
+              for tipo in ("failure", "error"):
+                  el = caso.find(tipo)
+                  if el is None:
+                      continue
+                  n += 1
+                  lineas = (el.get("message") or el.text or "").strip().splitlines()
+                  avisar("Test fallido", f"{caso.get('classname')}::{caso.get('name')} — {(lineas[0] if lineas else '')[:300]}")
+          if not n:
+              avisar("Tests", "Ningún test falló en el junit.xml: el proceso se cayó o falló otra cosa. Mira el log.")
 
       - name: Comprobar que todos los módulos compilan
         run: python -m compileall -q main.py patata.py instalador.py nucleo servicios ui lune_core scripts

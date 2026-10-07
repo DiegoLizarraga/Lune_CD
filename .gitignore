@@ -111,3 +111,6 @@ bailes/
 notas/
 *.rag.db
 rag.db
+
+# Resultados de pytest en CI (tests.yml: --junitxml)
+/junit.xml

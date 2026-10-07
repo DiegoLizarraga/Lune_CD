@@ -105,7 +105,8 @@ def test_sistema_info_no_bloquea_y_los_procesos_van_en_un_hilo(puente, monkeypat
     monkeypatch.setattr(O.Optimizador, "procesos_pesados", pesados)
     t0 = time.monotonic()
     j = json.loads(puente.sistema_info())
-    assert time.monotonic() - t0 < 0.5                   # ni 200 ms de CPU ni process_iter aquí
+    # Holgura para las máquinas lentas de GitHub: lo que importa es no esperar al falso (3 s).
+    assert time.monotonic() - t0 < 2.0                   # ni 200 ms de CPU ni process_iter aquí
     assert j["cpu"] is None and j["procesos"] == [] and j["ram"] is not None   # la 1ª ceba la CPU
     soltar.set()
     puente._sis_hilo.join(3)
@@ -388,7 +389,8 @@ def test_anuncio_mdns_en_un_hilo(qapp, monkeypatch):
     red = R.RedService(ConfigDict({"red": {"anunciar": True, "nombre": "pc", "rol": "hibrido"}}))
     t0 = time.monotonic()
     assert red.anunciar() is True
-    assert time.monotonic() - t0 < 0.5                   # register_service no espera aquí
+    # Holgura para las máquinas lentas de GitHub: lo que importa es no esperar al falso (3 s).
+    assert time.monotonic() - t0 < 2.0                   # register_service no espera aquí
     assert esperar(lambda: eventos) and eventos[0] == ("iniciar", False)
     red.detener()                                        # salir mientras arranca
     arrancar.set()
