@@ -60,6 +60,27 @@ if _rutas.DATOS != _DATOS_TESTS or _rutas.LOCAL != _DATOS_TESTS:
                        f"{_DATOS_TESTS}; no toco los datos de verdad")
 
 
+# Igual que la app (ui/recolector_qt.py): sin recolector automático. Saltaba dentro del hilo
+# que estuviera reservando memoria, también los de fondo (hilos del diagnóstico, la voz…), y
+# si la basura llevaba widgets de un test anterior, Qt los destruía fuera de su hilo y la
+# suite moría con 0xC0000409 (11.3 en GitHub Actions: el panel de
+# test_panel_nativo_tiene_los_probar se recogía en el hilo del diagnóstico del test
+# siguiente). Ahora la basura se recoge solo aquí, en el hilo principal: después de cada test
+# que usa Qt y al acabar cada archivo.
+import gc as _gc  # noqa: E402
+
+_gc.disable()
+
+
+@pytest.fixture(autouse=True)
+def _recoger_basura_de_qt(request):
+    """Tras cada test que usa la QApplication (directa o indirectamente), su basura con
+    ciclos se recoge en el hilo principal, antes de que el siguiente arranque sus hilos."""
+    yield
+    if "qapp" in request.fixturenames:
+        _gc.collect()
+
+
 @pytest.fixture(autouse=True, scope="module")
 def _recoger_basura_en_el_hilo_principal():
     """Al acabar cada archivo de tests, la basura con ciclos se recoge AQUÍ, en el hilo

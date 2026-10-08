@@ -3259,6 +3259,14 @@ def main():
     app = QApplication(sys.argv)
     app.setApplicationName("Lune CD")
     _instalar_red_de_excepciones()
+    # La basura con ciclos (ventanas y diálogos cerrados) se recoge solo en este hilo: con
+    # el recolector automático podía recogerse dentro de un hilo de fondo (la voz, la
+    # música, el diagnóstico…) y Qt tumbaba el proceso (ui/recolector_qt.py).
+    try:
+        from ui.recolector_qt import instalar as _instalar_recolector
+        globals()["_recolector_qt"] = _instalar_recolector(app)
+    except Exception as e:                       # noqa: BLE001 (sin él, Lune sigue como antes)
+        log_error(f"[ui] no pude poner el recolector en el hilo de Qt: {e}")
 
     # A mano o con Windows (--autoinicio desde iniciar_lune.vbs /autoinicio o Lune.exe
     # --autoinicio). Tras un reinicio, primero que la Lune de antes acabe de irse.

@@ -1066,9 +1066,10 @@ class SettingsPanel(QFrame):
             return
         self.btn_probar_mic.setEnabled(False)
         self.lbl_mic_prueba.setText("Habla ahora…")
+        from ui.pruebas_qt import arrancar
         self._probador_mic = ProbadorMic(idx, parent=self)
         self._probador_mic.listo.connect(self._on_mic_probado)
-        self._probador_mic.start()
+        arrancar(self._probador_mic)                # retenido hasta que acabe (ui/pruebas_qt.arrancar)
 
     def _on_mic_probado(self, payload: str):
         import json
@@ -1226,7 +1227,7 @@ class SettingsPanel(QFrame):
 
     def _lanzar_prueba(self, clave: str, btn, lbl, fn, espera: str) -> bool:
         """`fn()` (de servicios/pruebas) en un PruebaWorker; al acabar, su mensaje en `lbl`."""
-        from ui.pruebas_qt import PruebaWorker
+        from ui.pruebas_qt import PruebaWorker, arrancar
         h = self._pruebas.get(clave)
         if h is not None and h.isRunning():
             return False
@@ -1235,11 +1236,14 @@ class SettingsPanel(QFrame):
         w = PruebaWorker(fn)
         w.listo.connect(lambda r, b=btn, l=lbl: self._on_prueba(b, l, r))
         self._pruebas[clave] = w
-        w.start()
+        arrancar(w)                                 # retenido hasta que acabe, aunque el panel se vaya
         return True
 
     def _on_prueba(self, btn, lbl, r) -> None:
-        btn.setEnabled(True)
+        try:
+            btn.setEnabled(True)
+        except RuntimeError:                         # el panel ya no está: nadie a quien contárselo
+            return
         r = r if isinstance(r, dict) else {}
         texto = str(r.get("mensaje") or "")
         # Telegram: lo que falle de cada parte (token, ID, Node, carpeta), debajo.
@@ -1293,7 +1297,8 @@ class SettingsPanel(QFrame):
         p = ProbadorDictado(idx, modelo, idioma)
         p.progreso.connect(self._on_dictado_prueba)
         self._pruebas["dictado"] = p
-        p.start()
+        from ui.pruebas_qt import arrancar
+        arrancar(p)                                 # retenido hasta que acabe, aunque el panel se vaya
         return True
 
     def _on_dictado_prueba(self, payload: str) -> None:

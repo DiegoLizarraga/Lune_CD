@@ -18,6 +18,14 @@ ui/pruebas_qt.py — Los «Probar» y «Comprobar que todo funciona» con Qt, si
 
 `soltar(hilo)`: para un hilo de estos al cerrar (desconecta sus señales y, si aún corre,
 lo retiene hasta que acabe; ui/cambio_interfaz.soltar_hilos).
+
+`arrancar(hilo)`: arranca un hilo de estos y lo retiene YA, desde el primer momento, hasta
+que acabe (ui/cambio_interfaz.retener_hasta_terminar). Sin esto, la única referencia al
+hilo era la de la ventana que lo lanzó (el panel de Ajustes, el diálogo, el puente): si
+esa ventana se iba con el hilo aún corriendo (cerrarla, o que el recolector de basura se
+llevara su ciclo) el QThread se destruía en marcha y Qt tumbaba el proceso entero
+(«QThread: Destroyed while thread is still running», 0xC0000409). Lo destapó la 11.3 en
+GitHub Actions: el panel de un test se recogía con su «Probar bot» aún acabando.
 """
 from __future__ import annotations
 
@@ -82,6 +90,18 @@ class DiagnosticoWorker(QThread):
         if r.get("error"):
             fin["resumen"] = f"No pude terminar la comprobación ({r['error'][:160]})."
         self._emitir(fin)
+
+
+def arrancar(hilo: Any) -> Any:
+    """Arranca `hilo` (un QThread) y lo retiene hasta que acabe, pase lo que pase con quien
+    lo lanzó: así nunca se destruye en marcha. Devuelve el mismo hilo."""
+    hilo.start()
+    try:
+        from ui.cambio_interfaz import retener_hasta_terminar
+        retener_hasta_terminar(hilo)
+    except Exception:                                # noqa: BLE001
+        pass
+    return hilo
 
 
 def soltar(hilo: Any, espera_ms: int = 0) -> None:
@@ -203,7 +223,7 @@ class DialogoDiagnostico(QDialog):
         self._hilo = self._fabrica(self.red, None)
         self._caja["h"] = self._hilo
         self._hilo.evento.connect(self.recibir)
-        self._hilo.start()
+        arrancar(self._hilo)
         return True
 
     def parar(self) -> None:

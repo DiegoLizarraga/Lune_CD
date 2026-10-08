@@ -2283,7 +2283,8 @@ class LuneBridge(QObject):
         w = DiagnosticoWorker(red=True, parent=self)
         w.evento.connect(self.diagnostico)
         self._diag_worker = w
-        w.start()
+        from ui.pruebas_qt import arrancar
+        arrancar(w)                                  # retenido hasta que acabe, aunque la ventana se vaya
         return True
 
     @pyqtSlot(result=bool)
@@ -2341,7 +2342,8 @@ class LuneBridge(QObject):
         p = ProbadorDictado(idx, modelo, idioma, parent=self)
         p.progreso.connect(self.dictado_prueba)
         self._dictado_prueba = p
-        p.start()
+        from ui.pruebas_qt import arrancar
+        arrancar(p)                                  # retenido hasta que acabe, aunque la ventana se vaya
         return True
 
     def _soltar_pruebas(self) -> None:
@@ -2941,7 +2943,8 @@ class LuneBridge(QObject):
             return False
         self._probador = ProbadorMic(idx, parent=self)
         self._probador.listo.connect(self.mic_prueba)
-        self._probador.start()
+        from ui.pruebas_qt import arrancar
+        arrancar(self._probador)                     # retenido hasta que acabe, aunque la ventana se vaya
         return True
 
     @pyqtSlot(str, result=bool)
